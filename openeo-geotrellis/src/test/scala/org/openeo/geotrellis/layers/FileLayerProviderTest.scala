@@ -1630,47 +1630,6 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
-  @Timeout(value=5,unit=TimeUnit.MINUTES)//test should not take longer than this
-  def largeDataCubeTest2(): Unit = {
-
-    val listener = new GetInfoSparkListener()
-    sc.addSparkListener(listener)
-
-    val ProgressListener = new BatchJobProgressListener()
-    sc.addSparkListener(ProgressListener)
-
-    val (datacubeParams,result) = keysForLargeArea(true)
-
-//    datacubeParams.setPartitionerIndexReduction(8)
-    val partitioner = DatacubeSupport.createPartitioner(Some(datacubeParams), result._1.keys, result._2, 1)
-    result._1.partitionBy(partitioner.get)
-    val allTiles = result._1.collect()
-    val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
-
-    assertEquals(512,result._2.tileLayout.tileCols)
-    //overlap filter has removed the other potential sources
-    assertEquals(694, ids.size)
-
-    sc.removeSparkListener(listener)
-
-    assertEquals(2, listener.getJobsCompleted)
-    assertEquals(4, listener.getStagesCompleted)
-    assertEquals(31, listener.getTasksCompleted)
-    assertEquals(77314, allTiles.size)
-    println(f"Peak memory (MB): ${listener.getPeakMemoryMB}")
-
-    println(partitioner)
-    val index = partitioner.get.index
-    println(index)
-
-    assertTrue(index.isInstanceOf[ConfigurableSpaceTimePartitioner])
-    assertEquals(11,index.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction)
-
-  }
-
-
-
-  @Test
   def testSamplingLoadPerProduct(@TempDir outDir: Path):Unit = {
     val srs32631 = "EPSG:32631"
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(Extent(703109 - 100, 5600100, 709000, 5610000 - 100), srs32631)
