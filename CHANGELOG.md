@@ -4,7 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## 2.6.0
+
+### Added
+
+### Changed
+
+- Upgrade Spark to 4.0.1
+- Upgrade scala to 2.13
+
+### Removed
+
+### Fixed
+
+## 2.5.0
 
 ### Added
 
@@ -19,8 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which also results in increased partition sizes, thus has a memory impact. ([#445](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/445))
 - `resample_cube_spatial`: for major resolution increase, rearrange datacube. ([#523](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/523))
 - `load_collection`/`load_stac`: reduce datacube chunck size for small extents ([#523](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/523))
-- Upgrade Spark to 3.5.5
-- Upgrade scala to 2.13
 
 ### Removed
 
