@@ -35,7 +35,7 @@ import java.nio.file.Paths
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ofPattern
-import javax.ws.rs.client.ClientBuilder
+import jakarta.ws.rs.client.ClientBuilder
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.math._
