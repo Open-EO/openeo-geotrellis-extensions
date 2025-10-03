@@ -15,7 +15,7 @@ import org.openeo.opensearch.OpenSearchClient
 import java.net.URL
 import java.time.ZonedDateTime
 import java.util
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 object ProbaVPyramidFactory {
   // Mapping from band name to (geotiff file id, band index).
@@ -49,7 +49,7 @@ class ProbaVPyramidFactory(openSearchEndpoint: String,
   private val _bandNames = bandNames.asScala
 
   private def fileLayerProvider(correlationId: String) = {
-    val (assetTitles, bandIndices) = _bandNames.map(bandNameToAssetBandIndex).unzip
+    val (assetTitles, bandIndices) = _bandNames.map(bandNameToAssetBandIndex).toSeq.unzip
 
     FileLayerProvider(
         OpenSearchClient(openSearchEndpointUrl),

@@ -10,7 +10,7 @@ import org.apache.hadoop.fs.Path
 import org.openeo.geotrellis.file.AbstractPyramidFactory.{FileIMGeoTiffAttributeStore, FilePathTemplate}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory._
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 object Sentinel2RadiometryPyramidFactory {
   object Band extends Enumeration {
@@ -40,7 +40,7 @@ class Sentinel2RadiometryPyramidFactory extends AbstractPyramidFactory[Band.Valu
 
   override protected def bandsFromIndices(band_indices: util.List[Int]): Seq[Band.Value] = {
     if (band_indices == null) Band.values.toSeq
-    else band_indices.asScala map Band.apply
+    else band_indices.asScala.toSeq map Band.apply
   }
 
   override protected def overlappingFilePathTemplates(at: ZonedDateTime, bbox: ProjectedExtent): Iterable[FilePathTemplate] = {

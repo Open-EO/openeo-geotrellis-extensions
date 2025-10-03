@@ -6,7 +6,7 @@ import protos.extentMessages._
 
 
 trait ExtentProtoBuf {
-  implicit def extentProtoBufCodec = new ProtoBufCodec[Extent, ProtoExtent] {
+  implicit def extentProtoBufCodec: ProtoBufCodec[Extent, ProtoExtent] = new ProtoBufCodec[Extent, ProtoExtent] {
     def encode(extent: Extent): ProtoExtent =
       ProtoExtent(
         xmin = extent.xmin,

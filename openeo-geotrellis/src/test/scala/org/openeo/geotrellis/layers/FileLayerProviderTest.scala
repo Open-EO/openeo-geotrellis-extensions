@@ -17,20 +17,20 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
 import org.apache.commons.io.FileUtils
-import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
+import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.geotiff._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
-import org.openeo.geotrellis._
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
@@ -51,7 +51,7 @@ import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
-import scala.jdk.CollectionConverters.mapAsJavaMapConverter
+import scala.jdk.CollectionConverters._
 import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
@@ -86,6 +86,18 @@ object FileLayerProviderTest {
       _sc.get.stop()
       _sc = None
     }
+  }
+
+  def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod) = {
+    val dataCubeParameters: DataCubeParameters = new DataCubeParameters
+    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.globalExtent = Some(polygonsAOI.extent)
+    if(resampleMethod!=null) {
+      dataCubeParameters.setResampleMethod(resampleMethod)
+    }
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.loadPerProduct = true
+    dataCubeParameters
   }
 }
 
@@ -341,7 +353,8 @@ class FileLayerProviderTest extends RasterMatchers{
     val expected = size match {
       case 69854 => 512 // 1024 if experimental flag set
       case 1589 => 512
-      case _ => 256
+      case 489 => 256
+      case _ => 128
     }
     assertEquals(expected,scheme.asInstanceOf[FloatingLayoutScheme].tileRows)
 
@@ -1187,8 +1200,12 @@ class FileLayerProviderTest extends RasterMatchers{
     val cubeSpatial = layer.toSpatial()
     cubeSpatial.writeGeoTiff(f"$outDir/testPixelValueOffsetNeededCorner.tiff")
     val arr = cubeSpatial.collect().array
-    assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
-    assertEquals(187, arr(0)._2.toArrayTile().band(0).get(160, 5), 1)
+    val at_138_746 = arr.find(_._1 == SpatialKey(138, 746))
+    val at_137_747 = arr.find(_._1 == SpatialKey(137, 747))
+    assertTrue(at_138_746.isDefined)
+    assertTrue(isNoData(at_138_746.get._2.toArrayTile().band(0).get(162, 250)))
+    assertTrue(at_137_747.isDefined)
+    assertEquals(187, at_137_747.get._2.toArrayTile().band(0).get(160, 5), 1)
   }
 
   @Test
@@ -1568,9 +1585,9 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(229, ids.size)
 
     assertTrue(Seq(1, 2).contains(listener.getJobsCompleted))
-    assertEquals(5,listener.getStagesCompleted)
-    assertTrue(listener.getTasksCompleted >= 1964) // Range to make test less flaky
-    assertTrue(listener.getTasksCompleted <= 2384)
+    assertEquals(4,listener.getStagesCompleted)
+    assertTrue(listener.getTasksCompleted >= 90) // Range to make test less flaky
+    assertTrue(listener.getTasksCompleted <= 200)
     assertTrue(allTiles.length >= 2384 - 0.1)
     assertTrue(allTiles.length <= 4928 + 0.1)
   }
@@ -1598,7 +1615,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     assertEquals(1, listener.getJobsCompleted)
     assertEquals(3, listener.getStagesCompleted)
-    assertEquals(501, listener.getTasksCompleted)
+    assertEquals(21, listener.getTasksCompleted)
     assertEquals(77314, allTiles.size)
     println(listener.getPeakMemoryMB)
 
@@ -1707,6 +1724,29 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
+  def testMultibandNoNoDataCOGViaSTAC(@TempDir outDir: Path): Unit = {
+    val pyramidFactory = LayerFixtures.stacCogNoNoDataCollection
+
+    val projectedPolygons = ProjectedPolygons.fromExtent(
+      Extent(604523.7292174072, 5090697.329131688, 617624.0262746626, 5095117.978413235),
+      "EPSG:32634",
+    )
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
+
+    writeToNetCDFAndCompare(
+      projectedPolygons,
+      dataCubeParameters,
+      bands = new util.ArrayList(util.Collections.singletonList("L2A-B02-P10")),
+      pyramidFactory,
+      outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC.nc",
+      referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testMultibandNoNoDataCOGViaSTAC.nc",
+    )
+  }
+
+  @Test
   def testMultibandCOGViaSTACResampleReadOneBand(@TempDir outDir: Path): Unit = {
     val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0),util.Arrays.asList("precipitation-flux"))
 
@@ -1724,17 +1764,7 @@ class FileLayerProviderTest extends RasterMatchers{
       f"$outDir/testSinglebandCOGViaSTACResampled.nc", referenceFile)
   }
 
-  private def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod) = {
-    val dataCubeParameters: DataCubeParameters = new DataCubeParameters
-    dataCubeParameters.partitionerIndexReduction = 6
-    dataCubeParameters.globalExtent = Some(polygonsAOI.extent)
-    if(resampleMethod!=null) {
-      dataCubeParameters.setResampleMethod(resampleMethod)
-    }
-    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
-    dataCubeParameters.loadPerProduct = true
-    dataCubeParameters
-  }
+
 
   private def writeToNetCDFAndCompare(polygonAOI: ProjectedPolygons, dataCubeParameters: DataCubeParameters, bands: util.ArrayList[String], factory: PyramidFactory, outLocation: String, referenceFile: String): Unit = {
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
@@ -1746,11 +1776,9 @@ class FileLayerProviderTest extends RasterMatchers{
     val refFile = NetcdfFile.open(referenceFile)
 
     val formatter = new Formatter()
-    val comparison = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile)
+    val areEqual = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile)
 
-    val string = formatter.toString
-    println(string)
-    println(comparison)
+    assertTrue(areEqual, s"netCDF files are not equal:\n$formatter")
   }
 
   @Test

@@ -1,0 +1,25 @@
+{
+  "loadstac1": {
+    "arguments": {
+      "spatial_extent":  {
+        "north": 51,
+        "south": 50,
+        "east": 2,
+        "west" : -3
+      },
+      "url": "https://stac-api-dev.vgt.vito.be/collections/terrascope-s2-toc-v2",
+      "bands": ["B01"]
+    },
+    "process_id": "load_stac"
+  },
+  "saveresult1": {
+    "process_id": "save_result",
+    "arguments": {
+      "data": {
+        "from_node": "loadstac1"
+      },
+      "format": "GTiff"
+    },
+    "result": true
+  }
+}

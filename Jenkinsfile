@@ -13,7 +13,7 @@ def maven_version            = '3.5.4'
 def node_label               = 'default'
 def wipeout_workspace        = true
 
-def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3"
+def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.6"
 
 
 pipeline {
@@ -27,7 +27,6 @@ pipeline {
         DEFAULT_MAVEN_OPTS = "${default_maven_opts}"
         DOCKER_REGISTRY_DEV = "${docker_registry_dev}"
         DOCKER_REGISTRY_PROD = "${docker_registry_prod}"
-        JDK_VERSION = "${jdk_version}"
         JOB_BASE_NAME = "${env.JOB_BASE_NAME}"
         JOB_NAME = "${env.JOB_NAME}"
         JOB_URL = "${env.JOB_URL}"
@@ -193,26 +192,26 @@ String updateMavenVersion(){
 void build(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop"]
 
-    List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-11-openjdk"]
-    docker.image(env.MAVEN_IMAGE).inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
+    List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-21-openjdk" ]
+    def testImage = docker.build("openeo-geotrellis-test-image:20250921_1", "-f ./docker/tests_dockerfile ./docker")
+    testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root' ) {
         withEnv(jdkEnv) {
-            sh "dnf install -y maven git java-11-openjdk-devel"
-            sh "dnf -y install dnf-plugins-core"
-            sh "dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
-            sh "dnf -y install docker-ce"
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
+            sh 'current_dir=$(pwd) && git config --global --add safe.directory  $current_dir'
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
+            def releaseRepo = 'libs-release-public'
             if (!publishable_branches.contains(env.BRANCH_NAME)) {
                 snapshotRepo = 'openeo-branch-builds'
+                //releaseRepo = 'openeo-branch-builds'
                 rtMaven.opts += " -Drevision=${env.BRANCH_NAME}"
             }
-            rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: snapshotRepo
+            rtMaven.deployer server: server, releaseRepo: releaseRepo, snapshotRepo: snapshotRepo
             rtMaven.tool = maven
             if (skipTests) {
                 print "Maven will skip all tests"
-                rtMaven.opts += ' -DskipTests=true'
+                rtMaven.opts += ' -DskipTests=true -DskipSentinelHubTests=true'
             } else if (skipSentinelHubTests) {
                 print "Maven will only skip Sentinel Hub tests"
                 rtMaven.opts += ' -DskipSentinelHubTests=true'
@@ -245,6 +244,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                     junit '*/target/*-reports/*.xml'
                 }
                 sh "chown -R jenkins:vito ."
+                sh "chown -R jenkins:vito /localdata/M2"
             }
         }
     }

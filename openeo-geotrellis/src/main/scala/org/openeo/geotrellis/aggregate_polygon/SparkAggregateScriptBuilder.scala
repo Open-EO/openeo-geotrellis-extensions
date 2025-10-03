@@ -2,13 +2,11 @@ package org.openeo.geotrellis.aggregate_polygon
 
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.functions.{avg, count, countDistinct, first, kurtosis, last, lit, max, median, min, not, percentile_approx, product, skewness, stddev, sum, variance, when}
-import org.apache.spark.sql.types.DataType
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder
 import org.slf4j.LoggerFactory
 
-import java.util
-import scala.collection.JavaConversions.mapAsScalaMap
 import scala.collection.mutable.ListBuffer
+import scala.jdk.CollectionConverters._
 
 object SparkAggregateScriptBuilder {
   private val logger = LoggerFactory.getLogger(classOf[AggregatePolygonProcess])
@@ -26,7 +24,7 @@ class SparkAggregateScriptBuilder {
 
   def generateFunction(context: Map[String,Any] = Map.empty): MultiExpressionBuilder = {
     return (col: Column, columnName: String) => {
-      reducers.map(_(col, columnName))
+      reducers.map(_(col, columnName)).toSeq
     }
   }
 
@@ -39,7 +37,7 @@ class SparkAggregateScriptBuilder {
   }
 
   def constantArguments(args: java.util.Map[String,Object]): Unit = {
-    for (elem <- mapAsScalaMap(args)) {
+    for (elem <- args.asScala) {
       if(elem._2.isInstanceOf[Number]){
         constantArgument(elem._1,elem._2.asInstanceOf[Number])
       }else if(elem._2.isInstanceOf[Boolean]){
@@ -95,7 +93,7 @@ class SparkAggregateScriptBuilder {
 
   def expressionEnd(operator:String,arguments:java.util.Map[String,Object]): Unit = {
 
-    logger.debug(operator + " process with arguments: " + arguments.mkString(","))
+    logger.debug(operator + " process with arguments: " + arguments.asScala.mkString(","))
 
     if( operator == "create_array" ||  operator == "array_create") {
       return
@@ -139,7 +137,7 @@ class SparkAggregateScriptBuilder {
             case "min" => min(col)
             case "first" => first(col,ignoreNulls = ignoreNoData)
             case "last" => last(col,ignoreNulls = ignoreNoData)
-            case "median" => median(col).cast(col.expr.dataType)
+            case "median" => median(col)
             case "product" => product(col)
             case "sd" => stddev(col)
             case "sum" => sum(col)

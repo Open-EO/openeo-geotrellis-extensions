@@ -10,8 +10,11 @@ import org.locationtech.jts.geom.{GeometryFactory, PrecisionModel}
 import org.openeo.opensearch.OpenSearchResponses.Feature
 
 import java.util
-import scala.collection.JavaConverters._
+import scala.annotation.tailrec
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
+import scala.collection.parallel.CollectionConverters._
+import scala.language.postfixOps
 import scala.xml.XML
 
 object GDALCloudRasterSource {
@@ -108,9 +111,13 @@ class GDALCloudRasterSource(
       // Dilate and merge polygons.
       val bufferedPolygons = readCloudFile().par.map(p => new GeometryFactory(new PrecisionModel(1e8)).createGeometry(p).buffer(dilationDistance).asInstanceOf[Polygon]).toBuffer
 
+      @tailrec
       def mergeIntersectingPolygons(polygon: Polygon): Polygon = {
         val intersectingPolygons = bufferedPolygons.filter(p => p.intersects(polygon))
-        if (intersectingPolygons.isEmpty) return polygon
+        if (intersectingPolygons.isEmpty) {
+          bufferedPolygons -= polygon
+          return polygon
+        }
         bufferedPolygons --= intersectingPolygons
         var mergedPolygon: Polygon = polygon
         for (iP <- intersectingPolygons) {
@@ -121,7 +128,10 @@ class GDALCloudRasterSource(
         }
         mergeIntersectingPolygons(mergedPolygon)
       }
-      for (bp <- bufferedPolygons) { if (bp != null) mergedCloudPolygons += mergeIntersectingPolygons(bp)}
+
+      while (bufferedPolygons.nonEmpty) {
+        mergedCloudPolygons += mergeIntersectingPolygons(bufferedPolygons.head)
+      }
 
       // Delete polygons to save memory.
       cloudPolygons = Option.empty

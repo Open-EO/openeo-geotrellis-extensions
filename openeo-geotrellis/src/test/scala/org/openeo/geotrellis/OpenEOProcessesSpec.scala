@@ -2,6 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.layer.{SpaceTimeKey, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster._
 import geotrellis.raster.buffer.BufferedTile
 import geotrellis.raster.geotiff.GeoTiffRasterSource
@@ -23,25 +24,25 @@ import org.junit.Assert._
 import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
-import org.junit.jupiter.params.provider.{Arguments, EnumSource, MethodSource}
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.AggregateSpatialTest.{assertEqualTimeseriesStats, parseCSV}
 import org.openeo.geotrellis.LayerFixtures._
+import org.openeo.geotrellis.OpenEOProcessesSpec.getDatesForCube
 import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
-import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner}
+import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTemporal}
+import org.openeo.geotrellis.layers.FileLayerProviderTest
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, DataCubeParameters, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
-import java.util.Arrays
-import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
-import scala.reflect.ClassTag
+import scala.jdk.CollectionConverters._
 
 object OpenEOProcessesSpec {
   // Methods with attributes get called in a non-intuitive order:
@@ -88,7 +89,7 @@ object OpenEOProcessesSpec {
 
   @AfterClass
   def tearDownSpark_AfterClass(): Unit = {
-    gotAfterClass = true;
+    gotAfterClass = true
     maybeStopSpark()
   }
 
@@ -103,12 +104,12 @@ object OpenEOProcessesSpec {
 
   def getPixel(layer:MultibandTileLayerRDD[SpaceTimeKey]): Array[Int] = {
     new OpenEOProcesses().filterEmptyTile(layer).groupBy(_._1).mapValues(values => {
-      val raster: Raster[MultibandTile] = ContextSeq(values.map(v => (v._1.spatialKey, v._2)).seq, layer.metadata).stitch()
+      val raster: Raster[MultibandTile] = ContextSeq(values.map(v => (v._1.spatialKey, v._2)), layer.metadata).stitch()
       raster.tile.band(0).get(0,0)
     }).collect().sortBy(_._1.instant).map(_._2)
   }
 
-  def applyMaskParams: java.util.stream.Stream[Arguments] = Arrays.stream(Array(
+  def applyMaskParams: java.util.stream.Stream[Arguments] = util.Arrays.stream(Array(
     arguments(None, None),
     arguments(None, Some(Constant0Partitioner)),
     arguments(Some(Constant0Partitioner), None),
@@ -135,11 +136,23 @@ object OpenEOProcessesSpec {
     tile
   }
 
+  private def getDatesForCube() = {
+    val defaultStartDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
+    val dates = (0 to 4).map(defaultStartDate.plusDays(_)).toList
+    dates
+  }
+
   def aggregateTemporalTestParams(): java.util.stream.Stream[Arguments] = {
     val pixelTypes = PixelType.values()
-    val p1 = new ByTileSpacetimePartitioner()
-    val p2 = new ByTileSpacetimePartitioner(Some(Array(SpatialKey(0,0),SpatialKey(1,1))))
-    pixelTypes.flatMap(pt => Seq( arguments(pt, null),arguments(pt, p1),arguments(pt, p2))).toStream.asJava.stream()
+    val byTile = new ByTileSpacetimePartitioner()
+    val byTileWithKeys = new ByTileSpacetimePartitioner(Some(Array(SpatialKey(0,0),SpatialKey(1,1))))
+    val dates = getDatesForCube()
+
+    val keys = Array(SpatialKey(0, 0), SpatialKey(1, 1)).flatMap(key => dates.map(d => SpaceTimeKey(key, TemporalKey(d))))
+    val reduction = 2
+    val indices = keys.map(k=> SparseSpaceTimePartitioner.toIndex(k,reduction))
+    val sparseWithKeys = new SparseSpaceTimePartitioner(indices, reduction, Some(keys))
+    pixelTypes.flatMap(pt => Seq( arguments(pt, null,1374: java.lang.Integer),arguments(pt, byTile,36: java.lang.Integer),arguments(pt, byTileWithKeys,8: java.lang.Integer),arguments(pt, sparseWithKeys,16: java.lang.Integer))).toStream.asJava.stream()
 
   }
 }
@@ -220,12 +233,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
     var maskRDD = buildSpatioTemporalDataCube(List(maskTile).asJava, dates.map(_.toString), Some(extentTAP4326))
 
     if (indexImage.isDefined) {
-      val partitioner = SpacePartitioner(dataCubeContextRDD.metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), indexImage.get)
+      val partitioner = SpacePartitioner[SpaceTimeKey](dataCubeContextRDD.metadata.bounds)
       dataCubeContextRDD = new ContextRDD(dataCubeContextRDD.partitionBy(partitioner), dataCubeContextRDD.metadata)
     }
 
     if (indexMask.isDefined) {
-      val partitioner = SpacePartitioner(maskRDD.metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), indexMask.get)
+      val partitioner = SpacePartitioner[SpaceTimeKey](maskRDD.metadata.bounds)
       maskRDD = new ContextRDD(maskRDD.partitionBy(partitioner), maskRDD.metadata)
     }
 
@@ -281,7 +294,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
   }
 
   @Test
-  def applyMask_spacetime_spatial() = {
+  def applyMask_spacetime_spatial(): Unit = {
     val date = "2018-05-06T00:00:00Z"
 
     val extent = Extent(3.4, 51.0, 3.5, 51.05)
@@ -297,11 +310,10 @@ class OpenEOProcessesSpec extends RasterMatchers {
                   .withContext(_.mapValues(t => MultibandTile(maskTile)))
 
     val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask_spacetime_spatial(selectedBands, mask, 123)
-    val tiles = maskedCube.collectAsMap()
+    val tiles: collection.Map[SpaceTimeKey, MultibandTile] = maskedCube.collectAsMap()
 
-    import scala.collection.JavaConversions._
-    for (tileEntry <- tiles.entrySet) {
-      val tile = tileEntry.getValue.band(0)
+    for (tileEntry: (SpaceTimeKey, MultibandTile) <- tiles) {
+      val tile = tileEntry._2.band(0)
 
       //get method applies a conversion to int, also nodata is converted
       val value = tile.get(0, 1)
@@ -310,7 +322,6 @@ class OpenEOProcessesSpec extends RasterMatchers {
       assertTrue(123 == value || IntConstantNoDataCellType.noDataValue == value)
 
     }
-
 
   }
 
@@ -505,15 +516,19 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   @ParameterizedTest
   @MethodSource(Array("aggregateTemporalTestParams"))
-  def aggregateTemporalTest(pixelType: PixelType, index: PartitionerIndex[SpaceTimeKey]): Unit = {
+  def aggregateTemporalTest(pixelType: PixelType, index: PartitionerIndex[SpaceTimeKey], expectedTasks:Int): Unit = {
     val outDir = "/tmp/aggregateTemporalTest/"
     Files.createDirectories(Paths.get(outDir))
-    var cube: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType)
+    val dates: List[ZonedDateTime] = getDatesForCube
+    var cube: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType,dates = Some(dates))
     if(index != null) {
       cube = cube.withContext(_.partitionBy(new SpacePartitioner[SpaceTimeKey](cube.metadata.bounds)(implicitly, implicitly, index)))
     }
 
     val bounds = cube.metadata.bounds
+
+    val wrappedCube = new OpenEOProcesses().wrapCube(cube)
+    wrappedCube.openEOMetadata.setBandNames(util.Arrays.asList("band_1"))
     val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
 
     // intervals is a list of start,end-pairs
@@ -521,7 +536,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       .map(DateTimeFormatter.ISO_INSTANT.format(_))
     val labels = (intervals.indices.collect { case i if i % 2 == 0 => intervals(i) }).toList
 
-    val aggregatedCube = new OpenEOProcesses().aggregateTemporal(cube,
+    val aggregatedCube = new OpenEOProcesses().aggregateTemporal(wrappedCube,
       intervals.asJava,
       labels.asJava,
       TestOpenEOProcessScriptBuilder.createMedian(true, cube.metadata.cellType),
@@ -530,13 +545,22 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     assertTrue(aggregatedCube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
     val aggregatedIndex = aggregatedCube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-    index match {
+    aggregatedIndex match {
       case value: ByTileSpacetimePartitioner =>
         assertTrue(aggregatedIndex.isInstanceOf[ByTileSpacetimePartitioner])
+      case value: SparseSpaceTimePartitioner =>
+        //mapped to byTile Because of the small partition size in this test case
+        assertTrue(aggregatedIndex.isInstanceOf[ByTileSpacetimePartitioner])
       case _ =>
-        assertTrue(aggregatedIndex == SpaceTimeByMonthPartitioner)
+        assertTrue(aggregatedIndex.isInstanceOf[ConfigurableSpaceTimePartitioner])
     }
+    val listener = new GetInfoSparkListener()
+    SparkContext.getOrCreate().addSparkListener(listener)
     val resultTiles: Array[MultibandTile] = aggregatedCube.values.collect()
+    SparkContext.getOrCreate().removeSparkListener(listener)
+    println(f"${listener.getTasksCompleted} vs ${expectedTasks}")
+    assertTrue(listener.getTasksCompleted <= expectedTasks)
+
 
     val validTile = resultTiles.find(_ != null).get
     val emptyTile = ArrayMultibandTile.empty(validTile.cellType, validTile.bandCount, validTile.cols, validTile.rows)
@@ -583,7 +607,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
 
     // intervals is a list of start,end-pairs
-    val intervals = List(middleDate.plusYears(-30), middleDate, middleDate, middleDate.plusYears(1000))
+    val intervals = ListBuffer(middleDate.plusYears(-30), middleDate, middleDate, middleDate.plusYears(1000))
       .map(DateTimeFormatter.ISO_INSTANT.format(_))
     val labels = (intervals.indices.collect { case i if i % 2 == 0 => intervals(i) }).toList
 
@@ -781,5 +805,31 @@ class OpenEOProcessesSpec extends RasterMatchers {
     })
   }
 
+  @Test
+  def testResampleCubeSpatial_spacetime(): Unit = {
+
+    val factory = LayerFixtures.STACCOGCollection()
+
+    val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
+    val latlon = CRS.fromName("EPSG:4326")
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
+
+
+    val dataCubeParameters: DataCubeParameters = FileLayerProviderTest.datacubeParams(projected_polygons_native_crs, null)
+
+    val bands: util.ArrayList[String] = new util.ArrayList[String]()
+    bands.add("temperature-mean")
+    bands.add("precipitation-flux")
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(projected_polygons_native_crs, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+
+    val datacube = cube.head._2
+
+    val targetLayout: LayoutDefinition = LayoutDefinition(GridExtent[Int](datacube.metadata.extent.reproject(LatLng,WebMercator),CellSize(30.0,30.0)),64)
+
+    val resampled = new OpenEOProcesses().resampleCubeSpatial_spacetime(datacube, WebMercator, targetLayout, NearestNeighbor, null)._2
+    saveRDDTemporal(resampled,"./resampleCubeTest")
+    assertEquals(16, resampled.partitions.length)
+  }
 
 }

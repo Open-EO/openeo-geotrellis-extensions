@@ -93,7 +93,15 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
       .map { case (SpatialKey(col, row), feature) => (SpaceTimeKey(col, row, feature.nominalDate), feature) }
       .filter { case (spaceTimeKey, feature) =>
         val keyExtent = metadata.mapTransform.keyToExtent(spaceTimeKey.spatialKey)
-        ProjectedExtent(feature.bbox, LatLng).reproject(metadata.crs).intersects(keyExtent)
+        if(feature.geometry.isDefined){
+          val intersects = feature.geometry.get.reproject(LatLng, metadata.crs).intersects(keyExtent.toPolygon())
+          if(!intersects) {
+            logger.debug(s"Feature ${feature.id} with bbox ${feature.bbox} does not intersect with key extent $keyExtent")
+          }
+          intersects
+        }else{
+          ProjectedExtent(feature.bbox, LatLng).reprojectAsPolygon(metadata.crs).intersects(keyExtent.toPolygon())
+        }
       }
 
     BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,

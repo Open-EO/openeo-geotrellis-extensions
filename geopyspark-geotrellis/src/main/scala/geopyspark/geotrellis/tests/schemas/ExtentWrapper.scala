@@ -12,7 +12,7 @@ import protos.extentMessages._
 object ExtentWrapper extends Wrapper2[Extent, ProtoExtent]{
   def testOut(sc: SparkContext): JavaRDD[Array[Byte]] =
     PythonTranslator.toPython[Extent, ProtoExtent](testRdd(sc))
-  def testIn(rdd: RDD[Array[Byte]]) =
+  def testIn(rdd: RDD[Array[Byte]]): Unit =
     PythonTranslator.fromPython[Extent, ProtoExtent](rdd, ProtoExtent.parseFrom)
 
   def testRdd(sc: SparkContext): RDD[Extent] = {

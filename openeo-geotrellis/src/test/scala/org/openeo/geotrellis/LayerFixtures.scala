@@ -25,7 +25,7 @@ import spire.math.UShort
 
 import java.awt.image.DataBufferByte
 import java.io.File
-import java.net.URL
+import java.net.{URI, URL}
 import java.nio.file.Paths
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
@@ -156,7 +156,7 @@ object LayerFixtures {
     implicit val sc = SparkContext.getOrCreate
     val times: Seq[ZonedDateTime] = dates.map(ZonedDateTime.parse(_))
     val layout = new TileLayout(1, 1, tiles.get(0).cols.asInstanceOf[Integer], tiles.get(0).rows.asInstanceOf[Integer])
-    val cubeXYB: TileLayerRDD[SpaceTimeKey] = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(JavaConverters.collectionAsScalaIterableConverter(tiles).asScala.zip(times),layout)
+    val cubeXYB: TileLayerRDD[SpaceTimeKey] = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(tiles.asScala.zip(times),layout)
 
     cubeXYB.withContext{_.mapValues(MultibandTile(_)).repartitionAndSortWithinPartitions(new SpacePartitioner(cubeXYB.metadata.bounds))}
   }
@@ -171,7 +171,7 @@ object LayerFixtures {
   }
 
   def catalogDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, resolution:CellSize, bandNames:List[String]) = {
-    new file.PyramidFactory(OpenSearchClient.apply(new URL(opensearchEndpoint), false, "oscars"),layer,bandNames.asJava,null,resolution).pyramid_seq(bbox,"EPSG:4326",minDateString,maxDateString,util.Collections.emptyMap[String,Any](),"").head._2
+    new file.PyramidFactory(OpenSearchClient.apply(new URI(opensearchEndpoint).toURL, false, "oscars"),layer,bandNames.asJava,null,resolution).pyramid_seq(bbox,"EPSG:4326",minDateString,maxDateString,util.Collections.emptyMap[String,Any](),"").head._2
 
   }
 
@@ -187,7 +187,7 @@ object LayerFixtures {
 
 
   def sentinel1Sigma0LayerProviderUTM =
-    FileLayerProvider(
+    new FileLayerProvider(
       client,
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
@@ -196,7 +196,9 @@ object LayerFixtures {
       pathDateExtractor,
       layoutScheme = FloatingLayoutScheme(256),
       experimental = false
-    )
+    ){
+      override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = FloatConstantNoDataCellType
+    }
 
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z", polygons:Seq[Polygon],crs:String) = {
     val parameters = new DataCubeParameters
@@ -575,6 +577,24 @@ for p in l:
     ContextRDD(temporal, temporalMetadata)
   }
 
+  def aSpacetimeTileLayerRddArrayTile(arrayTile: IntArrayTile, layoutCols: Int, layoutRows: Int, nbDates:Int = 2, crs:CRS=LatLng): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    val filtered: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(arrayTile, arrayTile, arrayTile), TileLayout(layoutCols, layoutRows, arrayTile.cols/layoutCols, arrayTile.rows/layoutRows), crs)
+    val startDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val temporal = filtered.flatMap(tuple => {
+      (1 to nbDates).map(index => (SpaceTimeKey(tuple._1, TemporalKey( startDate.plusDays(index) )), tuple._2))
+    }).repartition(layoutCols * layoutRows)
+    val spatialM = filtered.metadata
+    val newBounds = KeyBounds[SpaceTimeKey](SpaceTimeKey(spatialM.bounds.get._1,TemporalKey(0L)),SpaceTimeKey(spatialM.bounds.get._2,TemporalKey(0L)))
+    val temporalMetadata = new TileLayerMetadata[SpaceTimeKey](
+      spatialM.cellType,
+      spatialM.layout,
+      spatialM.extent,
+      spatialM.crs,
+      newBounds,
+    )
+    ContextRDD(temporal, temporalMetadata)
+  }
+
   def aSpacetimeTileLayerHoursRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
     val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(
       layoutCols,
@@ -678,4 +698,50 @@ for p in l:
     factory
   }
 
+  def stacCogNoNoDataCollection: PyramidFactory = {
+    val openSearchClient = new FixedFeaturesOpenSearchClient
+
+    val bandNames = singletonList("L2A-B02-P10")
+    val resolution = 10
+
+    openSearchClient.addFeature(
+      OpenSearchResponses.featureBuilder()
+        .withId("2020_34TFR_001")
+        .withNominalDate("2020-01-01T00:00:00Z")
+        .withBBox(22.4224844035807, 45.950836422259, 22.557151965576, 46.0446922710336)
+        .addLink(
+          href = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/LCFM_LSF-ANNUAL_V100_2020_34TFR_001_L2A-BANDS.tif",
+          title = "Sentinel-2_AnnualFeatures",
+          bandNames,
+        )
+        .withCRS("EPSG:32634")
+        .withRasterExtent(610240, 5089760, 620480, 5100000)
+        .withResolution(resolution)
+        .build()
+    )
+
+    openSearchClient.addFeature(
+      OpenSearchResponses.featureBuilder()
+        .withId("2020_34TFR_000")
+        .withNominalDate("2020-01-01T00:00:00Z")
+        .withBBox(22.2903879775156, 45.9525572152198, 22.4248477757042, 46.046265455836)
+        .addLink(
+          href = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/LCFM_LSF-ANNUAL_V100_2020_34TFR_000_L2A-BANDS.tif",
+          title = "Sentinel-2_AnnualFeatures",
+          bandNames,
+        )
+        .withCRS("EPSG:32634")
+        .withRasterExtent(600000, 5089760, 610240, 5100000)
+        .withResolution(resolution)
+        .build()
+    )
+
+    new PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = "https://stac.openeo.vito.be",
+      openSearchLinkTitles = bandNames,
+      rootPath = null,
+      maxSpatialResolution = CellSize(resolution, resolution),
+    )
+  }
 }

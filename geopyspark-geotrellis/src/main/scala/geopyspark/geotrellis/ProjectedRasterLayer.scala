@@ -4,23 +4,21 @@ import _root_.io.circe.parser.parse
 import _root_.io.circe.syntax._
 import cats.syntax.either._
 import geopyspark.util._
-import geotrellis.layer._
-import geotrellis.raster._
+import geotrellis.layer.{FloatingLayoutScheme, LayoutDefinition, Metadata, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
+import geotrellis.raster.MultibandTile
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, MultibandGeoTiff, Tags}
 import geotrellis.raster.resample.ResampleMethod
-import geotrellis.spark._
 import geotrellis.spark.reproject._
+import geotrellis.spark.{MultibandTileLayerRDD, withProjectedExtentReprojectMethods, withTileRDDReprojectMethods, withTilerMethods}
 import geotrellis.vector._
-import org.apache.spark._
+import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd._
 import protos.extentMessages.ProtoProjectedExtent
 import protos.tupleMessages.ProtoTuple
 
-import java.util.ArrayList
-import scala.collection.JavaConverters._
-import scala.util.Right
-
+import java.util
+import scala.jdk.CollectionConverters._
 
 class ProjectedRasterLayer(val rdd: RDD[(ProjectedExtent, MultibandTile)]) extends RasterLayer[ProjectedExtent] {
 
@@ -108,7 +106,7 @@ class ProjectedRasterLayer(val rdd: RDD[(ProjectedExtent, MultibandTile)]) exten
     val partitioner = TileLayer.getPartitioner(partitionStrategy, rdd.getNumPartitions)
 
     val crs = TileLayer.getCRS(targetCRS).get
-    val tiled = tileToLayout(LocalLayout(256), resampleMethod, partitionStrategy).rdd
+    val tiled: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = tileToLayout(LocalLayout(256), resampleMethod, partitionStrategy).rdd
 
     layoutType match {
       case GlobalLayout(tileSize, null, threshold) =>
@@ -192,10 +190,10 @@ object ProjectedRasterLayer {
 
   def unionLayers(
     sc: SparkContext,
-    layers: ArrayList[ProjectedRasterLayer]
+    layers: util.ArrayList[ProjectedRasterLayer]
   ): ProjectedRasterLayer =
-    ProjectedRasterLayer(sc.union(layers.asScala.map(_.rdd)))
+    ProjectedRasterLayer(sc.union(layers.asScala.map(_.rdd).toSeq))
 
-  def combineBands(sc: SparkContext, layers: ArrayList[ProjectedRasterLayer]): ProjectedRasterLayer =
+  def combineBands(sc: SparkContext, layers: util.ArrayList[ProjectedRasterLayer]): ProjectedRasterLayer =
     ProjectedRasterLayer(TileLayer.combineBands[ProjectedExtent, ProjectedRasterLayer](sc, layers))
 }

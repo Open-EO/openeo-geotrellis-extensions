@@ -10,6 +10,7 @@ import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.util.{Collections, UUID}
 import scala.collection.JavaConverters._
 
+@Ignore("Batch Processing API V1 was sunset on September 17, 2025; we were no longer using it at this point")
 class BatchProcessingApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
   private val batchProcessingApi = new BatchProcessingApi(endpoint)

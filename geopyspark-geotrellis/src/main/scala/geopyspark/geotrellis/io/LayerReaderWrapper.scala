@@ -15,7 +15,7 @@ import org.apache.spark._
 
 import java.time.ZonedDateTime
 import java.util.ArrayList
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 
 
