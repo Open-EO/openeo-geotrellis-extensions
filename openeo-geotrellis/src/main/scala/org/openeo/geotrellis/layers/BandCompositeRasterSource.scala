@@ -16,6 +16,7 @@ import java.io.IOException
 import java.time.temporal.ChronoUnit.SECONDS
 import java.util.Collections
 import scala.collection.GenSeq
+import scala.collection.parallel.CollectionConverters._
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
 //  attach e.g. a date to a RasterSource.
@@ -51,6 +52,7 @@ object BandCompositeRasterSource {
     }
   }
 }
+
 class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource],
                                 override val crs: CRS,
                                 override val attributes: Map[String, String] = Map.empty,
@@ -135,40 +137,49 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    var selectedSources: GenSeq[RasterSource] = reprojectedSources(bands)
+    val selectedSources: scala.collection.Seq[RasterSource] = reprojectedSources(bands)
 
-    if (parallelRead) {
-      selectedSources = selectedSources.par
-    }
+    val singleBandRasters = {
+      if (parallelRead) {
+        selectedSources.par
+          .map {
+            _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+          }
+          .collect { case Some(raster) => raster }
 
-    val singleBandRasters = selectedSources
-      .map {
-        _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+      } else {
+        selectedSources
+          .map {
+            _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+          }
+          .collect { case Some(raster) => raster }
+
       }
-      .collect { case Some(raster) => raster }
+    }.iterator.to(Seq)
 
     if (singleBandRasters.size == selectedSources.size)
-      Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType)).seq), singleBandRasters.head.extent))
+      Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType))), singleBandRasters.head.extent))
     else None
   }
 
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    var selectedSources: GenSeq[RasterSource] = reprojectedSources(bands)
-
-    if (parallelRead) {
-      selectedSources = selectedSources.par
-    }
-
+    val sources = reprojectedSources(bands)
+    val selectedSources: IterableOnce[RasterSource] =
+      if (parallelRead) {
+        sources.par
+      } else {
+        sources
+      }
 
     def readBoundsAttemptFailed(source: RasterSource)(e: Exception): Unit =
       logger.warn(s"attempt to read $bounds from ${source.name} failed", e)
 
-    val singleBandRasters: GenSeq[Raster[Tile]] = selectedSources
-      .map(rs => retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
+    val singleBandRasters: Seq[Raster[Tile]] = selectedSources
+      .iterator.map(rs => retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
         BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0)))
       })
-      .collect { case Some(raster) => raster }
+      .collect { case Some(raster) => raster }.toSeq
 
     try {
       if (singleBandRasters.isEmpty) {
@@ -183,13 +194,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                 case tile: ResampledTile => tile.cropAndConvert(croppedTile.gridBounds, cellType)
                 case _ => if (croppedTile.cellType != cellType) croppedTile.convert(cellType) else croppedTile
               }
-          }.seq
+          }.toSeq
           Some(Raster(MultibandTile(convertedRasters), intersection))
         }
         else None
       }
     } catch {
-      case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${selectedSources.head.name.toString}", e)
+      case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${sources.head.name.toString}", e)
     }
   }
 

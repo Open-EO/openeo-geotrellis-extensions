@@ -734,20 +734,6 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val boundingBox = ProjectedExtent(Extent(499980+25000,5200020-11000,499980+26000,5200020-10000), utm11NCrs)
     val dataCubeParameters = new DataCubeParameters
 
-    // Create a reference tile without cloud masking.
-    //    val layer: MultibandTileLayerRDD[SpaceTimeKey] = creoL1CLayerProvider.readMultibandTileLayer(
-    //      from = date,
-    //      to = date,
-    //      boundingBox,
-    //      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
-    //      polygons_crs = utm11NCrs,
-    //      zoom = 0,
-    //      sc,
-    //      Some(dataCubeParameters)
-    //      )
-    //    val spatialLayer = layer.toSpatial(date)
-    //    spatialLayer.writeGeoTiff("test_L1C_default.tif", boundingBox)
-
     // Create the tile to be tested with the mask_l1c masking strategy.
     dataCubeParameters.maskingStrategyParameters = Map[String, Object](
       "method" -> "mask_l1c",

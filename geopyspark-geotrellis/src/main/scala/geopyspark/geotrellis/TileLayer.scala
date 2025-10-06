@@ -1,33 +1,25 @@
 package geopyspark.geotrellis
 
-import Constants._
 import geopyspark.geotrellis.GeoTrellisUtils._
 import geotrellis.proj4._
 import geotrellis.raster._
-import geotrellis.raster.mapalgebra.focal.TargetCell
-import geotrellis.raster.render._
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression._
+import geotrellis.raster.mapalgebra.focal.TargetCell
+import geotrellis.raster.render._
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.spark._
-import geotrellis.store._
 import geotrellis.spark.tiling._
-import geotrellis.vector._
 import org.apache.spark._
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd._
 import org.apache.spark.storage.StorageLevel
-import protos.tupleMessages.ProtoTuple
-
-import scala.util.{Either, Left, Right}
-import spire.syntax.order._
 import spire.std.any._
 
-import scala.reflect.{ClassTag, classTag}
-import scala.collection.JavaConverters._
-import scala.util.Try
-
 import java.util.ArrayList
+import scala.jdk.CollectionConverters._
+import scala.reflect.{ClassTag, classTag}
+import scala.util.Try
 
 abstract class TileLayer[K: ClassTag] {
   def rdd: RDD[(K, MultibandTile)]

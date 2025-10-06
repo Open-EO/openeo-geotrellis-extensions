@@ -10,7 +10,7 @@ import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCrede
 import software.amazon.awssdk.services.s3.S3Client
 
 import java.net.URI
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 
 object GeoTiffRDD {
@@ -95,7 +95,7 @@ object GeoTiffRDD {
     options: java.util.Map[String, Any],
     partitionBytes: String
   ): RasterLayer[_] = {
-    val uris = paths.map{ path => new URI(path) }
+    val uris = paths.asScala.map{ path => new URI(path) }
     val (stringMap, intMap) = GeoTrellisUtils.convertToScalaMap(options)
     val bytes = Some(partitionBytes.toLong)
     lazy val conf = sc.getConf

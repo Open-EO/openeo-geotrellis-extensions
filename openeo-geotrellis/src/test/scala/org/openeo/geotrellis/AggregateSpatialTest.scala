@@ -17,9 +17,8 @@ import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.util
-import java.util.stream
-import scala.collection.JavaConverters._
-import scala.collection.immutable.Seq
+import java.util.{TimeZone, stream}
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 import scala.io.Source
 
@@ -29,6 +28,7 @@ object AggregateSpatialTest {
 
   @BeforeClass
   def setUpSpark(): Unit = {
+    TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
     sc = {
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
@@ -41,7 +41,7 @@ object AggregateSpatialTest {
 
   }
 
-  def parseCSV(outDir: String, spatioTemporal: Boolean = true): Map[String, scala.Seq[scala.Seq[Double]]] = {
+  def parseCSV(outDir: String, spatioTemporal: Boolean = true): Map[String, scala.Seq[scala.collection.Seq[Double]]] = {
     val stats = mutable.ListBuffer[(String, Int, scala.Seq[Double])]()
 
     if (!Files.exists(Paths.get(outDir))) {
@@ -78,15 +78,14 @@ object AggregateSpatialTest {
 
     val groupedStats = stats
       .groupBy { case (timestamp, _, _) => timestamp }
-      .mapValues { timestampedValues =>{
+      .view.mapValues { timestampedValues => {
         val theNumbers: Array[scala.collection.Seq[Double]] = Array.fill(nbGeometries)(scala.collection.Seq.fill(1)(Double.NaN))
         timestampedValues
 
           .foreach { case (_, geometry, numbers) => theNumbers(geometry) = numbers.toSeq }
         theNumbers.toSeq
       }
-
-      }
+      }.toMap
 
     groupedStats.foreach(println)
     groupedStats
@@ -206,7 +205,8 @@ class AggregateSpatialTest {
     builder.expressionEnd("median",emptyMap)
 
     val outDir = "/tmp/csvoutput2"
-    val dataCube = buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date))
+    val time = ZonedDateTime.parse(to_date)
+    val dataCube = buildCubeRdd(ZonedDateTime.parse(from_date), time)
     val cubeWithBandNames = new OpenEOProcesses().wrapCube(dataCube)
     cubeWithBandNames.openEOMetadata.setBandNames( Seq("B04", "B05").asJava)
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(

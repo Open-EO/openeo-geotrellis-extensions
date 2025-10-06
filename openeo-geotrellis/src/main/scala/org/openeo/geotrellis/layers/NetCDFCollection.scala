@@ -109,7 +109,7 @@ object NetCDFCollection {
 
         })
       })
-      val byTime: Map[ZonedDateTime, Array[(String, ProjectedExtent, Tile)]] = allTiles.groupBy(_._1).mapValues(_.map(_._2))
+      val byTime: Map[ZonedDateTime, Array[(String, ProjectedExtent, Tile)]] = allTiles.groupBy(_._1).mapValues(_.map(_._2)).toMap
       byTime.map(t => {
         val sortedBands = t._2.sortBy(_._1)
         (TemporalProjectedExtent(t._2.head._2, t._1), MultibandTile(sortedBands.map(_._3)))

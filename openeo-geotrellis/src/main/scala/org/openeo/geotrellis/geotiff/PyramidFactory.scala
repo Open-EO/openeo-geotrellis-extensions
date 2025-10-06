@@ -24,7 +24,8 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import java.time.LocalTime.MIDNIGHT
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
-import scala.collection.JavaConverters._
+import scala.collection.parallel.CollectionConverters._
+import scala.jdk.CollectionConverters._
 import scala.util.matching.Regex
 
 object PyramidFactory {
