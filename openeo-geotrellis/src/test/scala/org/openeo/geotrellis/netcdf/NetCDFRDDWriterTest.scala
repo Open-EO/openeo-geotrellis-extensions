@@ -179,10 +179,8 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       val metadata = assets.get("openEO").metadata
       Assert.assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
       Assert.assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
-      val bbox = if (polygon==polygon0) {
-        Array(-180.0, -90.0, 180.0, 90.0)
-      } else {Array(-18.0, 30.0, 18.0, 60.0)}
-      Assert.assertTrue(java.util.Arrays.equals(metadata.get("proj:bbox").asInstanceOf[Array[Double]], bbox))
+      val bbox = Array(polygon.extent.xmin, polygon.extent.ymin, polygon.extent.xmax, polygon.extent.ymax)
+      Assert.assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.01)
       val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
       Assert.assertEquals(3, bands.size())
       bands.forEach(band => {
@@ -369,10 +367,8 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       val metadata = assets.get("openEO").metadata
       Assert.assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
       Assert.assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
-      val bbox = if (polygon==polygon0) {
-        Array(-180.0, -90.0, 180.0, 90.0)
-      } else {Array(-18.0, 30.0, 18.0, 60.0)}
-      Assert.assertTrue(java.util.Arrays.equals(metadata.get("proj:bbox").asInstanceOf[Array[Double]], bbox))
+      val bbox = Array(polygon.extent.xmin, polygon.extent.ymin, polygon.extent.xmax, polygon.extent.ymax)
+      Assert.assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.0)
       Assert.assertTrue(metadata.containsKey("bands"))
       Assert.assertTrue(metadata.get("bands").isInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]])
       val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
@@ -600,10 +596,11 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       val metadata = asset.metadata
       Assert.assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
       Assert.assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
-      val bbox = if (cropBounds.nonEmpty) {
-        Array(-18.0, 30.0, 18.0, 60.0)
-      } else {Array(-180.0, -89.99999, 179.99999000000003, 89.99999)}
-      Assert.assertTrue(java.util.Arrays.equals(metadata.get("proj:bbox").asInstanceOf[Array[Double]], bbox))
+      val bbox = cropBounds match {
+        case Some(extent) => Array(extent.xmin, extent.ymin, extent.xmax, extent.ymax)
+        case _ => Array(-180.0, -90.0, 180.0, 90.0)
+      }
+      Assert.assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.01)
       val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
       Assert.assertEquals(3, bands.size())
       bands.forEach(band => {

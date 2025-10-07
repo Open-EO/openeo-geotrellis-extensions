@@ -915,7 +915,7 @@ object NetCDFRDDWriter {
     }
     assetMetadata.put("bands", bands)
     assetMetadata.put("proj:bbox", Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
-    if (metadata.crs.epsgCode.nonEmpty) assetMetadata.put("proj:epsg", metadata.crs.epsgCode.get)
+    metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
     assetMetadata.put("proj:shape", Array(gridBounds.height, gridBounds.width))
     assetMetadata
   }
@@ -938,7 +938,7 @@ object NetCDFRDDWriter {
     }
     assetMetadata.put("bands", bands)
     assetMetadata.put("proj:bbox",Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
-    if (metadata.crs.epsgCode.nonEmpty) assetMetadata.put("proj:epsg", metadata.crs.epsgCode.get)
+    metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
     assetMetadata.put("proj:shape", Array(rasters.head.rows, rasters.head.cols))
     assetMetadata
   }
