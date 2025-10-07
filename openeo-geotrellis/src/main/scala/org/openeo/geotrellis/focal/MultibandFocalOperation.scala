@@ -19,7 +19,6 @@ package org.openeo.geotrellis.focal
 import geotrellis.layer.SpatialComponent
 import geotrellis.raster._
 import geotrellis.raster.buffer.BufferedTile
-import geotrellis.raster.mapalgebra.focal._
 import geotrellis.spark._
 import geotrellis.util.MethodExtensions
 import org.apache.spark.Partitioner
@@ -55,6 +54,36 @@ object MultibandFocalOperation {
     }
 }
 
+object MultibandFocalOperationWithKey {
+  private def mapOverBufferedTiles[K: SpatialComponent: ClassTag](bufferedTiles: RDD[(K, BufferedTile[MultibandTile])], neighborhood: Neighborhood)
+                                                                 (calc: (K, Tile, Option[GridBounds[Int]]) => Tile): RDD[(K, MultibandTile)] =
+    bufferedTiles
+      .map { case (k, BufferedTile(tile, gridBounds)) => (k, tile.mapBands( (index,tile) => calc(k, tile, Some(gridBounds)))) }
+
+
+  def apply[K: SpatialComponent: ClassTag](
+                                            rdd: RDD[(K, MultibandTile)],
+                                            neighborhood: Neighborhood,
+                                            partitioner: Option[Partitioner])
+                                          (calc: (K, Tile, Option[GridBounds[Int]]) => Tile)(implicit d: DummyImplicit): RDD[(K, MultibandTile)] =
+    mapOverBufferedTiles(rdd.bufferTiles(neighborhood.extent, partitioner), neighborhood)(calc)
+
+  def apply[K: SpatialComponent: ClassTag](
+                                            rdd: RDD[(K, MultibandTile)],
+                                            neighborhood: Neighborhood,
+                                            layerBounds: GridBounds[Int],
+                                            partitioner: Option[Partitioner])
+                                          (calc: (K, Tile, Option[GridBounds[Int]]) => Tile): RDD[(K, MultibandTile)] =
+    mapOverBufferedTiles(rdd.bufferTiles(neighborhood.extent, layerBounds, partitioner), neighborhood)(calc)
+
+  def apply[K: SpatialComponent: ClassTag](rasterRDD: MultibandTileLayerRDD[K], neighborhood: Neighborhood, partitioner: Option[Partitioner])
+                                          (calc: (K, Tile, Option[GridBounds[Int]]) => Tile): MultibandTileLayerRDD[K] =
+    rasterRDD.withContext { rdd =>
+      apply(rdd, neighborhood, rasterRDD.metadata.tileBounds, partitioner)(calc)
+    }
+}
+
+
 abstract class MultibandFocalOperation[K: SpatialComponent: ClassTag] extends MethodExtensions[MultibandTileLayerRDD[K]] {
 
   def focal(n: Neighborhood, partitioner: Option[Partitioner])
@@ -66,4 +95,11 @@ abstract class MultibandFocalOperation[K: SpatialComponent: ClassTag] extends Me
     val cellSize = self.metadata.layout.cellSize
     MultibandFocalOperation(self, n, partitioner){ (tile, bounds) => calc(tile, bounds, cellSize) }
   }
+
+  def focalWithCellSizeAndKey(n: Neighborhood, partitioner: Option[Partitioner])
+                             (calc: (K, Tile, Option[GridBounds[Int]], CellSize) => Tile): MultibandTileLayerRDD[K] = {
+    val cellSize = self.metadata.layout.cellSize
+    MultibandFocalOperationWithKey(self, n, partitioner){ (key, tile, bounds) => calc(key, tile, bounds, cellSize) }
+  }
+
 }

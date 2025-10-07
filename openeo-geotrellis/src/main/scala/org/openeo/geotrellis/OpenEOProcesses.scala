@@ -4,6 +4,7 @@ import geotrellis.layer.SpatialKey._
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.proj4.CRS
+import geotrellis.raster.Neighborhoods.Square
 import io.circe.Json
 import io.circe.syntax.EncoderOps
 import geotrellis.raster._
@@ -12,7 +13,7 @@ import geotrellis.raster.crop.Crop
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
-import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
+import geotrellis.raster.mapalgebra.focal.{Aspect, Convolve, Kernel, Slope, TargetCell}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod}
@@ -30,6 +31,7 @@ import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
+import squants.space.{LengthUnit, Meters}
 
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -41,6 +43,7 @@ import scala.collection.parallel.CollectionConverters._
 import scala.collection.{immutable, mutable}
 import scala.jdk.CollectionConverters._
 import scala.reflect._
+import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 
 
 object OpenEOProcesses{
@@ -1086,6 +1089,17 @@ class OpenEOProcesses extends Serializable {
     val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
+
+  def aspect[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    datacube.sparkContext.setCallSite(s"aspect")
+    datacube.aspect()
+  }
+
+  def slope[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    datacube.sparkContext.setCallSite(s"slope")
+    datacube.slope()
+  }
+
 
   private def mergeCubesGeneric[K: Boundable: PartitionerIndex: ClassTag
   ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[K]], operator:String, metadata:TileLayerMetadata[K],leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
