@@ -8,6 +8,7 @@ import geotrellis.raster.io.geotiff.compression._
 import geotrellis.raster.mapalgebra.focal.TargetCell
 import geotrellis.raster.render._
 import geotrellis.raster.resample.ResampleMethod
+import geotrellis.raster.vectorize.RasterToPoints
 import geotrellis.spark._
 import geotrellis.spark.tiling._
 import org.apache.spark._
@@ -20,11 +21,12 @@ import java.util.ArrayList
 import scala.jdk.CollectionConverters._
 import scala.reflect.{ClassTag, classTag}
 import scala.util.Try
-
 abstract class TileLayer[K: ClassTag] {
   def rdd: RDD[(K, MultibandTile)]
   def keyClass: Class[_] = classTag[K].runtimeClass
   def keyClassName: String = keyClass.getName
+
+
 
   def toPngRDD(cm: ColorMap): JavaRDD[Array[Byte]] =
     toPngRDD(rdd.mapValues { v => v.bands(0).renderPng(cm).bytes })

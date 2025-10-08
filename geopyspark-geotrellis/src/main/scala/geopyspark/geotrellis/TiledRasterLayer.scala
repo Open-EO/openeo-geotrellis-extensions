@@ -10,6 +10,14 @@ import geotrellis.raster.resample.ResampleMethod
 import geotrellis.spark._
 import geotrellis.vector._
 import geotrellis.vector.io.wkb.WKB
+import geotrellis.vector.triangulation._
+import geotrellis.vector.voronoi._
+import _root_.io.circe.{Decoder, Encoder}
+import _root_.io.circe.syntax._
+import _root_.io.circe.Json
+import geotrellis.raster.vectorize.RasterToPoints
+import spire.syntax.cfor._
+import org.locationtech.jts.geom.Coordinate
 import org.apache.spark._
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd._
@@ -21,6 +29,9 @@ import java.util.ArrayList
 import scala.collection.mutable.ArrayBuffer
 import scala.jdk.CollectionConverters._
 import scala.reflect._
+
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path, Paths}
 
 
 abstract class TiledRasterLayer[K: SpatialComponent: Encoder: Decoder: ClassTag: Boundable] extends TileLayer[K] with Serializable {
@@ -401,4 +412,26 @@ abstract class TiledRasterLayer[K: SpatialComponent: Encoder: Decoder: ClassTag:
   protected def withRDD(result: RDD[(K, MultibandTile)]): TiledRasterLayer[K]
 
   def withContextRDD(result: ContextRDD[K, MultibandTile, TileLayerMetadata[K]]): TiledRasterLayer[K]
+
+  def toPointsRDD(): RDD[PointFeature[Seq[Double]]] = {
+    val transform = rdd.metadata.mapTransform
+    val pointsRDD: RDD[PointFeature[Seq[Double]]] = rdd.flatMap { key_band =>  MultibandTileToPoints.fromDouble(key_band._2, transform.keyToExtent(key_band._1)) }
+    pointsRDD
+  }
+
+  def toPointsGeoJSON(outputFile:String): Path = {
+
+    val jsonPoints = toPointsRDD().map {
+      _.asJson
+    }.collect()
+    val epsg = "epsg:"+ rdd.metadata.crs.epsgCode.get
+    val crs_json = _root_.io.circe.parser.parse("""{"type":"name","properties":{"name":"THE_CRS"}}""".replace("THE_CRS",epsg))
+
+    val featureCollectionJson: _root_.io.circe.Json = _root_.io.circe.Json.obj(
+      "type" -> "FeatureCollection".asJson,
+      "crs" -> crs_json.toOption.get,
+      "features" -> jsonPoints.asJson
+    )
+    java.nio.file.Files.write(Paths.get(outputFile), featureCollectionJson.toString().getBytes(StandardCharsets.UTF_8))
+  }
 }
