@@ -4,7 +4,6 @@ import geotrellis.layer.SpatialKey._
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.proj4.CRS
-import geotrellis.raster.Neighborhoods.Square
 import io.circe.Json
 import io.circe.syntax.EncoderOps
 import geotrellis.raster._
@@ -13,7 +12,7 @@ import geotrellis.raster.crop.Crop
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
-import geotrellis.raster.mapalgebra.focal.{Aspect, Convolve, Kernel, Slope, TargetCell}
+import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod}
@@ -31,7 +30,6 @@ import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
-import squants.space.{LengthUnit, Meters}
 
 import java.io.File
 import java.nio.charset.StandardCharsets
