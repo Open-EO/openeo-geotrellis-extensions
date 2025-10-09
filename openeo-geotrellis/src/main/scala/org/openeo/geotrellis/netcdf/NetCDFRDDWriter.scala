@@ -274,7 +274,7 @@ object NetCDFRDDWriter {
         netcdfFile.flush()
       }
     }
-    val assetsMetadata = setupAssetMetadata(rdd.metadata, dates, bandNames, preProcessResult._1, cropBounds.getOrElse(extent), addBandsStatistics, bandHistograms)
+    val assetsMetadata = setupAssetMetadata(rdd.metadata, dates, bandNames, preProcessResult._1, extent, addBandsStatistics, bandHistograms)
     if(dates.nonEmpty) {
       val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
       writeTime(timeDimName, netcdfFile, dates)
@@ -303,7 +303,7 @@ object NetCDFRDDWriter {
         path
       }
 
-    val item = Item(id = UUID.randomUUID().toString, bbox = extent, datetime = null,
+    val item = Item(id = UUID.randomUUID().toString, bbox = cropBounds.getOrElse(extent), datetime = null,
       assets = Collections.singletonMap("openEO", Asset(finalPath,metadata = assetsMetadata)))
 
     Collections.singletonList(item)
@@ -515,7 +515,7 @@ object NetCDFRDDWriter {
         val dates = sorted.map { case (instant, _, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
         logger.info(s"Writing $name with dates $dates.")
         val extent = sorted.head._2.extent
-        val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2), bbox = tiles.head._3, dates=dates, bandNames,addBandsStats = addBandsStatistics)
+        val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2), bbox = extent, dates=dates, bandNames,addBandsStats = addBandsStatistics)
         val assetPath = try{
           writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
         }catch {
@@ -533,7 +533,7 @@ object NetCDFRDDWriter {
 
         }
 
-        Item(id = UUID.randomUUID().toString, datetime = null , bbox = extent,
+        Item(id = UUID.randomUUID().toString, datetime = null , bbox = tiles.head._3,
           assets = Collections.singletonMap("openEO", Asset(path = assetPath,metadata = assetsMetadata)))
       }.collect()
       .toList.asJava
