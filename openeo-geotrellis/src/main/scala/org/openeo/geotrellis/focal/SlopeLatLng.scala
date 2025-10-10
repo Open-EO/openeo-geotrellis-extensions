@@ -8,11 +8,9 @@ import geotrellis.raster.mapalgebra.focal.hillshade.{SurfacePoint, SurfacePointC
 import geotrellis.vector.Extent
 import squants.space.Meters
 
-import scala.reflect.ClassTag
-
 object SlopeLatLng {
 
-  def apply[K: SpatialComponent: ClassTag](layoutDefinition: LayoutDefinition, key: K, r: Tile, n: Neighborhood, bounds: Option[GridBounds[Int]], cs: CellSize, target: TargetCell = TargetCell.All): Tile = {
+  def apply(layoutDefinition: LayoutDefinition, key: SpatialKey, r: Tile, n: Neighborhood, bounds: Option[GridBounds[Int]], cs: CellSize, target: TargetCell = TargetCell.All): Tile = {
     new SurfacePointCalculation[Tile](r, n, bounds, cs, target)
       with DoubleArrayTileResult
     {

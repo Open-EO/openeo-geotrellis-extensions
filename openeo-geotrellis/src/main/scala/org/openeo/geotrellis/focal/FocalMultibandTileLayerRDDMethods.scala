@@ -16,7 +16,7 @@
 
 package org.openeo.geotrellis.focal
 
-import geotrellis.layer.{SpatialKey, TileLayerMetadata}
+import geotrellis.layer.{SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.raster.{DoubleConstantNoDataCellType, MultibandTile}
 import geotrellis.raster.mapalgebra.focal._
 import geotrellis.spark._
@@ -111,8 +111,12 @@ trait FocalMultibandTileLayerRDDMethods[K] extends MultibandFocalOperation[K] {
     val n = Square(1)
     val layout = self.metadata.layout
     if (self.metadata.crs.isGeographic) {
-      focalWithCellSizeAndKey(n, partitioner) { (key, tile, bounds, cellSize) =>
-        SlopeLatLng(layout, key.asInstanceOf[SpatialKey] ,tile, n, bounds, cellSize, target)
+      focalWithCellSizeAndKey(n, partitioner) { (key: K, tile, bounds, cellSize) =>
+        key match {
+          case spatialKey: SpatialKey => SlopeLatLng(layout, spatialKey, tile, n, bounds, cellSize, target)
+          case spaceTimeKey: SpaceTimeKey => SlopeLatLng(layout, spaceTimeKey.spatialKey, tile, n, bounds, cellSize, target)
+          case _ => throw new IllegalArgumentException(f"The slope function requires keys of the SpatialKey or SpaceTimeKey type, ${key.getClass} is not supported.")
+        }
       }
     } else {
       focalWithCellSize(n, partitioner) { (tile, bounds, cellSize) =>
