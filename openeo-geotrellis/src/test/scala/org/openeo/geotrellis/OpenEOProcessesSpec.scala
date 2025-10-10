@@ -331,7 +331,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val tileSize = 256
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize))
 
-    val resultCube = new OpenEOProcesses().aspect(datacube)
+    val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
     val aspectTile = time{ resultCube.stitch().tile.band(0) }
     assertEquals(270, aspectTile.get(5, 5))
   }
@@ -342,7 +342,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val tileSize = 256
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize))
 
-    val resultCube = new OpenEOProcesses().aspect(datacube)
+    val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
     val aspectTile = time{ resultCube.stitch().tile.band(0) }
     assertEquals(180, aspectTile.get(1, 0)) // border case ()
     assertEquals(180, aspectTile.get(1, 1))
@@ -360,7 +360,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
 
-    val resultCube = new OpenEOProcesses().aspect(datacube)
+    val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
     val aspectTile = time{ resultCube.stitch().tile.band(0) }
     assertEquals(270, aspectTile.get(1, 0)) // border case ()
     assertEquals(270, aspectTile.get(1, 1))
@@ -378,7 +378,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
 
-    val resultCube = new OpenEOProcesses().aspect(datacube)
+    val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
     val aspectTile = time{ resultCube.stitch().tile.band(0) }
     assertEquals(-1, aspectTile.get(1, 0)) // border case ()
     assertEquals(-1, aspectTile.get(1, 1))
@@ -397,7 +397,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
 
-    val resultCube = new OpenEOProcesses().aspect(datacube)
+    val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
     val aspectTile = time{ resultCube.stitch().tile.band(0) }
     assertEquals(56, aspectTile.get(1, 0)) // border case ()
     assertEquals(45, aspectTile.get(1, 1))
@@ -414,7 +414,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
-    val resultCube = new OpenEOProcesses().slope(datacube)
+    val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
 
     val slopeTile = time{ resultCube.stitch().tile.band(0) }
     assertEquals(0, slopeTile.get(1, 0)) // border case ()
@@ -432,7 +432,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
-    val resultCube = new OpenEOProcesses().slope(datacube)
+    val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
 
     val slopeTile = time{ resultCube.stitch().tile.band(0) }
     assertEquals(36, slopeTile.get(1, 0)) // border case ()
@@ -450,7 +450,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
-    val resultCube = new OpenEOProcesses().slope(datacube)
+    val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
 
     val slopeTile = time{ resultCube.stitch().tile.band(0) }
     assertEquals(45, slopeTile.get(1, 0)) // border case ()
@@ -468,7 +468,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val crs = LatLng
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
-    val resultCube = new OpenEOProcesses().slope(datacube)
+    val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
 
     val slopeTile = time{ resultCube.stitch().tile.band(0) }
 

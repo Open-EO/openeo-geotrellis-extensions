@@ -1088,12 +1088,32 @@ class OpenEOProcesses extends Serializable {
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
-  def aspect[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+  def aspect(datacube: Object): Object = {
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        aspectGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        aspectGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for aspect: ${datacube}")
+    }
+  }
+
+  def aspectGeneric[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
     datacube.sparkContext.setCallSite(s"aspect")
     datacube.aspect()
   }
 
-  def slope[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+  def slope(datacube: Object): Object = {
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        slopeGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        slopeGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for slope: ${datacube}")
+    }
+  }
+
+  def slopeGeneric[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
     datacube.sparkContext.setCallSite(s"slope")
     datacube.slope()
   }
