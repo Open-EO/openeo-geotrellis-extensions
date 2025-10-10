@@ -113,11 +113,11 @@ trait FocalMultibandTileLayerRDDMethods[K] extends MultibandFocalOperation[K] {
     if (self.metadata.crs.isGeographic) {
       focalWithCellSizeAndKey(n, partitioner) { (key, tile, bounds, cellSize) =>
         SlopeLatLng(layout, key.asInstanceOf[SpatialKey] ,tile, n, bounds, cellSize, target)
-      }.mapContext(_.copy(cellType = DoubleConstantNoDataCellType))
+      }
     } else {
       focalWithCellSize(n, partitioner) { (tile, bounds, cellSize) =>
         Slope(tile, n, bounds, cellSize, 1.0, target)
-      }.mapContext(_.copy(cellType = DoubleConstantNoDataCellType))
+      }
     }
-  }
+  }.mapContext(_.copy(cellType = DoubleConstantNoDataCellType))
 }
