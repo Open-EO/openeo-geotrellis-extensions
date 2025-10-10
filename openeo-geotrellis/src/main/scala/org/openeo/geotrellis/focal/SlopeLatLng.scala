@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.focal
 
-import geotrellis.layer.{LayoutDefinition, SpatialKey}
+import geotrellis.layer.{LayoutDefinition, SpaceTimeKey, SpatialComponent, SpatialKey}
 import geotrellis.raster.{CellSize, GridBounds, Tile, ZFactor}
 import geotrellis.raster.mapalgebra.focal.Angles.degrees
 import geotrellis.raster.mapalgebra.focal.{DoubleArrayTileResult, Neighborhood, TargetCell}
@@ -8,9 +8,11 @@ import geotrellis.raster.mapalgebra.focal.hillshade.{SurfacePoint, SurfacePointC
 import geotrellis.vector.Extent
 import squants.space.Meters
 
+import scala.reflect.ClassTag
+
 object SlopeLatLng {
 
-  def apply(layoutDefinition: LayoutDefinition, key: SpatialKey, r: Tile, n: Neighborhood, bounds: Option[GridBounds[Int]], cs: CellSize, target: TargetCell = TargetCell.All): Tile = {
+  def apply[K: SpatialComponent: ClassTag](layoutDefinition: LayoutDefinition, key: K, r: Tile, n: Neighborhood, bounds: Option[GridBounds[Int]], cs: CellSize, target: TargetCell = TargetCell.All): Tile = {
     new SurfacePointCalculation[Tile](r, n, bounds, cs, target)
       with DoubleArrayTileResult
     {
