@@ -39,15 +39,6 @@ object Udf {
   private val gigaPattern: Regex = """^(\d+)(?:G|GB)$""".r
   private val megaPattern: Regex = """^(\d+)(?:M|MB)$""".r
 
-  private def determineMaxMemoryBytes: Long = {
-    val sc = SparkContext.getOrCreate()
-    sc.getConf.get("spark.executor.pyspark.memory") match {
-      case gigaPattern(gigaBytes) => gigaBytes.toLong * 1024L * 1024L * 1024L
-      case megaPattern(megaBytes) => megaBytes.toLong * 1024L * 1024L
-      case _ => 1L * 1024L * 1024L * 1024L  // default 1G
-    }
-  }
-
   private val DEFAULT_IMPORTS =
     """
       |import collections
@@ -59,15 +50,6 @@ object Udf {
       |from openeo.udf.xarraydatacube import XarrayDataCube
       |from openeo_driver.errors import OpenEOApiException
       |""".stripMargin
-
-  private val MEMORY_LIMIT_CODE =
-    f"""
-      |import resource
-      |limit = $determineMaxMemoryBytes
-      |resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-      |""".stripMargin
-
-  private val DEFAULT_CODE_BLOCK = DEFAULT_IMPORTS + MEMORY_LIMIT_CODE
 
   case class SpatialExtent(xmin : Double, val ymin : Double, val xmax : Double, ymax: Double, tileCols: Int, tileRows: Int)
 
@@ -212,7 +194,7 @@ object Udf {
 
           val interp = SharedInterpreterFactory.create()
           try {
-            interp.exec(DEFAULT_CODE_BLOCK)
+            interp.exec(defaultPythonCodeBlock)
             setContextInPython(interp, context)
             interp.exec(code)
             interp.exec(cubeMetadata)
@@ -304,7 +286,7 @@ object Udf {
         val resultTiles = ListBuffer[(TemporalProjectedExtent, MultibandTile)]()
         val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
-          interp.exec(DEFAULT_CODE_BLOCK)
+          interp.exec(defaultPythonCodeBlock)
 
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -420,7 +402,7 @@ object Udf {
         var newTileCols: Int = tileCols
         val interp = SharedInterpreterFactory.create()
         try {
-          interp.exec(DEFAULT_CODE_BLOCK)
+          interp.exec(defaultPythonCodeBlock)
 
           // Convert multiBandTile to DirectNDArray
           // Allocating a direct buffer is expensive.
@@ -549,7 +531,7 @@ object Udf {
         val resultTiles = ListBuffer[(SpaceTimeKey, MultibandTile)]()
         val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
-          interp.exec(DEFAULT_CODE_BLOCK)
+          interp.exec(defaultPythonCodeBlock)
 
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -625,4 +607,24 @@ object Udf {
     (ContextRDD(result, layer.metadata), bandNames)
   }
 
+  private def defaultPythonCodeBlock: String = {
+    val sc = SparkContext.getOrCreate()
+    val maxMemoryBytes : Long =
+      sc.getConf.get("spark.executor.pyspark.memory") match {
+        case gigaPattern(gigaBytes) => gigaBytes.toLong * 1024L * 1024L * 1024L
+        case megaPattern(megaBytes) => megaBytes.toLong * 1024L * 1024L
+        case _ => 1L * 1024L * 1024L * 1024L  // default 1G
+      }
+
+    val MEMORY_LIMIT_CODE =
+    f"""
+       |import resource
+       |limit = $maxMemoryBytes
+       |resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+       |""".stripMargin
+
+    logger.info("Python default code block")
+    logger.info(DEFAULT_IMPORTS + MEMORY_LIMIT_CODE)
+    DEFAULT_IMPORTS + MEMORY_LIMIT_CODE
+  }
 }
