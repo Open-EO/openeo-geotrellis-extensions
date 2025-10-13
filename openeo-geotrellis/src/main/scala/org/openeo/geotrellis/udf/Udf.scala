@@ -49,6 +49,7 @@ object Udf {
 
   private val MEMORY_LIMIT_CODE =
     """
+      |from pyspark import SparkContext
       |sc = SparkContext.getOrCreate()
       |pysparkMemory = sc.getConf().get("spark.executor.pyspark.memory")
       |import resource
