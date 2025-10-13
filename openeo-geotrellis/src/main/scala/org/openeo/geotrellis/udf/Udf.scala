@@ -610,14 +610,14 @@ object Udf {
   private def defaultPythonCodeBlock(): String = {
     try {
       logger.error("Trying to get Spark Context")
-      val sc = SparkContext.getOrCreate()
+//      val sc = SparkContext.getOrCreate()
       logger.error("Trying to get spark.executor.pyspark.memory")
-      val maxMemoryBytes : Long =
-        sc.getConf.get("spark.executor.pyspark.memory") match {
-          case gigaPattern(gigaBytes) => gigaBytes.toLong * 1024L * 1024L * 1024L
-          case megaPattern(megaBytes) => megaBytes.toLong * 1024L * 1024L
-          case _ => 1L * 1024L * 1024L * 1024L  // default 1G
-        }
+      val maxMemoryBytes : Long = 3L*1024L*1024L*1024L
+//        sc.getConf.get("spark.executor.pyspark.memory") match {
+//          case gigaPattern(gigaBytes) => gigaBytes.toLong * 1024L * 1024L * 1024L
+//          case megaPattern(megaBytes) => megaBytes.toLong * 1024L * 1024L
+//          case _ => 1L * 1024L * 1024L * 1024L  // default 1G
+//        }
 
       logger.error(f"Max memory bytes: $maxMemoryBytes")
       val MEMORY_LIMIT_CODE =
