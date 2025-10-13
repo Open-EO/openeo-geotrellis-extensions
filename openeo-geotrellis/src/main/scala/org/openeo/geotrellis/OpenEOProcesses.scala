@@ -41,6 +41,7 @@ import scala.collection.parallel.CollectionConverters._
 import scala.collection.{immutable, mutable}
 import scala.jdk.CollectionConverters._
 import scala.reflect._
+import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 
 
 object OpenEOProcesses{
@@ -1086,6 +1087,37 @@ class OpenEOProcesses extends Serializable {
     val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
+
+  def aspect(datacube: Object): Object = {
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        aspectGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        aspectGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for aspect: ${datacube}")
+    }
+  }
+
+  def aspectGeneric[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    datacube.sparkContext.setCallSite(s"aspect")
+    datacube.aspect()
+  }
+
+  def slope(datacube: Object): Object = {
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        slopeGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        slopeGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for slope: ${datacube}")
+    }
+  }
+
+  def slopeGeneric[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    datacube.sparkContext.setCallSite(s"slope")
+    datacube.slope()
+  }
+
 
   private def mergeCubesGeneric[K: Boundable: PartitionerIndex: ClassTag
   ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[K]], operator:String, metadata:TileLayerMetadata[K],leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
