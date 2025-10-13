@@ -194,7 +194,7 @@ object Udf {
 
           val interp = SharedInterpreterFactory.create()
           try {
-            interp.exec(defaultPythonCodeBlock)
+            interp.exec(defaultPythonCodeBlock())
             setContextInPython(interp, context)
             interp.exec(code)
             interp.exec(cubeMetadata)
@@ -286,7 +286,7 @@ object Udf {
         val resultTiles = ListBuffer[(TemporalProjectedExtent, MultibandTile)]()
         val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
-          interp.exec(defaultPythonCodeBlock)
+          interp.exec(defaultPythonCodeBlock())
 
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -402,7 +402,7 @@ object Udf {
         var newTileCols: Int = tileCols
         val interp = SharedInterpreterFactory.create()
         try {
-          interp.exec(defaultPythonCodeBlock)
+          interp.exec(defaultPythonCodeBlock())
 
           // Convert multiBandTile to DirectNDArray
           // Allocating a direct buffer is expensive.
@@ -531,7 +531,7 @@ object Udf {
         val resultTiles = ListBuffer[(SpaceTimeKey, MultibandTile)]()
         val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
-          interp.exec(defaultPythonCodeBlock)
+          interp.exec(defaultPythonCodeBlock())
 
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -607,9 +607,11 @@ object Udf {
     (ContextRDD(result, layer.metadata), bandNames)
   }
 
-  private def defaultPythonCodeBlock: String = {
+  private def defaultPythonCodeBlock(): String = {
     try {
+      logger.error("Trying to get Spark Context")
       val sc = SparkContext.getOrCreate()
+      logger.error("Trying to get spark.executor.pyspark.memory")
       val maxMemoryBytes : Long =
         sc.getConf.get("spark.executor.pyspark.memory") match {
           case gigaPattern(gigaBytes) => gigaBytes.toLong * 1024L * 1024L * 1024L
@@ -617,15 +619,15 @@ object Udf {
           case _ => 1L * 1024L * 1024L * 1024L  // default 1G
         }
 
+      logger.error(f"Max memory bytes: $maxMemoryBytes")
       val MEMORY_LIMIT_CODE =
         f"""
            |import resource
-           |limit = $maxMemoryBytes
-           |resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+           |resource.setrlimit(resource.RLIMIT_AS, ($maxMemoryBytes, $maxMemoryBytes))
            |""".stripMargin
 
-      logger.info("Python default code block")
-      logger.info(DEFAULT_IMPORTS + MEMORY_LIMIT_CODE)
+      logger.error("Python default code block")
+      logger.error(DEFAULT_IMPORTS + MEMORY_LIMIT_CODE)
       DEFAULT_IMPORTS + MEMORY_LIMIT_CODE
     }
     catch {
