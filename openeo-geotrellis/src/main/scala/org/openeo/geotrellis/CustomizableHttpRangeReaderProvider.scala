@@ -56,9 +56,6 @@ object CustomizableHttpRangeReaderProvider {
       try {
         val credentials = decode[Map[Host, Credentials]](source.mkString).valueOr(throw _)
 
-        logger.info(s"${credentialsFile.getCanonicalPath} contains HTTP credentials for " +
-          s"${credentials.map { case (host, Credentials(username, _)) => s"$username@$host" } mkString ", "}")
-
         credentials
       } finally source.close()
     } catch {
