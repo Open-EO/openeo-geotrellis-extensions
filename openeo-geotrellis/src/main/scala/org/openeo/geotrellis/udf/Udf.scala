@@ -608,23 +608,31 @@ object Udf {
   }
 
   private def defaultPythonCodeBlock: String = {
-    val sc = SparkContext.getOrCreate()
-    val maxMemoryBytes : Long =
-      sc.getConf.get("spark.executor.pyspark.memory") match {
-        case gigaPattern(gigaBytes) => gigaBytes.toLong * 1024L * 1024L * 1024L
-        case megaPattern(megaBytes) => megaBytes.toLong * 1024L * 1024L
-        case _ => 1L * 1024L * 1024L * 1024L  // default 1G
+    try {
+      val sc = SparkContext.getOrCreate()
+      val maxMemoryBytes : Long =
+        sc.getConf.get("spark.executor.pyspark.memory") match {
+          case gigaPattern(gigaBytes) => gigaBytes.toLong * 1024L * 1024L * 1024L
+          case megaPattern(megaBytes) => megaBytes.toLong * 1024L * 1024L
+          case _ => 1L * 1024L * 1024L * 1024L  // default 1G
+        }
+
+      val MEMORY_LIMIT_CODE =
+        f"""
+           |import resource
+           |limit = $maxMemoryBytes
+           |resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+           |""".stripMargin
+
+      logger.info("Python default code block")
+      logger.info(DEFAULT_IMPORTS + MEMORY_LIMIT_CODE)
+      DEFAULT_IMPORTS + MEMORY_LIMIT_CODE
+    }
+    catch {
+      case t:Throwable => {
+        logger.error("Failed to get memory limit", t)
+        DEFAULT_IMPORTS
       }
-
-    val MEMORY_LIMIT_CODE =
-    f"""
-       |import resource
-       |limit = $maxMemoryBytes
-       |resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-       |""".stripMargin
-
-    logger.info("Python default code block")
-    logger.info(DEFAULT_IMPORTS + MEMORY_LIMIT_CODE)
-    DEFAULT_IMPORTS + MEMORY_LIMIT_CODE
+    }
   }
 }
