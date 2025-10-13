@@ -8,6 +8,7 @@ import org.openeo.geotrellis.layers.SentinelXMLMetadataRasterSource.logger
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 import org.slf4j.LoggerFactory
 
+import scala.language.postfixOps
 import scala.xml.XML
 
 object SentinelXMLMetadataRasterSource {

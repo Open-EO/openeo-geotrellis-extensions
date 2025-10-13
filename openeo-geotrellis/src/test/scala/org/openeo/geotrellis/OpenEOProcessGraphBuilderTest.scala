@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assert
 
 import java.nio.charset.Charset
 import java.util
-import scala.collection.JavaConverters
 import scala.collection.mutable.ArrayBuffer
 
 class OpenEOProcessGraphBuilderTest {
@@ -55,8 +54,8 @@ class OpenEOProcessGraphBuilderTest {
     val tile1 = fillByteArrayTile(3, 3, 9, -10, 11, 12)
     val tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8)
     val tiles = ArrayBuffer(tile1,tile2)
-    val resultBuilder = transformationBuilder.apply(tiles)
-    val resultVisitor = transformationVisitor.apply(tiles)
+    val resultBuilder = transformationBuilder.apply(tiles.toSeq)
+    val resultVisitor = transformationVisitor.apply(tiles.toSeq)
     assertTileEquals(resultBuilder.head,resultVisitor.head)
     assertTileEquals(resultVisitor.apply(1),resultBuilder.apply(1))
   }
@@ -108,7 +107,7 @@ class OpenEOProcessGraphBuilderTest {
     val transformation = org.openeo.geotrellis.testutil.fromUrl(getClass.getResource("/org/openeo/geotrellis/testArrayFindProcessGraph.json"))
     val tile0 = ByteArrayTile.fill(10.toByte, 4, 4)
     val tile1 = ByteArrayTile.fill(5.toByte, 4, 4)
-    val result = transformation.apply(JavaConverters.asScalaBuffer(util.Arrays.asList(tile0, tile1)))
+    val result = transformation.apply(Seq(tile0, tile1))
     val expectedResult = ByteArrayTile.fill(1.toByte, 4, 4)
     assertTileEquals(expectedResult.convert(ShortConstantNoDataCellType), result.head)
   }
@@ -118,7 +117,7 @@ class OpenEOProcessGraphBuilderTest {
     val transformation = org.openeo.geotrellis.testutil.fromUrl(getClass.getResource("/org/openeo/geotrellis/testArrayContainsProcessGraph.json"))
     val tile0 = ByteArrayTile.fill(10.toByte, 4, 4)
     val tile1 = ByteArrayTile.fill(5.toByte, 4, 4)
-    val result = transformation.apply(JavaConverters.asScalaBuffer(util.Arrays.asList(tile0, tile1)))
+    val result = transformation.apply(Seq(tile0, tile1))
     val expectedResult = new BitArrayTile(Array.ofDim[Byte](((4 * 4) + 7) / 8).fill(255.toByte), 4, 4) // BitArrayTile.fill(1, 4, 4) seems bugged
     assertTileEquals(expectedResult, result.head)
   }
@@ -145,11 +144,11 @@ class OpenEOProcessGraphBuilderTest {
     val tile0 = ByteArrayTile.fill(16.toByte, 4, 4)
     val tile1 = ByteArrayTile.fill(17.toByte, 4, 4)
     val tile2 = DoubleArrayTile.fill(17.5, 4, 4)
-    val result: Seq[Tile] = transformation.apply(JavaConverters.asScalaBuffer(util.Arrays.asList(tile0, tile1)))
+    val result: Seq[Tile] = transformation.apply(Seq(tile0, tile1))
     assertTileEquals(IntArrayTile.fill(0, 4, 4), result(0))
     assertTileEquals(IntArrayTile.fill(1, 4, 4), result(1))
 
-    val resultDouble: Seq[Tile] = transformation.apply(JavaConverters.asScalaBuffer(util.Arrays.asList(tile2)))
+    val resultDouble: Seq[Tile] = transformation.apply(Seq(tile2))
     assertTileEquals(DoubleArrayTile.fill(1.5, 4, 4), resultDouble.head)
   }
 

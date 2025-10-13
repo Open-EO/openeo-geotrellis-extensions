@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
 import java.util
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 object PyramidFactory {
   private val logger = LoggerFactory.getLogger(PyramidFactory.getClass)

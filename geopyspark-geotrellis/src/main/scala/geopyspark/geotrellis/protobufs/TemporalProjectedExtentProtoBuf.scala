@@ -7,7 +7,7 @@ import protos.extentMessages._
 
 
 trait TemporalProjectedExtentProtoBuf {
-  implicit def temporalProjectedExtentProtoBufCodec = new ProtoBufCodec[TemporalProjectedExtent, ProtoTemporalProjectedExtent] {
+  implicit def temporalProjectedExtentProtoBufCodec: ProtoBufCodec[TemporalProjectedExtent, ProtoTemporalProjectedExtent] = new ProtoBufCodec[TemporalProjectedExtent, ProtoTemporalProjectedExtent] {
     def encode(extent: TemporalProjectedExtent): ProtoTemporalProjectedExtent =
       ProtoTemporalProjectedExtent(
         extent = Some(extentProtoBufCodec.encode(extent.extent)),

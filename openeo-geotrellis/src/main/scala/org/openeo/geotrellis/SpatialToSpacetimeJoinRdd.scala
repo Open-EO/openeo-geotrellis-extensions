@@ -41,7 +41,7 @@ class SpatialToSpacetimeJoinRdd[T : ClassTag](spacetimeRDD: MultibandTileLayerRD
      * @return
      */
     def decodeIndexKey(region:BigInt):SpaceTimeKey = {
-      val (x,y,t) = new Z3(region.longValue() << 8 ).decode
+      val (x,y,t) = new Z3(region.longValue << 8 ).decode
       new SpaceTimeKey(x,y,t*1000L * 60 * 60 * 24 )
     }
 

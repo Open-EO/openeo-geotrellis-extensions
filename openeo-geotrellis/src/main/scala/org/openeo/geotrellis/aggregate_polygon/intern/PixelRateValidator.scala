@@ -1,7 +1,6 @@
 package org.openeo.geotrellis.aggregate_polygon.intern
 
 import java.time.{Duration, ZonedDateTime}
-
 import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import javax.ws.rs.BadRequestException

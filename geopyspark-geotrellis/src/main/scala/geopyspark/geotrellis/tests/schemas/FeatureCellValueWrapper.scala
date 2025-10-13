@@ -14,7 +14,7 @@ object FeatureCellValueWrapper {
   def testOut(sc: SparkContext): JavaRDD[Array[Byte]] =
     PythonTranslator.toPython[Feature[Geometry, CellValue], ProtoFeatureCellValue](testRDD(sc))
 
-  def testIn(rdd: RDD[Array[Byte]]) =
+  def testIn(rdd: RDD[Array[Byte]]): RDD[Feature[Geometry, CellValue]] =
     PythonTranslator.fromPython[Feature[Geometry, CellValue], ProtoFeatureCellValue](rdd, ProtoFeatureCellValue.parseFrom)
 
   def testRDD(sc: SparkContext): RDD[Feature[Geometry, CellValue]] = {

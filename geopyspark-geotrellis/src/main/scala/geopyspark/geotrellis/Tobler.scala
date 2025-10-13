@@ -1,7 +1,6 @@
 package geopyspark.geotrellis
 
 import geotrellis.raster._
-import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.mapalgebra.focal.{Slope, TargetCell}
 
 

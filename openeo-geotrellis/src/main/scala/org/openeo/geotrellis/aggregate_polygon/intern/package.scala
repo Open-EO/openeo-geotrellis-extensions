@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory
 
 import scala.Double.NaN
 import scala.collection.mutable
+import scala.collection.parallel.CollectionConverters._
 import scala.concurrent.duration.Duration
 
 package object intern {
@@ -233,14 +234,14 @@ package object intern {
             .foreach(mutableCopy.uncountItem)
 
           mutableCopy
-        }))
+        })).toMap
 
       doubleHistograms
     }else{
       val histogramsForDate = MultibandZonal.histogram(dataLayer.toSpatial(date),zoneLayer, zoneLayer.partitioner)
       val doubleHistograms = histogramsForDate
         .filter { case (zone, _) => zone != Int.MinValue } // noDataValue for IntConstantNoDataCellType of mask layer
-        .mapValues(_.map((hist: Histogram[Int]) => toDouble(withoutNoData(hist)) { digital => digital.doubleValue() }))
+        .view.mapValues(_.map((hist: Histogram[Int]) => toDouble(withoutNoData(hist)) { digital => digital.doubleValue() })).toMap
 
       doubleHistograms
     }

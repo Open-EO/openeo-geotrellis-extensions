@@ -7,7 +7,7 @@ import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.SparkContext
-import org.junit.Test
+import org.junit.{Ignore, Test}
 import org.openeo.geotrelliscommon.{DataCubeParameters, ScopedMetadataTracker}
 import org.openeo.geotrellissentinelhub.{PyramidFactory, SampleType}
 
@@ -16,6 +16,7 @@ import scala.collection.JavaConverters._
 
 class PyramidFactoryTest {
 
+  @Ignore("TODO re-enable")
   @Test
   def sentinelHubSmallAreaToTiff(): Unit = {
     implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)

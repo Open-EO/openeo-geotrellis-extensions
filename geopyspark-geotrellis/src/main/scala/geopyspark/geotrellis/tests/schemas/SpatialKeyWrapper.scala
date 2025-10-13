@@ -13,7 +13,7 @@ object SpatialKeyWrapper extends Wrapper2[SpatialKey, ProtoSpatialKey] {
   def testOut(sc: SparkContext): JavaRDD[Array[Byte]] =
     PythonTranslator.toPython[SpatialKey, ProtoSpatialKey](testRdd(sc))
 
-  def testIn(rdd: RDD[Array[Byte]]) =
+  def testIn(rdd: RDD[Array[Byte]]): Unit =
     PythonTranslator.fromPython[SpatialKey, ProtoSpatialKey](rdd, ProtoSpatialKey.parseFrom)
 
   def testRdd(sc: SparkContext): RDD[SpatialKey] = {

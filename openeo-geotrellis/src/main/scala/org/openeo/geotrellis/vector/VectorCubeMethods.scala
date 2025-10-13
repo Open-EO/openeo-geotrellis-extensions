@@ -1,17 +1,16 @@
 package org.openeo.geotrellis.vector
 
-import io.circe.{Json, JsonObject}
-import io.circe.parser
 import geotrellis.layer.{KeyBounds, LayoutDefinition, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster
-import geotrellis.raster.{ArrayTile, DoubleArrayFiller, DoubleConstantNoDataCellType, MultibandTile, NODATA, PixelIsPoint, RasterExtent, Tile}
-import geotrellis.vector.{io, _}
-import org.apache.spark.SparkContext
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.rasterize.Rasterizer.foreachCellByGeometry
+import geotrellis.raster.{ArrayTile, DoubleArrayFiller, DoubleConstantNoDataCellType, MultibandTile, NODATA, PixelIsPoint, RasterExtent, Tile}
 import geotrellis.spark.rasterize.RasterizeRDD.fromKeyedFeature
 import geotrellis.spark.{MultibandTileLayerRDD, withFeatureClipToGridMethods}
+import io.circe.{Json, JsonObject, parser}
+import geotrellis.vector._
+import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
 import java.time.ZonedDateTime
@@ -108,7 +107,7 @@ object VectorCubeMethods {
     val sc = SparkContext.getOrCreate()
     val options = Rasterizer.Options(includePartial = true, sampleType = PixelIsPoint)
 
-    val featuresRDD: RDD[Feature[Geometry, Double]] = sc.parallelize(features)
+    val featuresRDD: RDD[Feature[Geometry, Double]] = sc.parallelize(features.toSeq)
     val keyedFeatures: RDD[(SpatialKey, Feature[Geometry, Double])] = featuresRDD.clipToGrid(targetLayout)
     val band: RDD[(SpatialKey, Tile)] = fromKeyedFeature[Geometry](keyedFeatures, cellType, targetLayout, options)
     band
