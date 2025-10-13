@@ -6,7 +6,7 @@ import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, FloatCon
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import jep.{DirectNDArray, JepConfig, NDArray, SharedInterpreter}
-import org.apache.spark.Partitioner
+import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.slf4j.LoggerFactory
@@ -15,6 +15,7 @@ import java.nio.{ByteBuffer, ByteOrder, FloatBuffer}
 import java.util
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
+import scala.util.matching.Regex
 
 
 class SpatialKeyPartitioner(numberOfPartitions: Int, rows: Int, minKeyCol: Int, minKeyRow: Int) extends Partitioner {
@@ -35,6 +36,18 @@ object Udf {
 
   private val SIZE_OF_FLOAT = 4
 
+  private val gigaPattern: Regex = """^(\d+)(?:G|GB)$""".r
+  private val megaPattern: Regex = """^(\d+)(?:M|MB)$""".r
+
+  private def determineMaxMemoryBytes: Long = {
+    val sc = SparkContext.getOrCreate()
+    sc.getConf.get("spark.executor.pyspark.memory") match {
+      case gigaPattern(gigaBytes) => gigaBytes.toLong * 1024L * 1024L * 1024L
+      case megaPattern(megaBytes) => megaBytes.toLong * 1024L * 1024L
+      case _ => 1L * 1024L * 1024L * 1024L  // default 1G
+    }
+  }
+
   private val DEFAULT_IMPORTS =
     """
       |import collections
@@ -48,20 +61,13 @@ object Udf {
       |""".stripMargin
 
   private val MEMORY_LIMIT_CODE =
-    """
-      |from pyspark import SparkContext
-      |sc = SparkContext.getOrCreate()
-      |pysparkMemory = sc.getConf().get("spark.executor.pyspark.memory")
+    f"""
       |import resource
-      |if pysparkMemory.endswith("G"):
-      |    limit = int(pysparkMemory[:-1])*1024*1024*1024
-      |    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-      |elif pysparkMemory.endswith("M"):
-      |    limit = int(pysparkMemory[:-1])*1024*1024
-      |    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+      |limit = $determineMaxMemoryBytes
+      |resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
       |""".stripMargin
 
-  private val DEFAULT_CODE_BLOCK = DEFAULT_IMPORTS
+  private val DEFAULT_CODE_BLOCK = DEFAULT_IMPORTS + MEMORY_LIMIT_CODE
 
   case class SpatialExtent(xmin : Double, val ymin : Double, val xmax : Double, ymax: Double, tileCols: Int, tileRows: Int)
 
@@ -391,6 +397,8 @@ object Udf {
 
     // TODO: AllocateDirect is an expensive operation, we should create one buffer for the entire partition
     // and then slice it!
+    val sc = SparkContext.getOrCreate()
+
 
     val newLayout: Option[(LayoutDefinition, util.ArrayList[String])] = callApplyMetadata(code, layer, context, bandNames)
     val oldLayout = layer.metadata.layout
