@@ -49,11 +49,15 @@ object Udf {
 
   private val MEMORY_LIMIT_CODE =
     """
-      |private val sc = SparkContext.getOrCreate()
-      |private val pysparkMemory = sc.getConf.get("spark.executor.pyspark.memory")
+      |sc = SparkContext.getOrCreate()
+      |pysparkMemory = sc.getConf().get("spark.executor.pyspark.memory")
       |import resource
-      |limit = {pysparkMemory} * 1024 * 1024
-      |resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+      |if pysparkMemory.endswith("G"):
+      |    limit = int(pysparkMemory[:-1])*1024*1024*1024
+      |    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+      |elif pysparkMemory.endswith("M"):
+      |    limit = int(pysparkMemory[:-1])*1024*1024
+      |    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
       |""".stripMargin
 
   private val DEFAULT_CODE_BLOCK = DEFAULT_IMPORTS + MEMORY_LIMIT_CODE
