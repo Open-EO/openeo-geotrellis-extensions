@@ -621,6 +621,7 @@ object Udf {
     try {
       logger.error("Trying to get Spark Context")
       val sc = SparkContext.getOrCreate()
+      logger.error(sc.getConf.toDebugString)
       logger.error("Trying to get spark.executor.pyspark.memory")
       val maxMemoryBytes = sc.getConf.getSizeAsBytes("spark.executor.pyspark.memory", DEFAULT_MAX_MEMORY_BYTES)
       logger.error(f"Max memory bytes: $maxMemoryBytes")
