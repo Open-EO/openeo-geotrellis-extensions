@@ -395,8 +395,7 @@ class MergeCubesSpec {
     val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata), cube2, "subtract", true, true)
     val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
     assertEquals(2, mergedTimes.size)
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    for (item <- merged.toJavaRDD.collect.asScala) {
       assertEquals(2, item._2.bandCount)
       val month: Int = item._1.temporalKey.time.getMonthValue
       if (month == 1) {
@@ -427,8 +426,7 @@ class MergeCubesSpec {
     val tupleToKey: ((SpaceTimeKey, MultibandTile)) => TemporalKey = (p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey
     val mergedTimes: Array[TemporalKey] = merged.map(tupleToKey).collect
     assertEquals(2, mergedTimes.size)
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    for (item <- merged.toJavaRDD.collect.asScala) {
       assertEquals(4, item._2.bandCount)
       val month: Int = item._1.temporalKey.time.getMonthValue
       if (month == 1) {
@@ -466,8 +464,7 @@ class MergeCubesSpec {
     val tupleToKey: ((SpaceTimeKey, MultibandTile)) => TemporalKey = (p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey
     val mergedTimes: Array[TemporalKey] = merged.map(tupleToKey).collect
     assertEquals(2, mergedTimes.size)
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    for (item <- merged.toJavaRDD.collect.asScala) {
       assertEquals(4, item._2.bandCount)
       val month: Int = item._1.temporalKey.time.getMonthValue
       if (month == 1) {
