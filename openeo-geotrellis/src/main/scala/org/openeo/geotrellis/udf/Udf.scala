@@ -50,14 +50,14 @@ object Udf {
       |from openeo_driver.errors import OpenEOApiException
       |""".stripMargin
 
-  private val maxMemoryBytes : Long = 3L*1024L*1024L*1024L
+  private val maxMemoryBytes : Long = determineMaxMemoryBytes()
   private val MEMORY_LIMIT_CODE =
     f"""
        |import resource
        |resource.setrlimit(resource.RLIMIT_AS, ($maxMemoryBytes, $maxMemoryBytes))
        |""".stripMargin
 
-  private val DEFAULT_PYTHON_CODE_BLOCK = DEFAULT_IMPORTS
+  private val DEFAULT_PYTHON_CODE_BLOCK = DEFAULT_IMPORTS + MEMORY_LIMIT_CODE
 
   case class SpatialExtent(xmin : Double, val ymin : Double, val xmax : Double, ymax: Double, tileCols: Int, tileRows: Int)
 
@@ -614,4 +614,21 @@ object Udf {
     }
     (ContextRDD(result, layer.metadata), bandNames)
   }
+
+  val DEFAULT_MAX_MEMORY_BYTES = 1024L * 1024L * 1024L
+
+  def determineMaxMemoryBytes(): Long = {
+    try {
+      logger.error("Trying to get Spark Context")
+      val sc = SparkContext.getOrCreate()
+      logger.error("Trying to get spark.executor.pyspark.memory")
+      sc.getConf.getSizeAsBytes("spark.executor.pyspark.memory", DEFAULT_MAX_MEMORY_BYTES)
+    }
+    catch {
+      case t: Throwable => {
+        logger.error(f"Failed to determine max memory for JEP, falling back to limit of $DEFAULT_MAX_MEMORY_BYTES bytes.", t)
+        DEFAULT_MAX_MEMORY_BYTES
+      }
+      }
+    }
 }
