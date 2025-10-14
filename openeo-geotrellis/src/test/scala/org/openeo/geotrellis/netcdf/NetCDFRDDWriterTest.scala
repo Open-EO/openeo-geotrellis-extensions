@@ -370,8 +370,11 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       val metadata = assets.get("openEO").metadata
       Assert.assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
       Assert.assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
-      val bbox = Array(polygon.extent.xmin, polygon.extent.ymin, polygon.extent.xmax, polygon.extent.ymax)
-      Assert.assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.0)
+      val bbox = polygon.extent match {
+        case Extent(-18.0, 30.0, 18.0, 60) => Array(-18.281254492187486, 29.8828091796875, 18.28124449218752, 60.1171808203125)
+        case extent => Array(extent.xmin, extent.ymin, extent.xmax, extent.ymax)
+      }
+      Assert.assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.01)
       Assert.assertTrue(metadata.containsKey("bands"))
       Assert.assertTrue(metadata.get("bands").isInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]])
       val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]

@@ -515,7 +515,7 @@ object NetCDFRDDWriter {
         val dates = sorted.map { case (instant, _, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
         logger.info(s"Writing $name with dates $dates.")
         val extent = sorted.head._2.extent
-        val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2), bbox = extent, dates=dates, bandNames,addBandsStats = addBandsStatistics)
+        val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2), dates=dates, bandNames,addBandsStats = addBandsStatistics)
         val assetPath = try{
           writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
         }catch {
@@ -614,7 +614,7 @@ object NetCDFRDDWriter {
       .map { case ((name, extent), tiles) =>
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
-        val assetMetadata = setupAssetMetadata(rdd.metadata, Seq(sample), extent.extent, dates=null, bandNames, addBandsStatistics)
+        val assetMetadata = setupAssetMetadata(rdd.metadata, Seq(sample), dates=null, bandNames, addBandsStatistics)
         val assetPath = try {
           writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
         } catch {
@@ -920,7 +920,7 @@ object NetCDFRDDWriter {
     assetMetadata
   }
 
-  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], rasters: Seq[Raster[MultibandTile]], bbox:Extent, dates: Seq[ZonedDateTime], bandNames: ArrayList[String], addBandsStats: Boolean): util.Map[String, Any] = {
+  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], rasters: Seq[Raster[MultibandTile]], dates: Seq[ZonedDateTime], bandNames: ArrayList[String], addBandsStats: Boolean): util.Map[String, Any] = {
     val assetMetadata = new util.HashMap[String,Any]()
     if (dates != null) {
       assetMetadata.put("time", Map("type" -> "temporal", "extent" -> Array(dates.head, dates.last), "values" -> dates.toArray))
@@ -937,7 +937,7 @@ object NetCDFRDDWriter {
       maps
     }
     assetMetadata.put("bands", bands)
-    assetMetadata.put("proj:bbox",Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
+    assetMetadata.put("proj:bbox",Array(rasters.head.extent.xmin, rasters.head.extent.ymin, rasters.head.extent.xmax, rasters.head.extent.ymax))
     metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
     assetMetadata.put("proj:shape", Array(rasters.head.rows, rasters.head.cols))
     assetMetadata
