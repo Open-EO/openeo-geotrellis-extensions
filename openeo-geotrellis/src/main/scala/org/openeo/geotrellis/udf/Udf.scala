@@ -57,7 +57,7 @@ object Udf {
        |resource.setrlimit(resource.RLIMIT_AS, ($maxMemoryBytes, $maxMemoryBytes))
        |""".stripMargin
 
-  private val DEFAULT_PYTHON_CODE_BLOCK = DEFAULT_IMPORTS + MEMORY_LIMIT_CODE
+  private val DEFAULT_PYTHON_CODE_BLOCK = DEFAULT_IMPORTS
 
   case class SpatialExtent(xmin : Double, val ymin : Double, val xmax : Double, ymax: Double, tileCols: Int, tileRows: Int)
 
