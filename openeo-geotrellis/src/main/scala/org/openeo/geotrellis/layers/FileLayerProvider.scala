@@ -1656,7 +1656,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       Files.write(targetFile, derivedFromDocument.noSpaces.getBytes("UTF-8"))
     }
 
-    val derivedFromDocument = Files.createTempFile("input_items_", ".json")
+    val jobId = Option(System.getenv("OPENEO_BATCH_JOB_ID")).getOrElse("unknown-job") // TODO: do it in Python instead?
+    val derivedFromDocument = Files.createTempFile(s"${jobId}_input_items_", ".json")
     writeDerivedFromDocument(derivedFromDocument, overlappingRasterSources.map { case (_, feature) => feature })
     logger.debug(s"wrote input STAC items to $derivedFromDocument")
 

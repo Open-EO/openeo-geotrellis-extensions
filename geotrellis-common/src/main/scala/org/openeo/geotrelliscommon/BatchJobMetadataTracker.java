@@ -126,6 +126,7 @@ public abstract class BatchJobMetadataTracker implements Serializable {
     public abstract void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls);
 
     public abstract void addInternalFile(Path path, String mediaType);
+    public void addInternalFile(String path, String mediaType) { addInternalFile(Paths.get(path), mediaType); }
 
     public abstract Map<String, Object> asDict();
 }
