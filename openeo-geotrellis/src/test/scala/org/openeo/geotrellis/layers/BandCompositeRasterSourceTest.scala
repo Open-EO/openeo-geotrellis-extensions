@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{GridBounds, MultibandTile, Raster}
+import geotrellis.raster.GridBounds
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.testkit.RasterMatchers

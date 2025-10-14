@@ -597,8 +597,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val actualTile = GeoTiffRasterSource(actual.toString).read().get
     assertRastersEqual(referenceTile, actualTile, 160.0)
     //because debug logging is enabled during tests, it actually runs more jobs and stages than done in production
-    assertEquals(5, listener.getJobsCompleted)
-    assertEquals(18, listener.getStagesCompleted)
+    assertEquals("unexpected number of jobs", 5, listener.getJobsCompleted)
+    assertEquals("unexpected number of stages", 18, listener.getStagesCompleted)
 
   }
 
@@ -733,20 +733,6 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val utm11NCrs = CRS.fromEpsgCode(32611)
     val boundingBox = ProjectedExtent(Extent(499980+25000,5200020-11000,499980+26000,5200020-10000), utm11NCrs)
     val dataCubeParameters = new DataCubeParameters
-
-    // Create a reference tile without cloud masking.
-    //    val layer: MultibandTileLayerRDD[SpaceTimeKey] = creoL1CLayerProvider.readMultibandTileLayer(
-    //      from = date,
-    //      to = date,
-    //      boundingBox,
-    //      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
-    //      polygons_crs = utm11NCrs,
-    //      zoom = 0,
-    //      sc,
-    //      Some(dataCubeParameters)
-    //      )
-    //    val spatialLayer = layer.toSpatial(date)
-    //    spatialLayer.writeGeoTiff("test_L1C_default.tif", boundingBox)
 
     // Create the tile to be tested with the mask_l1c masking strategy.
     dataCubeParameters.maskingStrategyParameters = Map[String, Object](

@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.zarr
 import java.util
-import scala.jdk.CollectionConverters.asScalaBufferConverter
+import scala.jdk.CollectionConverters._
 
 class ZarrOptions  extends Serializable {
   var bandNames = Array.fill(1)("Undefined")

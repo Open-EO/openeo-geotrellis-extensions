@@ -246,7 +246,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
     val to = if (from isEqual until) atEndOfDay(until) else until minusNanos 1
 
-    pyramid(projectedExtent, from, to, band_names.asScala, metadata_properties, correlationId).levels.toSeq
+    pyramid(projectedExtent, from, to, band_names.asScala.toSeq, metadata_properties, correlationId).levels.toSeq
       .sortBy { case (zoom, _) => zoom }
       .reverse
   }
@@ -318,7 +318,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
           val keyExtent = spatialKey.extent(layout)
 
-          def dataTile: MultibandTile = getTile(band_names.asScala, ProjectedExtent(keyExtent, boundingBox.crs),
+          def dataTile: MultibandTile = getTile(band_names.asScala.toSeq, ProjectedExtent(keyExtent, boundingBox.crs),
             width = layout.tileLayout.tileCols, height = layout.tileLayout.tileRows)
 
           if (maskClouds) {
@@ -393,7 +393,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 _catalogApi.search(collectionId, multiPolygon, polygons_crs,
                   from, to, accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
               }) { (acc, tileIdCriteria) =>
-                acc.filterKeys(byTileId(_, tileIdCriteria))
+                acc.filter{ case (k,_) => byTileId(k, tileIdCriteria) }
               }
 
             tracker.addInputProductsWithUrls(

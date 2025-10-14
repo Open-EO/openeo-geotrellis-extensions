@@ -21,7 +21,7 @@ object TupleWrapper extends Wrapper2[(ProjectedExtent, MultibandTile), ProtoTupl
   def testOut(sc: SparkContext): JavaRDD[Array[Byte]] =
     PythonTranslator.toPython[(ProjectedExtent, MultibandTile), ProtoTuple](testRdd(sc))
 
-  def testIn(rdd: RDD[Array[Byte]]) =
+  def testIn(rdd: RDD[Array[Byte]]): Unit =
     PythonTranslator.fromPython[(ProjectedExtent, MultibandTile), ProtoTuple](rdd,
       ProtoTuple.parseFrom)
 

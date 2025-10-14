@@ -10,6 +10,7 @@ import org.apache.spark.api.java.JavaSparkContext
 import org.openeo.geotrellis.smac.SMACCorrection
 import org.openeo.geotrellis.water_vapor.{CWVProvider, ConstantCWVProvider}
 import org.slf4j.LoggerFactory
+import scala.jdk.CollectionConverters._
 
 class AtmosphericCorrection extends Serializable {
   
@@ -199,9 +200,9 @@ class AtmosphericCorrection extends Serializable {
     // this is for debug, turn it off in production!
     if (false) {
       val inputt=multibandtile._2.bands ++ Vector( szaTile,vzaTile,raaTile,aotTile,demTile,cwvTile )
-      val inputn=scala.collection.JavaConversions.asScalaBuffer(bandIds).toVector ++ Vector( "sza","vza","raa","aot","dem","cwv"  )
+      val inputn=bandIds.asScala.toVector ++ Vector( "sza","vza","raa","aot","dem","cwv"  )
       val resultt=result.bands
-      val resultn=scala.collection.JavaConversions.asScalaBuffer(bandIds).toVector
+      val resultn=bandIds.asScala.toVector
       println("--- CHECKING PART ---: "+multibandtile._1.toString)
       for (i <- inputt.indices)  println("IN_("+i.toString+") "+inputn(i)+ ": "+inputt(i).convert(FloatConstantNoDataCellType).resample(1, 1, Average).getDouble(0,0).toString)
       for (i <- resultt.indices) println("OUT("+i.toString+") "+resultn(i)+": "+resultt(i).convert(FloatConstantNoDataCellType).resample(1, 1, Average).getDouble(0,0).toString)

@@ -20,7 +20,7 @@ import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ListBuffer
 import scala.reflect.io.Directory
 
@@ -270,8 +270,7 @@ class MergeCubesSpec {
     // Check result
     val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
     assertEquals(2, mergedTimes.size)
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
       assertEquals(5, item._2.bandCount)
       assertEquals(2, item._2.band(0).get(0, 0))
       assertEquals(3, item._2.band(1).get(0, 0))
@@ -293,8 +292,7 @@ class MergeCubesSpec {
     val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(cube1, cube2, null)
     val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
     assertEquals(5, mergedTimes.size)
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
       assertEquals(4, item._2.bandCount)
       if (item._1.temporalKey.time.isBefore(ZonedDateTime.parse("2020-10-01T00:00:00Z"))) { // time range with left part bands
         assertEquals(2, item._2.band(0).get(0, 0))
@@ -321,8 +319,7 @@ class MergeCubesSpec {
     val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(cube1, cube2, "subtract")
     val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
     assertEquals(3, mergedTimes.size)
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
       assertEquals(2, item._2.bandCount)
       val month: Int = item._1.temporalKey.time.getMonthValue
       if (month == 1) {
@@ -352,8 +349,7 @@ class MergeCubesSpec {
     val processes = new OpenEOProcesses()
     val merged: MultibandTileLayerRDD[SpatialKey] = processes.mergeSpatialCubes(cube1, cube2, "subtract")
 
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    for (item: (SpatialKey, MultibandTile) <- merged.collect) {
       assertEquals(2, item._2.bandCount)
       assertEquals(-3, item._2.band(0).get(0, 0))
       assertEquals(-5, item._2.band(1).get(0, 0))
@@ -371,8 +367,7 @@ class MergeCubesSpec {
     val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata), cube2, "subtract", swapOperands=true, outerJoin=true)
     val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
     assertEquals(2, mergedTimes.size)
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
       assertEquals(2, item._2.bandCount)
       val month: Int = item._1.temporalKey.time.getMonthValue
       if (month == 1) {
@@ -384,7 +379,6 @@ class MergeCubesSpec {
           assertEquals(3, item._2.band(0).get(0, 0))
           assertEquals(5, item._2.band(1).get(0, 0))
         }
-
       }
     }
   }
@@ -509,8 +503,7 @@ class MergeCubesSpec {
     val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(cube1, cube2, null)
     val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
     assertEquals(2, mergedTimes.size)
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
       assertEquals(4, item._2.bandCount)
       assertEquals(1, item._2.band(0).get(0, 0))
       assertEquals(2, item._2.band(1).get(0, 0))
@@ -528,9 +521,8 @@ class MergeCubesSpec {
     val cube2: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band3, band4), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
     val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(cube1, cube2, "subtract")
     val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
-    assertEquals(2, mergedTimes.size)
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    assertEquals(2, mergedTimes.length)
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
       assertEquals(2, item._2.bandCount)
       assertEquals(-(3), item._2.band(0).get(0, 0))
       assertEquals(-(5), item._2.band(1).get(0, 0))
@@ -547,8 +539,7 @@ class MergeCubesSpec {
     val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(cube1, cube2, "subtract")
     val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
     assertEquals(2, mergedTimes.size)
-    import scala.collection.JavaConversions._
-    for (item <- merged.toJavaRDD.collect) {
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
       assertEquals(2, item._2.bandCount)
       assertEquals(-(3), item._2.band(0).get(0, 0))
       assertEquals(-(5), item._2.band(1).get(0, 0))
@@ -605,7 +596,7 @@ class MergeCubesSpec {
   private def repartitionByTile(cube:MultibandTileLayerRDD[SpaceTimeKey], keys: Seq[SpatialKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
     val kb: Bounds[SpaceTimeKey] = cube.metadata.getComponent[Bounds[SpaceTimeKey]]
     val p = SpacePartitioner[SpaceTimeKey](kb)(implicitly, implicitly, new ByTileSpacetimePartitioner(Some(keys.toArray)))
-    return ContextRDD(p(cube),cube.metadata)
+    ContextRDD(p(cube),cube.metadata)
   }
 
   @Test def testMergeSparseRDDDifferentCrs(): Unit = {
@@ -662,7 +653,5 @@ class MergeCubesSpec {
     assertEquals(1,c1Tiles.length)
     assertEquals(1,c2Tiles.length)
     assertEquals(localTiles(0)._2, MultibandTile(c1Tiles(0)._2.bands ++ c2Tiles(0)._2.bands))
-
-
   }
 }

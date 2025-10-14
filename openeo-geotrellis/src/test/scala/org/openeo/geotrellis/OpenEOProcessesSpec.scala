@@ -34,17 +34,15 @@ import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAg
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTemporal}
 import org.openeo.geotrellis.layers.FileLayerProviderTest
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, DataCubeParameters, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, DataCubeParameters, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
-import java.util.Arrays
-import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
-import scala.reflect.ClassTag
+import scala.jdk.CollectionConverters._
 
 object OpenEOProcessesSpec {
   // Methods with attributes get called in a non-intuitive order:
@@ -91,7 +89,7 @@ object OpenEOProcessesSpec {
 
   @AfterClass
   def tearDownSpark_AfterClass(): Unit = {
-    gotAfterClass = true;
+    gotAfterClass = true
     maybeStopSpark()
   }
 
@@ -106,12 +104,12 @@ object OpenEOProcessesSpec {
 
   def getPixel(layer:MultibandTileLayerRDD[SpaceTimeKey]): Array[Int] = {
     new OpenEOProcesses().filterEmptyTile(layer).groupBy(_._1).mapValues(values => {
-      val raster: Raster[MultibandTile] = ContextSeq(values.map(v => (v._1.spatialKey, v._2)).seq, layer.metadata).stitch()
+      val raster: Raster[MultibandTile] = ContextSeq(values.map(v => (v._1.spatialKey, v._2)), layer.metadata).stitch()
       raster.tile.band(0).get(0,0)
     }).collect().sortBy(_._1.instant).map(_._2)
   }
 
-  def applyMaskParams: java.util.stream.Stream[Arguments] = Arrays.stream(Array(
+  def applyMaskParams: java.util.stream.Stream[Arguments] = util.Arrays.stream(Array(
     arguments(None, None),
     arguments(None, Some(Constant0Partitioner)),
     arguments(Some(Constant0Partitioner), None),
@@ -235,12 +233,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
     var maskRDD = buildSpatioTemporalDataCube(List(maskTile).asJava, dates.map(_.toString), Some(extentTAP4326))
 
     if (indexImage.isDefined) {
-      val partitioner = SpacePartitioner(dataCubeContextRDD.metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), indexImage.get)
+      val partitioner = SpacePartitioner[SpaceTimeKey](dataCubeContextRDD.metadata.bounds)
       dataCubeContextRDD = new ContextRDD(dataCubeContextRDD.partitionBy(partitioner), dataCubeContextRDD.metadata)
     }
 
     if (indexMask.isDefined) {
-      val partitioner = SpacePartitioner(maskRDD.metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), indexMask.get)
+      val partitioner = SpacePartitioner[SpaceTimeKey](maskRDD.metadata.bounds)
       maskRDD = new ContextRDD(maskRDD.partitionBy(partitioner), maskRDD.metadata)
     }
 
@@ -296,7 +294,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
   }
 
   @Test
-  def applyMask_spacetime_spatial() = {
+  def applyMask_spacetime_spatial(): Unit = {
     val date = "2018-05-06T00:00:00Z"
 
     val extent = Extent(3.4, 51.0, 3.5, 51.05)
@@ -312,11 +310,10 @@ class OpenEOProcessesSpec extends RasterMatchers {
                   .withContext(_.mapValues(t => MultibandTile(maskTile)))
 
     val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask_spacetime_spatial(selectedBands, mask, 123)
-    val tiles = maskedCube.collectAsMap()
+    val tiles: collection.Map[SpaceTimeKey, MultibandTile] = maskedCube.collectAsMap()
 
-    import scala.collection.JavaConversions._
-    for (tileEntry <- tiles.entrySet) {
-      val tile = tileEntry.getValue.band(0)
+    for (tileEntry: (SpaceTimeKey, MultibandTile) <- tiles) {
+      val tile = tileEntry._2.band(0)
 
       //get method applies a conversion to int, also nodata is converted
       val value = tile.get(0, 1)
@@ -326,7 +323,160 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     }
 
+  }
 
+  @Test
+  def aspect_latlng_270_degrees(): Unit = {
+    val tile = DoubleArrayTile.fill(1.0,1280, 1280).mapDouble((c: Int, r: Int, v: Double) => c)
+    val tileSize = 256
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize))
+
+    val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
+    val aspectTile = time{ resultCube.stitch().tile.band(0) }
+    assertEquals(270, aspectTile.get(5, 5))
+  }
+
+  @Test
+  def aspect_latlng_180_degrees(): Unit = {
+    val tile = DoubleArrayTile.fill(1.0,1280, 1280).mapDouble((c: Int, r: Int, v: Double) => -r)
+    val tileSize = 256
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize))
+
+    val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
+    val aspectTile = time{ resultCube.stitch().tile.band(0) }
+    assertEquals(180, aspectTile.get(1, 0)) // border case ()
+    assertEquals(180, aspectTile.get(1, 1))
+    assertEquals(180, aspectTile.get(1, 255))
+    assertEquals(180, aspectTile.get(1, 256))
+    assertEquals(180, aspectTile.get(1, 1279)) // border case ()
+  }
+
+  @Test
+  def aspect_270_degrees(): Unit = {
+    val tile = DoubleArrayTile.fill(1.0,1280, 1280).mapDouble((c: Int, r: Int, v: Double) => c)
+    val tileSize = 256
+    val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
+    val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+
+    val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
+    val aspectTile = time{ resultCube.stitch().tile.band(0) }
+    assertEquals(270, aspectTile.get(1, 0)) // border case ()
+    assertEquals(270, aspectTile.get(1, 1))
+    assertEquals(270, aspectTile.get(1, 255))
+    assertEquals(270, aspectTile.get(1, 256))
+    assertEquals(270, aspectTile.get(1, 1279)) // border case ()
+  }
+
+  @Test
+  def aspect_flat(): Unit = {
+    val tile = DoubleArrayTile.fill(1.0,1280, 1280)
+    val tileSize = 256
+    val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
+    val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+
+    val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
+    val aspectTile = time{ resultCube.stitch().tile.band(0) }
+    assertEquals(-1, aspectTile.get(1, 0)) // border case ()
+    assertEquals(-1, aspectTile.get(1, 1))
+    assertEquals(-1, aspectTile.get(1, 255))
+    assertEquals(-1, aspectTile.get(1, 256))
+    assertEquals(-1, aspectTile.get(1, 1279)) // border case ()
+  }
+
+
+  @Test
+  def aspect_45_degrees(): Unit = {
+    val tile = DoubleArrayTile.fill(1.0,1280, 1280).mapDouble((c: Int, r: Int, v: Double) => r-c)
+    val tileSize = 256
+    val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
+    val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+
+    val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
+    val aspectTile = time{ resultCube.stitch().tile.band(0) }
+    assertEquals(56, aspectTile.get(1, 0)) // border case ()
+    assertEquals(45, aspectTile.get(1, 1))
+    assertEquals(45, aspectTile.get(1, 255))
+    assertEquals(45, aspectTile.get(1, 256))
+    assertEquals(56, aspectTile.get(1, 1279)) // border case ()
+  }
+
+  @Test
+  def slope_flat(): Unit = {
+    val tile = IntArrayTile.fill(1,1280, 1280)
+    val tileSize = 256
+    val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
+    val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+    val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
+
+    val slopeTile = time{ resultCube.stitch().tile.band(0) }
+    assertEquals(0, slopeTile.get(1, 0)) // border case ()
+    assertEquals(0, slopeTile.get(1, 1))
+    assertEquals(0, slopeTile.get(1, 255))
+    assertEquals(0, slopeTile.get(1, 256))
+    assertEquals(0, slopeTile.get(1, 1279)) // border case ()
+  }
+
+  @Test
+  def slope_45_degrees(): Unit = {
+    val tile = IntArrayTile.fill(1,1280, 1280).map((c: Int, r: Int, v: Int) => c)
+    val tileSize = 256
+    val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
+    val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+    val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
+
+    val slopeTile = time{ resultCube.stitch().tile.band(0) }
+    assertEquals(36, slopeTile.get(1, 0)) // border case ()
+    assertEquals(45, slopeTile.get(1, 1))
+    assertEquals(45, slopeTile.get(1, 255))
+    assertEquals(45, slopeTile.get(1, 256))
+    assertEquals(36, slopeTile.get(1, 1279)) // border case ()
+  }
+
+  @Test
+  def slope_63_degrees(): Unit = {
+    val tile = IntArrayTile.fill(1,1280, 1280).map((c: Int, r: Int, v: Int) => 2*r)
+    val tileSize = 256
+    val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
+    val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+    val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
+
+    val slopeTile = time{ resultCube.stitch().tile.band(0) }
+    assertEquals(45, slopeTile.get(1, 0)) // border case ()
+    assertEquals(63, slopeTile.get(1, 1))
+    assertEquals(63, slopeTile.get(1, 255))
+    assertEquals(63, slopeTile.get(1, 256))
+    assertEquals(45, slopeTile.get(1, 1279)) // border case ()
+  }
+
+  @Test
+  def slope_latlng(): Unit = {
+    val tile = IntArrayTile.fill(0,1280, 1280).map((c: Int, r: Int, v: Int) => c)
+    val tileSize = 256
+    val extent = new Extent(50,2,50.01,2.01)
+    val crs = LatLng
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+    val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
+
+    val slopeTile = time{ resultCube.stitch().tile.band(0) }
+
+    assertEquals(40, slopeTile.get(1, 0)) // border case ()
+    assertEquals(49, slopeTile.get(1, 1))
+    assertEquals(49, slopeTile.get(1, 255))
+    assertEquals(49, slopeTile.get(1, 256))
+    assertEquals(40, slopeTile.get(1, 1279)) // border case ()
   }
 
 
@@ -549,7 +699,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     assertTrue(aggregatedCube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
     val aggregatedIndex = aggregatedCube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-    index match {
+    aggregatedIndex match {
       case value: ByTileSpacetimePartitioner =>
         assertTrue(aggregatedIndex.isInstanceOf[ByTileSpacetimePartitioner])
       case value: SparseSpaceTimePartitioner =>
@@ -562,6 +712,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     SparkContext.getOrCreate().addSparkListener(listener)
     val resultTiles: Array[MultibandTile] = aggregatedCube.values.collect()
     SparkContext.getOrCreate().removeSparkListener(listener)
+    println(f"${listener.getTasksCompleted} vs ${expectedTasks}")
     assertTrue(listener.getTasksCompleted <= expectedTasks)
 
 
@@ -610,7 +761,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
 
     // intervals is a list of start,end-pairs
-    val intervals = List(middleDate.plusYears(-30), middleDate, middleDate, middleDate.plusYears(1000))
+    val intervals = ListBuffer(middleDate.plusYears(-30), middleDate, middleDate, middleDate.plusYears(1000))
       .map(DateTimeFormatter.ISO_INSTANT.format(_))
     val labels = (intervals.indices.collect { case i if i % 2 == 0 => intervals(i) }).toList
 

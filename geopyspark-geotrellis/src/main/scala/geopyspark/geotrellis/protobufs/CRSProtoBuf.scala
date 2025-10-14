@@ -6,7 +6,7 @@ import protos.extentMessages._
 
 
 trait CRSProtoBuf {
-  implicit def crsProtoBufCodec = new ProtoBufCodec[CRS, ProtoCRS] {
+  implicit def crsProtoBufCodec: ProtoBufCodec[CRS, ProtoCRS] = new ProtoBufCodec[CRS, ProtoCRS] {
     override def encode(thing: CRS): ProtoCRS =
       if (thing.epsgCode.isDefined)
         ProtoCRS(epsg = thing.epsgCode.get)

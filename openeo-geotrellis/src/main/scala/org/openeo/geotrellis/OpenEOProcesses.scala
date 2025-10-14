@@ -37,9 +37,11 @@ import java.nio.file.{Files, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZonedDateTime}
 import java.util
-import scala.collection.JavaConverters._
-import scala.collection.{JavaConverters, immutable, mutable}
+import scala.collection.parallel.CollectionConverters._
+import scala.collection.{immutable, mutable}
+import scala.jdk.CollectionConverters._
 import scala.reflect._
+import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 
 
 object OpenEOProcesses{
@@ -204,7 +206,7 @@ class OpenEOProcesses extends Serializable {
             new ByTileSpacetimePartitioner()
           }
         logger.info(f"Regrouping data cube along the time dimension, with index $spatiallyGroupingIndex. Cube metadata: ${datacube.metadata}")
-        val partitioner: Partitioner = new SpacePartitioner(datacube.metadata.bounds)(implicitly, implicitly, spatiallyGroupingIndex)
+        val partitioner: Partitioner = new SpacePartitioner[SpaceTimeKey](datacube.metadata.bounds)(implicitly, implicitly, spatiallyGroupingIndex)
         //regular partitionBy doesn't work because Partitioners appear to be equal while they're not
         new ShuffledRDD[SpaceTimeKey,MultibandTile,MultibandTile](datacube, partitioner)
       }
@@ -287,7 +289,7 @@ class OpenEOProcesses extends Serializable {
       }else{
         ByTileSpatialPartitioner
       }
-    val partitioner: Partitioner = new SpacePartitioner(newBounds)(implicitly, implicitly, spatiallyGroupingIndex)
+    val partitioner: Partitioner = new SpacePartitioner[SpatialKey](newBounds)(implicitly, implicitly, spatiallyGroupingIndex)
 
     SparkContext.getOrCreate().clearCallSite()
     ContextRDD(resultRDD.partitionBy(partitioner),retiled.metadata.copy(bounds = newBounds,cellType = outputCelltype))
@@ -306,7 +308,7 @@ class OpenEOProcesses extends Serializable {
       }
 
     logger.info(f"Regrouping data cube along the time dimension, with index $index. Cube metadata: ${datacube.metadata}")
-    val partitioner: Partitioner = new SpacePartitioner(targetBounds)(implicitly, implicitly, index)
+    val partitioner: Partitioner = new SpacePartitioner[SpatialKey](targetBounds)(implicitly, implicitly, index)
 
     val groupedOnTime = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey, partitioner)
     groupedOnTime
@@ -431,7 +433,7 @@ class OpenEOProcesses extends Serializable {
 
 
   def mapInstantToInterval(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String], labels:java.lang.Iterable[String]) :MultibandTileLayerRDD[SpaceTimeKey] = {
-    val timePeriods: Seq[Iterable[Instant]] = JavaConverters.iterableAsScalaIterableConverter(intervals).asScala.map(s => Instant.parse(s)).grouped(2).toList
+    val timePeriods: Seq[Iterable[Instant]] = intervals.asScala.map(s => Instant.parse(s)).grouped(2).toList
     val periodsToLabels: Seq[(Iterable[Instant], String)] = timePeriods.zip(labels.asScala)
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] = datacube.flatMap(tuple => {
       val instant = tuple._1.time.toInstant
@@ -460,7 +462,7 @@ class OpenEOProcesses extends Serializable {
     }else{
       datacube.sparkContext.setCallSite(s"apply_neighborhood over time intervals on ${incomingIndex}")
     }
-    val timePeriods: Seq[Iterable[Instant]] = JavaConverters.iterableAsScalaIterableConverter(intervals).asScala.map(s => Instant.parse(s)).grouped(2).toList
+    val timePeriods: Seq[Iterable[Instant]] = intervals.asScala.map(s => Instant.parse(s)).grouped(2).toList
     val labelsDates = labels.asScala.map(ZonedDateTime.parse(_))
     val periodsToLabels: Seq[(Iterable[Instant], String)] = timePeriods.zip(labels.asScala)
 
@@ -513,7 +515,7 @@ class OpenEOProcesses extends Serializable {
     val allKeys = allPossibleSpacetime.map(_._1)
     val minKey = allKeys.reduce((a,b)=>SpaceTimeKey.Boundable.minBound(a,b))
     val maxKey = allKeys.reduce((a,b)=>SpaceTimeKey.Boundable.maxBound(a,b))
-    val newBounds = new KeyBounds(minKey,maxKey)
+    val newBounds : Bounds[SpaceTimeKey] = new KeyBounds(minKey,maxKey)
     logger.info(s"aggregate_temporal on ${incomingIndex} results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index} with bounds ${newBounds}" )
     val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly,implicitly, index)
 
@@ -1118,6 +1120,37 @@ class OpenEOProcesses extends Serializable {
     val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
+
+  def aspect(datacube: Object): Object = {
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        aspectGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        aspectGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for aspect: ${datacube}")
+    }
+  }
+
+  def aspectGeneric[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    datacube.sparkContext.setCallSite(s"aspect")
+    datacube.aspect()
+  }
+
+  def slope(datacube: Object): Object = {
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        slopeGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        slopeGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for slope: ${datacube}")
+    }
+  }
+
+  def slopeGeneric[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    datacube.sparkContext.setCallSite(s"slope")
+    datacube.slope()
+  }
+
 
   private def mergeCubesGeneric[K: Boundable: PartitionerIndex: ClassTag
   ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[K]], operator:String, metadata:TileLayerMetadata[K],leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {

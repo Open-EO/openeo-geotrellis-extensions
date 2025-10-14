@@ -1,6 +1,7 @@
 package geopyspark.geotrellis
 
-import geotrellis.layer._
+import geotrellis.layer
+import geotrellis.layer.{Boundable, Bounds, KeyBounds, SpatialComponent, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, CellType, MultibandTile}
 import geotrellis.spark.tiling.TilerKeyMethods

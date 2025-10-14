@@ -1,63 +1,41 @@
 package geopyspark.geotrellis
 
-import geopyspark.util._
-import geopyspark.geotrellis._
+import _root_.io.circe.parser.parse
+import _root_.io.circe.syntax._
+import cats.syntax.either._
+import geopyspark.geotrellis.LayoutType
+import geopyspark.geotrellis.GlobalLayout
+import geopyspark.geotrellis.LocalLayout
 import geopyspark.geotrellis.GeoTrellisUtils._
-
-import protos.tileMessages._
-import protos.keyMessages._
-import protos.tupleMessages._
-
-import geotrellis.proj4._
-import geotrellis.raster._
-import geotrellis.raster.distance._
-import geotrellis.raster.io.geotiff._
-import geotrellis.raster.io.geotiff.compression._
-import geotrellis.raster.mapalgebra.focal.{Square, Slope}
-import geotrellis.raster.mapalgebra.focal.hillshade._
-import geotrellis.raster.rasterize._
-import geotrellis.raster.render._
-import geotrellis.raster.resample.{ResampleMethod, PointResampleMethod, Resample}
-import geotrellis.raster.buffer.BufferedTile
-import geotrellis.spark._
-import geotrellis.spark.buffer._
-import geotrellis.spark.costdistance.IterativeCostDistance
-import geotrellis.spark.filter._
-import geotrellis.store._
-import geotrellis.store.json._
-import geotrellis.spark.mapalgebra.local._
-import geotrellis.spark.mapalgebra.focal._
+import geopyspark.util._
+import geotrellis.layer._
 import geotrellis.layer.mask.Mask
+import geotrellis.raster._
+import geotrellis.raster.buffer.BufferedTile
+import geotrellis.raster.io.geotiff._
+import geotrellis.raster.mapalgebra.focal.hillshade._
+import geotrellis.raster.mapalgebra.focal.{Slope, Square}
+import geotrellis.raster.rasterize._
+import geotrellis.raster.resample.{PointResampleMethod, Resample, ResampleMethod}
+import geotrellis.spark._
+import geotrellis.spark.costdistance.IterativeCostDistance
+import geotrellis.spark.mapalgebra.focal._
 import geotrellis.spark.mask.MaskRDD
 import geotrellis.spark.pyramid._
 import geotrellis.spark.reproject._
-import geotrellis.spark.tiling._
-import geotrellis.spark.util._
-import geotrellis.layer._
 import geotrellis.util._
 import geotrellis.vector._
 import geotrellis.vector.io.wkb.WKB
-import geotrellis.vector.triangulation._
-import geotrellis.vector.voronoi._
-
-import _root_.io.circe.syntax._
-import _root_.io.circe.parser.parse
-import cats.syntax.either._
-import spire.syntax.cfor._
-
-import org.locationtech.jts.geom.Coordinate
-
 import org.apache.spark._
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd._
-import org.apache.spark.SparkContext._
+import protos.keyMessages._
+import protos.tupleMessages._
+import spire.syntax.cfor._
 
+import java.time.ZonedDateTime
 import java.util.ArrayList
-import java.time.{ZonedDateTime, ZoneId}
-
-import scala.reflect._
-import scala.collection.JavaConverters._
-import scala.collection.mutable.ArrayBuffer
+import scala.jdk.CollectionConverters._
 
 
 class TemporalTiledRasterLayer(
@@ -521,7 +499,7 @@ class TemporalTiledRasterLayer(
         case _ => _getPointValues(pointKeys, mapTrans)
       }
 
-    matchedKeys.mapValues { _.asJava }.asJava
+    matchedKeys.view.mapValues { _.asJava }.toMap.asJava
   }
 
   def _getPointValues(
@@ -532,6 +510,9 @@ class TemporalTiledRasterLayer(
     val resamplePoint = (tile: Tile, extent: Extent, point: Point) =>
       Resample(resampleMethod, tile, extent).resampleDouble(point)
 
+    val combineMaps: (Map[String, Array[Double]], Map[String, Array[Double]]) => Map[String, Array[Double]] = {
+      case (m1, m2) => m1 ++ m2
+    }
     rdd.flatMap { case (k, v) =>
       pointKeys.get(k.getComponent[SpatialKey]) match {
         case Some(arr) =>
@@ -543,13 +524,16 @@ class TemporalTiledRasterLayer(
           }
         case None => Seq()
       }
-    }.reduceByKey { case (m1, m2) => m1 ++ m2 }.collect().toMap
+    }.reduceByKey (combineMaps).collect().toMap
   }
 
   def _getPointValues(
     pointKeys: Map[SpatialKey, Array[(Long, Point)]],
     mapTrans: MapKeyTransform
-  ): Map[Long, Map[String, Array[Double]]] =
+  ): Map[Long, Map[String, Array[Double]]] = {
+    val combineMaps: (Map[String, Array[Double]], Map[String, Array[Double]]) => Map[String, Array[Double]] = {
+      case (m1, m2) => m1 ++ m2
+    }
     rdd.flatMap { case (k, v) =>
       pointKeys.get(k.getComponent[SpatialKey]) match {
         case Some(arr) =>
@@ -561,7 +545,7 @@ class TemporalTiledRasterLayer(
 
             val values = Array.ofDim[Double](v.bandCount)
 
-            cfor(0)(_ < v.bandCount, _ + 1){ index =>
+            cfor(0)(_ < v.bandCount, _ + 1) { index =>
               values(index) = v.band(index).getDouble(gridCol, gridRow)
             }
 
@@ -569,7 +553,8 @@ class TemporalTiledRasterLayer(
           }
         case None => Seq()
       }
-    }.reduceByKey { case (m1, m2) => m1 ++ m2 }.collect().toMap
+    }.reduceByKey(combineMaps).collect().toMap
+  }
 
   def getCellValueCounts(areaOfInterest: Array[Byte], targetBand: Int): String = {
     val acc = new CountingAccumulator()
@@ -688,7 +673,7 @@ object TemporalTiledRasterLayer {
       TemporalProjectedExtent(rasterExtent.extent, TileLayer.getCRS(crs).get, instant.toInt)
 
     val tile = Rasterizer.rasterizeWithValue(WKB.read(geometryBytes), rasterExtent, fillValue)
-    val rdd = sc.parallelize(Array((temporalExtent, MultibandTile(tile))))
+    val rdd = sc.parallelize(Seq((temporalExtent, MultibandTile(tile))))
     val tileLayout = TileLayout(1, 1, cols, rows)
     val layoutDefinition = LayoutDefinition(rasterExtent.extent, tileLayout)
 
@@ -700,7 +685,7 @@ object TemporalTiledRasterLayer {
   def unionLayers(sc: SparkContext, layers: ArrayList[TemporalTiledRasterLayer]): TemporalTiledRasterLayer = {
     val scalaLayers = layers.asScala
 
-    val result = sc.union(scalaLayers.map(_.rdd))
+    val result = sc.union(scalaLayers.map(_.rdd).toSeq)
 
     val firstLayer = scalaLayers.head
     val zoomLevel = firstLayer.zoomLevel
