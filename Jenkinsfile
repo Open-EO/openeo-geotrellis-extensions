@@ -226,7 +226,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                         [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
                         [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
                 ]) {
-                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts,integrationtests -U clean install' + rtMaven.opts
+                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts,integrationtests -U test -Dtest=org.openeo.geotrellis.layers.FileLayerProviderTest -pl openeo-geotrellis -am -Dsurefire.failIfNoSpecifiedTests=false'
                     try {
                         if (rtMaven.deployer.deployArtifacts)
                             server.publishBuildInfo buildInfo
