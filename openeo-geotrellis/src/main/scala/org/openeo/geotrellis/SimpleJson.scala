@@ -1,7 +1,7 @@
 package org.openeo.geotrellis
 
-import org.json4s._
-import org.json4s.jackson.JsonMethods._
+import org.json4s.jackson.JsonMethods
+import org.json4s.{Extraction, Formats, StringInput}
 
 object SimpleJson {
 
@@ -12,7 +12,7 @@ object SimpleJson {
 
     implicit val formats: Formats = org.json4s.DefaultFormats.lossless
 
-    org.json4s.jackson.JsonMethods.parse(jsonStr).extract[scala.collection.Map[String, Any]]
+    org.json4s.jackson.JsonMethods.parse(StringInput(jsonStr)).extract[scala.collection.Map[String, Any]]
   }
 
   /**
@@ -21,6 +21,6 @@ object SimpleJson {
   def serialize(map: scala.collection.Map[String, Any]): String = {
     implicit val formats: Formats = org.json4s.DefaultFormats.lossless
 
-    pretty(render(Extraction.decompose(map)))
+    JsonMethods.pretty(JsonMethods.render(Extraction.decompose(map)))
   }
 }
