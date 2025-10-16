@@ -72,6 +72,10 @@
                     <groupId>javax.media.jai</groupId>
                     <artifactId>jai-core</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>org.json4s</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
