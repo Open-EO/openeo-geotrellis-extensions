@@ -17,6 +17,7 @@ class NetCDFOptions extends Serializable {
   var zLevel:Int = 6
   var cropBounds:Option[Extent]=Option.empty[Extent]
   var bandsMetadata: Option[java.util.Map[String,java.util.Map[String,String]]] = None
+  var addBandStatistics: Boolean = false
 
   def setBandNames(names: util.ArrayList[String]): Unit = {
     bandNames = Option(names)
@@ -42,5 +43,8 @@ class NetCDFOptions extends Serializable {
     bandsMetadata = Option(metadata)
   }
 
+  def setAddBandStatistics(boolean: Boolean): Unit = {
+    addBandStatistics = boolean
+  }
 
 }
