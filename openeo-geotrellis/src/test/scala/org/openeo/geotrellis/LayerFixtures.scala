@@ -595,6 +595,7 @@ for p in l:
     ContextRDD(temporal, temporalMetadata)
   }
 
+
   def aSpacetimeTileLayerHoursRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
     val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(
       layoutCols,
