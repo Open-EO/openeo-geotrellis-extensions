@@ -210,24 +210,28 @@ class OpenEOProcesses extends Serializable {
                 bandCountOption.get
               } else {
                 logger.warn(f"Could not determine band count for partitioning purposes.  Using $DEFAULT_BAND_COUNT as a default.")
+                DEFAULT_BAND_COUNT
               }
-
             val reduction =
-            if (datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time) {
-              getPartitionerIndexForMaxPartitionSize(bandCountOption.get, datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits)
-            } else {
-              val maybeKeys = findPartitionerKeys(datacube)
-              val distinctTemporalKeyCount: Int =
-                if (maybeKeys.isDefined) {
-                  maybeKeys.get.groupBy(_.spatialKey).map(_._2.length).max
-                } else {
-                  logger.warn(f"Could not determine max number of distinct instants per key for partitioning purposes.  Using $DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT as a default.")
-                  DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT
-                }
-              logger.debug(f"Max number of distinct instants per key: ${distinctTemporalKeyCount}.")
-              getPartitionerIndexForMaxPartitionSize(bandCountOption.get, datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits, DEFAULT_MAX_PARTITION_SIZE_IN_MB/distinctTemporalKeyCount)
-            }
-            new SparseSpaceOnlyPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted, 0, findPartitionerKeys(datacube))
+              if (datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time) {
+                val tileSizeInMb: Double = (bandCount * datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes).toDouble / (1024 * 1024)
+                val maxRecordsPerPartition: Double = math.min(DEFAULT_MAX_PARTITION_SIZE_IN_MB / tileSizeInMb, 1024)
+                math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
+              } else {
+                val maybeKeys = findPartitionerKeys(datacube)
+                val distinctTemporalKeyCount: Int =
+                  if (maybeKeys.isDefined) {
+                    maybeKeys.get.groupBy(_.spatialKey).map(_._2.length).max
+                  } else {
+                    logger.warn(f"Could not determine max number of distinct instants per key for partitioning purposes.  Using $DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT as a default.")
+                    DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT
+                  }
+                logger.debug(f"Max number of distinct instants per key: ${distinctTemporalKeyCount}.")
+                val tileSizeInMb: Double = (bandCount * datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes).toDouble / (1024 * 1024)
+                val maxRecordsPerPartition: Double = math.min(DEFAULT_MAX_PARTITION_SIZE_IN_MB / (tileSizeInMb * distinctTemporalKeyCount), 1024)
+                math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
+              }
+            new SparseSpaceOnlyPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, indexReduction = reduction, findPartitionerKeys(datacube))
           }else{
             new ByTileSpacetimePartitioner()
           }
