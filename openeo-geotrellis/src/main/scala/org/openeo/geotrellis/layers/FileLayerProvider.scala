@@ -27,7 +27,7 @@ import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
+import org.openeo.geotrelliscommon.DatacubeSupport.{computeReduction, prepareMask}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
@@ -1132,8 +1132,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         if(maxKeys>4) {
           DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
         }else{
+
           //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
-          val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
+          val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
           val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
           val dates = readKeysToRasterSourcesResult._4.map(_._2.nominalDate).distinct
           val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
