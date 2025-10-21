@@ -39,8 +39,9 @@ import java.nio.file.{Files, Path, Paths}
 import java.time._
 import java.time.temporal.ChronoUnit.DAYS
 import java.util.concurrent.TimeUnit
-import scala.collection.JavaConverters._
 import scala.collection.immutable
+import scala.collection.parallel.CollectionsHaveToParArray
+import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
@@ -415,7 +416,7 @@ object FileLayerProvider {
     },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
       var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1)
         .map(t => (t._1, t._2.toList.sortBy(x => sortableSourceName(x._3))))
-        .mapValues(x => x.map(_._2).reduceOption(_ merge _))
+        .view.mapValues(x => x.map(_._2).reduceOption(_ merge _))
         .flatMap{case (index,multiband) =>{
           if(multiband.isDefined && multiband.get.bandCount>1) {
             if(index != 0) {
@@ -427,7 +428,7 @@ object FileLayerProvider {
           }else{
             Seq[(Int,Option[MultibandTile])]((index,multiband))
           }
-        }}
+        }}.toMap
       for (x <- 0 until expectedBandCount){
         if(!mergedBands.contains(x)){
           logger.warn("Band " + x + " is missing in the input data. Filling with empty tile.")
@@ -521,8 +522,8 @@ object FileLayerProvider {
       val theIndex = tuple._2.flatMap(_._1).head
 
       val allRasters =
-        try{
-          source.readBounds(bounds).map(_.mapTile(_.convert(cellType))).toSeq
+        try {
+          source.readBounds(bounds).map(_.mapTile { _ convert cellType }).toSeq
         } catch {
           case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
         }
@@ -630,13 +631,20 @@ object FileLayerProvider {
                 }
 
                 override def loadData: Option[MultibandTile] = {
-                  val maybeTile = rasterRegion.raster.map(_.tile)
-                  if (maybeTile.isDefined && maybeTile.get.cellType.isInstanceOf[NoNoData]) {
-                    maybeTile.map(t => t.convert(t.cellType.withDefaultNoData()))
-                  } else {
-                    maybeTile
-                  }
+                  for {
+                    Raster(tile, _) <- rasterRegion.raster
+                  } yield {
+                    tile.cellType match {
+                      case originalCellType: NoNoData =>
+                        val noDataCellType =
+                          if (originalCellType.isFloatingPoint) originalCellType.withDefaultNoData()
+                          else originalCellType withNoData Some(0)
 
+                        logger.debug(s"converting tile cell type from $originalCellType to $noDataCellType with NODATA")
+                        tile convert noDataCellType
+                      case _ => tile
+                    }
+                  }
                 }
               }).map((_, sourceName))
           }
@@ -801,7 +809,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
       val commonCellType = arbitraryRasterSource.cellType
-      if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType
+      commonCellType match {
+        case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
+        case _: NoNoData => commonCellType.withDefaultNoData()
+        case _ => commonCellType
+      }
     } catch {
       case e: Exception => {
         // Geotrellis GDALException errors are not descriptive enough. Attempt to add some more useful information.
@@ -1603,7 +1615,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
 
-    if (overlappingRasterSources.isEmpty) throw new IllegalArgumentException(s"""Could not find data for your load_collection request with catalog ID "$openSearchCollectionId". The catalog query had correlation ID "$correlationId" and returned ${overlappingFeatures.size} results.""")
+    if (overlappingRasterSources.isEmpty) throw new IllegalArgumentException(s"""Could not find data for your ${if (fromLoadStac) "load_stac" else "load_collection"} request with catalog ID "$openSearchCollectionId". The catalog query had correlation ID "$correlationId" and returned ${overlappingFeatures.size} results.""")
 
     overlappingRasterSources
 

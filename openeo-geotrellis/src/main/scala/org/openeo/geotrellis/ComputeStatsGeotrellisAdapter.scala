@@ -16,7 +16,7 @@ import java.io.File
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 
 object ComputeStatsGeotrellisAdapter {
@@ -120,7 +120,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
                                                datacube: MultibandTileLayerRDD[SpaceTimeKey],
                                                geometry_wkts: JList[String], geometries_srs: String,
                                                output_dir: String): Unit = {
-    val geometries = geometry_wkts.asScala.map(_.parseWKT())
+    val geometries = geometry_wkts.asScala.map(_.parseWKT()).toSeq
     val geometriesCrs = CRS.fromName(geometries_srs)
 
     new AggregatePolygonProcess().aggregateSpatialForGeometry(scriptBuilder, datacube, geometries, geometriesCrs,
@@ -140,7 +140,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
                                                        datacube: MultibandTileLayerRDD[SpatialKey],
                                                        geometry_wkts: JList[String], geometries_srs: String,
                                                        output_dir: String): Unit = {
-    val geometries = geometry_wkts.asScala.map(_.parseWKT())
+    val geometries = geometry_wkts.asScala.map(_.parseWKT()).toSeq
     val geometriesCrs = CRS.fromName(geometries_srs)
 
     new AggregatePolygonProcess().aggregateSpatialForGeometryWithSpatialCube(scriptBuilder, datacube, geometries,

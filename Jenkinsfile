@@ -13,7 +13,7 @@ def maven_version            = '3.5.4'
 def node_label               = 'default'
 def wipeout_workspace        = true
 
-def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3"
+def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.6"
 
 
 pipeline {
@@ -57,7 +57,7 @@ pipeline {
             steps {
                 script {
                     rel_version = getMavenVersion()
-                    build( params.skip_tests, params.skip_sentinelhub_tests)
+                    build(skipTests = params.skip_tests, skipSentinelHubTests = params.skip_sentinelhub_tests)
                     utils.setWorkspacePermissions()
                 }
             }
@@ -192,14 +192,13 @@ String updateMavenVersion(){
 void build(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop"]
 
-    List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-21-openjdk"]
-    def testImage = docker.build("openeo-geotrellis-test-image", "-f ./docker/tests_dockerfile ./docker")
-    testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
+    List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-21-openjdk" ]
+    def testImage = docker.build("openeo-geotrellis-test-image:20250921_1", "-f ./docker/tests_dockerfile ./docker")
+    testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root' ) {
         withEnv(jdkEnv) {
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
             sh 'current_dir=$(pwd) && git config --global --add safe.directory  $current_dir'
             def server = Artifactory.server('vitoartifactory' )
-
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
             def releaseRepo = 'libs-release-public'

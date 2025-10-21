@@ -1,25 +1,14 @@
 package geopyspark.geotrellis.io
 
 import geopyspark.geotrellis._
-import protos.tileMessages._
-
+import geopyspark.util.PythonTranslator
 import geotrellis.layer._
 import geotrellis.raster._
 import geotrellis.store._
 import geotrellis.store.cog._
-import geotrellis.vector._
-import geotrellis.vector.io.wkt.WKT
-
-import org.apache.spark._
-import org.apache.spark.api.java.JavaRDD
-import org.apache.spark.rdd.RDD
+import protos.tileMessages._
 
 import java.time.ZonedDateTime
-import java.util.ArrayList
-import scala.collection.JavaConverters._
-import scala.collection.mutable
-
-import geopyspark.util.PythonTranslator
 
 
 

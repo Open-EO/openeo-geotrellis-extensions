@@ -6,7 +6,7 @@ import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.LoggerFactory
 
 import java.net.URI
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import java.time.ZonedDateTime
 import java.util
 import scala.collection.mutable
@@ -24,7 +24,7 @@ class FixedFeaturesOpenSearchClient extends OpenSearchClient {
   def add_feature(id: String, bbox: Extent, nominal_date: String, links: util.List[util.List[String]]): Unit = { // for each asset: href, title, band1, band2, ...
     val nominalDate = ZonedDateTime.parse(nominal_date)
     val sLinks = links.asScala.map { values =>
-      val Seq(href, title, bands @ _*) = values.asScala
+      val Seq(href, title, bands @ _*) = values.asScala.toSeq
       Link(href = new URI(href), title = Some(title), bandNames = Some(bands))
     }.toArray
 

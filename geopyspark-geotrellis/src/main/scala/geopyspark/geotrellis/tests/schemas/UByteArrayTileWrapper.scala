@@ -15,7 +15,7 @@ object UByteArrayTileWrapper extends Wrapper2[Tile, ProtoTile] {
   def testOut(sc: SparkContext): JavaRDD[Array[Byte]] =
     PythonTranslator.toPython[Tile, ProtoTile](testRdd(sc))
 
-  def testIn(rdd: RDD[Array[Byte]]) =
+  def testIn(rdd: RDD[Array[Byte]]): Unit =
     PythonTranslator.fromPython[Tile, ProtoTile](rdd, ProtoTile.parseFrom)
 
   def testRdd(sc: SparkContext): RDD[Tile] = {

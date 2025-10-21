@@ -1,12 +1,11 @@
 package org.openeo.geotrellis.aggregate_polygon.intern
 
-import java.time.{Duration, ZonedDateTime}
-
 import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata}
 import geotrellis.vector.{Extent, ProjectedExtent}
-import javax.ws.rs.BadRequestException
 import org.apache.spark.SparkContext
 import org.slf4j.LoggerFactory
+
+import java.time.{Duration, ZonedDateTime}
 
 object PixelRateValidator {
   
@@ -32,7 +31,7 @@ object PixelRateValidator {
     val pixels = boundingBoxes.map(pixelsForExtent(startDate, endDate, metadata)).sum
 
     if (pixels > maxPixels()) {
-      throw new BadRequestException("Total of pixels needed for calculations is too large. Try to query a smaller area or to use a lower zoom level")
+      throw new IllegalArgumentException(s"Total of pixels needed for calculations is too large $pixels > ${maxPixels()}. Try to query a smaller area or to use a lower zoom level")
     }
 
     logger.info(s"${pixels.toDouble} pixels needed for this request")

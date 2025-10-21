@@ -12,20 +12,14 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaPairRDD$;
-import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.function.Function;
 import org.apache.spark.rdd.RDD;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.junit.jupiter.api.DisplayName;
-import scala.Function1;
 import scala.Option;
 import scala.Tuple2;
-import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
 import scala.math.BigInt;
-import scala.reflect.ClassTag;
 
 import java.time.ZonedDateTime;
 import java.util.*;
@@ -75,7 +69,7 @@ public class TestOpenEOProcesses {
         ByteArrayTile band1 = ByteArrayTile.fill((byte) -10, 256, 256);
         ByteArrayTile band2 = ByteArrayTile.fill((byte) 4, 256, 256);
         ByteArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256);
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2,band3), JavaConversions.asScalaBuffer(Arrays.asList("2017-01-03T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z")));
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2,band3), JavaConverters.asScalaBuffer(Arrays.asList("2017-01-03T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z")).toSeq());
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true,datacube1.metadata().cellType());
 
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> mappedRDD = (ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>>) new OpenEOProcesses().aggregateTemporal(datacube1, Arrays.asList("2017-01-01T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z"), Arrays.asList("2017-01-01T00:00:00Z","2017-01-15T00:00:00Z"),processBuilder, Collections.EMPTY_MAP);
@@ -184,7 +178,7 @@ public class TestOpenEOProcesses {
     public void testApplyTimeDimension() {
         ByteArrayTile band1 = ByteArrayTile.fill((byte) -10, 256, 256);
         ByteArrayTile band2 = ByteArrayTile.fill((byte) 4, 256, 256);
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2), JavaConversions.asScalaBuffer(Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z","2020-02-03T00:00:00Z")));
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2), JavaConverters.asScalaBuffer(Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z","2020-02-03T00:00:00Z")).toSeq());
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createArrayInterpolateLinear(datacube1.metadata().cellType());
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> result = ((ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>>)new OpenEOProcesses().applyTimeDimension(datacube1, processBuilder, new HashMap<>()));
         List<Tuple2<String,MultibandTile>> results = JavaPairRDD.fromJavaRDD(result.toJavaRDD()).map(spaceTimeKeyMultibandTileTuple2 -> new Tuple2<String,MultibandTile>(spaceTimeKeyMultibandTileTuple2._1.time().toString(),spaceTimeKeyMultibandTileTuple2._2)).collect();

@@ -1,54 +1,26 @@
 package geopyspark.geotrellis
 
-import geopyspark.geotrellis._
-import geopyspark.geotrellis.GeoTrellisUtils._
-
-import protos.tileMessages._
-import protos.tupleMessages._
-
-import geotrellis.proj4._
+import _root_.io.circe.syntax._
+import _root_.io.circe.{Decoder, Encoder}
+import geotrellis.layer._
 import geotrellis.raster._
-import geotrellis.raster.distance._
-import geotrellis.raster.io.geotiff._
-import geotrellis.raster.io.geotiff.compression._
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize._
-import geotrellis.raster.render._
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.spark._
-import geotrellis.spark.costdistance.IterativeCostDistance
-import geotrellis.store.json._
-import geotrellis.spark.mapalgebra.local._
-import geotrellis.spark.mapalgebra.focal._
-import geotrellis.layer._
-import geotrellis.layer.mask.Mask
-import geotrellis.spark.pyramid._
-import geotrellis.spark.reproject._
-import geotrellis.spark.tiling._
-import geotrellis.spark.util._
 import geotrellis.vector._
 import geotrellis.vector.io.wkb.WKB
-import geotrellis.vector.triangulation._
-import geotrellis.vector.voronoi._
-
-import _root_.io.circe.{Encoder, Decoder}
-import _root_.io.circe.syntax._
-import spire.syntax.cfor._
-
-
-import org.locationtech.jts.geom.Coordinate
-
 import org.apache.spark._
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd._
-import org.apache.spark.SparkContext._
+import spire.syntax.cfor._
+
+import geopyspark.geotrellis.LayoutType
 
 import java.util.ArrayList
-import scala.reflect._
-import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
-
-import spire.syntax.cfor._
+import scala.jdk.CollectionConverters._
+import scala.reflect._
 
 
 abstract class TiledRasterLayer[K: SpatialComponent: Encoder: Decoder: ClassTag: Boundable] extends TileLayer[K] with Serializable {
@@ -71,7 +43,7 @@ abstract class TiledRasterLayer[K: SpatialComponent: Encoder: Decoder: ClassTag:
     withRDD(rdd.mapValues { multibandTile => multibandTile.subsetBands(band) })
 
   def bands(bands: java.util.ArrayList[Int]): TiledRasterLayer[K] =
-    withRDD(rdd.mapValues { multibandTile => multibandTile.subsetBands(bands.asScala) })
+    withRDD(rdd.mapValues { multibandTile => multibandTile.subsetBands(bands.asScala.toSeq) })
 
   def getZoom: Integer =
     zoomLevel match {
@@ -88,7 +60,7 @@ abstract class TiledRasterLayer[K: SpatialComponent: Encoder: Decoder: ClassTag:
 
   def mask(wkbs: java.util.ArrayList[Array[Byte]]): TiledRasterLayer[K] = {
     val geometries: Seq[MultiPolygon] = wkbs
-      .asScala.map({ wkb => WKB.read(wkb) })
+      .asScala.map({ wkb => WKB.read(wkb) }).toSeq
       .flatMap({
         case p: Polygon => Some(MultiPolygon(p))
         case m: MultiPolygon => Some(m)
@@ -191,7 +163,7 @@ abstract class TiledRasterLayer[K: SpatialComponent: Encoder: Decoder: ClassTag:
     wkbs: java.util.ArrayList[Array[Byte]],
     maxDistance: Double
   ): TiledRasterLayer[K] = {
-    val geometries = wkbs.asScala.map({ wkb => WKB.read(wkb) })
+    val geometries = wkbs.asScala.map({ wkb => WKB.read(wkb) }).toSeq
 
     costDistance(sc, geometries, maxDistance)
   }

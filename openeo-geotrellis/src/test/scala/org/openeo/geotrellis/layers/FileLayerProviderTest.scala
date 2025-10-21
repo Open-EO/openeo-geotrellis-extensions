@@ -51,7 +51,7 @@ import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
-import scala.jdk.CollectionConverters.mapAsJavaMapConverter
+import scala.jdk.CollectionConverters._
 import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
@@ -1200,8 +1200,12 @@ class FileLayerProviderTest extends RasterMatchers{
     val cubeSpatial = layer.toSpatial()
     cubeSpatial.writeGeoTiff(f"$outDir/testPixelValueOffsetNeededCorner.tiff")
     val arr = cubeSpatial.collect().array
-    assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
-    assertEquals(187, arr(0)._2.toArrayTile().band(0).get(160, 5), 1)
+    val at_138_746 = arr.find(_._1 == SpatialKey(138, 746))
+    val at_137_747 = arr.find(_._1 == SpatialKey(137, 747))
+    assertTrue(at_138_746.isDefined)
+    assertTrue(isNoData(at_138_746.get._2.toArrayTile().band(0).get(162, 250)))
+    assertTrue(at_137_747.isDefined)
+    assertEquals(187, at_137_747.get._2.toArrayTile().band(0).get(160, 5), 1)
   }
 
   @Test
@@ -1719,6 +1723,31 @@ class FileLayerProviderTest extends RasterMatchers{
       f"$outDir/testMultibandCOGViaSTACResampledCubic.nc", referenceFile)
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = Array(false, true))
+  def testMultibandNoNoDataCOGViaSTAC(loadPerProduct: Boolean, @TempDir outDir: Path): Unit = {
+    val pyramidFactory = LayerFixtures.stacCogNoNoDataCollection
+
+    val projectedPolygons = ProjectedPolygons.fromExtent(
+      Extent(604523.7292174072, 5090697.329131688, 617624.0262746626, 5095117.978413235),
+      "EPSG:32634",
+    )
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
+    dataCubeParameters.loadPerProduct = loadPerProduct
+
+    writeToNetCDFAndCompare(
+      projectedPolygons,
+      dataCubeParameters,
+      bands = new util.ArrayList(util.Collections.singletonList("L2A-B02-P10")),
+      pyramidFactory,
+      outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC.nc",
+      referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testMultibandNoNoDataCOGViaSTAC.nc",
+    )
+  }
+
   @Test
   def testMultibandCOGViaSTACResampleReadOneBand(@TempDir outDir: Path): Unit = {
     val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0),util.Arrays.asList("precipitation-flux"))
@@ -1749,11 +1778,9 @@ class FileLayerProviderTest extends RasterMatchers{
     val refFile = NetcdfFile.open(referenceFile)
 
     val formatter = new Formatter()
-    val comparison = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile)
+    val areEqual = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile)
 
-    val string = formatter.toString
-    println(string)
-    println(comparison)
+    assertTrue(areEqual, s"netCDF files are not equal:\n$formatter")
   }
 
   @Test

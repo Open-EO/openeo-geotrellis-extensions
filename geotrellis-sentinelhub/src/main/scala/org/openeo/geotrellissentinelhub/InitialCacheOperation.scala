@@ -56,7 +56,7 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
     val collectingFolder = Paths.get(collecting_folder)
 
     val geometry = GeometryCollection(polygons).reproject(crs, LatLng)
-    val bandNames = band_names.asScala
+    val bandNames = band_names.asScala.toSeq
 
     val expectedTiles = for {
       gridTile <- tilingGridRepository.intersectingGridTiles(tilingGridIndex, geometry)
