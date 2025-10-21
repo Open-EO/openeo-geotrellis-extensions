@@ -1618,14 +1618,13 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     )
 
     def writeDerivedFromDocument(targetFile: Path, inputFeatures: Seq[Feature]): Unit = {
-      import java.net.URL
       import _root_.io.circe._
       import _root_.io.circe.syntax._
       import geotrellis.vector._
       import org.openeo.opensearch.OpenSearchResponses.Feature
 
       def asDerivedFromFeature(inputFeature: Feature): Map[String, Json] = {
-        def asDerivedFromLink(selfUrl: URL): Map[String, String] = Map(
+        def asDerivedFromLink(selfUrl: URI): Map[String, String] = Map(
           "rel" -> "derived_from",
           "href" -> selfUrl.toString,
           "title" -> inputFeature.id,
