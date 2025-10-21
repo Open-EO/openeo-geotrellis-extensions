@@ -196,7 +196,11 @@ object DatacubeSupport {
             if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
               val indices = cached.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
               new SparseSpaceOnlyPartitioner(indices, reduction)
-            } else {
+            } else if (reduction != SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION) {
+              val indices = cached.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
+              new SparseSpaceTimePartitioner(indices, reduction)
+            }
+            else {
               new ConfigurableSpaceTimePartitioner(reduction)
             }
           }
