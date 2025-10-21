@@ -201,7 +201,15 @@ class OpenEOProcesses extends Serializable {
         val keys: Option[Array[SpatialKey]] = findPartitionerSpatialKeys(datacube)
         val spatiallyGroupingIndex =
           if(keys.isDefined){
-            new SparseSpaceOnlyPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0, findPartitionerKeys(datacube))
+            val reduction =
+            if (datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time) {
+              val bandCountOption = maybeBandCount(datacube)
+              // TODO dsamaey
+              getPartitionerIndexForMaxPartitionSize(bandCountOption.get, datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits, 100.0)
+            } else {
+              0
+            }
+            new SparseSpaceOnlyPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted, 0, findPartitionerKeys(datacube))
           }else{
             new ByTileSpacetimePartitioner()
           }
@@ -212,7 +220,7 @@ class OpenEOProcesses extends Serializable {
       }
     rdd.mapPartitions(p => {
       val bySpatialKey: Map[SpatialKey, Seq[(SpaceTimeKey, MultibandTile)]] = p.toSeq.groupBy(_._1.spatialKey)
-      bySpatialKey.mapValues(applyToTimeseries).flatMap(_._2).iterator
+      bySpatialKey.view.mapValues(applyToTimeseries).flatMap(_._2).iterator
     }, preservesPartitioning = reduce)
   }
 
@@ -493,7 +501,7 @@ class OpenEOProcesses extends Serializable {
             if(estimatedSize/(1024*1024) < 3) {
               new ByTileSpacetimePartitioner(Some(allPossibleKeys.toArray))
             }else{
-              getPartitionerIndexForMaxPartitionSize(bandCountOption.get,datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits, 100.0)
+              getPartitionerIndexForMaxPartitionSize(bandCountOption.get,datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits, 100.0datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits, 100.0)
             }
           }else{
             new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
