@@ -1168,7 +1168,7 @@ class PyramidFactoryTest {
     val datacubeParams = new DataCubeParameters()
     datacubeParams.tileSize = 256
     datacubeParams.layoutScheme = "FloatingLayoutScheme"
-    datacubeParams.partitionerIndexReduction = 7
+    datacubeParams.setPartitionerIndexReduction(7)
 
     // Should not throw any of the 2 following errors after #128 fix:
     // - "Cannot create a polygon with exterior with fewer than 4 points: LINEARRING EMPTY"
