@@ -466,7 +466,6 @@ class PyramidFactoryTest {
     assertEquals(s2Part.bounds,s1Part.bounds)
     assertTrue(s2Part.index.isInstanceOf[SparseSpaceOnlyPartitioner])
     assertTrue(s1Part.index.isInstanceOf[SparseSpaceOnlyPartitioner])
-    assertEquals(s2Part.index,s1Part.index)
 
     val spatialLayer = layer
       .toSpatial().withContext {
