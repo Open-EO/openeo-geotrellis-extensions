@@ -157,7 +157,7 @@ object DatacubeSupport {
     val bytesPerKey = bandCount * bytesPerCell * rows * cols
 
     logger.debug(f"Memory needed per key: ${bytesPerKey}B")
-    val maxPartitionBytes: Long = 1024L*1024L* datacubeParams.map(_.maxPartitionSize.getOrElse(500)).getOrElse(500)
+    val maxPartitionBytes: Long = 1024L*1024L* datacubeParams.map(_.maxPartitionSize).getOrElse(Option.empty).getOrElse(500)
     logger.debug(f"Memory available for data: ${maxPartitionBytes}B")
     val reduction = math.max(math.log(maxPartitionBytes / bytesPerKey)/math.log(2), 0).floor.toInt
     logger.debug(f"Proposed reduction: $reduction")
@@ -167,7 +167,7 @@ object DatacubeSupport {
   def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey],  metadata: TileLayerMetadata[SpaceTimeKey], bandCount: Int = 6): Some[SpacePartitioner[SpaceTimeKey]] = {
     // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
 
-    val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(computeReduction(datacubeParams, metadata, bandCount))
+    val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(computeReduction(datacubeParams, metadata, bandCount))
     logger.debug(f"Partitioning with index reduction: $reduction")
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
       val cached = requiredSpacetimeKeys // Caching seems to lead to memory leak
