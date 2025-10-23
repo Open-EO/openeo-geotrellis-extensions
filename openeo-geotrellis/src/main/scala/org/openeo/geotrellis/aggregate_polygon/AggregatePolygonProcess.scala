@@ -364,32 +364,16 @@ class AggregatePolygonProcess {
       dataframe
     }
 
-    val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).to(filteredDF.schema)
-      if(scriptBuilder.nodataIsIgnored) {
-        // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
-        // this approach filters out nodata for the computation, but restores it in the output.
-        val requiredRows = dataframe.select("date", "feature_index").distinct()
-        val joined = requiredRows.join(aggregated, Seq("date", "feature_index"), "left")
-        joined.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
-        val files: Array[File] = Paths.get(outputPath).toFile.listFiles()
-        files.filter(f => f.isFile && f.getName.endsWith(".csv")).foreach(f => {
-          logger.error(f.getAbsolutePath)
-          val source = scala.io.Source.fromFile(f)
-          val lines = try source.mkString finally source.close()
-          logger.error(lines)
-        }
-        )
-      }else{
-        aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
-        val files: Array[File] = Paths.get(outputPath).toFile.listFiles()
-        files.filter(f => f.isFile && f.getName.endsWith(".csv")).foreach(f => {
-          logger.error(f.getAbsolutePath)
-          val source = scala.io.Source.fromFile(f)
-          val lines = try source.mkString finally source.close()
-          logger.error(lines)
-        }
-        )
-      }
+    val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).to(filteredDF.schema) // force the schema because groupBy changes the int type to double
+    if (scriptBuilder.nodataIsIgnored) {
+      // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
+      // this approach filters out nodata for the computation, but restores it in the output.
+      val requiredRows = dataframe.select("date", "feature_index").distinct()
+      val joined = requiredRows.join(aggregated, Seq("date", "feature_index"), "left")
+      joined.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    } else {
+      aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    }
 
     CreoS3Utils.waitTillPathAvailable(Paths.get(outputPath).resolve("_SUCCESS").toString)
   }
