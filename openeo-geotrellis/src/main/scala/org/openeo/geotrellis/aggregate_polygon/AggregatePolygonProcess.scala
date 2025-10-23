@@ -363,7 +363,7 @@ class AggregatePolygonProcess {
       dataframe
     }
 
-    val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).to(filteredDF.schema) // force the schema because groupBy changes the int type to double
+    val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*)
     if (scriptBuilder.nodataIsIgnored) {
       // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
       // this approach filters out nodata for the computation, but restores it in the output.
