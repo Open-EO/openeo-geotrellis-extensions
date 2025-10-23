@@ -47,6 +47,22 @@ object Udf {
       |from openeo_driver.errors import OpenEOApiException
       |""".stripMargin
 
+  private val MEMORY_LIMIT_CODE =
+    """
+      |from pyspark import SparkContext
+      |sc = SparkContext.getOrCreate()
+      |pysparkMemory = sc.getConf().get("spark.executor.pyspark.memory")
+      |import resource
+      |if pysparkMemory.endswith("G"):
+      |    limit = int(pysparkMemory[:-1])*1024*1024*1024
+      |    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+      |elif pysparkMemory.endswith("M"):
+      |    limit = int(pysparkMemory[:-1])*1024*1024
+      |    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+      |""".stripMargin
+
+  private val DEFAULT_CODE_BLOCK = DEFAULT_IMPORTS
+
   case class SpatialExtent(xmin : Double, val ymin : Double, val xmax : Double, ymax: Double, tileCols: Int, tileRows: Int)
 
   private def createExtentFromSpatialKey(layoutDefinition: LayoutDefinition,
@@ -190,7 +206,7 @@ object Udf {
 
           val interp = SharedInterpreterFactory.create()
           try {
-            interp.exec(DEFAULT_IMPORTS)
+            interp.exec(DEFAULT_CODE_BLOCK)
             setContextInPython(interp, context)
             interp.exec(code)
             interp.exec(cubeMetadata)
@@ -282,7 +298,7 @@ object Udf {
         val resultTiles = ListBuffer[(TemporalProjectedExtent, MultibandTile)]()
         val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
-          interp.exec(DEFAULT_IMPORTS)
+          interp.exec(DEFAULT_CODE_BLOCK)
 
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -396,7 +412,7 @@ object Udf {
         var newTileCols: Int = tileCols
         val interp = SharedInterpreterFactory.create()
         try {
-          interp.exec(DEFAULT_IMPORTS)
+          interp.exec(DEFAULT_CODE_BLOCK)
 
           // Convert multiBandTile to DirectNDArray
           // Allocating a direct buffer is expensive.
@@ -525,7 +541,7 @@ object Udf {
         val resultTiles = ListBuffer[(SpaceTimeKey, MultibandTile)]()
         val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
-          interp.exec(DEFAULT_IMPORTS)
+          interp.exec(DEFAULT_CODE_BLOCK)
 
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()

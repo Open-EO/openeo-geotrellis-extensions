@@ -90,7 +90,7 @@ object FileLayerProviderTest {
 
   def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod) = {
     val dataCubeParameters: DataCubeParameters = new DataCubeParameters
-    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.setPartitionerIndexReduction(6)
     dataCubeParameters.globalExtent = Some(polygonsAOI.extent)
     if(resampleMethod!=null) {
       dataCubeParameters.setResampleMethod(resampleMethod)
@@ -1247,7 +1247,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
     val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
     val dataCubeParameters: DataCubeParameters = new DataCubeParameters
-    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.setPartitionerIndexReduction(6)
     dataCubeParameters.globalExtent = Some(projected_polygons_native_crs.extent)
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     val jsonPath = "/org/openeo/geotrellis/testMissingS2.json"
@@ -1405,7 +1405,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.tileSize = 256
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
-    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.setPartitionerIndexReduction(6)
     dataCubeParameters.useNewFeatureExtentIntersection = true
     dataCubeParameters.useNewFeatureExtentIntersection2 = true
     dataCubeParameters.globalExtent = Some(ProjectedExtent(Extent(526300.0, 7682200.0, 646340.0, 7802240.0), CRS.fromName("EPSG:32660")))
@@ -1452,7 +1452,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.tileSize = 128 // only difference with testAntimerideanArtifacts2
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
-    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.setPartitionerIndexReduction(6)
     dataCubeParameters.useNewFeatureExtentIntersection = true
     dataCubeParameters.useNewFeatureExtentIntersection2 = true
     dataCubeParameters.globalExtent = Some(ProjectedExtent(Extent(526300.0, 7682200.0, 646340.0, 7802240.0), CRS.fromName("EPSG:32660")))

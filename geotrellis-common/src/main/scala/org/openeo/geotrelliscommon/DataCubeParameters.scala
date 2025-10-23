@@ -14,7 +14,7 @@ class DataCubeParameters extends Serializable {
   var maskingStrategyParameters: util.Map[String, Object] = Collections.emptyMap()
   var layoutScheme: String = "ZoomedLayoutScheme"
   var partitionerTemporalResolution: String = "ByDay"
-  var partitionerIndexReduction: Int = SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION
+  var partitionerIndexReduction: Option[Int] = Option.empty
   var resampleMethod: ResampleMethod = NearestNeighbor
   var maskingCube: Option[Object] = Option.empty
   var globalExtent:Option[ProjectedExtent] = Option.empty
@@ -48,7 +48,13 @@ class DataCubeParameters extends Serializable {
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
 
-  def setPartitionerIndexReduction(reduction:Int): Unit = partitionerIndexReduction = reduction
+  def setPartitionerIndexReduction(reduction:Int): Unit = {
+    if (reduction < 0) {
+      partitionerIndexReduction = Option.empty
+    } else {
+      partitionerIndexReduction = Some(reduction)
+    }
+  }
   def setPartitionerTemporalResolution(res:String): Unit = partitionerTemporalResolution = res
   def setLayoutScheme(scheme:String): Unit = layoutScheme = scheme
   def setTileSize(size:Int): Unit = tileSize = size

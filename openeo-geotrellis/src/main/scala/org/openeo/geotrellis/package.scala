@@ -5,13 +5,15 @@ import _root_.geotrellis.raster._
 import _root_.geotrellis.vector._
 import _root_.geotrellis.vector.io.json._
 import _root_.geotrellis.vector.reproject.Reproject._
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
 import org.apache.spark.SparkContext
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.proj4j.{BasicCoordinateTransform, ProjCoordinate}
-import org.openeo.geotrellis.ProjectedPolygons.{reprojectGeometryRefined, reprojectPolygonRefined}
-import org.openeo.opensearch.OpenSearchResponses.{Feature, FeatureCollection}
+import org.openeo.geotrellis.ProjectedPolygons.reprojectGeometryRefined
+import org.openeo.opensearch.OpenSearchResponses.FeatureCollection
 import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
@@ -488,11 +490,16 @@ package object geotrellis {
 
   def toGeoJsonDebug(polygons: ProjectedPolygons): String = {
     val str = polygons.getFlatMultiPolygon.toGeoJson()
-    var j = SimpleJson.parse(str)
+
+    val mapper = new ObjectMapper()
+    val node = mapper.readTree(str)
+    val crsNode = node.asInstanceOf[ObjectNode].putObject("crs")
+    crsNode.put("type", "name")
     val crs = polygons.crs.proj4jCrs.getName
-    // GeoJson officially only supports LatLng, but qgis works with custom CRSes too:
-    j = j + ("crs" -> Map("type" -> "name", "properties" -> Map("name" -> crs)))
-    SimpleJson.serialize(j)
+    crsNode.putObject("properties").put("name", crs)
+
+    mapper.writeValueAsString(node)
+
   }
 
   def toGeoJsonDebug(featureCollection: FeatureCollection): String = {
