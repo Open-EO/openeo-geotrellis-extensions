@@ -19,6 +19,7 @@ import org.openeo.geotrellis.{OpenEOProcesses, SpatialToSpacetimeJoinRdd}
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
+import java.io.File
 import java.nio.file.Paths
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit.DAYS
@@ -363,15 +364,31 @@ class AggregatePolygonProcess {
       dataframe
     }
 
-    val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*)
+    val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).to(filteredDF.schema)
       if(scriptBuilder.nodataIsIgnored) {
         // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
         // this approach filters out nodata for the computation, but restores it in the output.
         val requiredRows = dataframe.select("date", "feature_index").distinct()
         val joined = requiredRows.join(aggregated, Seq("date", "feature_index"), "left")
         joined.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+        val files: Array[File] = Paths.get(outputPath).toFile.listFiles()
+        files.filter(f => f.isFile && f.getName.endsWith(".csv")).foreach(f => {
+          logger.error(f.getAbsolutePath)
+          val source = scala.io.Source.fromFile(f)
+          val lines = try source.mkString finally source.close()
+          logger.error(lines)
+        }
+        )
       }else{
         aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+        val files: Array[File] = Paths.get(outputPath).toFile.listFiles()
+        files.filter(f => f.isFile && f.getName.endsWith(".csv")).foreach(f => {
+          logger.error(f.getAbsolutePath)
+          val source = scala.io.Source.fromFile(f)
+          val lines = try source.mkString finally source.close()
+          logger.error(lines)
+        }
+        )
       }
 
     CreoS3Utils.waitTillPathAvailable(Paths.get(outputPath).resolve("_SUCCESS").toString)
