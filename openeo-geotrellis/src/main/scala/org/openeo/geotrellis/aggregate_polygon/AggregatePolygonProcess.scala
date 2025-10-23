@@ -356,14 +356,18 @@ class AggregatePolygonProcess {
       }
     }
 
-    val filteredDF =
-    if(scriptBuilder.nodataIsIgnored) {
-      dataframe.filter(bandColumns.map(col => df.col(col).isNotNull and !df.col(col).isNaN).reduce(_ or _))
-    }else{
-      dataframe
+    val filteredDF = {
+      if (scriptBuilder.nodataIsIgnored) {
+        dataframe.filter(bandColumns.map(col => df.col(col).isNotNull and !df.col(col).isNaN).reduce(_ or _))
+      } else {
+        dataframe
+      }
     }
-
-    val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).to(filteredDF.schema) // force the schema because groupBy changes the int type to double
+    logger.info(f"")
+    val aggregated_ = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*)
+    logger.info(f"### schema after aggregation: ${aggregated_.schema}")
+    val aggregated = aggregated_.to(filteredDF.schema) // force the schema because groupBy changes the int type to double
+    logger.info(f"### schema after correction:  ${aggregated.schema}")
     if (scriptBuilder.nodataIsIgnored) {
       // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
       // this approach filters out nodata for the computation, but restores it in the output.
