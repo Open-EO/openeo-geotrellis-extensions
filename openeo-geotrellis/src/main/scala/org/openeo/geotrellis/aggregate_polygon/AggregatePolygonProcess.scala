@@ -19,7 +19,6 @@ import org.openeo.geotrellis.{OpenEOProcesses, SpatialToSpacetimeJoinRdd}
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
-import java.io.File
 import java.nio.file.Paths
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit.DAYS
