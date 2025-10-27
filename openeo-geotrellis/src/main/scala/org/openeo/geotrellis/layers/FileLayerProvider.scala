@@ -1653,6 +1653,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     //  possible solution: move this stuff to SparkBatchJobMetadataTracker; this will then still allow for unit testing
     //  by calling setGlobalTracking(true) (TBC)
     val jobId = Option(System.getenv("OPENEO_BATCH_JOB_ID")).getOrElse("unknown-job") // TODO: do it in Python instead?
+    // FIXME: make sure the file ends up in the job directory where the web app driver can reach it
     val derivedFromDocument = Files.createTempFile(s"${jobId}_input_items_", ".json")
     writeDerivedFromDocument(derivedFromDocument, overlappingRasterSources.map { case (_, feature) => feature })
     logger.debug(s"wrote input STAC items to $derivedFromDocument")
