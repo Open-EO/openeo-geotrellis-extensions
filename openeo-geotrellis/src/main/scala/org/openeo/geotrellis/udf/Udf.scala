@@ -195,7 +195,7 @@ object Udf {
 
           val interp = SharedInterpreterFactory.create()
           try {
-            interp.exec(defaultCodeBlock)
+            interp.exec(defaultCodeBlock())
             setContextInPython(interp, context)
             interp.exec(code)
             interp.exec(cubeMetadata)
@@ -220,7 +220,7 @@ object Udf {
       }
   }
 
-  private def defaultCodeBlock = {
+  private def defaultCodeBlock() = {
     val context = SparkContext.getOrCreate();
     context.getConf
     logger.error(context.toString)
@@ -306,7 +306,7 @@ object Udf {
         val resultTiles = ListBuffer[(TemporalProjectedExtent, MultibandTile)]()
         val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
-          interp.exec(defaultCodeBlock)
+          interp.exec(defaultCodeBlock())
 
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -422,7 +422,7 @@ object Udf {
         var newTileCols: Int = tileCols
         val interp = SharedInterpreterFactory.create()
         try {
-          interp.exec(defaultCodeBlock)
+          interp.exec(defaultCodeBlock())
 
           // Convert multiBandTile to DirectNDArray
           // Allocating a direct buffer is expensive.
@@ -551,7 +551,7 @@ object Udf {
         val resultTiles = ListBuffer[(SpaceTimeKey, MultibandTile)]()
         val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
-          interp.exec(defaultCodeBlock)
+          interp.exec(defaultCodeBlock())
 
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
