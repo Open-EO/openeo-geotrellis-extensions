@@ -522,18 +522,8 @@ object FileLayerProvider {
       val theIndex = tuple._2.flatMap(_._1).head
 
       val allRasters =
-        try{
-          source.readBounds(bounds).map(_.mapTile { tile =>
-            val targetCellType = tile.cellType match {
-              case originalCellType: NoNoData if !originalCellType.isFloatingPoint =>
-                val noDataCellType = cellType withNoData Some(0)
-                logger.debug(s"converting tile cell type from ${originalCellType} to $noDataCellType with NODATA")
-                noDataCellType
-              case _ => cellType
-            }
-
-            tile convert targetCellType
-          }).toSeq
+        try {
+          source.readBounds(bounds).map(_.mapTile { _ convert cellType }).toSeq
         } catch {
           case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
         }
@@ -819,7 +809,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
       val commonCellType = arbitraryRasterSource.cellType
-      if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType
+      commonCellType match {
+        case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
+        case _: NoNoData => commonCellType.withDefaultNoData()
+        case _ => commonCellType
+      }
     } catch {
       case e: Exception => {
         // Geotrellis GDALException errors are not descriptive enough. Attempt to add some more useful information.
@@ -1138,8 +1132,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         if(maxKeys>4) {
           DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
         }else{
+
           //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
-          val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
+          val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
           val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
           val dates = readKeysToRasterSourcesResult._4.map(_._2.nominalDate).distinct
           val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))

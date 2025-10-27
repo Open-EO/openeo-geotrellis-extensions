@@ -1,5 +1,6 @@
 package org.openeo.geotrellis
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster
@@ -23,7 +24,6 @@ import org.apache.spark.util.AccumulatorV2
 import org.apache.spark.{Partitioner, SparkContext, TaskContext}
 import org.openeo.geotrellis
 import org.openeo.geotrellis.creo.CreoS3Utils
-import org.openeo.geotrellis.geotiff.GTiffOptions
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.{Asset, Item, STACItem}
 import org.openeo.geotrellis.tile_grid.TileGrid
@@ -177,10 +177,14 @@ package object geotiff {
 
   private def updateGdalInfoJsonFile(jsonFilePath: String, tiffFilePath: String): Unit = {
     val str = CreoS3Utils.readFileAsString(jsonFilePath)
-    var parsedJson = SimpleJson.parse(str)
-    parsedJson += "description" -> tiffFilePath
-    parsedJson += "files" -> Seq(tiffFilePath)
-    val strAgain = SimpleJson.serialize(parsedJson)
+    val mapper = new ObjectMapper()
+    val node = mapper.readTree(str)
+    node.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].put("description", tiffFilePath)
+    val filesNode = node.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].putArray("files")
+    filesNode.add(tiffFilePath)
+
+    val strAgain = mapper.writeValueAsString(node)
+
     CreoS3Utils.writeStringToFile(jsonFilePath, strAgain)
   }
 
