@@ -15,6 +15,8 @@ import java.nio.{ByteBuffer, ByteOrder, FloatBuffer}
 import java.util
 import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ListBuffer
+import scala.jdk.CollectionConverters._
+import scala.util.matching.Regex
 
 
 class SpatialKeyPartitioner(numberOfPartitions: Int, rows: Int, minKeyCol: Int, minKeyRow: Int) extends Partitioner {
@@ -34,6 +36,9 @@ object Udf {
   private val logger = LoggerFactory.getLogger("Python-Jep-Udf")
 
   private val SIZE_OF_FLOAT = 4
+
+  private val gigaPattern: Regex = """^(\d+)(?:G|GB)$""".r
+  private val megaPattern: Regex = """^(\d+)(?:M|MB)$""".r
 
   private val DEFAULT_IMPORTS =
     """
@@ -394,6 +399,8 @@ object Udf {
 
     // TODO: AllocateDirect is an expensive operation, we should create one buffer for the entire partition
     // and then slice it!
+    val sc = SparkContext.getOrCreate()
+
 
     val newLayout: Option[(LayoutDefinition, util.ArrayList[String])] = callApplyMetadata(code, layer, context, bandNames)
     val oldLayout = layer.metadata.layout
@@ -620,4 +627,23 @@ object Udf {
     (ContextRDD(result, layer.metadata), bandNames)
   }
 
+  val DEFAULT_MAX_MEMORY_BYTES = 1024L * 1024L * 1024L
+
+  def determineMaxMemoryBytes(): Long = {
+    try {
+      logger.error("Trying to get Spark Context")
+      val sc = SparkContext.getOrCreate()
+      logger.error(sc.getConf.toDebugString)
+      logger.error("Trying to get spark.executor.pyspark.memory")
+      val maxMemoryBytes = sc.getConf.getSizeAsBytes("spark.executor.pyspark.memory", DEFAULT_MAX_MEMORY_BYTES)
+      logger.error(f"Max memory bytes: $maxMemoryBytes")
+      maxMemoryBytes
+    }
+    catch {
+      case t: Throwable => {
+        logger.error(f"Failed to determine max memory for JEP, falling back to limit of $DEFAULT_MAX_MEMORY_BYTES bytes.", t)
+        DEFAULT_MAX_MEMORY_BYTES
+      }
+      }
+    }
 }
