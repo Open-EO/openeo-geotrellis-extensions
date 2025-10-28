@@ -221,12 +221,19 @@ object Udf {
   }
 
   private def defaultCodeBlock() = {
-    val context = SparkContext.getOrCreate();
-    context.getConf
-    logger.error(context.toString)
-    val conf = SparkContext.getOrCreate().getConf
-    logger.error(conf.toDebugString)
-    val memoryLimitBytes = conf.getSizeAsBytes("spark.executor.pyspark.memory", -1)
+    val memoryLimitBytes = -1
+//      try {
+//        SparkContext.getOrCreate().getConf.getSizeAsBytes("spark.executor.pyspark.memory", -1)
+//      } catch {
+//        case t: Throwable => {
+//          logger.error(f"Failed to get spark context (${t.getMessage}) to determine spark.executor.pyspark.memory")
+//          -1
+//        }
+//        case e: Error => {
+//          logger.error(s"Failed to get spark context (${e.getMessage}) to determine spark.executor.pyspark.memory")
+//          -1
+//        }
+//      }
     if (memoryLimitBytes > 0) {
       logger.debug(s"Limiting JEP UDF memory to $memoryLimitBytes bytes.")
       val memoryLimitingCode = f"""
@@ -628,22 +635,4 @@ object Udf {
   }
 
   val DEFAULT_MAX_MEMORY_BYTES = 1024L * 1024L * 1024L
-
-  def determineMaxMemoryBytes(): Long = {
-    try {
-      logger.error("Trying to get Spark Context")
-      val sc = SparkContext.getOrCreate()
-      logger.error(sc.getConf.toDebugString)
-      logger.error("Trying to get spark.executor.pyspark.memory")
-      val maxMemoryBytes = sc.getConf.getSizeAsBytes("spark.executor.pyspark.memory", DEFAULT_MAX_MEMORY_BYTES)
-      logger.error(f"Max memory bytes: $maxMemoryBytes")
-      maxMemoryBytes
-    }
-    catch {
-      case t: Throwable => {
-        logger.error(f"Failed to determine max memory for JEP, falling back to limit of $DEFAULT_MAX_MEMORY_BYTES bytes.", t)
-        DEFAULT_MAX_MEMORY_BYTES
-      }
-      }
-    }
 }
