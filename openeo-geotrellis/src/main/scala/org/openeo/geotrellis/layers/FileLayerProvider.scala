@@ -1629,6 +1629,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           "rel" -> "derived_from",
           "href" -> selfUrl.toString,
           "title" -> inputFeature.id,
+          // TODO: add media type?
         )
 
         Map(
@@ -1646,7 +1647,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         )
       }
 
-      val derivedFromDocument = inputFeatures.map(asDerivedFromFeature).asJson
+      val derivedFromDocument = Map(
+        "type" -> "FeatureCollection".asJson,
+        "features" -> inputFeatures.map(asDerivedFromFeature).asJson,
+      ).asJson
+
       Files.write(targetFile, derivedFromDocument.noSpaces.getBytes("UTF-8"))
     }
 
@@ -1659,7 +1664,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     writeDerivedFromDocument(derivedFromDocument, overlappingRasterSources.map { case (_, feature) => feature })
     logger.debug(s"wrote input STAC items to $derivedFromDocument")
 
-    tracker.addInternalFile(derivedFromDocument, "application/json") // TODO: ultimately, "application/geo+json" for an ItemCollection
+    tracker.addInternalFile(derivedFromDocument, "application/geo+json")
 
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
