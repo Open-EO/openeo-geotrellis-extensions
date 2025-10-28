@@ -223,9 +223,7 @@ object Udf {
   private def defaultCodeBlock() = {
     val memoryLimitBytes =
       try {
-        val context = SparkContext.getOrCreate();
-        val conf = SparkContext.getOrCreate().getConf
-        conf.getSizeAsBytes("spark.executor.pyspark.memory", -1)
+        SparkContext.getOrCreate().getConf.getSizeAsBytes("spark.executor.pyspark.memory", -1)
       } catch {
         case t: Throwable => {
           logger.error(f"Failed to get spark context (${t.getMessage}) to determine spark.executor.pyspark.memory")
