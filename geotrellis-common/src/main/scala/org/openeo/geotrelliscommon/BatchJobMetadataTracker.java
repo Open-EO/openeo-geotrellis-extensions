@@ -1,5 +1,7 @@
 package org.openeo.geotrelliscommon;
 
+import scala.Function0;
+
 import java.io.Serializable;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -88,7 +90,7 @@ public abstract class BatchJobMetadataTracker implements Serializable {
         public void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls) {}
 
         @Override
-        public void addInternalFile(Path path, String mediaType) {}
+        public void addInternalFile(Function0<Path> writer, String mediaType) {}
 
         @Override
         public Map<String, Object> asDict() {
@@ -125,8 +127,8 @@ public abstract class BatchJobMetadataTracker implements Serializable {
      */
     public abstract void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls);
 
-    public abstract void addInternalFile(Path path, String mediaType);
-    public void addInternalFile(String path, String mediaType) { addInternalFile(Paths.get(path), mediaType); }
+    public abstract void addInternalFile(Function0<Path> writer, String mediaType);
+    public void addInternalFile(String path, String mediaType) { addInternalFile(() -> Paths.get(path), mediaType); }
 
     public abstract Map<String, Object> asDict();
 }

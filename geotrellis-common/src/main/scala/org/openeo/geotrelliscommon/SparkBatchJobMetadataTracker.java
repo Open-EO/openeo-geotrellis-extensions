@@ -4,6 +4,7 @@ import org.apache.spark.SparkContext;
 import org.apache.spark.util.AccumulatorV2;
 import org.apache.spark.util.DoubleAccumulator;
 import org.apache.spark.util.LongAccumulator;
+import scala.Function0;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -52,8 +53,8 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
     }
 
     @Override
-    public void addInternalFile(Path path, String mediaType) {
-        internalFiles.add(new InternalFile(path, mediaType));
+    public void addInternalFile(Function0<Path> writer, String mediaType) {
+        internalFiles.add(new InternalFile(writer.apply(), mediaType));
     }
 
     @Override
