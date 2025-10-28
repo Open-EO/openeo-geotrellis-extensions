@@ -231,7 +231,7 @@ object Udf {
       logger.debug(s"Limiting JEP UDF memory to $memoryLimitBytes bytes.")
       val memoryLimitingCode = f"""
                                |import resource
-                               |  resource.setrlimit(resource.RLIMIT_AS, ($memoryLimitBytes, $memoryLimitBytes))
+                               |resource.setrlimit(resource.RLIMIT_AS, ($memoryLimitBytes, $memoryLimitBytes))
                                |""".stripMargin
       DEFAULT_IMPORTS + memoryLimitingCode
     } else {
