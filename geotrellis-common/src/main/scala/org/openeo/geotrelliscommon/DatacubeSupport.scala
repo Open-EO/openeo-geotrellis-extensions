@@ -150,11 +150,27 @@ object DatacubeSupport {
   }
 
 
-  def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey],  metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
+  private def computeReduction(datacubeParams: Option[DataCubeParameters], metadata: TileLayerMetadata[SpaceTimeKey], bandCount: Int): Int = {
+    val cols = metadata.layout.tileLayout.tileCols
+    val rows = metadata.layout.tileLayout.tileRows
+    val bytesPerCell = metadata.cellType.bytes
+    val bytesPerKey = bandCount * bytesPerCell * rows * cols
+
+    logger.debug(f"Memory needed per key: ${bytesPerKey}B")
+    val maxPartitionBytes: Long = 1024L*1024L* datacubeParams.map(_.maxPartitionSize).getOrElse(Option.empty).getOrElse(500)
+    logger.debug(f"Memory available for data: ${maxPartitionBytes}B")
+    val reduction = math.max(math.log(maxPartitionBytes / bytesPerKey)/math.log(2), 0).floor.toInt
+    logger.debug(f"Proposed reduction: $reduction")
+    reduction
+  }
+
+  def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey],  metadata: TileLayerMetadata[SpaceTimeKey], bandCount: Int = 6): Some[SpacePartitioner[SpaceTimeKey]] = {
     // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
-    val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
+
+    val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(computeReduction(datacubeParams, metadata, bandCount))
+    logger.debug(f"Partitioning with index reduction: $reduction")
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
-      val cached = requiredSpacetimeKeys//.cache() Caching seems to lead to memory leak
+      val cached = requiredSpacetimeKeys // Caching seems to lead to memory leak
       val spatialBounds = metadata.bounds.get.toSpatial
       val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
 
@@ -173,18 +189,14 @@ object DatacubeSupport {
               val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
               new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
             } else {
-              val (indexReduction, indices) =  optimalReductionForSparseKeys(keys,datacubeParams.map(_.maxPartitionSize.getOrElse(64)).getOrElse(64),metadata.tileCols,metadata.cellType.bits, 6)
+              val (indexReduction, indices) =  optimalReductionForSparseKeys(keys,datacubeParams.map(_.maxPartitionSize.getOrElse(64)).getOrElse(64),metadata.tileCols,metadata.cellType.bits, bandCount)
               new SparseSpaceTimePartitioner(indices, indexReduction, theKeys = Some(keys))
             }
           } else {
             if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
               val indices = cached.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
               new SparseSpaceOnlyPartitioner(indices, reduction)
-            } else if (reduction != SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION) {
-              val indices = cached.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
-              new SparseSpaceTimePartitioner(indices, reduction)
-            }
-            else {
+            } else {
               new ConfigurableSpaceTimePartitioner(reduction)
             }
           }

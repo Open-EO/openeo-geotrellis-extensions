@@ -47,6 +47,9 @@ import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 object OpenEOProcesses{
 
   private val logger = LoggerFactory.getLogger(classOf[OpenEOProcesses])
+  private val DEFAULT_MAX_PARTITION_SIZE_IN_MB = 500.0
+  private val DEFAULT_BAND_COUNT = 6
+  private val DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT = 10
 
   private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)],cellType: CellType) = {
     MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)).map( t => {
@@ -105,7 +108,7 @@ object OpenEOProcesses{
    * @param maxPartitionSizeInMb The maximum size of each partition in megabytes. Default is 500.0 MB.
    * @return A partitioner index of type `PartitionerIndex[K]` tailored to ensure the partitions adhere to the specified maximum size.
    */
-  def getPartitionerIndexForMaxPartitionSize[K](nrBands: Int, tileSize: Int, cellTypeBits: Int, maxPartitionSizeInMb: Double = 500.0)(implicit t:ClassTag[K]): PartitionerIndex[K] = {
+  def getPartitionerIndexForMaxPartitionSize[K](nrBands: Int, tileSize: Int, cellTypeBits: Int, maxPartitionSizeInMb: Double = DEFAULT_MAX_PARTITION_SIZE_IN_MB)(implicit t:ClassTag[K]): PartitionerIndex[K] = {
     // Estimate the maximum amount of records required to hit maxPartitionSizeInMb,
     // then calculate the max indexReduction that remains under this amount of records.
     val tileSizeInMb: Double = (nrBands * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
@@ -201,7 +204,34 @@ class OpenEOProcesses extends Serializable {
         val keys: Option[Array[SpatialKey]] = findPartitionerSpatialKeys(datacube)
         val spatiallyGroupingIndex =
           if(keys.isDefined){
-            new SparseSpaceOnlyPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0, findPartitionerKeys(datacube))
+            val bandCountOption = maybeBandCount(datacube)
+            val bandCount =
+              if (bandCountOption.isDefined) {
+                bandCountOption.get
+              } else {
+                logger.warn(f"Could not determine band count for partitioning purposes.  Using $DEFAULT_BAND_COUNT as a default.")
+                DEFAULT_BAND_COUNT
+              }
+            val reduction =
+              if (datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time) {
+                val tileSizeInMb: Double = (bandCount * datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes).toDouble / (1024 * 1024)
+                val maxRecordsPerPartition: Double = math.min(DEFAULT_MAX_PARTITION_SIZE_IN_MB / tileSizeInMb, 1024)
+                math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
+              } else {
+                val maybeKeys = findPartitionerKeys(datacube)
+                val distinctTemporalKeyCount: Int =
+                  if (maybeKeys.isDefined) {
+                    maybeKeys.get.groupBy(_.spatialKey).map(_._2.length).max
+                  } else {
+                    logger.warn(f"Could not determine max number of distinct instants per key for partitioning purposes.  Using $DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT as a default.")
+                    DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT
+                  }
+                logger.debug(f"Max number of distinct instants per key: ${distinctTemporalKeyCount}.")
+                val tileSizeInMb: Double = (bandCount * datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes).toDouble / (1024 * 1024)
+                val maxRecordsPerPartition: Double = math.min(DEFAULT_MAX_PARTITION_SIZE_IN_MB / (tileSizeInMb * distinctTemporalKeyCount), 1024)
+                math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
+              }
+            new SparseSpaceOnlyPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, indexReduction = reduction, findPartitionerKeys(datacube))
           }else{
             new ByTileSpacetimePartitioner()
           }
@@ -212,7 +242,7 @@ class OpenEOProcesses extends Serializable {
       }
     rdd.mapPartitions(p => {
       val bySpatialKey: Map[SpatialKey, Seq[(SpaceTimeKey, MultibandTile)]] = p.toSeq.groupBy(_._1.spatialKey)
-      bySpatialKey.mapValues(applyToTimeseries).flatMap(_._2).iterator
+      bySpatialKey.view.mapValues(applyToTimeseries).flatMap(_._2).iterator
     }, preservesPartitioning = reduce)
   }
 
