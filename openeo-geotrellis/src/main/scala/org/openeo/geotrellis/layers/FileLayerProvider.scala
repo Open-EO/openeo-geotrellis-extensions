@@ -1618,52 +1618,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       overlappingRasterSources.map { case (_, feature) => feature.id }.asJava
     )
 
-    def writeDerivedFromDocument(targetFile: Path, inputFeatures: Seq[Feature]): Unit = {
-      import _root_.io.circe._
-      import _root_.io.circe.syntax._
-      import geotrellis.vector._
-      import org.openeo.opensearch.OpenSearchResponses.Feature
-
-      def asDerivedFromFeature(inputFeature: Feature): Map[String, Json] = {
-        def asDerivedFromLink(selfUrl: URI): Map[String, String] = Map(
-          "rel" -> "derived_from",
-          "href" -> selfUrl.toString,
-          "title" -> inputFeature.id,
-          // TODO: add media type?
-        )
-
-        Map(
-          "type" -> "Feature".asJson,
-          "stac_version" -> "1.1.0".asJson,
-          "id" -> inputFeature.id.asJson,
-          "geometry" -> inputFeature.geometry.getOrElse(inputFeature.bbox.toPolygon()).asJson,
-          "bbox" -> Seq(
-            inputFeature.bbox.xmin, inputFeature.bbox.ymin,
-            inputFeature.bbox.xmax, inputFeature.bbox.ymax
-          ).asJson,
-          "properties" -> Map[String, Json]().asJson,
-          "links" -> inputFeature.selfUrl.map(selfUrl => Seq(asDerivedFromLink(selfUrl))).getOrElse(Seq()).asJson,
-          "assets" -> Map[String, Json]().asJson,
-        )
-      }
-
-      val derivedFromDocument = Map(
-        "type" -> "FeatureCollection".asJson,
-        "features" -> inputFeatures.map(asDerivedFromFeature).asJson,
-      ).asJson
-
-      Files.write(targetFile, derivedFromDocument.noSpaces.getBytes("UTF-8"))
-    }
-
-    tracker.addInternalFile(() => {
-      val jobId = Option(System.getenv("OPENEO_BATCH_JOB_ID")).getOrElse("unknown-job") // TODO: do it in Python instead?
-      val workDir = Paths.get("").toAbsolutePath
-      val derivedFromDocument = Files.createTempFile(workDir, s"${jobId}_input_items_", ".json")
-
-      writeDerivedFromDocument(derivedFromDocument, overlappingRasterSources.map { case (_, feature) => feature })
-      logger.debug(s"wrote input STAC items to $derivedFromDocument")
-      derivedFromDocument
-    }, "application/geo+json")
+    tracker.addInternalFile(
+      new DerivedFromDocumentWriter(inputFeatures = overlappingRasterSources.map { case (_, feature) => feature }),
+      "application/geo+json",
+    )
 
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones

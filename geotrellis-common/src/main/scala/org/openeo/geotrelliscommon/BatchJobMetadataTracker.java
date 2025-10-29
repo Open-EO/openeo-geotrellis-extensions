@@ -1,6 +1,8 @@
 package org.openeo.geotrelliscommon;
 
 import scala.Function0;
+import scala.Function1;
+import scala.Option;
 
 import java.io.Serializable;
 import java.nio.file.Path;
@@ -99,9 +101,9 @@ public abstract class BatchJobMetadataTracker implements Serializable {
     };
 
     public static BatchJobMetadataTracker tracker(String id) {
-        if((forceTracking.isPresent() && forceTracking.get()) || (!forceTracking.isPresent() && System.getenv().containsKey("OPENEO_BATCH_JOB_ID"))){
+        if ((forceTracking.isPresent() && forceTracking.get()) || (forceTracking.isEmpty() && getBatchJobId().nonEmpty())) {
             return trackers.getOrDefault(id, defaultTracker); // TODO: nothing is ever put into this map so will always return defaultTracker
-        }else{
+        } else {
             return dummyTracker;
         }
     }
@@ -127,8 +129,23 @@ public abstract class BatchJobMetadataTracker implements Serializable {
      */
     public abstract void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls);
 
-    public abstract void addInternalFile(Function0<Path> writer, String mediaType);
-    public void addInternalFile(String path, String mediaType) { addInternalFile(() -> Paths.get(path), mediaType); }
+    public void addInternalFile(AuxiliaryFileWriter writer, String mediaType) {
+        /* "thunking" by means of an AuxiliaryFileWriter avoid the creation of these files in a sync context by putting
+        the decision in the hands of the BatchJobMetadataTracker implementation */
+        addInternalFile(() -> writer.write(getBatchJobId()), mediaType);
+    }
+
+    protected abstract void addInternalFile(Function0<Path> writer, String mediaType);
+
+    @SuppressWarnings("unused")
+    public void addInternalFile(String path, String mediaType) {
+        /* convenience function for Python unit tests */
+        addInternalFile((jobId) -> Paths.get(path), mediaType);
+    }
+
+    private static Option<String> getBatchJobId() {
+        return Option.apply(System.getenv("OPENEO_BATCH_JOB_ID"));
+    }
 
     public abstract Map<String, Object> asDict();
 }
