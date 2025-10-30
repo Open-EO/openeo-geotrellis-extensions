@@ -32,6 +32,7 @@ import org.junit.{AfterClass, BeforeClass}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker.AuxiliaryFile
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, DataCubeParameters, ResampledTile}
 import org.openeo.opensearch.OpenSearchResponses.Link
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
@@ -185,8 +186,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertEquals(1,inputs.asInstanceOf[util.Map[String,util.List[String]]].get("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2").size())
 
     val derivedFromDocuments = BatchJobMetadataTracker.tracker("").asDict()
-      .get("internal_files")
-      .asInstanceOf[util.List[BatchJobMetadataTracker.InternalFile]]
+      .get(BatchJobMetadataTracker.AUXILIARY_FILES)
+      .asInstanceOf[util.List[AuxiliaryFile]]
 
     assertEquals(1, derivedFromDocuments.size())
     assertEquals("application/geo+json", derivedFromDocuments.get(0).getMediaType)

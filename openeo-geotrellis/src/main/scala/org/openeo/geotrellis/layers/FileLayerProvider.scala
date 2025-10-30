@@ -1618,7 +1618,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       overlappingRasterSources.map { case (_, feature) => feature.id }.asJava
     )
 
-    tracker.addInternalFile(
+    tracker.addAuxiliaryFile(
       new DerivedFromDocumentWriter(inputFeatures = overlappingRasterSources.map { case (_, feature) => feature }),
       "application/geo+json",
     )

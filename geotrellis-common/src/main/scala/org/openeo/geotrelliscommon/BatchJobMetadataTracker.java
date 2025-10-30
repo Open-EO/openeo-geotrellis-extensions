@@ -1,7 +1,6 @@
 package org.openeo.geotrelliscommon;
 
 import scala.Function0;
-import scala.Function1;
 import scala.Option;
 
 import java.io.Serializable;
@@ -35,11 +34,11 @@ public abstract class BatchJobMetadataTracker implements Serializable {
         }
     }
 
-    public static class InternalFile implements Serializable {
-        private transient String path;
-        private transient String mediaType;
+    public static class AuxiliaryFile implements Serializable {
+        private final String path;
+        private final String mediaType;
 
-        public InternalFile(Path path, String mediaType) {
+        public AuxiliaryFile(Path path, String mediaType) {
             this.path = path.toString();
             this.mediaType = mediaType;
         }
@@ -53,8 +52,9 @@ public abstract class BatchJobMetadataTracker implements Serializable {
         }
     }
 
-    public static String SH_PU = "Sentinelhub_Processing_Units";
-    public static String SH_FAILED_TILE_REQUESTS = "Sentinelhub_Failed_Tile_Requests";
+    public static final String SH_PU = "Sentinelhub_Processing_Units";
+    public static final String SH_FAILED_TILE_REQUESTS = "Sentinelhub_Failed_Tile_Requests";
+    public static final String AUXILIARY_FILES = "auxiliary_files";
 
     private static Optional<Boolean> forceTracking = Optional.empty();
     public static void setGlobalTracking(boolean enable){
@@ -92,7 +92,7 @@ public abstract class BatchJobMetadataTracker implements Serializable {
         public void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls) {}
 
         @Override
-        public void addInternalFile(Function0<Path> writer, String mediaType) {}
+        public void addAuxiliaryFile(Function0<Path> writer, String mediaType) {}
 
         @Override
         public Map<String, Object> asDict() {
@@ -129,18 +129,18 @@ public abstract class BatchJobMetadataTracker implements Serializable {
      */
     public abstract void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls);
 
-    public void addInternalFile(AuxiliaryFileWriter writer, String mediaType) {
+    public void addAuxiliaryFile(AuxiliaryFileWriter writer, String mediaType) {
         /* "thunking" by means of an AuxiliaryFileWriter avoid the creation of these files in a sync context by putting
         the decision in the hands of the BatchJobMetadataTracker implementation */
-        addInternalFile(() -> writer.write(getBatchJobId()), mediaType);
+        addAuxiliaryFile(() -> writer.write(getBatchJobId()), mediaType);
     }
 
-    protected abstract void addInternalFile(Function0<Path> writer, String mediaType);
+    protected abstract void addAuxiliaryFile(Function0<Path> writer, String mediaType);
 
     @SuppressWarnings("unused")
-    public void addInternalFile(String path, String mediaType) {
+    public void addAuxiliaryFile(String path, String mediaType) {
         /* convenience function for Python unit tests */
-        addInternalFile((jobId) -> Paths.get(path), mediaType);
+        addAuxiliaryFile((jobId) -> Paths.get(path), mediaType);
     }
 
     private static Option<String> getBatchJobId() {
