@@ -23,7 +23,7 @@ class DerivedFromDocumentWriter(inputFeatures: Seq[Feature]) extends AuxiliaryFi
     val derivedFromDocument = Files.createTempFile(workDir, s"${jobId.getOrElse("unknown-job")}_input_items_", ".geojson")
 
     writeDerivedFromDocument(derivedFromDocument, inputFeatures)
-    logger.debug(s"wrote input STAC items to $derivedFromDocument")
+    logger.debug(s"wrote ${inputFeatures.size} input STAC item(s) to $derivedFromDocument")
     derivedFromDocument
   }
 
@@ -47,7 +47,7 @@ class DerivedFromDocumentWriter(inputFeatures: Seq[Feature]) extends AuxiliaryFi
         ).asJson,
         "properties" -> Map[String, Json]().asJson,
         "links" -> inputFeature.selfUrl.map(selfUrl => Seq(asDerivedFromLink(selfUrl))).getOrElse(Seq()).asJson,
-        "assets" -> Map[String, Json]().asJson,
+        "assets" -> Map[String, Json]().asJson, // TODO: for load_stac
       )
     }
 

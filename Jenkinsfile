@@ -38,7 +38,7 @@ pipeline {
     }
     parameters {
       booleanParam(name: 'skip_tests', defaultValue: false, description: 'Check this if you want to skip running tests.')
-      booleanParam(name: 'skip_sentinelhub_tests', defaultValue: true, description: 'Check this if you want to skip running Sentinel Hub tests.')
+      booleanParam(name: 'skip_sentinelhub_tests', defaultValue: false, description: 'Check this if you want to skip running Sentinel Hub tests.')
     }
     stages {
         stage('Checkout') {

@@ -130,7 +130,7 @@ public abstract class BatchJobMetadataTracker implements Serializable {
     public abstract void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls);
 
     public void addAuxiliaryFile(AuxiliaryFileWriter writer, String mediaType) {
-        /* "thunking" by means of an AuxiliaryFileWriter avoid the creation of these files in a sync context by putting
+        /* "thunking" by means of an AuxiliaryFileWriter avoids the writing of these files in a sync context by putting
         the decision in the hands of the BatchJobMetadataTracker implementation */
         addAuxiliaryFile(() -> writer.write(getBatchJobId()), mediaType);
     }
