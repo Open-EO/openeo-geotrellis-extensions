@@ -17,6 +17,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
+import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.SizeEstimator
@@ -182,6 +183,28 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val inputs = BatchJobMetadataTracker.tracker("").asDict().get("links")
 
     assertEquals(1,inputs.asInstanceOf[util.Map[String,util.List[String]]].get("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2").size())
+  }
+
+  @Test
+  def derivedFromDocument(): Unit = {
+    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+    val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
+
+    val layer = faparLayerProvider().readTileLayer(from = date, to = date, bbox, sc = sc)
+
+    layer
+      .toSpatial(date)
+      .collect()
+
+    val derivedFromDocuments = BatchJobMetadataTracker.tracker("").asDict()
+      .get(BatchJobMetadataTracker.AUXILIARY_FILES)
+      .asInstanceOf[util.List[BatchJobMetadataTracker.AuxiliaryFile]]
+
+    assertEquals(1, derivedFromDocuments.size())
+    assertEquals("application/geo+json", derivedFromDocuments.get(0).getMediaType)
+
+    val itemCollection = GeoJson.fromFile[JsonFeatureCollection](derivedFromDocuments.get(0).getPath)
+    assertTrue(itemCollection.getAllGeometries().nonEmpty)
   }
 
   @Test
