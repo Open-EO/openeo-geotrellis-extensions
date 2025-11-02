@@ -11,12 +11,12 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, Row, SaveMode, SparkSession}
+import org.openeo.geotrellis.SpatialToSpacetimeJoinRdd
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.layers.LayerProvider
 import org.openeo.geotrelliscommon.DatacubeSupport
-import org.openeo.geotrellis.{OpenEOProcesses, SpatialToSpacetimeJoinRdd}
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 

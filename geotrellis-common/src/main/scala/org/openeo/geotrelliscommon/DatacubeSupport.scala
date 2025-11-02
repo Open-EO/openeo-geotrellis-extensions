@@ -14,7 +14,6 @@ import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
-import scala.collection.Seq
 import scala.reflect.ClassTag
 import scala.util.control.Breaks.{break, breakable}
 
