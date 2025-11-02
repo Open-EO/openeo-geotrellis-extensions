@@ -198,7 +198,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
         withEnv(jdkEnv) {
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
             sh 'current_dir=$(pwd) && git config --global --add safe.directory  $current_dir'
-            def server = Artifactory.server('vitoartifactory' )
+            def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
             def releaseRepo = 'libs-release-public'
@@ -212,7 +212,6 @@ void build(skipTests = false, skipSentinelHubTests = false){
             if (skipTests) {
                 print "Maven will skip all tests"
                 rtMaven.opts += ' -DskipTests=true -DskipSentinelHubTests=true'
-                rtMaven.opts += ' -DskipSentinelHubTests=true'
             } else if (skipSentinelHubTests) {
                 print "Maven will only skip Sentinel Hub tests"
                 rtMaven.opts += ' -DskipSentinelHubTests=true'
