@@ -1,6 +1,11 @@
 package org.openeo.geotrelliscommon;
 
+import scala.Function0;
+import scala.Option;
+
 import java.io.Serializable;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -29,8 +34,27 @@ public abstract class BatchJobMetadataTracker implements Serializable {
         }
     }
 
-    public static String SH_PU = "Sentinelhub_Processing_Units";
-    public static String SH_FAILED_TILE_REQUESTS = "Sentinelhub_Failed_Tile_Requests";
+    public static class AuxiliaryFile implements Serializable {
+        private final String path;
+        private final String mediaType;
+
+        public AuxiliaryFile(Path path, String mediaType) {
+            this.path = path.toString();
+            this.mediaType = mediaType;
+        }
+
+        public Path getPath() {
+            return Paths.get(path);
+        }
+
+        public String getMediaType() {
+            return mediaType;
+        }
+    }
+
+    public static final String SH_PU = "Sentinelhub_Processing_Units";
+    public static final String SH_FAILED_TILE_REQUESTS = "Sentinelhub_Failed_Tile_Requests";
+    public static final String AUXILIARY_FILES = "auxiliary_files";
 
     private static Optional<Boolean> forceTracking = Optional.empty();
     public static void setGlobalTracking(boolean enable){
@@ -68,15 +92,18 @@ public abstract class BatchJobMetadataTracker implements Serializable {
         public void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls) {}
 
         @Override
+        public void addAuxiliaryFile(Function0<Path> writer, String mediaType) {}
+
+        @Override
         public Map<String, Object> asDict() {
             return Collections.emptyMap();
         }
     };
 
     public static BatchJobMetadataTracker tracker(String id) {
-        if((forceTracking.isPresent() && forceTracking.get()) || (!forceTracking.isPresent() && System.getenv().containsKey("OPENEO_BATCH_JOB_ID"))){
+        if ((forceTracking.isPresent() && forceTracking.get()) || (forceTracking.isEmpty() && getBatchJobId().nonEmpty())) {
             return trackers.getOrDefault(id, defaultTracker); // TODO: nothing is ever put into this map so will always return defaultTracker
-        }else{
+        } else {
             return dummyTracker;
         }
     }
@@ -101,6 +128,24 @@ public abstract class BatchJobMetadataTracker implements Serializable {
      * Different name than 'addInputProducts' to avoid "both methods have same erasure" compiler error.
      */
     public abstract void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls);
+
+    public void addAuxiliaryFile(AuxiliaryFileWriter writer, String mediaType) {
+        /* "thunking" by means of an AuxiliaryFileWriter avoids the writing of these files in a sync context by putting
+        the decision in the hands of the BatchJobMetadataTracker implementation */
+        addAuxiliaryFile(() -> writer.write(getBatchJobId()), mediaType);
+    }
+
+    protected abstract void addAuxiliaryFile(Function0<Path> writer, String mediaType);
+
+    @SuppressWarnings("unused")
+    public void addAuxiliaryFile(String path, String mediaType) {
+        /* convenience function for Python unit tests */
+        addAuxiliaryFile((jobId) -> Paths.get(path), mediaType);
+    }
+
+    private static Option<String> getBatchJobId() {
+        return Option.apply(System.getenv("OPENEO_BATCH_JOB_ID"));
+    }
 
     public abstract Map<String, Object> asDict();
 }

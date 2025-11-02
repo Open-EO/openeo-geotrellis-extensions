@@ -365,15 +365,15 @@ class AggregatePolygonProcess {
     }
 
     val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*)
-      if(scriptBuilder.nodataIsIgnored) {
-        // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
-        // this approach filters out nodata for the computation, but restores it in the output.
-        val requiredRows = dataframe.select("date", "feature_index").distinct()
-        val joined = requiredRows.join(aggregated, Seq("date", "feature_index"), "left")
-        joined.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
-      }else{
-        aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
-      }
+    if (scriptBuilder.nodataIsIgnored) {
+      // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
+      // this approach filters out nodata for the computation, but restores it in the output.
+      val requiredRows = dataframe.select("date", "feature_index").distinct()
+      val joined = requiredRows.join(aggregated, Seq("date", "feature_index"), "left")
+      joined.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    } else {
+      aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    }
 
     CreoS3Utils.waitTillPathAvailable(Paths.get(outputPath).resolve("_SUCCESS").toString)
   }

@@ -9,7 +9,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.{AfterAll, AfterEach, BeforeAll, BeforeEach, Test}
+import org.junit.jupiter.api.{AfterAll, AfterEach, BeforeEach, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
 import org.openeo.geotrellis.layers.NetCDFCollectionTest.{getClass, sc}

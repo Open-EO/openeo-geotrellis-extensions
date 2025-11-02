@@ -321,15 +321,6 @@
                 <configuration>
                     <parallel>classes</parallel>
                     <threadCount>3</threadCount>
-                    <environmentVariables>
-                        <PATH>../venv/bin:${env.PATH}</PATH>
-                        <LD_LIBRARY_PATH>../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
-                        <PROJ_LIB>/usr/share/proj</PROJ_LIB>
-                        <SPARK_LOCAL_IP>127.0.0.1</SPARK_LOCAL_IP>
-                    </environmentVariables>
-                    <systemPropertyVariables>
-                        <software.amazon.awssdk.http.service.impl>software.amazon.awssdk.http.apache.ApacheSdkHttpService</software.amazon.awssdk.http.service.impl>
-                    </systemPropertyVariables>
                     <reuseForks>false</reuseForks>
                     <includes>
                         <include>**/Test*.*</include>

@@ -1132,8 +1132,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         if(maxKeys>4) {
           DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
         }else{
+
           //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
-          val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
+          val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
           val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
           val dates = readKeysToRasterSourcesResult._4.map(_._2.nominalDate).distinct
           val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
@@ -1611,7 +1612,17 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       feature <- overlappingFeatures
     } yield  deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams,targetResolution)).flatMap(_.toList)
 
-    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,overlappingRasterSources.map(_._2.id).asJava)
+    val tracker = BatchJobMetadataTracker.tracker("")
+    tracker.addInputProducts(
+      openSearchCollectionId,
+      overlappingRasterSources.map { case (_, feature) => feature.id }.asJava
+    )
+
+    tracker.addAuxiliaryFile(
+      new DerivedFromDocumentWriter(inputFeatures = overlappingRasterSources.map { case (_, feature) => feature }),
+      "application/geo+json",
+    )
+
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
 
