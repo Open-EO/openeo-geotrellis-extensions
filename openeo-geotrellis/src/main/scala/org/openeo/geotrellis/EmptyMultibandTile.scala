@@ -1,6 +1,6 @@
 package org.openeo.geotrellis
 
-import geotrellis.raster.{ArrayMultibandTile, BitCells, BitConstantTile, ByteCells, ByteConstantTile, ByteUserDefinedNoDataCellType, CellType, DoubleCells, DoubleConstantTile, DoubleUserDefinedNoDataCellType, FloatCells, FloatConstantTile, FloatUserDefinedNoDataCellType, HasNoData, IntCells, IntConstantTile, IntUserDefinedNoDataCellType, MacroMultibandCombiners, MultibandTile, NODATA, ShortCells, ShortConstantTile, ShortUserDefinedNoDataCellType, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortConstantTile, UShortUserDefinedNoDataCellType}
+import geotrellis.raster.{ArrayMultibandTile, BitCells, BitConstantTile, ByteCells, ByteConstantTile, ByteUserDefinedNoDataCellType, CellType, DoubleArrayTile, DoubleCells, DoubleConstantTile, DoubleUserDefinedNoDataCellType, FloatArrayTile, FloatCells, FloatConstantTile, FloatUserDefinedNoDataCellType, HasNoData, IntCells, IntConstantTile, IntUserDefinedNoDataCellType, MacroMultibandCombiners, MultibandTile, NODATA, ShortCells, ShortConstantTile, ShortUserDefinedNoDataCellType, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortConstantTile, UShortUserDefinedNoDataCellType, doubleNODATA, floatNODATA}
 
 object EmptyMultibandTile{
 
@@ -25,9 +25,9 @@ object EmptyMultibandTile{
       case ct: IntUserDefinedNoDataCellType => IntConstantTile(ct.noDataValue ,cols, rows, ct)
       case ct: IntCells => IntConstantTile(t.asInstanceOf[HasNoData[Int]].noDataValue ,cols, rows, ct)
       case ct: FloatUserDefinedNoDataCellType => FloatConstantTile(ct.noDataValue ,cols, rows, ct)
-      case ct: FloatCells => FloatConstantTile(t.asInstanceOf[HasNoData[Float]].noDataValue ,cols, rows, ct)
+      case ct: FloatCells => FloatArrayTile.fill(floatNODATA, cols,rows) // floatconstanttile doesn't behave as expected
       case ct: DoubleUserDefinedNoDataCellType => DoubleConstantTile(ct.noDataValue ,cols, rows, ct)
-      case ct: DoubleCells => DoubleConstantTile(t.asInstanceOf[HasNoData[Double]].noDataValue ,cols, rows, ct)
+      case ct: DoubleCells => DoubleArrayTile.fill(doubleNODATA, cols,rows) // doubleconstanttile doesn't behave as expected
     }
   }
 
