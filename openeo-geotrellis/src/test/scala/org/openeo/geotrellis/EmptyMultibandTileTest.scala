@@ -1,14 +1,14 @@
 package org.openeo.geotrellis
 
-import java.util
 import geotrellis.raster.CellType.constantNoDataCellTypes
-import geotrellis.raster.{CellType, FloatUserDefinedNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, Tile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType}
+import geotrellis.raster.{CellType, DoubleCellType, FloatCellType, FloatUserDefinedNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType}
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
 
+import java.util
 import scala.collection.JavaConverters._
 
 object EmptyMultibandTileTest {
@@ -18,6 +18,8 @@ object EmptyMultibandTileTest {
     list.add(Array[CellType](IntUserDefinedNoDataCellType(12)))
     list.add(Array[CellType](UByteUserDefinedNoDataCellType(12)))
     list.add(Array[CellType](FloatUserDefinedNoDataCellType(12)))
+    list.add(Array[CellType](DoubleCellType))
+    list.add(Array[CellType](FloatCellType))
 
     list.addAll(constantNoDataCellTypes.map(c => Array[CellType](c)).asJavaCollection)
     list
