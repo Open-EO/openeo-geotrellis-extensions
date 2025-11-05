@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+
+if [ -d ../venv ] ; then echo 'venv already exists' ;
+else python -m venv ../venv && . ../venv/bin/activate && pip install numpy xarray setuptools wheel && pip install jep==4.2.2 --no-cache-dir --no-build-isolation && pip install openeo openeo_driver
+fi

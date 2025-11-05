@@ -231,7 +231,7 @@
         <dependency>
             <groupId>black.ninia</groupId>
             <artifactId>jep</artifactId>
-            <version>4.1.1</version>
+            <version>4.2.2</version>
         </dependency>
         <dependency>
             <groupId>ai.catboost</groupId>
@@ -303,7 +303,6 @@
     </dependencies>
     <build>
         <plugins>
-
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>versions-maven-plugin</artifactId>
@@ -321,6 +320,12 @@
                 <configuration>
                     <parallel>classes</parallel>
                     <threadCount>3</threadCount>
+                    <environmentVariables>
+                        <PATH>../venv/bin:${env.PATH}</PATH>
+                        <LD_LIBRARY_PATH>../venv/lib/python3.11/site-packages/jep</LD_LIBRARY_PATH>
+                        <PROJ_LIB>/usr/share/proj</PROJ_LIB>
+                        <SPARK_LOCAL_IP>127.0.0.1</SPARK_LOCAL_IP>
+                    </environmentVariables>
                     <reuseForks>false</reuseForks>
                     <includes>
                         <include>**/Test*.*</include>
