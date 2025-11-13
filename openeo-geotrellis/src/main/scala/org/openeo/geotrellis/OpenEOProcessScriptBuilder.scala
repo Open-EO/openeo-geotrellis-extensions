@@ -2,8 +2,11 @@ package org.openeo.geotrellis
 
 import ai.catboost.CatBoostModel
 import ai.catboost.spark.CatBoostClassificationModel
+import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, OrtUtil, TensorInfo}
+import java.nio.file.{Files, Paths}
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
+import geotrellis.raster.{ArrayTile, BitCellType, ByteArrayTile, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleArrayTile, DoubleConstantNoDataCellType, DoubleConstantTile, FloatArrayTile, FloatConstantNoDataCellType, FloatConstantTile, IntArrayTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortArrayTile, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
+import org.apache.commons.io.FileUtils
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.descriptive.rank.Percentile.EstimationType
@@ -16,6 +19,7 @@ import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor
 
+import java.net.URL
 import java.time.format.DateTimeFormatter
 import java.time.temporal.{ChronoUnit, TemporalAccessor}
 import java.time.{Duration, ZonedDateTime}
@@ -1239,6 +1243,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           case "array_append" => arrayAppendFunction(arguments)
           case "array_create" => arrayCreateFunction(arguments)
           case "array_apply" => arrayApplyFunction(arguments)
+          case "predict_onnx" if hasData => predictONNXFunction(arguments)
           case "predict_random_forest" if hasData => predictRandomForestFunction(arguments)
           case "predict_catboost" if hasData => predictCatBoostFunction(arguments)
           case "predict_probabilities" if hasData => predictCatBoostProbabilitiesFunction(arguments)
@@ -1481,6 +1486,128 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       Seq.fill(repeat)(data).flatten.map(_.convert(targetType))
     }
     bandFunction
+  }
+
+  private def predictONNXFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    val inputFunction: OpenEOProcess = getProcessArg("data")
+    val model = arguments.get("model")
+
+    def flattenNestedArray(multiArray: Array[_], outputShape: Array[Long], onnxType:OnnxJavaType): ArrayTile = {
+      onnxType match {
+        case OnnxJavaType.FLOAT =>
+          val resultArray = if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Float]]]]].flatten.flatten.flatten
+          else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Float]]]].flatten.flatten
+          else if (outputShape.length == 2) multiArray.asInstanceOf[Array[Array[Float]]].flatten
+          else throw new IllegalArgumentException(f"ONNX: Unsupported output shape : ${outputShape.mkString("Array(", ", ", ")")}")
+          FloatArrayTile(resultArray, outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
+        case OnnxJavaType.DOUBLE =>
+          val resultArray =
+            if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Double]]]]].flatten.flatten.flatten
+            else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Double]]]].flatten.flatten
+            else if (outputShape.length == 2) multiArray.asInstanceOf[Array[Array[Double]]].flatten
+            else throw new IllegalArgumentException(f"ONNX: Unsupported output shape : ${outputShape.mkString("Array(", ", ", ")")}")
+          DoubleArrayTile(resultArray, outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
+        case OnnxJavaType.INT32 =>
+          val resultArray =
+            if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Double]]]]].flatten.flatten.flatten
+            else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Double]]]].flatten.flatten
+            else if (outputShape.length == 2) multiArray.asInstanceOf[Array[Array[Double]]].flatten
+            else throw new IllegalArgumentException(f"ONNX: Unsupported output shape : ${outputShape.mkString("Array(", ", ", ")")}")
+          IntArrayTile(resultArray.asInstanceOf[Array[Int]], outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
+        case OnnxJavaType.INT16 =>
+          val resultArray =
+            if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Double]]]]].flatten.flatten.flatten
+            else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Double]]]].flatten.flatten
+            else if (outputShape.length == 2) multiArray.asInstanceOf[Array[Array[Double]]].flatten
+            else throw new IllegalArgumentException(f"ONNX: Unsupported output shape : ${outputShape.mkString("Array(", ", ", ")")}")
+          ShortArrayTile(resultArray.asInstanceOf[Array[Short]], outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
+        case OnnxJavaType.INT8 =>
+          val resultArray =
+            if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Double]]]]].flatten.flatten.flatten
+            else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Double]]]].flatten.flatten
+            else if (outputShape.length == 2) multiArray.asInstanceOf[Array[Array[Double]]].flatten
+            else throw new IllegalArgumentException(f"ONNX: Unsupported output shape : ${outputShape.mkString("Array(", ", ", ")")}")
+          ByteArrayTile(resultArray.asInstanceOf[Array[Byte]], outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
+        case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported output type of ONNX model : $onnxType")
+      }
+    }
+    val operator = (rs: Seq[Tile], context: Map[String, Any]) => {
+      val env = OrtEnvironment.getEnvironment()
+      val modelPath = Paths.get(model.toString)
+      val (modelFile, isTemp) = if (Files.exists(modelPath)) {
+        (model.toString,false)
+      } else {
+        val tempFileName = Files.createTempFile(null, ".onnx")
+        FileUtils.copyURLToFile(new URL(model.toString), tempFileName.toFile)
+        (tempFileName.toString,true)
+      }
+      val session = env.createSession(modelFile, new OrtSession.SessionOptions())
+      val inputNames = session.getInputNames
+      val outputNames = session.getOutputNames
+      if (outputNames.size()>1)
+        throw new IllegalArgumentException(
+          s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
+      if (inputNames.size()>1)
+        throw new IllegalArgumentException(
+          s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
+
+      val inputName = inputNames.toArray()(0).asInstanceOf[String]
+      val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+      val inputShape = inputInfo.getShape
+
+      val outputName = outputNames.toArray()(0).asInstanceOf[String]
+      val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
+      val outputShape = outputInfo.getShape
+
+      if (!((inputShape.length==4 && inputShape(0)==1 && inputShape(1)==1)
+        || (inputShape.length==3 && inputShape(0)==1)
+        || (inputShape.length==2)) )
+        throw new IllegalArgumentException(
+          s"ONNX: shape ${inputShape.mkString("Array(", ", ", ")")} is currently not supported.")
+      if (inputShape.equals(outputShape)) throw new IllegalArgumentException(
+        s"ONNX: only supports output shape that is the same as input shape, with output shape ${outputShape.mkString("Array(", ", ", ")")} and input shape ${inputShape.mkString("Array(", ", ", ")")}.")
+      val inputType = inputInfo.`type`
+      val outputType = outputInfo.`type`
+
+      val result = rs.map(tile =>{
+        val inputArray = inputType match {
+          case OnnxJavaType.FLOAT =>
+            if (!tile.isInstanceOf[FloatArrayTile]) {
+              throw new IllegalArgumentException(f"ONNX: expected Float as inputType, but got: ${tile.cellType}")
+            }
+            OrtUtil.reshape(tile.asInstanceOf[FloatArrayTile].array, inputShape)
+          case OnnxJavaType.DOUBLE =>
+            OrtUtil.reshape(tile.asInstanceOf[DoubleArrayTile].array, inputShape)
+          case OnnxJavaType.INT32 =>
+            OrtUtil.reshape(tile.asInstanceOf[IntArrayTile].array, inputShape)
+          case OnnxJavaType.INT16 =>
+            OrtUtil.reshape(tile.asInstanceOf[ShortArrayTile].array, inputShape)
+          case OnnxJavaType.INT8 =>
+            OrtUtil.reshape(tile.asInstanceOf[ByteArrayTile].array, inputShape)
+          case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported input type of ONNX model : $onnxType")
+        }
+        val tensor = OnnxTensor.createTensor(env, inputArray)
+        val inputs = java.util.Map.of(inputName, tensor);
+        try {
+          val results = session.run(inputs)
+          val resultValue = results.get(0).getValue.asInstanceOf[Array[_]]
+          val resultTile = flattenNestedArray(resultValue, outputShape, outputType)
+
+          try {
+          } finally {
+            if (results != null) {results.close()}
+          }
+          resultTile
+        }
+      })
+      if (isTemp){Files.delete(Paths.get(modelFile))}
+      result
+    }
+
+    def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
+      operator(inputFunction(context)(tiles), context)
+    }
+    composed
   }
 
   private def predictRandomForestFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {

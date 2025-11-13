@@ -1,7 +1,8 @@
 package org.openeo.geotrellis
 
 import ai.catboost.spark._
-import geotrellis.raster.{FloatArrayTile, FloatCellType, Tile}
+import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, OrtUtil, TensorInfo}
+import geotrellis.raster.{ByteArrayTile, DoubleArrayTile, FloatArrayTile, FloatCellType, IntArrayTile, ShortArrayTile, Tile}
 import org.apache.spark.SparkContext
 import org.apache.spark.ml.linalg.{SQLDataTypes, Vectors}
 import org.apache.spark.sql.types.{IntegerType, StructField, StructType}
@@ -107,5 +108,57 @@ class OpenEOProcessScriptBuilderTest {
     assertEquals(2, result.map(t => t.getDouble(0,2)).zipWithIndex.maxBy(_._1)._2)
     assertEquals(0, result.map(t => t.getDouble(3,2)).zipWithIndex.maxBy(_._1)._2)
     assertEquals(2, result.map(t => t.getDouble(3,3)).zipWithIndex.maxBy(_._1)._2)
+  }
+
+  def predictWithONNX(tiles: mutable.Buffer[Tile], modelURL:String): Seq[Tile] = {
+    val spark = SparkSession.builder()
+      .master("local[1]")
+      .appName("ONNXTest")
+      .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+      .getOrCreate()
+
+
+    // Reduce tiles using classifier predictions.
+    val builder = new OpenEOProcessScriptBuilder
+    val arguments = new util.HashMap[String, AnyRef]
+    arguments.put("model", modelURL)
+    arguments.put("data", "dummy")
+    builder.defaultDataParameterName = "theData"
+    builder.defaultInputDataType = FloatCellType.name
+    builder.expressionStart("predict_onnx", arguments)
+
+    builder.argumentStart("data")
+    builder.fromParameter("theData")
+    builder.argumentEnd()
+    builder.argumentStart("model")
+    builder.argumentEnd()
+
+    builder.expressionEnd("predict_onnx", arguments)
+
+    val function = builder.generateFunction()
+    val result = function.apply(tiles.toSeq)
+    SparkContext.getOrCreate.stop()
+    result
+  }
+
+  @Test
+  def  testONNX(): Unit = {
+    val layoutCols = 1
+    val layoutRows = 1
+    val arrayCols = 256
+    val arrayRows = 256
+    val numberDates = 1
+    val numberElem = layoutCols * layoutRows * arrayCols * arrayRows * numberDates
+    val tile0 = FloatArrayTile(Array.fill(numberElem / 4)(1f) ++ Array.fill(numberElem / 2)(30f) ++ Array.fill(numberElem / 4)(256f), arrayCols, arrayRows)
+    val tiles = mutable.Buffer[Tile](tile0, tile0, tile0)
+
+
+    val url = "https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx"
+    val resultURL = predictWithONNX(tiles, url)
+    assertEquals(3, resultURL.length)
+    val path = "/home/elien/IdeaProjects/openeo-geotrellis-extensions/openeo-geotrellis/src/test/resources/org/openeo/geotrellis/test_model.onnx"
+    val resultPath = predictWithONNX(tiles, path)
+    assertEquals(3, resultPath.length)
+    assertEquals(resultPath,resultURL)
   }
 }
