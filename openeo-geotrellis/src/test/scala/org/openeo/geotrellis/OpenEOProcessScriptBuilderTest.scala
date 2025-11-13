@@ -156,7 +156,7 @@ class OpenEOProcessScriptBuilderTest {
     val url = "https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx"
     val resultURL = predictWithONNX(tiles, url)
     assertEquals(3, resultURL.length)
-    val path = "/home/elien/IdeaProjects/openeo-geotrellis-extensions/openeo-geotrellis/src/test/resources/org/openeo/geotrellis/test_model.onnx"
+    val path = getClass.getResource("/org/openeo/geotrellis/test_model.onnx").getPath
     val resultPath = predictWithONNX(tiles, path)
     assertEquals(3, resultPath.length)
     assertEquals(resultPath,resultURL)
