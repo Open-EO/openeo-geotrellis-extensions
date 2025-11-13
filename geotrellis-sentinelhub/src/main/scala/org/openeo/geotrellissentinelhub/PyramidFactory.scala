@@ -403,6 +403,12 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               }.toList.asJava
             )
 
+            // TODO: save input features as STAC item collection as well
+            val selfUrls = for {
+              Feature(_, metadata) <- features.values
+              selfUrl <- metadata.selfUrl
+            } yield selfUrl
+
             // In test over England, there where up to 0.003 deviations on long line segments due to curvature
             // change between CRS. Here we convert that distance to the value in the polygon specific CRS.
             //TODO we introduced densifier below, which may solve this problem without requiring this buffer

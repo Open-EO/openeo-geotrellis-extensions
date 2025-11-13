@@ -216,11 +216,6 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.22.2</version>
                 <configuration>
-                    <environmentVariables>
-                        <PATH>../venv/bin:${env.PATH}</PATH>
-                        <CPL_LOG>/dev/null</CPL_LOG>
-                        <LD_LIBRARY_PATH>../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
-                    </environmentVariables>
                     <reuseForks>false</reuseForks>
                     <includes>
                         <include>**/Test*.*</include>
