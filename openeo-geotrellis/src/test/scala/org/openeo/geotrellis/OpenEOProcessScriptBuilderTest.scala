@@ -121,7 +121,6 @@ class OpenEOProcessScriptBuilderTest {
     // Reduce tiles using classifier predictions.
     val builder = new OpenEOProcessScriptBuilder
     val arguments = new util.HashMap[String, AnyRef]
-    arguments.put("model", modelURL)
     arguments.put("data", "dummy")
     builder.defaultDataParameterName = "theData"
     builder.defaultInputDataType = FloatCellType.name
@@ -130,12 +129,13 @@ class OpenEOProcessScriptBuilderTest {
     builder.argumentStart("data")
     builder.fromParameter("theData")
     builder.argumentEnd()
-    builder.argumentStart("model")
-    builder.argumentEnd()
 
     builder.expressionEnd("predict_onnx", arguments)
 
-    val function = builder.generateFunction()
+    val context = new util.HashMap[String,Any]
+    context.put("context", modelURL)
+
+    val function = builder.generateFunction(context)
     val result = function.apply(tiles.toSeq)
     SparkContext.getOrCreate.stop()
     result
@@ -161,4 +161,5 @@ class OpenEOProcessScriptBuilderTest {
     assertEquals(3, resultPath.length)
     assertEquals(resultPath,resultURL)
   }
+  //TODO add more tests for different shapes and types
 }

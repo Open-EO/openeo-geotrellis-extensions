@@ -1490,10 +1490,9 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
   private def predictONNXFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
     val inputFunction: OpenEOProcess = getProcessArg("data")
-    val model = arguments.get("model")
 
     def flattenNestedArray(multiArray: Array[_], outputShape: Array[Long], onnxType:OnnxJavaType): ArrayTile = {
-      onnxType match {
+      onnxType match { // TODO check if the multiArray contains the right type (same as the onnx type) and throw clear error if not.
         case OnnxJavaType.FLOAT =>
           val resultArray = if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Float]]]]].flatten.flatten.flatten
           else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Float]]]].flatten.flatten
@@ -1533,9 +1532,10 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     }
     val operator = (rs: Seq[Tile], context: Map[String, Any]) => {
       val env = OrtEnvironment.getEnvironment()
-      val modelPath = Paths.get(model.toString)
+      val model = context.getOrElse("context",null).toString
+      val modelPath = Paths.get(model)
       val (modelFile, isTemp) = if (Files.exists(modelPath)) {
-        (model.toString,false)
+        (model,false)
       } else {
         val tempFileName = Files.createTempFile(null, ".onnx")
         FileUtils.copyURLToFile(new URL(model.toString), tempFileName.toFile)
@@ -1544,12 +1544,14 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       val session = env.createSession(modelFile, new OrtSession.SessionOptions())
       val inputNames = session.getInputNames
       val outputNames = session.getOutputNames
-      if (outputNames.size()>1)
-        throw new IllegalArgumentException(
-          s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
       if (inputNames.size()>1)
+        // TODO support the case for multiple inputs
         throw new IllegalArgumentException(
           s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
+      if (outputNames.size()>1)
+        // TODO support the case for multiple outputs
+        throw new IllegalArgumentException(
+          s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
 
       val inputName = inputNames.toArray()(0).asInstanceOf[String]
       val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
@@ -1561,11 +1563,17 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
       if (!((inputShape.length==4 && inputShape(0)==1 && inputShape(1)==1)
         || (inputShape.length==3 && inputShape(0)==1)
-        || (inputShape.length==2)) )
+        || (inputShape.length==2)) ) {
+        // TODO also allow onnx models where more shapes are allowed (bands and time)
+        // TODO check the dimension names of the input info
         throw new IllegalArgumentException(
           s"ONNX: shape ${inputShape.mkString("Array(", ", ", ")")} is currently not supported.")
-      if (inputShape.equals(outputShape)) throw new IllegalArgumentException(
-        s"ONNX: only supports output shape that is the same as input shape, with output shape ${outputShape.mkString("Array(", ", ", ")")} and input shape ${inputShape.mkString("Array(", ", ", ")")}.")
+      }
+      if (!inputShape.sameElements(outputShape)) {
+        // TODO Analyze the problems that might occur if the input and output shape differ
+        throw new IllegalArgumentException(
+          s"ONNX: only supports output shape that is the same as input shape, with output shape ${outputShape.mkString("Array(", ", ", ")")} and input shape ${inputShape.mkString("Array(", ", ", ")")}.")
+      }
       val inputType = inputInfo.`type`
       val outputType = outputInfo.`type`
 
