@@ -694,10 +694,9 @@ object FileLayerProvider {
     }
 
     val clippedFeatures: RDD[vector.Feature[Geometry, (RasterSource, Feature)]] = sc.parallelize(geometricFeatures, inputNumberOfPartitions)
-      .map(eoProductFeature => {
-
-        val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
-        eoProductFeature.mapGeom(productGeometry => {
+      .map { case vector.Feature(productGeometry, data @ (_, feature)) =>
+        val productCRSOrDefault = feature.crs.getOrElse(targetCRS)
+        val intersection =
           try {
             val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
               val productGeometryProjected = ProjectedPolygons(productGeometry, LatLng).safeReproject(productCRSOrDefault, refine = true)
@@ -713,8 +712,8 @@ object FileLayerProvider {
             if (intersection.isValid && intersection.getArea > 0.0)
               intersection.reproject(productCRSOrDefault, targetCRS)
             else {
-              // consider rasterExtent as a better representation of an item's geometry
-              val intersection = (eoProductFeature.data._2.rasterExtent, eoProductFeature.data._2.crs) match {
+              // consider rasterExtent as a better representation of an item's geometry in its native CRS
+              val intersection = (feature.rasterExtent, feature.crs) match {
                 case (Some(rasterExtent), Some(crs)) if crs == targetCRS => rasterExtent.toPolygon() intersection cubeExtent.toPolygon()
                 case _ => emptyPoint
               }
@@ -726,8 +725,8 @@ object FileLayerProvider {
             case e: Exception => logger.warn("Exception while determining intersection.", e); emptyPoint
           }
 
-        })
-      }).filter(!_.geom.equals(emptyPoint))
+        vector.Feature(intersection, data)
+      }.filter(!_.geom.equals(emptyPoint))
 
     if(maybeKeys.isDefined) {
       val transform = metadata.mapTransform
