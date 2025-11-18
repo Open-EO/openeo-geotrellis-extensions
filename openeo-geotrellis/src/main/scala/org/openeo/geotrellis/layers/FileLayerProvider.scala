@@ -707,29 +707,20 @@ object FileLayerProvider {
 
               productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtentPolygon.getFlatMultiPolygon)
             } else {
-              // TODO: do not reproject if targetCrs == productCRSOrDefault
-              /*productGeometry.reproject(LatLng, productCRSOrDefault).intersection(
-                if (targetCRS == productCRSOrDefault) cubeExtent.toPolygon() else cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01)
-              )*/
-              Files.writeString(Paths.get("/tmp/productGeometry.geojson"), productGeometry.toGeoJson())
-
-              val reprojectedFeatureGeometry = productGeometry.reproject(LatLng, productCRSOrDefault)
-              writeTiff(1, reprojectedFeatureGeometry.extent, productCRSOrDefault, "/tmp/reprojectedFeatureGeometry.tif")
-
-              val reprojectedCubeGeometry = cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01)
-              writeTiff(2, reprojectedCubeGeometry.extent, productCRSOrDefault, "/tmp/reprojectedCubeGeometry.tif")
-
-              reprojectedFeatureGeometry intersection reprojectedCubeGeometry
+              productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             }
+
             if (intersection.isValid && intersection.getArea > 0.0)
               intersection.reproject(productCRSOrDefault, targetCRS)
             else {
-              // use rasterExtent as a better representation of an item's geometry
-              (eoProductFeature.data._2.rasterExtent, eoProductFeature.data._2.crs) match {
+              // consider rasterExtent as a better representation of an item's geometry
+              val intersection = (eoProductFeature.data._2.rasterExtent, eoProductFeature.data._2.crs) match {
                 case (Some(rasterExtent), Some(crs)) if crs == targetCRS => rasterExtent.toPolygon() intersection cubeExtent.toPolygon()
                 case _ => emptyPoint
               }
-              // TODO: handle no intersection as well
+
+              if (intersection.isValid && intersection.getArea > 0.0) intersection
+              else emptyPoint
             }
           } catch {
             case e: Exception => logger.warn("Exception while determining intersection.", e); emptyPoint
@@ -753,19 +744,6 @@ object FileLayerProvider {
       clippedFeatures.clipToGrid(metadata.layout).partitionBy(metadataCubePartitioner)
     }
 
-  }
-
-  def writeTiff(value: Int, extent: Extent, crs: CRS, path: String): Unit = {
-    import geotrellis.raster.io.geotiff.SinglebandGeoTiff
-    import geotrellis.raster.IntArrayTile
-
-    val cols = 100
-    val rows = 100
-
-    val tile = IntArrayTile(Array.fill(cols * rows)(value), cols, rows)
-    SinglebandGeoTiff(tile, extent, crs).write(path)
-
-    println(s"wrote $path")
   }
 
   private val metadataCache =
