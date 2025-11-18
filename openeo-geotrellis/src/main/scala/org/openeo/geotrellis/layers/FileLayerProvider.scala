@@ -682,7 +682,6 @@ object FileLayerProvider {
   }
 
   private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS,  maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]], sc: SparkContext, datacubeParams: Option[DataCubeParameters]) = {
-    val emptyPoint = Point(0.0, 0.0)
     val cubeExtent = metadata.extent
 
     val inputNumberOfPartitions = if(maybeKeys.isDefined) {
@@ -694,10 +693,9 @@ object FileLayerProvider {
     }
 
     val clippedFeatures: RDD[vector.Feature[Geometry, (RasterSource, Feature)]] = sc.parallelize(geometricFeatures, inputNumberOfPartitions)
-      .map(eoProductFeature => {
-
-        val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
-        eoProductFeature.mapGeom(productGeometry => {
+      .flatMap { case vector.Feature(productGeometry, data @ (_, feature)) =>
+        val productCRSOrDefault = feature.crs.getOrElse(targetCRS)
+        val intersection =
           try {
             val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
               val productGeometryProjected = ProjectedPolygons(productGeometry, LatLng).safeReproject(productCRSOrDefault, refine = true)
@@ -709,17 +707,25 @@ object FileLayerProvider {
             } else {
               productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             }
-            if (intersection.isValid && intersection.getArea > 0.0) {
-              intersection.reproject(productCRSOrDefault, targetCRS)
-            } else {
-              emptyPoint
+
+            if (intersection.isValid && intersection.getArea > 0.0)
+              Some(intersection.reproject(productCRSOrDefault, targetCRS))
+            else {
+              // consider rasterExtent as a better representation of an item's geometry in its native CRS
+              (feature.rasterExtent, feature.crs) match {
+                case (Some(rasterExtent), Some(crs)) if crs == targetCRS =>
+                  val intersection = rasterExtent.toPolygon() intersection cubeExtent.toPolygon()
+                  if (intersection.isValid && intersection.getArea > 0.0) Some(intersection)
+                  else None
+                case _ => None
+              }
             }
           } catch {
-            case e: Exception => logger.warn("Exception while determining intersection.", e); emptyPoint
+            case e: Exception => logger.warn("Exception while determining intersection.", e); None
           }
 
-        })
-      }).filter(!_.geom.equals(emptyPoint))
+        intersection.map(vector.Feature(_, data))
+      }
 
     if(maybeKeys.isDefined) {
       val transform = metadata.mapTransform
