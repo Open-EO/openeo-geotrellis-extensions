@@ -286,6 +286,7 @@ package object geotiff {
             DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
           }
           val overviews = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
+            // TODO dsamaey
             val decimationFactors = List(4,8,16)
             val resampleMethod = getOverviewResampleMethod(formatOptions)
             var previousTile = tile.resample(croppedExtent, tileLayout.tileCols / 2, tileLayout.tileRows / 2, resampleMethod)
@@ -315,11 +316,25 @@ package object geotiff {
       val bandIndices = sequence.map(_._3).toSet.toList.asJava
 
       val segmentCount = bandSegmentCount * tiffBands
+      def defaultOverviewDecimations(gridBounds: GridBounds[Int]): List[Int] = {
+        val overviewLevels: Int = {
+          val pixels = math.max(gridBounds.colMax, gridBounds.rowMax).toDouble
+          val blocks = pixels / 1024
+          math.ceil(math.log(blocks) / math.log(2)).toInt
+        }
+
+        val start = formatOptions.overviews.toUpperCase() match {
+          case "AUTO" => 1
+          case _ => 0
+        }
+        (start until overviewLevels).map{ l => math.pow(2, l + 1).toInt }.toList
+      }
+
 
       val geotiffMultibandTiles = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
         logger.info(s"Add overviews for ${filename}, with resample method ${getOverviewResampleMethod(formatOptions)}")
-        val decimationFactors = List(4,8,16)
-        (0 until 3).toList.map(i => {
+        val decimationFactors = defaultOverviewDecimations(gridBounds)
+        decimationFactors.indices.toList.map(i => {
           val decimationFactor = decimationFactors(i)
           val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._3(i))).toMap
           val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor)
@@ -1099,11 +1114,17 @@ package object geotiff {
       fo.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
     ) {
       val resampleMethod = getOverviewResampleMethod(fo)
-      val baseOverview = geotiff.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
-      val firstOverview = baseOverview.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
-      val secondOverview = firstOverview.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
-      val thirdOverview = secondOverview.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
-      geotiff = MultibandGeoTiff(geotiff.tile,geotiff.extent,geotiff.crs,geotiff.tags,geotiff.options,List(firstOverview,secondOverview,thirdOverview))
+      val initialReduction = fo.overviews.toUpperCase() match {
+        case "AUTO" => 4
+        case "ALL" => 2
+      }
+
+      val baseOverview = geotiff.buildOverview(resampleMethod,initialReduction,blockSize = fo.tileSize)
+      var overviews = List(baseOverview)
+      while (overviews.last.tile.size > 1024*1024) {
+        overviews = overviews :+ overviews.last.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
+      }
+      geotiff = MultibandGeoTiff(geotiff.tile,geotiff.extent,geotiff.crs,geotiff.tags,geotiff.options,overviews)
         .withCompression(formatOptions.getOrElse(new GTiffOptions))
 
     }
