@@ -328,7 +328,7 @@ package object geotiff {
 
         decimationFactors.indices.toList.map(i => {
           val decimationFactor = decimationFactors(i)
-          val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.filter(tuple => tuple._2._3.nonEmpty).map(tuple => (tuple._1, tuple._2._3(i))).toMap
+          val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._3(i))).toMap
           val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor)
           toTiff(overviewSequence, GridBounds(0, 0, gridBounds.colMax / decimationFactor, gridBounds.rowMax / decimationFactor), overviewLayout, compression, cellTypes.head, tiffBands, segmentCount)
         })
