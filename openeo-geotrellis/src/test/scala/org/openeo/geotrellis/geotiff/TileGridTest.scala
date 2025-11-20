@@ -9,11 +9,10 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel.DISK_ONLY
 import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.{BeforeAll, Test}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.{AfterClass, Assert}
 import org.openeo.geotrellis.LayerFixtures.rgbLayerProvider
 import org.openeo.geotrellis.png.PngTest
-import org.openeo.geotrellis.stac.Item
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrellis.{LayerFixtures, geotiff}
 
@@ -22,7 +21,7 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
 import java.time.{LocalDate, ZonedDateTime}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 object TileGridTest {
   private var sc: SparkContext = _
@@ -45,7 +44,7 @@ object TileGridTest {
     sc = new SparkContext(conf)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit =
     sc.stop()
 }
@@ -81,7 +80,7 @@ class TileGridTest {
     Assert.assertEquals(expectedPaths, actualPaths.toSet)
 
     val extent = bbox.reproject(spatialLayer.metadata.crs)
-    val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
+    val cropBounds = Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax).asJava
 
     val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6))
     val expectedCroppedPaths = Set(
@@ -134,7 +133,7 @@ class TileGridTest {
     }
 
     val extent = bbox.reproject(spatialLayer.metadata.crs)
-    val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
+    val cropBounds = Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax).asJava
 
     val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6),gtiffOptions)
     val expectedCroppedPaths = Set(
@@ -250,16 +249,12 @@ class TileGridTest {
 
     for (path <- expectedTiles){
       val tile = GeoTiff.readMultiband(path._1)
-      Assert.assertEquals(3,tile.overviews.size)
+      Assert.assertEquals(1,tile.overviews.size)
       Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
-      Assert.assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
-      Assert.assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
-      Assert.assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
+      Assert.assertEquals(math.ceil(colSize.toDouble/2).toInt,tile.overviews(0).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/2).toInt,tile.overviews(0).tile.rows)
     }
   }
 

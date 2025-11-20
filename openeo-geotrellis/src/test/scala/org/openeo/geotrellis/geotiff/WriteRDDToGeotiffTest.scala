@@ -11,20 +11,20 @@ import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
 import geotrellis.raster.resample.Min
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, ColorMaps, FloatUserDefinedNoDataCellType, IntArrayTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, UShortUserDefinedNoDataCellType, isData}
+import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, ColorMaps, GridBounds, IntArrayTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
 import geotrellis.vector.io.json.GeoJson
 import org.apache.spark.{SparkConf, SparkContext, SparkEnv}
 import org.junit.Assert._
+import org.junit.Rule
 import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.{BeforeAll, Test}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.rules.TemporaryFolder
-import org.junit.{AfterClass, Rule}
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons, geotiff}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.nio.file.{Files, Path, Paths}
@@ -34,8 +34,8 @@ import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 import java.util.zip.Deflater._
 import scala.annotation.meta.getter
-import scala.jdk.CollectionConverters._
 import scala.io.Source
+import scala.jdk.CollectionConverters._
 import scala.reflect.io.Directory
 
 
@@ -59,7 +59,7 @@ object WriteRDDToGeotiffTest{
     if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 
@@ -373,7 +373,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     assertEquals(3, paths.size())
 
     val tiff = GeoTiff.readMultiband(outDir.resolve("openEO_B01.tif").toString)
-    assertEquals(3, tiff.overviews.length)
+    assertEquals(1, tiff.overviews.length)
     tiff.raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_B02.tif").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_B03.tif").toString).raster.tile
@@ -429,16 +429,12 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     for (path <- expectedPaths){
       val tile = GeoTiff.readMultiband(path)
-      assertEquals(3,tile.overviews.size)
+      assertEquals(1,tile.overviews.size)
       assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
-      assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
-      assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
-      assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
-      assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
-      assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
-      assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
+      assertEquals(math.ceil(colSize.toDouble/2).toInt,tile.overviews(0).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/2).toInt,tile.overviews(0).tile.rows)
     }
 
     GeoTiff.readMultiband(outDir.resolve("testA/B01.tiff").toString).raster.tile
@@ -510,7 +506,10 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     def testValues(resampleMethod: String, expectedValues0:Array[Int], expectedValues1:Array[Int],expectedValue2:Int) = {
       options.setResampleMethod(resampleMethod)
-      saveRDDTemporal(layer, outDir.toString, formatOptions = options)
+      def reductionsForTest(gridBounds: GridBounds[Int], options: GTiffOptions): List[Int] = {
+        List(4, 8, 16)
+      }
+      saveRDDTemporal(layer, outDir.toString, formatOptions = options, overviewReductions = reductionsForTest)
 
       val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
       assertEquals(3, result.overviews.size)
@@ -537,8 +536,8 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
   @Test
   def testWriteMultibandTemporalRDDWithGapsOverviews(): Unit = {
-    val layoutCols = 8
-    val layoutRows = 4
+    val layoutCols = 18
+    val layoutRows = 14
     val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
     val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsOverview/")
@@ -551,7 +550,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
     assertEquals(3,result.overviews.size)
     val resampled = imageTile.resample(256*layoutCols/2,256*layoutRows/2)
-    val resampled0 = resampled.resample(256*layoutCols/4,256*layoutRows/4)
+    val resampled0 = resampled.resample(256*layoutCols/2,256*layoutRows/2)
     val overview0 = result.overviews.head.tile.band(0)
     assertEquals((-1,0),overview0.findMinMax)
     for (
@@ -561,34 +560,10 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     ) {
       assertEquals(resampled0.get(i,j), overview0.get(i,j))
     }
-    val resampled1 = resampled0.resample(256*layoutCols/8,256*layoutRows/8)
-    val overview1 = result.overviews(1).tile.band(0)
-    assertEquals((-1,0),overview1.findMinMax)
-    for (
-      i <- 0 until 256*layoutCols/8;
-      j <- 0 until 256*layoutRows/8;
-      if (overview1.get(i,j) == -1 || overview1.get(i,j) == 0)
-    ) {
-      assertEquals(resampled1.get(i,j), overview1.get(i,j))
-    }
-    val resampled2 = resampled1.resample(256*layoutCols/16,256*layoutRows/16)
-    val overview2 = result.overviews(2).tile.band(0)
-    assertEquals((-1,0),overview2.findMinMax)
-    for (
-      i <- 0 until 256*layoutCols/16;
-      j <- 0 until 256*layoutRows/16;
-      if (overview2.get(i,j) == -1 || overview2.get(i,j) == 0)
-    ) {
-      assertEquals(resampled2.get(i,j), overview2.get(i,j))
-    }
     val colSize = result.tile.cols
     val rowSize = result.tile.rows
-    assertEquals(math.ceil(colSize.toDouble/4).toInt,result.overviews(0).tile.cols)
-    assertEquals(math.ceil(rowSize.toDouble/4).toInt,result.overviews(0).tile.rows)
-    assertEquals(math.ceil(colSize.toDouble/8).toInt,result.overviews(1).tile.cols)
-    assertEquals(math.ceil(rowSize.toDouble/8).toInt,result.overviews(1).tile.rows)
-    assertEquals(math.ceil(colSize.toDouble/16).toInt,result.overviews(2).tile.cols)
-    assertEquals(math.ceil(rowSize.toDouble/16).toInt,result.overviews(2).tile.rows)
+    assertEquals(math.ceil(colSize.toDouble/2).toInt,result.overviews(0).tile.cols)
+    assertEquals(math.ceil(rowSize.toDouble/2).toInt,result.overviews(0).tile.rows)
   }
 
 
@@ -893,16 +868,12 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     for (path <- expectedPaths) {
       val tile = GeoTiff.readMultiband(path)
-      assertEquals(3,tile.overviews.size)
+      assertEquals(1,tile.overviews.size)
       assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
-      assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
-      assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
-      assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
-      assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
-      assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
-      assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
+      assertEquals(math.ceil(colSize.toDouble/2).toInt,tile.overviews(0).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/2).toInt,tile.overviews(0).tile.rows)
     }
 
     assertTrue(tiles.get(0).datetime.contains("T"))

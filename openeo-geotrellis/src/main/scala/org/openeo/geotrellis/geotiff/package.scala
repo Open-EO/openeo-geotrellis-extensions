@@ -7,7 +7,7 @@ import geotrellis.raster
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.crop._
 import geotrellis.raster.io.geotiff._
-import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression, Predictor, ZStdCompression}
+import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression, Predictor, ZStdCompression, Compressor}
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
@@ -56,7 +56,7 @@ package object geotiff {
   private val secondsPerDay = 86400L
   private val gdalProjLib = Option(System.getenv("OPENEO_GDAL_PROJ_LIB")).getOrElse("/usr/share/proj")
 
-  class MultiBandGeoTiffWithCompression( val t: MultibandGeoTiff) {
+  class MultiBandGeoTiffWithCompression(val t: MultibandGeoTiff) {
 
     def withCompression(options: GTiffOptions): MultibandGeoTiff = {
       var compression: Compression = {
@@ -64,7 +64,8 @@ package object geotiff {
           case "zstd" => ZStdCompression(options.compressionLevel)
           case "deflate" => DeflateCompression(options.compressionLevel)
           case _ => throw new IllegalArgumentException(f"Compression method ${options.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
-        }}
+        }
+      }
       if (options.compressionPredictor > 1) {
         compression = compression.withPredictor(Predictor(t.tile.toGeoTiffTile()))
         MultibandGeoTiff(t.tile.toArrayTile(), t.extent, t.crs, t.tags, GeoTiffOptions(compression), t.overviews)
@@ -138,11 +139,13 @@ package object geotiff {
                       path: String,
                       zLevel: Int = 6,
                       cropBounds: Option[Extent] = Option.empty[Extent],
-                      formatOptions: GTiffOptions = new GTiffOptions
-                     ): JList[(String, String, Extent)] = {
+                      formatOptions: GTiffOptions = new GTiffOptions,
+                      overviewReductions: (GridBounds[Int], GTiffOptions) => List[Int] = defaultOverviewReductions
+
+  ): JList[(String, String, Extent)] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
     formatOptions.assertNoConflicts()
-    val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions)
+    val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions, overviewReductions = overviewReductions)
     logger.warn("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
     //    val duplicates = ret.groupBy(_._2).filter(_._2.size > 1)
     //    if (duplicates.nonEmpty) {
@@ -225,10 +228,20 @@ package object geotiff {
     }
   }
 
-  private def cleanUpExecutorAttemptDirectory(parentDirectory: String): Unit = {
-    val list = CreoS3Utils.asseetPathListDirectChildren(parentDirectory).filter(_.contains(executorAttemptDirectoryPrefix))
-    CreoS3Utils.assetDeleteFolders(list)
+  private def defaultOverviewReductions(gridBounds: GridBounds[Int], options: GTiffOptions): List[Int] = {
+    val overviewLevels: Int = {
+      val pixels = math.max(gridBounds.colMax, gridBounds.rowMax).toDouble
+      val blocks = pixels / 1024
+      math.ceil(math.log(blocks) / math.log(2)).toInt
+    }
+
+    val start = options.overviews.toUpperCase() match {
+      case "AUTO" => 1
+      case "ALL" => 0
+    }
+    (start until overviewLevels).map { l => math.pow(2, l + 1).toInt }.toList
   }
+
 
   /**
    * Save temporal rdd, on the executors
@@ -243,7 +256,8 @@ package object geotiff {
                                        path: String,
                                        zLevel: Int = 6,
                                        cropBounds: Option[Extent] = Option.empty[Extent],
-                                       formatOptions: GTiffOptions = new GTiffOptions
+                                       formatOptions: GTiffOptions = new GTiffOptions,
+                                       overviewReductions: (GridBounds[Int], GTiffOptions) => List[Int] = defaultOverviewReductions
                                       ): JList[Item] = {
     formatOptions.assertNoConflicts()
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd, cropBounds)
@@ -258,15 +272,17 @@ package object geotiff {
 
     logger.info(s"Write Geotiff per date ${croppedExtent}, ${gridBounds}, ${tileLayout}")
 
-    val compression = Deflate(zLevel)
+    val compression = determineCompression(formatOptions)
     val bandSegmentCount = totalCols * totalRows
     val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
+
+
     val toBeGrouped = preprocessedRdd.flatMap { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
       var bandIndex = -1
       //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
       //Not sure how this works out for other types of compression!!!
 
-      val theCompressor = compression.createCompressor(multibandTile.bandCount)
+      val theCompressor: Compressor = compression.createCompressor(multibandTile.bandCount)
       multibandTile.bands.map {
         tile =>
           bandIndex += 1
@@ -285,18 +301,7 @@ package object geotiff {
             // ':' is not valid in a Windows filename
             DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
           }
-          val overviews = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
-            // TODO dsamaey
-            val decimationFactors = List(4,8,16)
-            val resampleMethod = getOverviewResampleMethod(formatOptions)
-            var previousTile = tile.resample(croppedExtent, tileLayout.tileCols / 2, tileLayout.tileRows / 2, resampleMethod)
-            decimationFactors.map(decimationFactor => {
-              val resampledTile = previousTile.resample(croppedExtent, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor, resampleMethod)
-              previousTile = resampledTile
-              val croppedBytes = raster.CroppedTile(resampledTile, raster.GridBounds(0, 0, tileLayout.tileCols/decimationFactor-1, tileLayout.tileRows/decimationFactor-1)).toBytes()
-              theCompressor.compress(croppedBytes,0)
-            })
-          } else List(Array[Byte]())
+          val overviews = generateOverviews(formatOptions, croppedExtent, tileLayout, tile, theCompressor, overviewReductions(gridBounds, formatOptions))
 
           val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
           val filename = formatOptions.filepathPerBand match {
@@ -316,27 +321,14 @@ package object geotiff {
       val bandIndices = sequence.map(_._3).toSet.toList.asJava
 
       val segmentCount = bandSegmentCount * tiffBands
-      def defaultOverviewDecimations(gridBounds: GridBounds[Int]): List[Int] = {
-        val overviewLevels: Int = {
-          val pixels = math.max(gridBounds.colMax, gridBounds.rowMax).toDouble
-          val blocks = pixels / 1024
-          math.ceil(math.log(blocks) / math.log(2)).toInt
-        }
 
-        val start = formatOptions.overviews.toUpperCase() match {
-          case "AUTO" => 1
-          case _ => 0
-        }
-        (start until overviewLevels).map{ l => math.pow(2, l + 1).toInt }.toList
-      }
-
-
-      val geotiffMultibandTiles = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
+      val overviewTiles = if (formatOptions.overviews.toUpperCase == "ALL" || formatOptions.overviews.toUpperCase == "AUTO") {
         logger.info(s"Add overviews for ${filename}, with resample method ${getOverviewResampleMethod(formatOptions)}")
-        val decimationFactors = defaultOverviewDecimations(gridBounds)
+        val decimationFactors = overviewReductions(gridBounds, formatOptions)
+
         decimationFactors.indices.toList.map(i => {
           val decimationFactor = decimationFactors(i)
-          val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._3(i))).toMap
+          val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.filter(tuple => tuple._2._3.nonEmpty).map(tuple => (tuple._1, tuple._2._3(i))).toMap
           val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor)
           toTiff(overviewSequence, GridBounds(0, 0, gridBounds.colMax / decimationFactor, gridBounds.rowMax / decimationFactor), overviewLayout, compression, cellTypes.head, tiffBands, segmentCount)
         })
@@ -362,7 +354,7 @@ package object geotiff {
       fo.setBandTags(newBandTags)
 
       val geoTiffResultObject = writeTiff(thePath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs,
-        tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo, geotiffMultibandTiles
+        tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo, overviewTiles
       )
       (geoTiffResultObject, timestamp, croppedExtent, bandIndices)
     }.collect()
@@ -392,6 +384,34 @@ package object geotiff {
     items.toList.asJava
   }
 
+  private def generateOverviews(formatOptions: GTiffOptions, croppedExtent: Extent, tileLayout: TileLayout, tile: Tile, compressor: Compressor, overviewReductions: List[Int]): List[Array[Byte]] = {
+    var overviewBytes = List[Array[Byte]]()
+
+    if (formatOptions.overviews == "OFF" || overviewReductions.isEmpty) {
+      // do nothing
+    } else {
+      val resampleMethod = getOverviewResampleMethod(formatOptions)
+      var previousTile = tile
+      var reductionFactor = 2
+      if (formatOptions.overviews == "AUTO") {
+        // skip the first overview level for AUTO
+        previousTile = tile.resample(croppedExtent, tileLayout.tileCols / 2, tileLayout.tileRows / 2, resampleMethod)
+        reductionFactor *= 2
+      }
+      while (overviewReductions.last >= reductionFactor) {
+        val resampledTile = previousTile.resample(croppedExtent, tileLayout.tileCols / reductionFactor, tileLayout.tileRows / reductionFactor, resampleMethod)
+        if (overviewReductions.contains(reductionFactor)) {
+          overviewBytes = overviewBytes :+ {
+            val croppedBytes = raster.CroppedTile(resampledTile, raster.GridBounds(0, 0, tileLayout.tileCols / reductionFactor - 1, tileLayout.tileRows / reductionFactor - 1)).toBytes()
+            compressor.compress(croppedBytes, 0)
+          }
+        }
+        previousTile = resampledTile
+        reductionFactor *= 2
+      }
+    }
+    overviewBytes
+  }
 
   def saveRDD(rdd: MultibandTileLayerRDD[SpatialKey],
               bandCount: Int,
@@ -451,11 +471,11 @@ package object geotiff {
       // groupByKey does a shuffle, so we can partition at the same time
       val geotiffResults = rdd_per_band.groupByKey(partitioner).map { case ((name, bandIndex), tiles) =>
         val fixedPath =
-          if (path.endsWith("out") ) {
-            if(TaskContext.get().attemptNumber()>0){
+          if (path.endsWith("out")) {
+            if (TaskContext.get().attemptNumber() > 0) {
               val executorAttemptDirectory = createExecutorAttemptDirectory(path.substring(0, path.length - 3))
               executorAttemptDirectory + "/" + name
-            }else{
+            } else {
               path.substring(0, path.length - 3) + "/" + name
             }
           }
@@ -519,7 +539,7 @@ package object geotiff {
   }
 
   def saveRDDTileGrid(rdd: MultibandTileLayerRDD[SpatialKey], bandCount: Int, path: String, tileGrid: String, zLevel: Int = 6, cropBounds: Option[Extent] = Option.empty[Extent]) = {
-    saveRDDGenericTileGrid(rdd, path, tileGrid, cropBounds=cropBounds)
+    saveRDDGenericTileGrid(rdd, path, tileGrid, cropBounds = cropBounds)
   }
 
   private def gridBoundsFor(re: RasterExtent, subExtent: Extent, clamp: Boolean = true): GridBounds[Int] = {
@@ -608,15 +628,15 @@ package object geotiff {
     def levelFor(extent: Extent, cellSize: CellSize): LayoutLevel = ???
   }
 
-  private def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): (String, Extent) = {
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
+  private def saveRDDGeneric[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): (String, Extent) = {
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3.persist(StorageLevel.MEMORY_AND_DISK)
 
-    try{
+    try {
       val compression = determineCompression(formatOptions)
-      val ( tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
+      val (tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
 
       val overviews =
         if (formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024))) {
@@ -697,18 +717,20 @@ package object geotiff {
         case "zstd" => ZStdCompression(formatOptions.compressionLevel)
         case "deflate" => DeflateCompression(formatOptions.compressionLevel)
         case _ => throw new IllegalArgumentException(f"Compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
-      }}
+      }
+    }
     compression
   }
 
 
   private def determineCompression(geoTiffImageData: GeoTiffImageData, formatOptions: GTiffOptions): Compression = {
     val compression = {
-    formatOptions.compressionMethod match {
-      case "zstd" => ZStdCompression(formatOptions.compressionLevel)
-      case "deflate" => DeflateCompression(formatOptions.compressionLevel)
-      case _ => throw new IllegalArgumentException(f"Compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
-    }}
+      formatOptions.compressionMethod match {
+        case "zstd" => ZStdCompression(formatOptions.compressionLevel)
+        case "deflate" => DeflateCompression(formatOptions.compressionLevel)
+        case _ => throw new IllegalArgumentException(f"Compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
+      }
+    }
     if (formatOptions.compressionPredictor > 1) {
       val predictor = Predictor(geoTiffImageData)
       compression.withPredictor(predictor)
@@ -908,7 +930,7 @@ package object geotiff {
     writeGeoTiff(theGeoTiff, path, Some(formatOptions))
   }
 
-  private def toTiff(tiffs:collection.Map[Int, Array[Byte]] , gridBounds: GridBounds[Int], tileLayout: TileLayout, compression: Compression, cellType: CellType, detectedBandCount: Double, segmentCount: Int) = {
+  private def toTiff(tiffs: collection.Map[Int, Array[Byte]], gridBounds: GridBounds[Int], tileLayout: TileLayout, compression: Compression, cellType: CellType, detectedBandCount: Double, segmentCount: Int) = {
     val compressor = compression.createCompressor(segmentCount)
     lazy val emptySegment =
       ArrayTile.empty(cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
@@ -1024,16 +1046,15 @@ package object geotiff {
     val geotiffResults = groupedRDD.map {
       case ((tileId, extent), tiles) =>
         // Each executor writes to a unique folder to avoid conflicts:
-        val filePath =
-          {
-            if(TaskContext.get().attemptNumber()>0){
-              // Each executor writes to a unique folder to avoid conflicts:
-              createExecutorAttemptDirectory(Path.of(path).getParent)
+        val filePath = {
+          if (TaskContext.get().attemptNumber() > 0) {
+            // Each executor writes to a unique folder to avoid conflicts:
+            createExecutorAttemptDirectory(Path.of(path).getParent)
 
-            }else{
-              Path.of(path).getParent
-            }
+          } else {
+            Path.of(path).getParent
           }
+        }
           .resolve(newFilePath(Path.of(path).getFileName.toString, tileId)).toString
 
 
@@ -1119,12 +1140,12 @@ package object geotiff {
         case "ALL" => 2
       }
 
-      val baseOverview = geotiff.buildOverview(resampleMethod,initialReduction,blockSize = fo.tileSize)
+      val baseOverview = geotiff.buildOverview(resampleMethod, initialReduction, blockSize = fo.tileSize)
       var overviews = List(baseOverview)
-      while (overviews.last.tile.size > 1024*1024) {
-        overviews = overviews :+ overviews.last.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
+      while (overviews.last.tile.size > 1024 * 1024) {
+        overviews = overviews :+ overviews.last.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
       }
-      geotiff = MultibandGeoTiff(geotiff.tile,geotiff.extent,geotiff.crs,geotiff.tags,geotiff.options,overviews)
+      geotiff = MultibandGeoTiff(geotiff.tile, geotiff.extent, geotiff.crs, geotiff.tags, geotiff.options, overviews)
         .withCompression(formatOptions.getOrElse(new GTiffOptions))
 
     }
