@@ -91,7 +91,7 @@ class GeoCodingProcess extends Serializable {
     val latIndex = bandLabels.indexOf("latitude")
     val lonIndex = bandLabels.indexOf("longitude")
 
-    val minmaxValues: RDD[Vector[(Double, Double)]] = cube.mapValues(_.subsetBands(lonIndex,latIndex)).map(_._2.bands.map(_.findMinMaxDouble))
+    val minmaxValues: RDD[Vector[(Double, Double)]] = cube.mapValues(_.subsetBands(lonIndex,latIndex)).map(_._2.bands.map(_.mapDouble(d=> if(d == -999.0) Double.NaN else d  ).findMinMaxDouble))
     val minLon = minmaxValues.map(_(0)._1).min()
     val maxLon = minmaxValues.map(_(0)._2).max()
     val minLat = minmaxValues.map(_(1)._1).min()
