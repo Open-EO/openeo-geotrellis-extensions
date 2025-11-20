@@ -25,6 +25,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
+import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
@@ -41,7 +42,6 @@ import scala.collection.parallel.CollectionConverters._
 import scala.collection.{immutable, mutable}
 import scala.jdk.CollectionConverters._
 import scala.reflect._
-import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 
 
 object OpenEOProcesses{
@@ -849,14 +849,7 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def maybeBandLabels[K](cube: RDD[(K, MultibandTile)]): Option[Seq[String]] = {
-    if (cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount > 0) {
-      val labels = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bands
-      return Some(labels)
-    }else{
-      return None
-    }
-  }
+
 
   def maybeCellType[K](cube: RDD[(K, MultibandTile)]): Option[CellType] = {
     if (cube.isInstanceOf[MultibandTileLayerRDD[K]]) {
