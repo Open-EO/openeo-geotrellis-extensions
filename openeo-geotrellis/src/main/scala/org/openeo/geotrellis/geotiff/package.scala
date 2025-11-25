@@ -145,7 +145,7 @@ package object geotiff {
   ): JList[(String, String, Extent)] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
     formatOptions.assertNoConflicts()
-    val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions, overviewReductions = overviewReductions)
+    val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction = overviewReductions)
     logger.warn("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
     //    val duplicates = ret.groupBy(_._2).filter(_._2.size > 1)
     //    if (duplicates.nonEmpty) {
@@ -257,7 +257,7 @@ package object geotiff {
                                        zLevel: Int = 6,
                                        cropBounds: Option[Extent] = Option.empty[Extent],
                                        formatOptions: GTiffOptions = new GTiffOptions,
-                                       overviewReductions: (GridBounds[Int], GTiffOptions) => List[Int] = defaultOverviewReductions
+                                       overviewReductionsFunction: (GridBounds[Int], GTiffOptions) => List[Int] = defaultOverviewReductions
                                       ): JList[Item] = {
     formatOptions.assertNoConflicts()
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd, cropBounds)
@@ -301,7 +301,7 @@ package object geotiff {
             // ':' is not valid in a Windows filename
             DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
           }
-          val overviews = generateOverviews(formatOptions, croppedExtent, tileLayout, tile, theCompressor, overviewReductions(gridBounds, formatOptions))
+          val overviews = generateOverviews(formatOptions, croppedExtent, tileLayout, tile, theCompressor, overviewReductionsFunction(gridBounds, formatOptions))
 
           val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
           val filename = formatOptions.filepathPerBand match {
@@ -324,7 +324,7 @@ package object geotiff {
 
       val overviewTiles = if (formatOptions.overviews.toUpperCase == "ALL" || formatOptions.overviews.toUpperCase == "AUTO") {
         logger.info(s"Add overviews for ${filename}, with resample method ${getOverviewResampleMethod(formatOptions)}")
-        val decimationFactors = overviewReductions(gridBounds, formatOptions)
+        val decimationFactors = overviewReductionsFunction(gridBounds, formatOptions)
 
         decimationFactors.indices.toList.map(i => {
           val decimationFactor = decimationFactors(i)
