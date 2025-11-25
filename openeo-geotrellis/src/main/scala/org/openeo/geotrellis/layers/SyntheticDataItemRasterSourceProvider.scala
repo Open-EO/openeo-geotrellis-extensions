@@ -9,7 +9,7 @@ object SyntheticDataItemRasterSourceProvider extends SyntheticDataItemRasterSour
 
 class SyntheticDataItemRasterSourceProvider extends ItemRasterSourceProvider {
   override def canProcess(item: OpenSearchResponses.Feature, datacubeParams: Option[DataCubeParameters] = Option.empty): Boolean = {
-    datacubeParams.map(d => d.syntheticDataOverride).isDefined
+    datacubeParams.map(d => d.syntheticDataOverride).get.isDefined
   }
 
   override def getRasterSource(item: OpenSearchResponses.Feature, targetExtent: RasterExtent, targetCRS: CRS, linkTitleToBandIndex: Seq[(String, Int)], datacubeParams: Option[DataCubeParameters]): Option[RasterSource] = {
