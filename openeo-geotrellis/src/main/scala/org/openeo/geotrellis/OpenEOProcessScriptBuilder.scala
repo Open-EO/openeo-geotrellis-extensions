@@ -1490,6 +1490,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
   private def predictONNXFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
     val inputFunction: OpenEOProcess = getProcessArg("data")
+    val model = arguments.get("model").toString
 
     def flattenNestedArray(multiArray: Array[_], outputShape: Array[Long], onnxType:OnnxJavaType): ArrayTile = {
       onnxType match { // TODO check if the multiArray contains the right type (same as the onnx type) and throw clear error if not.
@@ -1532,13 +1533,12 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     }
     val operator = (rs: Seq[Tile], context: Map[String, Any]) => {
       val env = OrtEnvironment.getEnvironment()
-      val model = context.getOrElse("context",null).toString
       val modelPath = Paths.get(model)
       val (modelFile, isTemp) = if (Files.exists(modelPath)) {
         (model,false)
       } else {
         val tempFileName = Files.createTempFile(null, ".onnx")
-        FileUtils.copyURLToFile(new URL(model.toString), tempFileName.toFile)
+        FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
         (tempFileName.toString,true)
       }
       val session = env.createSession(modelFile, new OrtSession.SessionOptions())

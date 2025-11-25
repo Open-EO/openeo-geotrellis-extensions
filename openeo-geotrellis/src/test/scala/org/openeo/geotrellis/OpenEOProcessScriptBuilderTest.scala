@@ -122,6 +122,7 @@ class OpenEOProcessScriptBuilderTest {
     val builder = new OpenEOProcessScriptBuilder
     val arguments = new util.HashMap[String, AnyRef]
     arguments.put("data", "dummy")
+    arguments.put("model", modelURL)
     builder.defaultDataParameterName = "theData"
     builder.defaultInputDataType = FloatCellType.name
     builder.expressionStart("predict_onnx", arguments)
@@ -129,13 +130,12 @@ class OpenEOProcessScriptBuilderTest {
     builder.argumentStart("data")
     builder.fromParameter("theData")
     builder.argumentEnd()
+    builder.argumentStart("model")
+    builder.argumentEnd()
 
     builder.expressionEnd("predict_onnx", arguments)
 
-    val context = new util.HashMap[String,Any]
-    context.put("context", modelURL)
-
-    val function = builder.generateFunction(context)
+    val function = builder.generateFunction()
     val result = function.apply(tiles.toSeq)
     SparkContext.getOrCreate.stop()
     result
