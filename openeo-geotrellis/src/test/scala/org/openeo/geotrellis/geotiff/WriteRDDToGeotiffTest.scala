@@ -635,7 +635,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     options.addBandTag(1, "DESCRIPTION", "B02")
     options.addBandTag(2, "DESCRIPTION", "B03")
     options.setOverview("ALL")
-    val tiles = saveRDDTemporalAllowAssetPerBand(layer, outDir.toString, formatOptions = options)
+    val tiles = saveRDDTemporalAllowAssetPerBandInternal(layer, outDir.toString, formatOptions = options)
 
     val expectedPaths = List(
       outDir + "/openEO_2017-01-02Z_B01.tif",

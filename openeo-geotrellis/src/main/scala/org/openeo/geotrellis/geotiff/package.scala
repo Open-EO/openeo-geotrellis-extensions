@@ -145,12 +145,8 @@ package object geotiff {
   ): JList[(String, String, Extent)] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
     formatOptions.assertNoConflicts()
-    val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction = overviewReductions)
+    val ret = saveRDDTemporalAllowAssetPerBandInternal(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction = overviewReductions)
     logger.warn("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
-    //    val duplicates = ret.groupBy(_._2).filter(_._2.size > 1)
-    //    if (duplicates.nonEmpty) {
-    //      throw new Exception(s"Multiple returned files with same timestamp: ${duplicates.keys.mkString(", ")}")
-    //    }
     ret.stream()
       .flatMap { item =>
         item.assets.values().stream()
@@ -242,7 +238,6 @@ package object geotiff {
     (start until overviewLevels).map { l => math.pow(2, l + 1).toInt }.toList
   }
 
-
   /**
    * Save temporal rdd, on the executors
    *
@@ -250,9 +245,29 @@ package object geotiff {
    * @param path
    * @param zLevel
    * @param cropBounds
+   * @param formatOptions
    */
   //noinspection ScalaWeakerAccess
   def saveRDDTemporalAllowAssetPerBand(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                                       path: String,
+                                       zLevel: Int = 6,
+                                       cropBounds: Option[Extent] = Option.empty[Extent],
+                                       formatOptions: GTiffOptions = new GTiffOptions,
+                                      ): JList[Item] = {
+    saveRDDTemporalAllowAssetPerBandInternal(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction=defaultOverviewReductions)
+  }
+
+    /**
+   * Save temporal rdd, on the executors
+   *
+   * @param rdd
+   * @param path
+   * @param zLevel
+   * @param cropBounds
+   * @param formatOptions
+   */
+  //noinspection ScalaWeakerAccess
+  private[geotiff] def saveRDDTemporalAllowAssetPerBandInternal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                                        path: String,
                                        zLevel: Int = 6,
                                        cropBounds: Option[Extent] = Option.empty[Extent],
