@@ -134,8 +134,15 @@ package object geotiff {
     })
   }
 
-
   def saveRDDTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                      path: String,
+                      zLevel: Int = 6,
+                      cropBounds: Option[Extent] = Option.empty[Extent],
+                      formatOptions: GTiffOptions = new GTiffOptions): JList[(String, String, Extent)] = {
+    saveRDDTemporalInternal(rdd, path, zLevel, cropBounds, formatOptions)
+  }
+
+  private[geotiff] def saveRDDTemporalInternal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                       path: String,
                       zLevel: Int = 6,
                       cropBounds: Option[Extent] = Option.empty[Extent],
