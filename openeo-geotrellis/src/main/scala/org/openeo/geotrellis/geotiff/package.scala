@@ -348,7 +348,15 @@ package object geotiff {
         logger.info(s"Add overviews for ${filename}, with resample method ${getOverviewResampleMethod(formatOptions)}")
         val decimationFactors = overviewReductionsFunction(gridBounds, formatOptions)
 
-        decimationFactors.indices.toList.map(i => {
+        decimationFactors.indices.toList
+          .filter(i => {
+            val tileSizeIsBigEnough = math.min(tileLayout.tileCols, tileLayout.tileRows) >= decimationFactors(i)
+            if (!tileSizeIsBigEnough) {
+              logger.warn(s"Could not generate all overviews due to small tile size (${tileLayout.tileDimensions}).")
+            }
+            tileSizeIsBigEnough
+          })
+          .map(i => {
           val decimationFactor = decimationFactors(i)
           val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._3(i))).toMap
           val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor)
@@ -409,7 +417,8 @@ package object geotiff {
   private def generateOverviews(formatOptions: GTiffOptions, croppedExtent: Extent, tileLayout: TileLayout, tile: Tile, compressor: Compressor, overviewReductions: List[Int]): List[Array[Byte]] = {
     var overviewBytes = List[Array[Byte]]()
 
-    if (formatOptions.overviews == "OFF" || overviewReductions.isEmpty) {
+    val usableReductions = overviewReductions.filter(r => tileLayout.tileCols >= r && tileLayout.tileRows >= r)
+    if (formatOptions.overviews == "OFF" || usableReductions.isEmpty) {
       // do nothing
     } else {
       val resampleMethod = getOverviewResampleMethod(formatOptions)
@@ -420,9 +429,9 @@ package object geotiff {
         previousTile = tile.resample(croppedExtent, tileLayout.tileCols / 2, tileLayout.tileRows / 2, resampleMethod)
         reductionFactor *= 2
       }
-      while (overviewReductions.last >= reductionFactor) {
+      while (usableReductions.last >= reductionFactor) {
         val resampledTile = previousTile.resample(croppedExtent, tileLayout.tileCols / reductionFactor, tileLayout.tileRows / reductionFactor, resampleMethod)
-        if (overviewReductions.contains(reductionFactor)) {
+        if (usableReductions.contains(reductionFactor)) {
           overviewBytes = overviewBytes :+ {
             val croppedBytes = raster.CroppedTile(resampledTile, raster.GridBounds(0, 0, tileLayout.tileCols / reductionFactor - 1, tileLayout.tileRows / reductionFactor - 1)).toBytes()
             compressor.compress(croppedBytes, 0)
