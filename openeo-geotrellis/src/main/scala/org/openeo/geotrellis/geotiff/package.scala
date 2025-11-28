@@ -7,7 +7,7 @@ import geotrellis.raster
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.crop._
 import geotrellis.raster.io.geotiff._
-import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression, Predictor, ZStdCompression, Compressor}
+import geotrellis.raster.io.geotiff.compression.{Compression, Compressor, DeflateCompression, Predictor, ZStdCompression}
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
@@ -23,6 +23,7 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.apache.spark.{Partitioner, SparkContext, TaskContext}
 import org.openeo.geotrellis
+import geotrellis.raster
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.{Asset, Item, STACItem}
@@ -231,9 +232,9 @@ package object geotiff {
     }
   }
 
-  private def defaultOverviewReductions(gridBounds: GridBounds[Int], options: GTiffOptions): List[Int] = {
+  private def defaultOverviewReductions(dims: (Int, Int), options: GTiffOptions): List[Int] = {
     val overviewLevels: Int = {
-      val pixels = math.max(gridBounds.colMax, gridBounds.rowMax).toDouble
+      val pixels = math.max(dims._1, dims._2).toDouble
       val blocks = pixels / 1024
       math.ceil(math.log(blocks) / math.log(2)).toInt
     }
@@ -243,6 +244,11 @@ package object geotiff {
       case "ALL" => 0
     }
     (start until overviewLevels).map { l => math.pow(2, l + 1).toInt }.toList
+
+  }
+
+  private def defaultOverviewReductions(gridBounds: GridBounds[Int], options: GTiffOptions): List[Int] = {
+    defaultOverviewReductions((gridBounds.width, gridBounds.height), options)
   }
 
   /**
@@ -1166,19 +1172,29 @@ package object geotiff {
       fo.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
     ) {
       val resampleMethod = getOverviewResampleMethod(fo)
-      val initialReduction = fo.overviews.toUpperCase() match {
-        case "AUTO" => 4
-        case "ALL" => 2
+      val tileCols = adjusted.cols
+      val tileRows = adjusted.rows
+      var overviews = List()
+      var overview = geotiff
+      var reductionFactor = 2
+      if (fo.overviews == "AUTO") {
+        // skip the first overview level for AUTO
+        overview = overview.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
+        reductionFactor *= 2
       }
-
-      val baseOverview = geotiff.buildOverview(resampleMethod, initialReduction, blockSize = fo.tileSize)
-      var overviews = List(baseOverview)
-      while (overviews.last.tile.size > 1024 * 1024) {
-        overviews = overviews :+ overviews.last.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
+      val usableReductions: List[Int] = defaultOverviewReductions((gridBounds.width.toInt, gridBounds.height.toInt), fo)
+        .filter(r => {
+          tileCols >= r && tileRows >= r
+        })
+      while (usableReductions.last >= reductionFactor) {
+        overview = overview.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
+        if (usableReductions.contains(reductionFactor)) {
+          overviews = overviews :+ overview
+        }
+        reductionFactor *= 2
       }
       geotiff = MultibandGeoTiff(geotiff.tile, geotiff.extent, geotiff.crs, geotiff.tags, geotiff.options, overviews)
         .withCompression(formatOptions.getOrElse(new GTiffOptions))
-
     }
     writeGeoTiff(geotiff, filePath, Some(fo))
   }
