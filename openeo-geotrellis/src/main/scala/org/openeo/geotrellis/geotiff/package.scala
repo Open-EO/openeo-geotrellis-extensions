@@ -23,7 +23,6 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.apache.spark.{Partitioner, SparkContext, TaskContext}
 import org.openeo.geotrellis
-import geotrellis.raster
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.{Asset, Item, STACItem}
@@ -38,7 +37,7 @@ import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.stream.Collectors
 import java.util.{ArrayList, Collections, Map, UUID, List => JList}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.language.implicitConversions
 import scala.reflect._
 
@@ -148,7 +147,7 @@ package object geotiff {
                       zLevel: Int = 6,
                       cropBounds: Option[Extent] = Option.empty[Extent],
                       formatOptions: GTiffOptions = new GTiffOptions,
-                      overviewReductions: (GridBounds[Int], GTiffOptions) => List[Int] = defaultOverviewReductions
+                      overviewReductions: ((Int, Int), GTiffOptions) => List[Int] = defaultOverviewReductions
 
   ): JList[(String, String, Extent)] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
@@ -247,10 +246,6 @@ package object geotiff {
 
   }
 
-  private def defaultOverviewReductions(gridBounds: GridBounds[Int], options: GTiffOptions): List[Int] = {
-    defaultOverviewReductions((gridBounds.width, gridBounds.height), options)
-  }
-
   /**
    * Save temporal rdd, on the executors
    *
@@ -285,7 +280,7 @@ package object geotiff {
                                        zLevel: Int = 6,
                                        cropBounds: Option[Extent] = Option.empty[Extent],
                                        formatOptions: GTiffOptions = new GTiffOptions,
-                                       overviewReductionsFunction: (GridBounds[Int], GTiffOptions) => List[Int] = defaultOverviewReductions
+                                       overviewReductionsFunction: ((Int, Int), GTiffOptions) => List[Int] = defaultOverviewReductions
                                       ): JList[Item] = {
     formatOptions.assertNoConflicts()
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd, cropBounds)
@@ -329,7 +324,7 @@ package object geotiff {
             // ':' is not valid in a Windows filename
             DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
           }
-          val overviews = generateOverviews(formatOptions, croppedExtent, tileLayout, tile, theCompressor, overviewReductionsFunction(gridBounds, formatOptions))
+          val overviews = generateOverviews(formatOptions, croppedExtent, tileLayout, tile, theCompressor, overviewReductionsFunction((gridBounds.width, gridBounds.height), formatOptions))
 
           val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
           val filename = formatOptions.filepathPerBand match {
@@ -352,7 +347,7 @@ package object geotiff {
 
       val overviewTiles = if (formatOptions.overviews.toUpperCase == "ALL" || formatOptions.overviews.toUpperCase == "AUTO") {
         logger.info(s"Add overviews for ${filename}, with resample method ${getOverviewResampleMethod(formatOptions)}")
-        val decimationFactors = overviewReductionsFunction(gridBounds, formatOptions)
+        val decimationFactors = overviewReductionsFunction((gridBounds.width, gridBounds.height), formatOptions)
 
         decimationFactors.indices.toList
           .filter(i => {
@@ -1174,7 +1169,7 @@ package object geotiff {
       val resampleMethod = getOverviewResampleMethod(fo)
       val tileCols = adjusted.cols
       val tileRows = adjusted.rows
-      var overviews = List()
+      var overviews = List[MultibandGeoTiff]()
       var overview = geotiff
       var reductionFactor = 2
       if (fo.overviews == "AUTO") {
