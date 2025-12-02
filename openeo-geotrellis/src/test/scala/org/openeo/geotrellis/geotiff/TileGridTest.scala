@@ -249,12 +249,18 @@ class TileGridTest {
 
     for (path <- expectedTiles){
       val tile = GeoTiff.readMultiband(path._1)
-      Assert.assertEquals(1,tile.overviews.size)
+      Assert.assertEquals(4,tile.overviews.size)
       Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
       Assert.assertEquals(math.ceil(colSize.toDouble/2).toInt,tile.overviews(0).tile.cols)
       Assert.assertEquals(math.ceil(rowSize.toDouble/2).toInt,tile.overviews(0).tile.rows)
+      Assert.assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(1).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(1).tile.rows)
+      Assert.assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(2).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(2).tile.rows)
+      Assert.assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(3).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(3).tile.rows)
     }
   }
 

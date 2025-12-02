@@ -1177,11 +1177,11 @@ package object geotiff {
         overview = overview.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
         reductionFactor *= 2
       }
-      val usableReductions: List[Int] = defaultOverviewReductions((gridBounds.width.toInt, gridBounds.height.toInt), fo)
+      val usableReductions: List[Int] = defaultOverviewReductions((geotiff.tile.cols, geotiff.tile.rows), fo)
         .filter(r => {
           tileCols >= r && tileRows >= r
         })
-      while (usableReductions.last >= reductionFactor) {
+      while (usableReductions.nonEmpty && usableReductions.last >= reductionFactor) {
         overview = overview.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
         if (usableReductions.contains(reductionFactor)) {
           overviews = overviews :+ overview

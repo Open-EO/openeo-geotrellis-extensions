@@ -895,12 +895,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     for (path <- expectedPaths) {
       val tile = GeoTiff.readMultiband(path)
-      assertEquals(1,tile.overviews.size)
-      assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
-      val colSize = tile.tile.cols
-      val rowSize = tile.tile.rows
-      assertEquals(math.ceil(colSize.toDouble/2).toInt,tile.overviews(0).tile.cols)
-      assertEquals(math.ceil(rowSize.toDouble/2).toInt,tile.overviews(0).tile.rows)
+      assertEquals(0,tile.overviews.size) // too small for overviews
     }
 
     assertTrue(tiles.get(0).datetime.contains("T"))
