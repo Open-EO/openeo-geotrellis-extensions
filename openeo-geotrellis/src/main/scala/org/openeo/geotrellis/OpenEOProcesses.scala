@@ -25,6 +25,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
+import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
@@ -41,7 +42,6 @@ import scala.collection.parallel.CollectionConverters._
 import scala.collection.{immutable, mutable}
 import scala.jdk.CollectionConverters._
 import scala.reflect._
-import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 
 
 object OpenEOProcesses{
@@ -849,14 +849,7 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def maybeBandLabels[K](cube: RDD[(K, MultibandTile)]): Option[Seq[String]] = {
-    if (cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount > 0) {
-      val labels = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bands
-      return Some(labels)
-    }else{
-      return None
-    }
-  }
+
 
   def maybeCellType[K](cube: RDD[(K, MultibandTile)]): Option[CellType] = {
     if (cube.isInstanceOf[MultibandTileLayerRDD[K]]) {
@@ -1146,6 +1139,26 @@ class OpenEOProcesses extends Serializable {
   def slopeGeneric[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
     datacube.sparkContext.setCallSite(s"slope")
     datacube.slope()
+  }
+
+  def convertDataType(datacube: Object, dataType: String): Object = {
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        convertDataTypeGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], dataType)
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        convertDataTypeGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], dataType)
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for convert_data_type: ${datacube}")
+    }
+  }
+
+  private[geotrellis] def convertDataTypeGeneric[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K], dataType: String): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    datacube.sparkContext.setCallSite(s"convert_data_type")
+    val targetCellType = try {
+      CellType.fromName(dataType)
+    } catch {
+      case _: IllegalArgumentException => throw new IllegalArgumentException(s"Data type $dataType is not supported")
+    }
+    datacube.convert(targetCellType)
   }
 
 

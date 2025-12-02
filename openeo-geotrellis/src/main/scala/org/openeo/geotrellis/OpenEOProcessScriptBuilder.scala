@@ -780,7 +780,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
   }
 
   private def dateReplaceComponent(arguments: java.util.Map[String, Object]): AnyProcess = {
-    val date = arguments.get("date")
+    val dateArg: AnyProcess = getAnyProcessArg("date", arguments)
     val value = arguments.get("value")
     val component = arguments.get("component")
     if (!value.isInstanceOf[Integer]) {
@@ -788,8 +788,10 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     }
 
     val dateProcess = (context: Map[String, Any]) => {
-      val parsedDate = ZonedDateTime.parse(argumentToDate(date,context,"date_replace_component"))
       val theFunction = (arg:Any) => {
+        val date = dateArg(context)(null)
+        val parsedDate = ZonedDateTime.parse(argumentToDate(date,context,"date_replace_component"))
+
         if ("second" == component) {
           parsedDate.withSecond(value.asInstanceOf[Integer]).toString
         }
