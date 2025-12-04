@@ -1496,7 +1496,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
 
-      multibandMapToNewTiles(MultibandTile(data),ts => {
+      data.map(ts => {
 
         val modelPath = Paths.get(model.toString)
         val (modelFile, isTemp) = if (Files.exists(modelPath)) {
