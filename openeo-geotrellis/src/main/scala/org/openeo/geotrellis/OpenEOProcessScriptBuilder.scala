@@ -2,6 +2,7 @@ package org.openeo.geotrellis
 
 import ai.catboost.CatBoostModel
 import ai.catboost.spark.CatBoostClassificationModel
+import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, OrtUtil, TensorInfo}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
 import org.apache.commons.io.FileUtils
@@ -1497,7 +1498,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
 
       data.map(ts => {
-
+        val env = OrtEnvironment.getEnvironment()
         val modelPath = Paths.get(model.toString)
         val (modelFile, isTemp) = if (Files.exists(modelPath)) {
           (model.toString,false)
@@ -1506,6 +1507,40 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           FileUtils.copyURLToFile(new URL(model.toString), tempFileName.toFile)
           (tempFileName.toString,true)
         }
+
+        val session = env.createSession(modelFile, new OrtSession.SessionOptions())
+        val inputNames = session.getInputNames
+        val outputNames = session.getOutputNames
+        if (inputNames.size()>1)
+          // TODO support the case for multiple inputs
+          throw new IllegalArgumentException(
+            s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
+        if (outputNames.size()>1)
+          // TODO support the case for multiple outputs
+          throw new IllegalArgumentException(
+            s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
+
+        val inputName = inputNames.toArray()(0).asInstanceOf[String]
+        val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+        val inputShape = inputInfo.getShape
+
+        val outputName = outputNames.toArray()(0).asInstanceOf[String]
+        val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
+        val outputShape = outputInfo.getShape
+        if (!((inputShape.length==4 && inputShape(0)==1 && inputShape(1)==1)
+          || (inputShape.length==3 && inputShape(0)==1)
+          || (inputShape.length==2)) ) {
+          // TODO also allow onnx models where more shapes are allowed (bands and time)
+          // TODO check the dimension names of the input info
+          throw new IllegalArgumentException(
+            s"ONNX: shape ${inputShape.mkString("Array(", ", ", ")")} is currently not supported.")
+        }
+        if (!inputShape.sameElements(outputShape)) {
+          // TODO Analyze the problems that might occur if the input and output shape differ
+          throw new IllegalArgumentException(
+            s"ONNX: only supports output shape that is the same as input shape, with output shape ${outputShape.mkString("Array(", ", ", ")")} and input shape ${inputShape.mkString("Array(", ", ", ")")}.")
+        }
+
         if (isTemp){Files.delete(Paths.get(modelFile))}
         ts
 
