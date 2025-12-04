@@ -6,13 +6,14 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.{FloatArrayTile, FloatConstantNoDataCellType, GridBounds, MultibandTile, Raster, Tile, UShortArrayTile, isData}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{MultibandGeoTiff, SinglebandGeoTiff}
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 import java.nio.file.{Files, Path, Paths}
 import java.util
 import scala.jdk.CollectionConverters._
 import scala.jdk.StreamConverters._
+import scala.sys.process._
 
 object CorsaTest {
   private val TileSize = 120
@@ -23,20 +24,26 @@ class CorsaTest {
   import CorsaTest._
 
   @Test
-  def test(): Unit = {
+  def poc_encode(@TempDir tempDir: Path): Unit = {
     val modelDir = {
       // copied from /data/users/Public/luytsa/corsa-compression/pretrain_BEN_10-20mbands_bicubic_512-128_onnx
       Paths.get("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/pretrain_BEN_10-20mbands_bicubic_512-128_onnx")
     }
     val modelPath = modelDir.resolve("encoder.onnx")
+    val scalerDir = modelDir.resolve("scalers")
 
     val (Raster(cubeArray, extent), crs) = sentinel2Tile
-    MultibandGeoTiff(cubeArray, extent, crs).write("/tmp/sample.tif")
+
+    val cubeArrayFile = tempDir.resolve("cubeArray.tif")
+    MultibandGeoTiff(cubeArray, extent, crs).write(cubeArrayFile.toString)
+    require(cubeArray.bandCount == Bands.size)
+    require(cubeArray.dimensions.cols == TileSize)
+    require(cubeArray.dimensions.rows == TileSize)
 
     // TODO: replace NaNs with 0; in this case there are none
-    cubeArray foreach { (_, value) => assertTrue(isData(value)) }
+    cubeArray foreach { (_, value) => require(isData(value)) }
 
-    val cubeArrayNormalized = preprocessDataCube(cubeArray)
+    val cubeArrayNormalized = preprocessDataCube(cubeArrayFile, scalerDir)
 
     val (level0, level1) = processWindowOnnx(cubeArrayNormalized, modelPath)
 
@@ -66,18 +73,32 @@ class CorsaTest {
     (Raster(multibandTile, extent), crs)
   }
 
-  private def preprocessDataCube(cubeArray: MultibandTile): MultibandTile = {
+  private def preprocessDataCube(cubeArrayFile: Path, scalerDir: Path): MultibandTile = {
     // TODO: scale; original does this by unpickling some objects from disk and applying them to the input
-    cubeArray.convert(FloatConstantNoDataCellType)
+
+    val applyScalersScript = getClass.getClassLoader.getResource("org/openeo/geotrellis/corsa/apply_scalers.py").getPath
+    val applyScalers = Seq("/home/bossie/PycharmProjects/openeo/venv38/bin/python", applyScalersScript, cubeArrayFile.toAbsolutePath.toString, scalerDir.toAbsolutePath.toString) ++ Bands
+    if (applyScalers.! != 0) throw new IllegalStateException(s"${applyScalers mkString " "} returned non-zero exit status")
+
+    val scaled = MultibandGeoTiff(s"${cubeArrayFile}_scaled.tif").tile
+
+    scaled.convert(FloatConstantNoDataCellType)
     // UDF adds a new dimension in addition to bands/y/x; this is done processWindowOnnx instead
   }
 
   private def processWindowOnnx(cubeArrayNormalized: MultibandTile, modelPath: Path): (Tile, Tile)  = {
     require(Files.exists(modelPath))
 
+    val data = reshape(cubeArrayNormalized)
+    require(data.length == 1)
+    require(data.head.length == Bands.size)
+    require(data.head.head.length == 120)
+    require(data.head.head.head.length == 120)
+
     val env = OrtEnvironment.getEnvironment
     val (ortSession, ortInputName) = loadOrtSession(modelPath, env)
-    val tensor = OnnxTensor.createTensor(env, reshape(cubeArrayNormalized))
+
+    val tensor = OnnxTensor.createTensor(env, data)
     val ortInputs = Map(ortInputName -> tensor).asJava
 
     val result = ortSession.run(ortInputs)
@@ -93,13 +114,17 @@ class CorsaTest {
   }
 
   private def reshape(cubeArrayNormalized: MultibandTile): Array[Array[Array[Array[Float]]]] = {
+    require(cubeArrayNormalized.bandCount == Bands.size)
+    require(cubeArrayNormalized.dimensions.cols == TileSize)
+    require(cubeArrayNormalized.dimensions.rows == TileSize)
+
     def unflatten(floats: Array[Float]): Array[Array[Float]] =
       floats.sliding(size = TileSize, step = TileSize).toArray // 1D -> 2D
 
     val yxBands = for {
       bandTile <- cubeArrayNormalized.bands.toArray
-      xy = unflatten(bandTile.asInstanceOf[FloatArrayTile].array)
-      yx = xy.transpose
+      xy = unflatten(bandTile.toArrayTile().asInstanceOf[FloatArrayTile].array)
+      yx = xy // TODO: .transpose unnecessary?
     } yield yx
 
     Array(yxBands) // some additional dimension
