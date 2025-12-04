@@ -1533,7 +1533,8 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
         case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported output type of ONNX model : $onnxType")
       }
     }
-    val operator = (rs: Seq[Tile], context: Map[String, Any]) => {
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+      val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
       val env = OrtEnvironment.getEnvironment()
       val modelPath = Paths.get(model)
       val (modelFile, isTemp) = if (Files.exists(modelPath)) {
@@ -1579,21 +1580,21 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       val inputType = inputInfo.`type`
       val outputType = outputInfo.`type`
 
-      val result = rs.map(tile =>{
+      val result = data.map(ts =>{
         val inputArray = inputType match {
           case OnnxJavaType.FLOAT =>
-            if (!tile.isInstanceOf[FloatArrayTile]) {
-              throw new IllegalArgumentException(f"ONNX: expected Float as inputType, but got: ${tile.cellType}")
+            if (!ts.isInstanceOf[FloatArrayTile]) {
+              throw new IllegalArgumentException(f"ONNX: expected Float as inputType, but got: ${ts.cellType}")
             }
-            OrtUtil.reshape(tile.asInstanceOf[FloatArrayTile].array, inputShape)
+            OrtUtil.reshape(ts.asInstanceOf[FloatArrayTile].array, inputShape)
           case OnnxJavaType.DOUBLE =>
-            OrtUtil.reshape(tile.asInstanceOf[DoubleArrayTile].array, inputShape)
+            OrtUtil.reshape(ts.asInstanceOf[DoubleArrayTile].array, inputShape)
           case OnnxJavaType.INT32 =>
-            OrtUtil.reshape(tile.asInstanceOf[IntArrayTile].array, inputShape)
+            OrtUtil.reshape(ts.asInstanceOf[IntArrayTile].array, inputShape)
           case OnnxJavaType.INT16 =>
-            OrtUtil.reshape(tile.asInstanceOf[ShortArrayTile].array, inputShape)
+            OrtUtil.reshape(ts.asInstanceOf[ShortArrayTile].array, inputShape)
           case OnnxJavaType.INT8 =>
-            OrtUtil.reshape(tile.asInstanceOf[ByteArrayTile].array, inputShape)
+            OrtUtil.reshape(ts.asInstanceOf[ByteArrayTile].array, inputShape)
           case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported input type of ONNX model : $onnxType")
         }
         val tensor = OnnxTensor.createTensor(env, inputArray)
@@ -1613,11 +1614,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       if (isTemp){Files.delete(Paths.get(modelFile))}
       result
     }
-
-    def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
-      operator(inputFunction(context)(tiles), context)
-    }
-    composed
+    bandFunction
   }
 
   private def predictRandomForestFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
