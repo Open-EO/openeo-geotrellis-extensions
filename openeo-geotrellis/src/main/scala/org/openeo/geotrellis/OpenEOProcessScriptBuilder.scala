@@ -1244,7 +1244,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           case "predict_random_forest" if hasData => predictRandomForestFunction(arguments)
           case "predict_catboost" if hasData => predictCatBoostFunction(arguments)
           case "predict_probabilities" if hasData => predictCatBoostProbabilitiesFunction(arguments)
-          case "predict_onnx" => clipFunction(arguments)
+          case "predict_onnx" => predictONNXFunction(arguments)
           case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
         }
       }
@@ -1482,6 +1482,22 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val data = evaluateToTiles(dataFunction, context, tiles)
       Seq.fill(repeat)(data).flatten.map(_.convert(targetType))
+    }
+    bandFunction
+  }
+
+    val inputFunction = getProcessArg("data")
+    val model = arguments.get("model")
+
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+      val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
+
+      multibandMapToNewTiles(MultibandTile(data),ts => {
+
+        ts
+
+      })
+
     }
     bandFunction
   }
