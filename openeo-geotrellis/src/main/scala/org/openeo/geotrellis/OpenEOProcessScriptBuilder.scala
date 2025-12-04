@@ -4,6 +4,7 @@ import ai.catboost.CatBoostModel
 import ai.catboost.spark.CatBoostClassificationModel
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
+import org.apache.commons.io.FileUtils
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.descriptive.rank.Percentile.EstimationType
@@ -16,6 +17,8 @@ import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor
 
+import java.net.URL
+import java.nio.file.{Files, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.temporal.{ChronoUnit, TemporalAccessor}
 import java.time.{Duration, ZonedDateTime}
@@ -1486,6 +1489,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     bandFunction
   }
 
+  private def predictONNXFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
     val inputFunction = getProcessArg("data")
     val model = arguments.get("model")
 
@@ -1494,6 +1498,15 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
       multibandMapToNewTiles(MultibandTile(data),ts => {
 
+        val modelPath = Paths.get(model.toString)
+        val (modelFile, isTemp) = if (Files.exists(modelPath)) {
+          (model.toString,false)
+        } else {
+          val tempFileName = Files.createTempFile(null, ".onnx")
+          FileUtils.copyURLToFile(new URL(model.toString), tempFileName.toFile)
+          (tempFileName.toString,true)
+        }
+        if (isTemp){Files.delete(Paths.get(modelFile))}
         ts
 
       })
