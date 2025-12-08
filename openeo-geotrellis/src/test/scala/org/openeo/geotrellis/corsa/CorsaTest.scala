@@ -61,6 +61,7 @@ class CorsaTest {
   @Test
   def pocEncode(@TempDir tempDir: Path): Unit = {
     val scaleByPython = false
+    val suffix = if (scaleByPython) "python" else "scala"
 
     val modelDir = {
       // copied from /data/users/Public/luytsa/corsa-compression/pretrain_BEN_10-20mbands_bicubic_512-128_onnx
@@ -87,8 +88,8 @@ class CorsaTest {
     val (level0, level1) = processWindowOnnx(cubeArrayNormalized, modelPath)
 
     // already 20m and 40m resolution, see comment below
-    SinglebandGeoTiff(level0, extent, crs).write("/tmp/level0_20m.tif")
-    SinglebandGeoTiff(level1, extent, crs).write("/tmp/level1_40m.tif")
+    SinglebandGeoTiff(level0, extent, crs).write(f"/tmp/level0_20m_$suffix.tif")
+    SinglebandGeoTiff(level1, extent, crs).write(f"/tmp/level1_40m_$suffix.tif")
   }
 
   private def sentinel2Tile: (Raster[MultibandTile], CRS) = {
@@ -125,22 +126,22 @@ class CorsaTest {
     // UDF adds a new dimension in addition to bands/y/x; this is done processWindowOnnx instead
   }
 
-  private def preprocessDataCubeInScala(cubeArray: MultibandTile): MultibandTile = {
-    val scaled = cubeArray.mapBands { case (i, bandTile) =>
-      val PowerTransformerParams(lambda, mean, scale) = BandPowerTransformerParams(i)
+  private def preprocessDataCubeInScala(cubeArray: MultibandTile): MultibandTile =
+    cubeArray
+      .convert(FloatConstantNoDataCellType)
+      .mapBands { case (i, bandTile) =>
+        val PowerTransformerParams(lambda, mean, scale) = BandPowerTransformerParams(i)
 
-      clip(
-        standardScalerTransform(
-          yeoJohnsonTransform(bandTile, lambda),
-          mean,
-          scale
-        ),
-        min = -100,
-        max = 18000)
-    }
-
-    scaled.convert(FloatConstantNoDataCellType)
-  }
+        clip(
+          standardScalerTransform(
+            yeoJohnsonTransform(bandTile, lambda),
+            mean,
+            scale
+          ),
+          min = -100,
+          max = 18000
+        )
+      }
 
   private def yeoJohnsonTransform(tile: Tile, λ: Double): Tile =
     tile.mapDouble { x =>
