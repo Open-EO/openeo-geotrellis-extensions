@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.geotiff
 
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
+import geotrellis.raster.io.geotiff.{GeoTiff, GeoTiffOptions, Tiled}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
@@ -111,6 +111,7 @@ class TileGridTest {
 
     val gtiffOptions = new GTiffOptions
     gtiffOptions.setTileSize(128)
+    gtiffOptions.setOverview("ALL")
 
     val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6), gtiffOptions)
     val expectedPaths = Set(
@@ -124,7 +125,7 @@ class TileGridTest {
 
     for (path <- expectedPaths) {
       val tile = GeoTiff.readMultiband(path)
-      Assertions.assertEquals(0, tile.overviews.size)
+      Assertions.assertEquals(1, tile.overviews.size)
       Assertions.assertEquals(Tiled(128, 128), tile.overviews.head.options.storageMethod)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
