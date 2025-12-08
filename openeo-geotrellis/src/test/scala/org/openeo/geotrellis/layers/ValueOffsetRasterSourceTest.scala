@@ -15,7 +15,7 @@ class ValueOffsetRasterSourceTest {
     val tiffRs = GeoTiffRasterSource(file.toString)
 
     val originalValue = getCornerPixelValue(tiffRs)
-    val rs = new ValueOffsetRasterSource(tiffRs, -1000)
+    val rs = new ValueOffsetRasterSource(tiffRs, 1, -1000)
     val newValue = getCornerPixelValue(rs)
     assertEquals(originalValue - 1000, newValue)
   }
@@ -26,7 +26,7 @@ class ValueOffsetRasterSourceTest {
     val tiffRs = GeoTiffRasterSource(file.toString)
 
     val originalValue = getCornerPixelValue(tiffRs)
-    val rs = new ValueOffsetRasterSource(tiffRs, -1000)
+    val rs = new ValueOffsetRasterSource(tiffRs, 1, -1000)
     val newValue = getCornerPixelValue(rs.convert(ConvertTargetCellType(DoubleConstantNoDataCellType)))
     assertEquals(originalValue - 1000, newValue)
   }
@@ -37,7 +37,7 @@ class ValueOffsetRasterSourceTest {
     val tiffRs = GeoTiffRasterSource(file.toString)
 
     val originalValue = getCornerPixelValue(tiffRs)
-    val rs = new ValueOffsetRasterSource(tiffRs, -1000)
+    val rs = new ValueOffsetRasterSource(tiffRs, 1, -1000)
 
     val newValue = getCornerPixelValue(rs.resample(
       DefaultTarget,
@@ -53,7 +53,7 @@ class ValueOffsetRasterSourceTest {
     val tiffRs = GeoTiffRasterSource(file.toString)
 
     val originalValue = getCornerPixelValue(tiffRs)
-    val rs = new ValueOffsetRasterSource(tiffRs, -1000)
+    val rs = new ValueOffsetRasterSource(tiffRs, 1, -1000)
 
     val newValue = getCornerPixelValue(rs
       .resample(
@@ -65,4 +65,24 @@ class ValueOffsetRasterSourceTest {
     )
     assertEquals(originalValue - 1000, newValue)
   }
+
+  @Test
+  def testScaleOffsetConvertAndResample(): Unit = {
+    val file = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/S2-bands.tiff")
+    val tiffRs = GeoTiffRasterSource(file.toString)
+
+    val originalValue = getCornerPixelValue(tiffRs)
+    val rs = new ValueOffsetRasterSource(tiffRs, 2, -1000)
+
+    val newValue = getCornerPixelValue(rs
+      .resample(
+        DefaultTarget,
+        resample.NearestNeighbor,
+        OverviewStrategy.DEFAULT,
+      )
+      .convert(ConvertTargetCellType(DoubleConstantNoDataCellType))
+    )
+    assertEquals(originalValue * 2 - 1000, newValue)
+  }
+
 }
