@@ -6,25 +6,66 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.{FloatArrayTile, FloatConstantNoDataCellType, GridBounds, MultibandTile, Raster, Tile, UShortArrayTile, isData}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{MultibandGeoTiff, SinglebandGeoTiff}
+import io.circe.generic.auto._
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.openeo.geotrelliscommon.CirceException
 
 import java.nio.file.{Files, Path, Paths}
 import java.util
+import scala.io.Source
 import scala.jdk.CollectionConverters._
 import scala.jdk.StreamConverters._
 import scala.sys.process._
+import scala.util.{Failure, Success, Using}
 
 object CorsaTest {
   private val TileSize = 120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
+  private val BandPowerTransformerParams: Seq[PowerTransformerParams] = {
+    Seq.fill(10) {// TODO: incorporate from other scaler files as well
+      parsePowerTransformerParams("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/scalers/scaler2024_power_B02_info.json")
+    }
+  }
+
+  require(Bands.size == BandPowerTransformerParams.size)
+
+  private case class PowerTransformerParams(lambda: Double, mean: Double, scale: Double)
+
+  private def parsePowerTransformerParams(configFile: String): PowerTransformerParams = {
+    case class PtKwargs(method: String, standardize: Boolean)
+    case class ScKwargs(with_mean: Boolean, with_std: Boolean)
+    case class Params(pt_kwargs: PtKwargs, scaler_mean: Seq[Double], scaler_var: Seq[Double],
+                                      lambdas_ : Seq[Double], sc_kwargs: ScKwargs)
+
+    val config = for {
+      json <- Using(Source.fromFile(configFile)) { source => source.mkString }
+      config <- CirceException.decode[Params](json).toTry
+    } yield config
+
+    config match {
+      case Success(config) =>
+        require(config.pt_kwargs.method == "yeo-johnson")
+        require(config.pt_kwargs.standardize)
+        require(config.scaler_mean.size == 1)
+        require(config.scaler_var.size == 1)
+        require(config.lambdas_.size == 1)
+        require(config.sc_kwargs.with_mean)
+        require(config.sc_kwargs.with_std)
+
+        PowerTransformerParams(config.lambdas_.head, config.scaler_mean.head, config.scaler_var.head)
+      case Failure(e) => throw e
+    }
+  }
 }
 
 class CorsaTest {
   import CorsaTest._
 
   @Test
-  def poc_encode(@TempDir tempDir: Path): Unit = {
+  def pocEncode(@TempDir tempDir: Path): Unit = {
+    val scaleByPython = false
+
     val modelDir = {
       // copied from /data/users/Public/luytsa/corsa-compression/pretrain_BEN_10-20mbands_bicubic_512-128_onnx
       Paths.get("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/pretrain_BEN_10-20mbands_bicubic_512-128_onnx")
@@ -43,7 +84,9 @@ class CorsaTest {
     // TODO: replace NaNs with 0; in this case there are none
     cubeArray foreach { (_, value) => require(isData(value)) }
 
-    val cubeArrayNormalized = preprocessDataCube(cubeArrayFile, scalerDir)
+    val cubeArrayNormalized =
+      if (scaleByPython) preprocessDataCubeInPython(cubeArrayFile, scalerDir)
+      else preprocessDataCubeInScala(cubeArray)
 
     val (level0, level1) = processWindowOnnx(cubeArrayNormalized, modelPath)
 
@@ -64,7 +107,9 @@ class CorsaTest {
 
     val rasters = for {
       rs <- bandRasterSources
-      raster <- rs.read(GridBounds(0L, 0L, TileSize - 1, TileSize - 1))
+      cols = rs.gridExtent.cols
+      rows = rs.gridExtent.rows
+      Some(raster) = rs.read(GridBounds(cols / 2, rows / 2, cols / 2 + TileSize - 1, rows / 2 + TileSize - 1)) // center of tile (arbitrary)
     } yield raster
 
     val extent = rasters.head.extent
@@ -73,9 +118,7 @@ class CorsaTest {
     (Raster(multibandTile, extent), crs)
   }
 
-  private def preprocessDataCube(cubeArrayFile: Path, scalerDir: Path): MultibandTile = {
-    // TODO: scale; original does this by unpickling some objects from disk and applying them to the input
-
+  private def preprocessDataCubeInPython(cubeArrayFile: Path, scalerDir: Path): MultibandTile = {
     val applyScalersScript = getClass.getClassLoader.getResource("org/openeo/geotrellis/corsa/apply_scalers.py").getPath
     val applyScalers = Seq("/home/bossie/PycharmProjects/openeo/venv38/bin/python", applyScalersScript, cubeArrayFile.toAbsolutePath.toString, scalerDir.toAbsolutePath.toString) ++ Bands
     if (applyScalers.! != 0) throw new IllegalStateException(s"${applyScalers mkString " "} returned non-zero exit status")
@@ -84,6 +127,42 @@ class CorsaTest {
 
     scaled.convert(FloatConstantNoDataCellType)
     // UDF adds a new dimension in addition to bands/y/x; this is done processWindowOnnx instead
+  }
+
+  private def preprocessDataCubeInScala(cubeArray: MultibandTile): MultibandTile = {
+    val scaled = cubeArray.mapBands { case (i, bandTile) =>
+      val PowerTransformerParams(lambda, mean, scale) = BandPowerTransformerParams(i)
+
+      clip(
+        standardScalerTransform(
+          yeoJohnsonTransform(bandTile, lambda),
+          mean,
+          scale
+        ),
+        min = -100,
+        max = 18000)
+    }
+
+    scaled.convert(FloatConstantNoDataCellType)
+  }
+
+  private def yeoJohnsonTransform(tile: Tile, λ: Double): Tile =
+    tile.mapDouble { x =>
+      if (x >= 0) {
+        if (λ != 0) (math.pow(x + 1, λ) - 1) / λ
+        else math.log1p(x)
+      } else {
+        if (λ != 2) -(math.pow(-x + 1, 2 - λ) - 1) / (2 - λ)
+        else -math.log1p(-x)
+      }
+    }
+
+  private def standardScalerTransform(tile: Tile, mean: Double, scale: Double): Tile =
+    tile.mapDouble { x => (x - mean) / scale }
+
+  private def clip(tile: Tile, min: Double, max: Double): Tile = {
+    require(min <= max)
+    tile.mapDouble { x => if (x < min) min else if (x > max) max else x }
   }
 
   private def processWindowOnnx(cubeArrayNormalized: MultibandTile, modelPath: Path): (Tile, Tile)  = {
