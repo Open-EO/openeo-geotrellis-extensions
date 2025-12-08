@@ -22,13 +22,9 @@ import scala.util.{Failure, Success, Using}
 object CorsaTest {
   private val TileSize = 120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
-  private val BandPowerTransformerParams: Seq[PowerTransformerParams] = {
-    Seq.fill(10) {// TODO: incorporate from other scaler files as well
-      parsePowerTransformerParams("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/scalers/scaler2024_power_B02_info.json")
-    }
+  private val BandPowerTransformerParams = Bands.map { band =>
+    parsePowerTransformerParams(s"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/scalers/scaler2024_power_${band}_info.json")
   }
-
-  require(Bands.size == BandPowerTransformerParams.size)
 
   private case class PowerTransformerParams(lambda: Double, mean: Double, scale: Double)
 
