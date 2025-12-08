@@ -11,11 +11,12 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, Row, SaveMode, SparkSession}
+import org.openeo.geotrellis.SpatialToSpacetimeJoinRdd
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.layers.LayerProvider
-import org.openeo.geotrellis.{OpenEOProcesses, SpatialToSpacetimeJoinRdd}
+import org.openeo.geotrelliscommon.DatacubeSupport
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
@@ -155,7 +156,7 @@ class AggregatePolygonProcess {
       }
     }
     val cellType = datacube.metadata.cellType
-    val maybeLabels = new OpenEOProcesses().maybeBandLabels(datacube)
+    val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
     aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath,maybeLabels)
   }
 
@@ -211,7 +212,7 @@ class AggregatePolygonProcess {
         }
         result
     }
-    val maybeLabels = new OpenEOProcesses().maybeBandLabels(datacube)
+    val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
     val cellType = datacube.metadata.cellType
     aggregateByPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath, maybeLabels)
   }
@@ -316,7 +317,7 @@ class AggregatePolygonProcess {
         }
       }
       val cellType = datacube.metadata.cellType
-      val maybeLabels = new OpenEOProcesses().maybeBandLabels(datacube)
+      val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
       pixelRDD.name = s"aggregate_spatial: all pixels by zone ${maybeLabels.map(_.mkString(",")).getOrElse("band labels unknown")} ${cellType.name}"
       aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath,maybeLabels)
 
@@ -364,15 +365,15 @@ class AggregatePolygonProcess {
     }
 
     val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*)
-      if(scriptBuilder.nodataIsIgnored) {
-        // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
-        // this approach filters out nodata for the computation, but restores it in the output.
-        val requiredRows = dataframe.select("date", "feature_index").distinct()
-        val joined = requiredRows.join(aggregated, Seq("date", "feature_index"), "left")
-        joined.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
-      }else{
-        aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
-      }
+    if (scriptBuilder.nodataIsIgnored) {
+      // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
+      // this approach filters out nodata for the computation, but restores it in the output.
+      val requiredRows = dataframe.select("date", "feature_index").distinct()
+      val joined = requiredRows.join(aggregated, Seq("date", "feature_index"), "left")
+      joined.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    } else {
+      aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    }
 
     CreoS3Utils.waitTillPathAvailable(Paths.get(outputPath).resolve("_SUCCESS").toString)
   }

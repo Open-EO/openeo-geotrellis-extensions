@@ -682,7 +682,6 @@ object FileLayerProvider {
   }
 
   private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS,  maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]], sc: SparkContext, datacubeParams: Option[DataCubeParameters]) = {
-    val emptyPoint = Point(0.0, 0.0)
     val cubeExtent = metadata.extent
 
     val inputNumberOfPartitions = if(maybeKeys.isDefined) {
@@ -694,10 +693,9 @@ object FileLayerProvider {
     }
 
     val clippedFeatures: RDD[vector.Feature[Geometry, (RasterSource, Feature)]] = sc.parallelize(geometricFeatures, inputNumberOfPartitions)
-      .map(eoProductFeature => {
-
-        val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
-        eoProductFeature.mapGeom(productGeometry => {
+      .flatMap { case vector.Feature(productGeometry, data @ (_, feature)) =>
+        val productCRSOrDefault = feature.crs.getOrElse(targetCRS)
+        val intersection =
           try {
             val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
               val productGeometryProjected = ProjectedPolygons(productGeometry, LatLng).safeReproject(productCRSOrDefault, refine = true)
@@ -709,17 +707,25 @@ object FileLayerProvider {
             } else {
               productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             }
-            if (intersection.isValid && intersection.getArea > 0.0) {
-              intersection.reproject(productCRSOrDefault, targetCRS)
-            } else {
-              emptyPoint
+
+            if (intersection.isValid && intersection.getArea > 0.0)
+              Some(intersection.reproject(productCRSOrDefault, targetCRS))
+            else {
+              // consider rasterExtent as a better representation of an item's geometry in its native CRS
+              (feature.rasterExtent, feature.crs) match {
+                case (Some(rasterExtent), Some(crs)) if crs == targetCRS =>
+                  val intersection = rasterExtent.toPolygon() intersection cubeExtent.toPolygon()
+                  if (intersection.isValid && intersection.getArea > 0.0) Some(intersection)
+                  else None
+                case _ => None
+              }
             }
           } catch {
-            case e: Exception => logger.warn("Exception while determining intersection.", e); emptyPoint
+            case e: Exception => logger.warn("Exception while determining intersection.", e); None
           }
 
-        })
-      }).filter(!_.geom.equals(emptyPoint))
+        intersection.map(vector.Feature(_, data))
+      }
 
     if(maybeKeys.isDefined) {
       val transform = metadata.mapTransform
@@ -1432,6 +1438,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       (if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo).map {
         case Some((link, bandIndex)) =>
           val path = deriveFilePath(link.href)
+          val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
           //special case handling for data that does not declare nodata properly
@@ -1453,7 +1460,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           }
 
           val rasterSourceRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, sentinelXmlAngleBandIndex = bandIndex)
-          val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
+          val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueScale, pixelValueOffset, targetTargetCellType)
           Some((rasterSourceWrapped, bandIndex))
         case _ => None
       }
@@ -1612,7 +1619,17 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       feature <- overlappingFeatures
     } yield  deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams,targetResolution)).flatMap(_.toList)
 
-    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,overlappingRasterSources.map(_._2.id).asJava)
+    val tracker = BatchJobMetadataTracker.tracker("")
+    tracker.addInputProducts(
+      openSearchCollectionId,
+      overlappingRasterSources.map { case (_, feature) => feature.id }.asJava
+    )
+
+    tracker.addAuxiliaryFile(
+      new DerivedFromDocumentWriter(inputFeatures = overlappingRasterSources.map { case (_, feature) => feature }),
+      "application/geo+json",
+    )
+
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
 

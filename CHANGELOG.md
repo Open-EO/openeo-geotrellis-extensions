@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add support for reading ZStd compressed GTiff files ([#516](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/516))
 - `saveRDDTemporalAllowAssetPerBand`: add support for overviews ([openeo-geopyspark-driver#1151](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1151))
+- Collect and expose input features as STAC item collection files with `derived_from` links ([openeo-geopyspark-driver#1278](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1278))
 
 ### Changed
 
@@ -44,3 +45,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Major performance improvement for load_collection/load_stac of (very) sparse datacubes   ([#465](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/465))
 - load_collection/load_stac: reduce number of tasks and thus resource use by making partitioner settings adaptive
 - `load_stac`: avoid areas of zeroes for assets with integral values that don't define NODATA ([#446](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/446))
+- `load_stac`: avoid empty data cube for items with large footprints ([#582](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/582))

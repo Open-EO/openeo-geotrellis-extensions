@@ -360,4 +360,13 @@ object DatacubeSupport {
     }
     (indexReduction, indices.sorted)
   }
+
+  def maybeBandLabels[K](cube: RDD[(K, MultibandTile)]): Option[Seq[String]] = {
+    if (cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount > 0) {
+      val labels = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bands
+      return Some(labels)
+    }else{
+      return None
+    }
+  }
 }
