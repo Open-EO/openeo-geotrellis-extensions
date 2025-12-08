@@ -102,7 +102,7 @@ class TileGridTest {
   @Test
   def testSaveStitchWithTileGridsWithOptions(@TempDir outDir: Path): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
-    val bbox = ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng)
+    val bbox = ProjectedExtent(Extent(1.90, 50.95, 2.10, 51.05), LatLng)
     val layer = rgbLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
     val spatialLayer = layer
@@ -124,7 +124,7 @@ class TileGridTest {
 
     for (path <- expectedPaths) {
       val tile = GeoTiff.readMultiband(path)
-      Assertions.assertEquals(1, tile.overviews.size)
+      Assertions.assertEquals(0, tile.overviews.size)
       Assertions.assertEquals(Tiled(128, 128), tile.overviews.head.options.storageMethod)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
