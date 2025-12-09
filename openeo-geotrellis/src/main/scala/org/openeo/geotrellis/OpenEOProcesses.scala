@@ -661,20 +661,27 @@ class OpenEOProcesses extends Serializable {
    * Only first band is taken into account, other bands are ignored.
    *
    * @param datacube
+   * @param tileSizeFactor by default 4
    * @return
    */
-  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, List[PolygonFeature[Int]])], CRS) = {
+  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K],tileSizeFactor: Int = 4): (Array[(String, List[PolygonFeature[Int]])], CRS) = {
     val layout = datacube.metadata.layout
     val maxExtent = datacube.metadata.extent
     //naive approach: combine tiles and hope that we don't exceed the max size
     //if we exceed the max, vectorize will run on separate tiles, and we'll need to merge results
-    val newCols = Math.min(256*20,layout.cols)
-    val newRows = Math.min(256*20,layout.rows)
+    val newCols = Math.min(256 * tileSizeFactor,layout.cols)
+    val newRows = Math.min(256 * tileSizeFactor,layout.rows)
+    val overlap = 8
 
-    val singleBandLayer: TileLayerRDD[K] = datacube.withContext(_.mapValues(_.band(0)))
-    val retiled = singleBandLayer.regrid(newCols.intValue(),newRows.intValue())
+    val retiled = retileGeneric(datacube,newCols.toInt,newRows.toInt,overlap,overlap)
+    val resolution = retiled.metadata.cellSize
+    val retiledSingleBand = retiled.withContext(_.mapValues(_.band(0)))
     // Perform the actual vectorization.
-    val vectorizedValues: RDD[(K, List[PolygonFeature[Int]])] = retiled.toRasters.mapValues(_.crop(maxExtent,Crop.Options(force=true,clamp=true)).toVector())
+    val vectorizedValues: RDD[(K, List[PolygonFeature[Int]])] = retiledSingleBand.toRasters.mapValues(v => {
+      val overlapExtent = v.extent.buffer(resolution.width*overlap,resolution.height*overlap)
+      val overlap_cube = new Raster[Tile](v.tile,overlapExtent)
+      overlap_cube.crop(maxExtent,Crop.Options(force=true,clamp=true)).toVector()
+    })
     // We don't require spatial partitioning for features, so we can group by (Time, Band) instead.
     // In the meantime we construct the feature ids as they will appear in the geojson file.
     val featuresWithId: RDD[(String, List[PolygonFeature[Int]])] = vectorizedValues.map(kv => {
@@ -692,9 +699,21 @@ class OpenEOProcesses extends Serializable {
   def featuresToGeojson(features: Array[(String, List[PolygonFeature[Int]])], crs: CRS): Json = {
     // Add index to each feature id, so final id will be 'date_band_index'.
     val geojsonFeaturesWithId: Array[Json] = features.flatMap((v) => {
+      val polygons_per_values: List[List[PolygonFeature[Int]]] = v._2.map(_.data).distinct.map(x => v._2.filter(_.data == x))
+      val combined_polygons = polygons_per_values.map(
+        x =>{
+          val union = x.foldRight(Option.empty[Geometry])((a,b)=>{
+            if (b.isEmpty)
+              Option(a.geom)
+            else
+              Option(b.get.union(a))
+          })
+          new Feature(union.get, x.head.data)
+        }
+      )
       val key: String = v._1 // (Time, Band) key.
       // Geojson lists properties as a map.
-      val feats: List[PolygonFeature[Map[String,Int]]] = v._2.map(_.mapData(v => immutable.Map("value" -> v)))
+      val feats = combined_polygons.map(_.mapData(v => immutable.Map("value" -> v)))
       feats.zipWithIndex.map({case (f,i) => f.asJson.deepMerge(Json.obj("id" -> (key + "_" + i).asJson))})
     })
     // Add bbox to top level.

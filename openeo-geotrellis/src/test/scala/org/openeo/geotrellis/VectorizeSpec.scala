@@ -1,6 +1,7 @@
 package org.openeo.geotrellis
 
 import io.circe.Json
+import io.circe._, io.circe.parser._
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.crop.Crop
@@ -13,6 +14,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.spark._
 import geotrellis.vector._
 import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
+import org.apache.commons.io.IOUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
@@ -73,15 +75,11 @@ class VectorizeSpec {
     val croppedCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = cube._1.crop(newExtent, Options(force = true, clamp = true))
 
     val openEOProcesses = new OpenEOProcesses()
-    val (features: Array[(String, List[PolygonFeature[Int]])], crs: CRS) = openEOProcesses.vectorize(ContextRDD(croppedCube, croppedCube.metadata.copy(extent = newExtent)))
-    val geojson = openEOProcesses.featuresToGeojson(features, crs)
-
-    // assert that geojson["features"][0]["properties"] is a Map
-    val hcursor = geojson.hcursor.downField("features").downArray.downField("properties")
-    assertTrue(hcursor.focus.exists(_.isObject))
-
-    // assert that geojson["features"][0]["properties"]["value"] == 0
-    val value = hcursor.downField("value").focus.flatMap(_.asNumber).flatMap(_.toInt)
-    assertEquals(Some(0), value)
+    val (features: Array[(String, List[PolygonFeature[Int]])], crs: CRS) = openEOProcesses.vectorize(ContextRDD(croppedCube, croppedCube.metadata.copy(extent = newExtent)),1)
+    val geojson:Json = openEOProcesses.featuresToGeojson(features, crs)
+    val expected = parse(IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/TestVectorize.geojson"))) match {
+      case Right(json) => json
+    }
+    assertEquals(expected,geojson)
   }
 }
