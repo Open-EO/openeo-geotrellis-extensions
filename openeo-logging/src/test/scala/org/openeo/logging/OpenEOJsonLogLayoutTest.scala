@@ -76,7 +76,7 @@ class OpenEOJsonLogLayoutTest {
       assertEquals(message, logEntry("message").asString.get)
       assertEquals(now, logEntry("created").asNumber.map(_.toDouble).get, 1.0)
       assertEquals("OpenEOJsonLogLayoutTest.scala", logEntry("filename").asString.get)
-      assertEquals(60, logEntry("lineno").asNumber.flatMap(_.toInt).get) // Line number can change
+      assertEquals(64, logEntry("lineno").asNumber.flatMap(_.toInt).get) // Line number can change
       val stackTrace = logEntry("exc_info").asString.get
       assertTrue(stackTrace.contains("java.lang.Exception: It was the blorst of times"))
       assertTrue(stackTrace.contains(getClass.getName))
