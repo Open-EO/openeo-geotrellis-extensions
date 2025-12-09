@@ -25,7 +25,7 @@ import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.{AfterClass, Assert, BeforeClass, Test}
 import org.openeo.geotrellis.AggregateSpatialTest.{assertEqualTimeseriesStats, parseCSV}
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.OpenEOProcessesSpec.getDatesForCube
@@ -477,6 +477,40 @@ class OpenEOProcessesSpec extends RasterMatchers {
     assertEquals(49, slopeTile.get(1, 255))
     assertEquals(49, slopeTile.get(1, 256))
     assertEquals(40, slopeTile.get(1, 1279)) // border case ()
+  }
+
+  @Test
+  def convertDataType_int8(): Unit = {
+    val tile = IntArrayTile.fill(0,1280, 1280).map((c: Int, r: Int, v: Int) => c)
+    val tileSize = 256
+    val extent = new Extent(50,2,50.01,2.01)
+    val crs = LatLng
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+    val resultCube = new OpenEOProcesses().convertDataTypeGeneric(datacube, "int8")
+
+    val convertedTile = time{ resultCube.stitch().tile.band(0) }
+
+    assertEquals(ByteConstantNoDataCellType, resultCube.metadata.cellType)
+    assertEquals(1, convertedTile.get(1, 0))
+    assertEquals(2, convertedTile.get(2, 5))
+    assertEquals(21, convertedTile.get(277, 5)) // mod 256
+  }
+
+  @Test
+  def convertDataType_unsupported(): Unit = {
+    val tile = IntArrayTile.fill(0,1280, 1280).map((c: Int, r: Int, v: Int) => c)
+    val tileSize = 256
+    val extent = new Extent(50,2,50.01,2.01)
+    val crs = LatLng
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+    try {
+      val resultCube = new OpenEOProcesses().convertDataTypeGeneric(datacube, "int33")
+      Assert.fail("Should have failed with IllegalArgumentException")
+    } catch {
+      case e: IllegalArgumentException => assertEquals("Data type int33 is not supported", e.getMessage)
+    }
   }
 
 

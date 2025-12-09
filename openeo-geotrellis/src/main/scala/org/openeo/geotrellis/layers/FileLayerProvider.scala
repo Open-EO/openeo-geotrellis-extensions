@@ -1438,6 +1438,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       (if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo).map {
         case Some((link, bandIndex)) =>
           val path = deriveFilePath(link.href)
+          val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
           //special case handling for data that does not declare nodata properly
@@ -1459,7 +1460,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           }
 
           val rasterSourceRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, sentinelXmlAngleBandIndex = bandIndex)
-          val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
+          val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueScale, pixelValueOffset, targetTargetCellType)
           Some((rasterSourceWrapped, bandIndex))
         case _ => None
       }
