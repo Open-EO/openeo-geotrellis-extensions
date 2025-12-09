@@ -1020,4 +1020,43 @@ class OpenEOProcessesSpec extends RasterMatchers {
     assertEquals(16, resampled.partitions.length)
   }
 
+  @Test
+  def testPredictONNXSpatial(): Unit = {
+    val tile: Tile = FloatArrayTile.fill(1,1280, 1280)
+    val tileSize = 256
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize))
+
+    val path = getClass.getResource("/org/openeo/geotrellis/test_model.onnx").getPath
+    val resultCube = new OpenEOProcesses().predictONNXSpatial(datacube,
+      path
+    )
+
+    val theResultTile = resultCube.stitch()
+    theResultTile
+
+  }
+
+  @Test
+  def testPredictONNXTemporal(): Unit = {
+    val date = ZonedDateTime.parse("2017-01-01T00:00:00Z").plusDays(1)
+
+    val layoutCols = 8
+    val layoutRows = 4
+
+    val intImage = Array.fill(layoutCols*layoutRows*256*256)(1F)
+    val imageTile = FloatArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+
+    val datacube = TileLayerRDDBuilders
+      .createSpaceTimeTileLayerRDD(Seq((imageTile, date)), TileLayout(layoutCols, layoutRows, 256, 256),
+        FloatConstantNoDataCellType)(OpenEOProcessesSpec.sc)
+      .withContext(_.mapValues(MultibandTile(_)))
+
+    val path = getClass.getResource("/org/openeo/geotrellis/test_model.onnx").getPath
+    val resultCube = new OpenEOProcesses().predictONNXTemporal(datacube,
+      path
+    )
+    val results = resultCube.values.collect()
+    results
+  }
+
 }

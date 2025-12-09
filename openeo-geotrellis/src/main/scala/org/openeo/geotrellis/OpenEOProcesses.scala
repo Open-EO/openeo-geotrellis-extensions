@@ -1472,15 +1472,18 @@ class OpenEOProcesses extends Serializable {
   def predictONNX(datacube: Object, model: String): Object = {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
-        predictONNXSpatial(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+        predictONNXSpatial(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
-        predictONNXTemporal(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+        predictONNXTemporal(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
       case _ => throw new IllegalArgumentException(s"Unsupported rdd type for predict_onnx: ${datacube}")
     }
   }
 
-  private def flattenNestedArray(multiArray: Array[_], outputShape: Array[Long], onnxType:OnnxJavaType): ArrayTile = {
-    onnxType match { // TODO check if the multiArray contains the right type (same as the onnx type) and throw clear error if not.
+
+  private def flattenNestedArray(multiArray: Array[_], outputShape: Array[Long], onnxType:OnnxJavaType): MultibandTile = {
+    val tile = onnxType match {
+      // TODO check if the multiArray contains the right type (same as the onnx type) and throw clear error if not.
+      // TODO make it possible to have multiple bands
       case OnnxJavaType.FLOAT =>
         val resultArray = if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Float]]]]].flatten.flatten.flatten
         else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Float]]]].flatten.flatten
@@ -1517,10 +1520,10 @@ class OpenEOProcesses extends Serializable {
         ByteArrayTile(resultArray.asInstanceOf[Array[Byte]], outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
       case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported output type of ONNX model : $onnxType")
     }
+    MultibandTile(tile)
   }
 
   def predictONNXSpatial(datacube:MultibandTileLayerRDD[SpatialKey], model:String): RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = {
-    val env = OrtEnvironment.getEnvironment()
     val modelPath = Paths.get(model)
     val (modelFile, isTemp) = if (Files.exists(modelPath)) {
       (model,false)
@@ -1529,77 +1532,69 @@ class OpenEOProcesses extends Serializable {
       FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
       (tempFileName.toString,true)
     }
-    val session = env.createSession(modelFile, new OrtSession.SessionOptions())
-    val inputNames = session.getInputNames
-    val outputNames = session.getOutputNames
+    val result = datacube.mapValues {tile =>
+      val env = OrtEnvironment.getEnvironment()
+      val session = env.createSession(modelFile, new OrtSession.SessionOptions())
+      val inputNames = session.getInputNames
+      val outputNames = session.getOutputNames
 
-    if (inputNames.size()>1)
-      // TODO support the case for multiple inputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
-    if (outputNames.size()>1)
-      // TODO support the case for multiple outputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
+      if (inputNames.size()>1)
+        // TODO support the case for multiple inputs
+        throw new IllegalArgumentException(
+          s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
+      if (outputNames.size()>1)
+        // TODO support the case for multiple outputs
+        throw new IllegalArgumentException(
+          s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
 
-    val inputName = inputNames.toArray()(0).asInstanceOf[String]
-    val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
-    val inputShape = inputInfo.getShape
+      val inputName = inputNames.toArray()(0).asInstanceOf[String]
+      val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+      val inputShape = inputInfo.getShape
 
-    val outputName = outputNames.toArray()(0).asInstanceOf[String]
-    val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
-    val outputShape = outputInfo.getShape
+      val outputName = outputNames.toArray()(0).asInstanceOf[String]
+      val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
+      val outputShape = outputInfo.getShape
 
-    if (!inputShape.sameElements(outputShape)) {
-      // TODO Analyze the problems that might occur if the input and output shape differ
-      throw new IllegalArgumentException(
-        s"ONNX: only supports output shape that is the same as input shape, with output shape ${outputShape.mkString("Array(", ", ", ")")} and input shape ${inputShape.mkString("Array(", ", ", ")")}.")
-    }
+      if (!inputShape.sameElements(outputShape)) {
+        // TODO Analyze the problems that might occur if the input and output shape differ
+        throw new IllegalArgumentException(
+          s"ONNX: only supports output shape that is the same as input shape, with output shape ${outputShape.mkString("Array(", ", ", ")")} and input shape ${inputShape.mkString("Array(", ", ", ")")}.")
+      }
 
-    val inputType = inputInfo.`type`
-    val outputType = outputInfo.`type`
+      val inputType = inputInfo.`type`
+      val outputType = outputInfo.`type`
 
-    val result = datacube.map{ case (key, tile) =>
       val bandCount = tile.bandCount
-      throw new IllegalArgumentException(f"ONNX: only support one band as input, but got: ${bandCount}")
-      val ts = tile.band(0)
+      if (bandCount!=1) throw new IllegalArgumentException(f"ONNX: only support one band as input, but got: ${bandCount}")
       val inputArray = inputType match {
         case OnnxJavaType.FLOAT =>
-          if (!ts.isInstanceOf[FloatArrayTile]) {
-            throw new IllegalArgumentException(f"ONNX: expected Float as inputType, but got: ${ts.cellType}")
-          }
-          OrtUtil.reshape(ts.asInstanceOf[FloatArrayTile].array, inputShape)
+          val flat = tile.bands.flatMap(x=>x.asInstanceOf[FloatArrayTile].array).toArray
+          OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.DOUBLE =>
-          OrtUtil.reshape(ts.asInstanceOf[DoubleArrayTile].array, inputShape)
+          val flat = tile.bands.flatMap(x=>x.asInstanceOf[DoubleArrayTile].array).toArray
+          OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT32 =>
-          OrtUtil.reshape(ts.asInstanceOf[IntArrayTile].array, inputShape)
+          val flat = tile.bands.flatMap(x=>x.asInstanceOf[IntArrayTile].array).toArray
+          OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT16 =>
-          OrtUtil.reshape(ts.asInstanceOf[ShortArrayTile].array, inputShape)
+          val flat = tile.bands.flatMap(x=>x.asInstanceOf[ShortArrayTile].array).toArray
+          OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT8 =>
-          OrtUtil.reshape(ts.asInstanceOf[ByteArrayTile].array, inputShape)
+          val flat = tile.bands.flatMap(x=>x.asInstanceOf[ByteArrayTile].array).toArray
+          OrtUtil.reshape(flat, inputShape)
         case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported input type of ONNX model : $onnxType")
-
-        val tensor = OnnxTensor.createTensor(env, inputArray)
-        val inputs = java.util.Map.of(inputName, tensor)
-        try {
-          val results = session.run(inputs)
-          val resultValue = results.get(0).getValue.asInstanceOf[Array[_]]
-          val resultTile = flattenNestedArray(resultValue, outputShape, outputType)
-
-          try {
-          } finally {
-            if (results != null) {results.close()}
-          }
-          resultTile
-        }
       }
+      val tensor = OnnxTensor.createTensor(env, inputArray)
+      val inputs = java.util.Map.of(inputName, tensor)
+      val results = session.run(inputs)
+      val resultValue = results.get(0).getValue.asInstanceOf[Array[_]]
+      val resultTile = flattenNestedArray(resultValue, outputShape, outputType)
+      resultTile
     }
-    if (isTemp){Files.delete(Paths.get(modelFile))}
-    result
+    ContextRDD(result,datacube.metadata)
   }
 
   def predictONNXTemporal(datacube:MultibandTileLayerRDD[SpaceTimeKey], model:String): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
-    val env = OrtEnvironment.getEnvironment()
     val modelPath = Paths.get(model)
     val (modelFile, isTemp) = if (Files.exists(modelPath)) {
       (model,false)
@@ -1608,73 +1603,66 @@ class OpenEOProcesses extends Serializable {
       FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
       (tempFileName.toString,true)
     }
-    val session = env.createSession(modelFile, new OrtSession.SessionOptions())
-    val inputNames = session.getInputNames
-    val outputNames = session.getOutputNames
+    val result = datacube.mapValues {tile =>
+      val env = OrtEnvironment.getEnvironment()
+      val session = env.createSession(modelFile, new OrtSession.SessionOptions())
+      val inputNames = session.getInputNames
+      val outputNames = session.getOutputNames
 
-    if (inputNames.size()>1)
-      // TODO support the case for multiple inputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
-    if (outputNames.size()>1)
-      // TODO support the case for multiple outputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
+      if (inputNames.size()>1)
+        // TODO support the case for multiple inputs
+        throw new IllegalArgumentException(
+          s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
+      if (outputNames.size()>1)
+        // TODO support the case for multiple outputs
+        throw new IllegalArgumentException(
+          s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
 
-    val inputName = inputNames.toArray()(0).asInstanceOf[String]
-    val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
-    val inputShape = inputInfo.getShape
+      val inputName = inputNames.toArray()(0).asInstanceOf[String]
+      val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+      val inputShape = inputInfo.getShape
 
-    val outputName = outputNames.toArray()(0).asInstanceOf[String]
-    val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
-    val outputShape = outputInfo.getShape
+      val outputName = outputNames.toArray()(0).asInstanceOf[String]
+      val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
+      val outputShape = outputInfo.getShape
 
-    if (!inputShape.sameElements(outputShape)) {
-      // TODO Analyze the problems that might occur if the input and output shape differ
-      throw new IllegalArgumentException(
-        s"ONNX: only supports output shape that is the same as input shape, with output shape ${outputShape.mkString("Array(", ", ", ")")} and input shape ${inputShape.mkString("Array(", ", ", ")")}.")
-    }
+      if (!inputShape.sameElements(outputShape)) {
+        // TODO Analyze the problems that might occur if the input and output shape differ
+        throw new IllegalArgumentException(
+          s"ONNX: only supports output shape that is the same as input shape, with output shape ${outputShape.mkString("Array(", ", ", ")")} and input shape ${inputShape.mkString("Array(", ", ", ")")}.")
+      }
 
-    val inputType = inputInfo.`type`
-    val outputType = outputInfo.`type`
+      val inputType = inputInfo.`type`
+      val outputType = outputInfo.`type`
 
-    val result = datacube.map{ case (key, tile) =>
       val bandCount = tile.bandCount
-      throw new IllegalArgumentException(f"ONNX: only support one band as input, but got: ${bandCount}")
-      val ts = tile.band(0)
+      if (bandCount!=1) throw new IllegalArgumentException(f"ONNX: only support one band as input, but got: ${bandCount}")
       val inputArray = inputType match {
         case OnnxJavaType.FLOAT =>
-          if (!ts.isInstanceOf[FloatArrayTile]) {
-            throw new IllegalArgumentException(f"ONNX: expected Float as inputType, but got: ${ts.cellType}")
-          }
-          OrtUtil.reshape(ts.asInstanceOf[FloatArrayTile].array, inputShape)
+          val flat = tile.bands.flatMap(x=>x.asInstanceOf[FloatArrayTile].array).toArray
+          OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.DOUBLE =>
-          OrtUtil.reshape(ts.asInstanceOf[DoubleArrayTile].array, inputShape)
+          val flat = tile.bands.flatMap(x=>x.asInstanceOf[DoubleArrayTile].array).toArray
+          OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT32 =>
-          OrtUtil.reshape(ts.asInstanceOf[IntArrayTile].array, inputShape)
+          val flat = tile.bands.flatMap(x=>x.asInstanceOf[IntArrayTile].array).toArray
+          OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT16 =>
-          OrtUtil.reshape(ts.asInstanceOf[ShortArrayTile].array, inputShape)
+          val flat = tile.bands.flatMap(x=>x.asInstanceOf[ShortArrayTile].array).toArray
+          OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT8 =>
-          OrtUtil.reshape(ts.asInstanceOf[ByteArrayTile].array, inputShape)
+          val flat = tile.bands.flatMap(x=>x.asInstanceOf[ByteArrayTile].array).toArray
+          OrtUtil.reshape(flat, inputShape)
         case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported input type of ONNX model : $onnxType")
-
-          val tensor = OnnxTensor.createTensor(env, inputArray)
-          val inputs = java.util.Map.of(inputName, tensor)
-          try {
-            val results = session.run(inputs)
-            val resultValue = results.get(0).getValue.asInstanceOf[Array[_]]
-            val resultTile = flattenNestedArray(resultValue, outputShape, outputType)
-
-            try {
-            } finally {
-              if (results != null) {results.close()}
-            }
-            resultTile
-          }
       }
+      val tensor = OnnxTensor.createTensor(env, inputArray)
+      val inputs = java.util.Map.of(inputName, tensor)
+      val results = session.run(inputs)
+      val resultValue = results.get(0).getValue.asInstanceOf[Array[_]]
+      val resultTile = flattenNestedArray(resultValue, outputShape, outputType)
+      resultTile
     }
-    if (isTemp){Files.delete(Paths.get(modelFile))}
-    result
+    ContextRDD(result,datacube.metadata)
   }
 
 }
