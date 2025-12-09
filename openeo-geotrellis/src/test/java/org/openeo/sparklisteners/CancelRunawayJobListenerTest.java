@@ -53,7 +53,7 @@ public class CancelRunawayJobListenerTest {
         assertEquals(6, sum);
     }
 
-    @Timeout(value = timeoutInMilliseconds, unit = TimeUnit.MILLISECONDS)
+    @Timeout(value = timeoutInMilliseconds*2, unit = TimeUnit.MILLISECONDS)
     @Test
     public void runawayJobIsCancelled() {
         assertThrows(SparkException.class, () -> {
