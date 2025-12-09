@@ -197,8 +197,8 @@ class CorsaTest extends RasterMatchers {
     val ortL1Ids = OrtUtil.reshape(result.get(3).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, 30, 30)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
 
     // resample by means of "repeat" in the UDF's process_window_onnx() is undone by the resample_spatial in the UDP
-    val level0 = UShortArrayTile(ortL0Ids.flatten.flatten.flatten.map(_.toShort), cols = 60, rows = 60, noDataValue = None)//.resample(120, 120)
-    val level1 = UShortArrayTile(ortL1Ids.flatten.flatten.flatten.map(_.toShort), cols = 30, rows = 30, noDataValue = None)//.resample(120, 120)
+    val level0 = UShortArrayTile(ortL0Ids.flatten.flatten.flatten.map(_.toShort), cols = 60, rows = 60, noDataValue = None)
+    val level1 = UShortArrayTile(ortL1Ids.flatten.flatten.flatten.map(_.toShort), cols = 30, rows = 30, noDataValue = None)
 
     (level0, level1)
   }
@@ -208,16 +208,15 @@ class CorsaTest extends RasterMatchers {
     require(cubeArrayNormalized.dimensions.cols == TileSize)
     require(cubeArrayNormalized.dimensions.rows == TileSize)
 
-    def unflatten(floats: Array[Float]): Array[Array[Float]] =
+    def unflattenRaster(floats: Array[Float]): Array[Array[Float]] =
       floats.sliding(size = TileSize, step = TileSize).toArray // 1D -> 2D
 
-    val yxBands = for {
+    val bands = for {
       bandTile <- cubeArrayNormalized.bands.toArray
-      xy = unflatten(bandTile.toArrayTile().asInstanceOf[FloatArrayTile].array)
-      yx = xy // TODO: .transpose unnecessary?
+      yx = unflattenRaster(bandTile.toArrayTile().asInstanceOf[FloatArrayTile].array)
     } yield yx
 
-    Array(yxBands) // some additional dimension
+    Array(bands) // some additional dimension
   }
 
   // TODO: eventually cache this
