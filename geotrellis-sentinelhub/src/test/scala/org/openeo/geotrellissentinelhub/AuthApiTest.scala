@@ -1,7 +1,7 @@
 package org.openeo.geotrellissentinelhub
 
-import org.junit.Assert.{assertEquals, assertFalse, assertTrue, fail}
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.{assertFalse, assertTrue, fail}
+import org.junit.jupiter.api.Test
 import org.openeo.geotrellissentinelhub.AuthApi.AuthResponse
 
 import java.time.Duration
@@ -30,8 +30,8 @@ class AuthApiTest {
     } catch {
       case e: SentinelHubException =>
         assertTrue(Seq(400, 401) contains e.statusCode)
-        assertTrue(e.responseBody, e.responseBody contains """"Invalid client or Invalid client credentials"""")
-        assertFalse("contains client secret", e.getMessage contains wrongClientSecret)
+        assertTrue(e.responseBody contains """"Invalid client or Invalid client credentials"""", e.responseBody)
+        assertFalse(e.getMessage contains wrongClientSecret, "contains client secret")
     }
   }
 }

@@ -6,7 +6,7 @@ import org.openeo.geotrellisseeder.{Band, TileSeeder}
 class ProductGlobTest {
 
   @Test
-  @Ignore
+  @Disabled
   def testProductGlob(): Unit = {
     implicit val sc = SparkContext.getOrCreate(
       new SparkConf()

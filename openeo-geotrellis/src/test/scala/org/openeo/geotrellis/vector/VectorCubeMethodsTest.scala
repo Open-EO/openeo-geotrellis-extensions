@@ -38,7 +38,7 @@ object VectorCubeMethodsTest {
     _sc.get
   }
 
-  @BeforeClass
+  @BeforeAll
   def setUpSpark_BeforeClass(): Unit = sc
 
   @BeforeAll
@@ -54,7 +54,7 @@ object VectorCubeMethodsTest {
 
   var gotAfterClass = false
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark_AfterClass(): Unit = {
     gotAfterClass = true;
     maybeStopSpark()

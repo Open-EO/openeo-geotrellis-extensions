@@ -1,10 +1,5 @@
 package org.openeo.geotrellis.file
 
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.format.DateTimeFormatter
-import java.time.{LocalDate, ZonedDateTime}
-import java.util.Arrays.asList
 import geotrellis.proj4.LatLng
 import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.PolygonalSummaryResult
@@ -16,17 +11,23 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals, assertTrue}
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.Test
+import org.junit.jupiter.api.{AfterAll, BeforeAll}
 import org.openeo.opensearch.OpenSearchClient
 
 import java.net.URL
 import java.nio.file.{Files, Paths}
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter
+import java.time.{LocalDate, ZonedDateTime}
+import java.util.Arrays.asList
 import scala.reflect.io.Directory
 
 object Sentinel1CoherencePyramidFactoryTest {
   private var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = {
     val sparkConf = new SparkConf()
       .set("spark.kryoserializer.buffer.max", "512m")
@@ -35,7 +36,7 @@ object Sentinel1CoherencePyramidFactoryTest {
     sc = SparkUtils.createLocalSparkContext("local[*]", classOf[Sentinel2PyramidFactoryTest].getName, sparkConf)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 

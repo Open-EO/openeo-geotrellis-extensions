@@ -8,19 +8,19 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import io.findify.s3mock.S3Mock
 import org.apache.spark.SparkContext
-import org.junit.contrib.java.lang.system.EnvironmentVariables
-import org.junit.{AfterClass, BeforeClass, Rule, Test}
+import org.junit.Test
+import org.junit.jupiter.api.{AfterAll, BeforeAll}
+import org.junitpioneer.jupiter.SetEnvironmentVariable
 import org.openeo.geotrellis.LayerFixtures
 import org.openeo.geotrellis.creo.CreoS3Utils
 import software.amazon.awssdk.services.s3.model.{CreateBucketRequest, GetObjectRequest}
 
 import java.util
-import scala.annotation.meta.getter
 
 object PngTest {
   private var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = {
     // originally geotrellis.spark.util.SparkUtils.createLocalSparkContext
     val conf = SparkUtils.createSparkConf
@@ -36,49 +36,49 @@ object PngTest {
     sc = new SparkContext(conf)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit =
     sc.stop()
 }
 
 class PngTest {
 
-  @(Rule@getter)
-  val environmentVariables = new EnvironmentVariables
-
   @Test
   def testSaveStitched(): Unit = {
 
     val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
-    val tileLayerRDD =  LayerFixtures.aSpacetimeTileLayerRdd( 8,4)
+    val tileLayerRDD = LayerFixtures.aSpacetimeTileLayerRdd(8, 4)
 
     val spatialLayer = tileLayerRDD._1.toSpatial()
 
-    val singleBand = spatialLayer.withContext{_.mapValues(_.subsetBands(0))}
+    val singleBand = spatialLayer.withContext {
+      _.mapValues(_.subsetBands(0))
+    }
     val opts = new PngOptions
-    opts.setColorMap(new util.ArrayList(java.util.Arrays.asList(10,20,584854)))
-    saveStitched(singleBand, "/tmp/testSaveStitchedColormap.png",null,opts)
+    opts.setColorMap(new util.ArrayList(java.util.Arrays.asList(10, 20, 584854)))
+    saveStitched(singleBand, "/tmp/testSaveStitchedColormap.png", null, opts)
   }
 
   @Test
   def testSaveStitchedColormap(): Unit = {
     val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
-    val tileLayerRDD =  LayerFixtures.aSpacetimeTileLayerRdd( 8,4)
+    val tileLayerRDD = LayerFixtures.aSpacetimeTileLayerRdd(8, 4)
 
     val spatialLayer = tileLayerRDD._1.toSpatial()
 
-    val singleBand = spatialLayer.withContext{_.mapValues(_.subsetBands(0))}
+    val singleBand = spatialLayer.withContext {
+      _.mapValues(_.subsetBands(0))
+    }
     val opts = new PngOptions
 
-    opts.setColorMap(ColorRamps.BlueToRed.toColorMap(Range(0,256).toArray))
-    saveStitched(singleBand, "/tmp/testSaveStitchedColormap.png",null,opts)
+    opts.setColorMap(ColorRamps.BlueToRed.toColorMap(Range(0, 256).toArray))
+    saveStitched(singleBand, "/tmp/testSaveStitchedColormap.png", null, opts)
   }
 
+  @SetEnvironmentVariable(key = "SWIFT_URL", value = "http://localhost:8001")
   @Test
   def testSaveStitchedS3(): Unit = {
     val s3Port = 8001
-    environmentVariables.set("SWIFT_URL", s"http://localhost:$s3Port")
-
     val bucket = "foo"
     val prefix = "j-abc123"
     val filename = "testSaveStitchedS3.png"

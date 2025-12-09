@@ -1,28 +1,28 @@
 package org.openeo.geotrellis
 
-import io.circe.Json
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.crop.Crop
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.{ByteArrayTile, MultibandTile, Raster}
-
-import java.nio.file.Paths
-import geotrellis.spark.util.SparkUtils
 import geotrellis.spark._
+import geotrellis.spark.util.SparkUtils
+import io.circe.Json
 import geotrellis.vector._
 import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
-import org.junit.{BeforeClass, Test}
+import org.junit.jupiter.api.{BeforeAll, Test}
+
+import java.nio.file.Paths
 
 object VectorizeSpec{
 
   var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark() = {
     sc = {
       val conf = new SparkConf().setMaster("local[2]")//.set("spark.driver.bindAddress", "127.0.0.1")

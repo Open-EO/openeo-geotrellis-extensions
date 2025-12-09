@@ -3,39 +3,42 @@ package org.openeo.logging
 import org.apache.logging.log4j.core.LoggerContext
 import org.apache.logging.log4j.core.config.Configurator
 import org.apache.spark.SparkContext
-import org.junit.Assert.assertTrue
-import org.junit.contrib.java.lang.system.EnvironmentVariables
-import org.junit.rules.TemporaryFolder
-import org.junit._
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.extension.ExtendWith
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.{AfterAll, BeforeAll, BeforeEach, Test}
 import org.slf4j.{LoggerFactory, MDC}
+import uk.org.webcompere.systemstubs.environment.EnvironmentVariables
+import uk.org.webcompere.systemstubs.jupiter.{SystemStub, SystemStubsExtension}
 
 import java.io.File
-import scala.annotation.meta.getter
+import java.nio.file.{Files, Path}
 
 object OpenEOBatchJobJsonLogLayoutTest {
   private var loggerContext: LoggerContext = _
   private val logger = LoggerFactory.getLogger(classOf[OpenEOBatchJobJsonLogLayoutTest])
 
-  @BeforeClass
+  @BeforeAll
   def initializeLog4j(): Unit = loggerContext = Configurator.initialize(null, "classpath:log4j2-batch.xml")
 
-  @AfterClass
+  @AfterAll
   def shutDownLog4j(): Unit = Configurator.shutdown(loggerContext)
 }
 
+@ExtendWith(Array(classOf[SystemStubsExtension]))
 class OpenEOBatchJobJsonLogLayoutTest {
   import OpenEOBatchJobJsonLogLayoutTest._
 
-  @(Rule @getter)
-  val temporaryFolder = new TemporaryFolder
+  var tempLogFile: File = _
 
-  private def tempLogFile: File = new File(temporaryFolder.getRoot, "openeo.log")
-
-  @(Rule @getter)
+  @SystemStub
   val environmentVariables = new EnvironmentVariables
 
-  @Before
-  def setupLogFile(): Unit = environmentVariables.set("LOG_FILE", tempLogFile.getAbsolutePath)
+  @BeforeEach
+  def setupLogFile(@TempDir temporaryFolder: Path): Unit = {
+    tempLogFile = new File(Files.createTempDirectory("logs").toFile, "openeo.log")
+    environmentVariables.set("LOG_FILE", tempLogFile.getAbsolutePath)
+  }
 
   @Test
   def testJsonLogging(): Unit = {
@@ -68,7 +71,7 @@ class OpenEOBatchJobJsonLogLayoutTest {
     val executorLogEntries = Helpers.logEntries(logFile)
       .filter(logEntry => logEntry("message").asString contains "some executor log")
 
-    assertTrue(s"${executorLogEntries.size}", executorLogEntries.nonEmpty)
+    assertTrue(executorLogEntries.nonEmpty, s"${executorLogEntries.size}")
     assertTrue(executorLogEntries.forall { logEntry =>
       logEntry("user_id").asString.contains("vdboschj") && logEntry("job_id").asString.contains("j-abc123")
     })

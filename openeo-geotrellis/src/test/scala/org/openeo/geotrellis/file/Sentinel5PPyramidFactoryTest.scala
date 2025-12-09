@@ -11,7 +11,8 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertEquals, assertTrue}
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.Test
+import org.junit.jupiter.api.{AfterAll, BeforeAll}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.opensearch.OpenSearchClient
 
@@ -25,7 +26,7 @@ import java.util.Collections.{emptyMap, singletonList}
 object Sentinel5PPyramidFactoryTest {
   private var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = {
     val sparkConf = new SparkConf()
       .set("spark.kryoserializer.buffer.max", "512m")
@@ -34,7 +35,7 @@ object Sentinel5PPyramidFactoryTest {
     sc = SparkUtils.createLocalSparkContext("local[2]", classOf[Sentinel2PyramidFactoryTest].getName, sparkConf)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 

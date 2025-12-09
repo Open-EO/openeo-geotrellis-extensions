@@ -1,7 +1,7 @@
 package org.openeo.geotrellissentinelhub
 
-import org.junit.Assert.{assertTrue, fail}
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.{assertTrue, fail}
+import org.junit.jupiter.api.Test
 import scalaj.http.{Http, HttpResponse, HttpStatusException}
 
 class MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizerTest {

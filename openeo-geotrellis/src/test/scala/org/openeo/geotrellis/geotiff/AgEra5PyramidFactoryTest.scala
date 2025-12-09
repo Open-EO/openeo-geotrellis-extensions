@@ -10,10 +10,10 @@ import geotrellis.raster.{CellSize, RasterSource}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, MultiPolygon, Polygon, ProjectedExtent}
-import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.junit.Assert.assertEquals
-import org.junit.{Ignore, Test}
+import org.junit.Test
+import org.junit.jupiter.api.Disabled
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.BandCompositeRasterSource
 import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
@@ -54,7 +54,7 @@ class AgEra5PyramidFactoryTest {
     remainingMarkers.map(remainingMarker => dewPointTemperatureFile.replace(dewPointTemperatureMarker, remainingMarker))
   }
 
-  @Ignore("trying things out")
+  @Disabled("trying things out")
   @Test
   def agEra5(): Unit = {
     // note: reprojecting to e.g. WebMercator fails its extent is beyond LatLng's worldExtent

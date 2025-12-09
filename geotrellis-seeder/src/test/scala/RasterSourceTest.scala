@@ -15,7 +15,7 @@ import scala.collection.JavaConverters.iterableAsScalaIterableConverter
 class RasterSourceTest {
 
   @Test
-  @Ignore
+  @Disabled
   def testReprojection(): Unit = {
     val globalLayout = GlobalLayout(256, 14, 0.1)
     val (layout, _) = globalLayout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))

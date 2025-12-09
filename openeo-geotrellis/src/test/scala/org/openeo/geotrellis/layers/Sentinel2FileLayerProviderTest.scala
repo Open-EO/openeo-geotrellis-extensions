@@ -75,7 +75,7 @@ object Sentinel2FileLayerProviderTest {
     _sc.get
   }
 
-  @BeforeClass
+  @BeforeAll
   def setUpSpark_BeforeClass(): Unit = sc
 
   @BeforeAll
@@ -91,7 +91,7 @@ object Sentinel2FileLayerProviderTest {
 
   var gotAfterClass = false
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark_AfterClass(): Unit = {
     gotAfterClass = true;
     maybeStopSpark()

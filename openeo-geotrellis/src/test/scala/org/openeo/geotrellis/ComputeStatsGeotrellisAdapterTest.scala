@@ -10,8 +10,8 @@ import geotrellis.vector.{Polygon, _}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert._
-import org.junit._
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.runners.Parameterized.Parameters
 import org.openeo.geotrellis.AggregateSpatialTest.parseCSV
 import org.openeo.geotrellis.LayerFixtures._
@@ -20,8 +20,8 @@ import org.openeo.geotrellis.TimeSeriesServiceResponses._
 import java.nio.file.Files
 import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
 import java.util
-import scala.jdk.CollectionConverters._
 import scala.collection.immutable
+import scala.jdk.CollectionConverters._
 
 object ComputeStatsGeotrellisAdapterTest {
   type JMap[K, V] = java.util.Map[K, V]
@@ -36,12 +36,7 @@ object ComputeStatsGeotrellisAdapterTest {
     list
   }
 
-  @BeforeClass
-  def assertKerberosAuthentication(): Unit = {
-    //assertNotNull(getClass.getResourceAsStream("/core-site.xml"))
-  }
-
-  @BeforeClass
+  @BeforeAll
   def setUpSpark(): Unit = {
     sc = {
 
@@ -50,7 +45,7 @@ object ComputeStatsGeotrellisAdapterTest {
     }
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = {
     sc.stop()
   }
@@ -151,16 +146,16 @@ object ComputeStatsGeotrellisAdapterTest {
       """.stripMargin.parseGeoJson[Polygon]()
 
   def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: JList[JList[Double]]): Unit = {
-    assertEquals("should have same polygon count", expected.length, actual.size())
+    assertEquals(expected.length, actual.size(), "should have same polygon count")
     expected.indices.foreach { i =>
-      assertArrayEquals("should have same band stats", expected(i).toArray, actual.get(i).asScala.toArray, 1e-6)
+      assertArrayEquals(expected(i).toArray, actual.get(i).asScala.toArray, 1e-6, "should have same band stats")
     }
   }
 
   def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: Seq[collection.Seq[Double]]): Unit = {
-    assertEquals("should have same polygon count", expected.length, actual.size)
+    assertEquals(expected.length, actual.size, "should have same polygon count")
     expected.indices.foreach { i =>
-      assertArrayEquals("should have same band stats", expected(i).toArray, actual(i).toArray, 1e-6)
+      assertArrayEquals(expected(i).toArray, actual(i).toArray, 1e-6, "should have same band stats")
     }
   }
 }
@@ -169,18 +164,7 @@ object ComputeStatsGeotrellisAdapterTest {
 class ComputeStatsGeotrellisAdapterTest() {
   import ComputeStatsGeotrellisAdapterTest._
 
-
-
-  @Before
-  def setup():Unit = {
-    //System.setProperty("pixels.treshold","" + threshold)
-
-  }
-
-
   val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter()
-
-
 
   private def buildCubeRdd(from: ZonedDateTime, to: ZonedDateTime): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))

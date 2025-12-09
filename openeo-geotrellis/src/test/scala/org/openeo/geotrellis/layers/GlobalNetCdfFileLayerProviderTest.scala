@@ -13,10 +13,10 @@ import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.hadoop.fs.Path
-import org.junit.Assert.{assertEquals, assertTrue}
-import org.junit.{AfterClass, Test}
+import org.junit.jupiter.api.{AfterAll, Test}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons, safeReproject}
+import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.backends.GlobalNetCDFSearchClient
 
@@ -26,7 +26,7 @@ import java.util
 import scala.jdk.CollectionConverters._
 
 object GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
-  @AfterClass
+  @AfterAll
   def tearDown(): Unit = GDALWarp.deinit()
 }
 
@@ -117,8 +117,8 @@ class GlobalNetCdfFileLayerProviderTest {
 
     val years = dates.map(_.getYear).distinct
 
-    assertTrue("year 2014 is missing", years contains 2014)
-    assertTrue("year 2020 is missing", years contains 2020)
+    assertTrue(years contains 2014, "year 2014 is missing")
+    assertTrue(years contains 2020, "year 2020 is missing")
   }
 
   @Test

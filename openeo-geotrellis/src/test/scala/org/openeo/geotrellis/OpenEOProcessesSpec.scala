@@ -71,7 +71,7 @@ object OpenEOProcessesSpec {
     _sc.get
   }
 
-  @BeforeClass
+  @BeforeAll
   def setUpSpark_BeforeClass(): Unit = sc
 
   @BeforeAll
@@ -87,7 +87,7 @@ object OpenEOProcessesSpec {
 
   var gotAfterClass = false
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark_AfterClass(): Unit = {
     gotAfterClass = true
     maybeStopSpark()

@@ -1,7 +1,7 @@
 package org.openeo.geotrellissentinelhub
 
-import org.junit.Assert.{assertEquals, fail}
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.{assertEquals, fail}
+import org.junit.jupiter.api.Test
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.{LocalDate, ZoneOffset}

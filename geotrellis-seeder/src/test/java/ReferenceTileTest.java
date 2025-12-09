@@ -35,7 +35,7 @@ public class ReferenceTileTest {
 
     private static TileSeeder seeder;
 
-    @BeforeClass
+    @BeforeAll
     public static void createSparkContextAndSeeder() {
         sc = SparkContext.getOrCreate(
                 new SparkConf()
@@ -48,12 +48,12 @@ public class ReferenceTileTest {
         seeder = new TileSeeder(13, false, Option.apply(1), false, false);
     }
 
-    @AfterClass
+    @AfterAll
     public static void shutDownSparkContext() {
         sc.stop();
     }
 
-    @Ignore("Fix this test: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/176")
+    @Disabled("Fix this test: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/176")
     @Test
     public void testSaveAndCompareAll() throws ImageComparisonFailedException, IOException, InterruptedException {
         for (Layers layer: Layers.values()) {

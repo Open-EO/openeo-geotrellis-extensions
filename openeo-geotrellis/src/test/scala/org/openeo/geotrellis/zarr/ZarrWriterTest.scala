@@ -1,27 +1,24 @@
 package org.openeo.geotrellis.zarr
 
 import better.files.File.apply
-import com.bc.zarr.storage.FileSystemStore
 import com.bc.zarr.ZarrUtils
+import com.bc.zarr.storage.FileSystemStore
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{BitArrayTile, ByteArrayTile, DoubleArrayTile, FloatArrayTile, IntArrayTile, MultibandTile, ShortArrayTile, Tile, TileLayout, UByteArrayTile, UShortArrayTile}
-import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark._
+import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.io.TempDir
-import org.junit.rules.TemporaryFolder
-import org.junit.{AfterClass, Rule}
-import org.junit.jupiter.api.{BeforeAll, Test}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.{LayerFixtures, PixelType, zarr}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.InputStreamReader
 import java.nio.file.Path
 import java.time.ZonedDateTime
-import scala.annotation.meta.getter
 
 object ZarrWriterTest{
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[ZarrWriterTest])
@@ -40,14 +37,11 @@ object ZarrWriterTest{
     if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 
 class ZarrWriterTest {
-
-  @(Rule @getter)
-  val temporaryFolder = new TemporaryFolder
 
   @Test
   def testWriteSingleBandRDD(@TempDir tempDir: Path): Unit ={

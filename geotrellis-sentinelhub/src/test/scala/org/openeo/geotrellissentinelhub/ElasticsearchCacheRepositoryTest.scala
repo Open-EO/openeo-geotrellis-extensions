@@ -2,8 +2,8 @@ package org.openeo.geotrellissentinelhub
 
 import geotrellis.vector._
 import geotrellis.vector.io.json.GeoJson
-import org.junit.Assert.assertEquals
-import org.junit.{Ignore, Test}
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{Sentinel1GrdCacheEntry, Sentinel2L2aCacheEntry}
 
 import java.nio.file.Paths
@@ -97,12 +97,12 @@ class ElasticsearchCacheRepositoryTest {
     assertEquals(Some(expectedFilePath), s1CacheEntry.filePath)
   }
 
-  @Ignore
+  @Disabled
   @Test
   def saveSentinel1(): Unit =
     cacheRepository.saveSentinel1(s1GrdCacheIndex, s1CacheEntry)
 
-  @Ignore
+  @Disabled
   @Test
   def querySentinel1(): Unit = {
     val date = LocalDate.of(2019, 9, 23).atStartOfDay(utc)

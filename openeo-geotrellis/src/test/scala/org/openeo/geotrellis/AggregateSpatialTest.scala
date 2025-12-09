@@ -8,9 +8,8 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert.{assertArrayEquals, assertEquals}
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.jupiter.api.Assertions.{assertTrue, assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygon2}
 import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
 
@@ -18,15 +17,15 @@ import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.util
 import java.util.{TimeZone, stream}
-import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 import scala.io.Source
+import scala.jdk.CollectionConverters._
 
 object AggregateSpatialTest {
 
   private var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setUpSpark(): Unit = {
     TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
     sc = {
@@ -94,13 +93,13 @@ object AggregateSpatialTest {
   def assertEqualTimeseriesStats(expected: scala.collection.Seq[scala.collection.Seq[Double]], actual: scala.collection.Seq[scala.collection.Seq[Double]], delta:Double=1e-6): Unit = {
     println(s"expected: $expected")
     println(s"actual: $actual")
-    assertEquals("should have same polygon count", expected.length, actual.length)
+    assertEquals(expected.length, actual.length, "should have same polygon count")
     expected.indices.foreach { i =>
-      assertArrayEquals("should have same band stats", expected(i).toArray, actual(i).toArray, delta)
+      assertArrayEquals(expected(i).toArray, actual(i).toArray, delta, "should have same band stats")
     }
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = {
     sc.stop()
   }
@@ -184,7 +183,6 @@ class AggregateSpatialTest {
               assertEquals(nd(expected(2)) ,ignoreNodata.mean().get,2.1)
               //assertEquals(nd(expected(1)) ,ignoreNodata.median().get,6.1)//medians have some room for rounding
             }
-
           }
           assertEquals(nd(expected(0)),ignoreNodata.minValue().get,0.1)
           assertEquals(nd(expected(3)),ignoreNodata.maxValue().get,0.1)

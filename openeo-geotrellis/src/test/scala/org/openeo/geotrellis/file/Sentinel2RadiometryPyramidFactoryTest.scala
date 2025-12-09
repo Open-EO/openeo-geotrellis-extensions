@@ -1,8 +1,5 @@
 package org.openeo.geotrellis.file
 
-import java.time.format.DateTimeFormatter
-import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
-
 import geotrellis.layer._
 import geotrellis.proj4.LatLng
 import geotrellis.raster.Raster
@@ -12,18 +9,21 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkConf
-import org.junit.{Assert, Ignore, Test}
+import org.junit.jupiter.api.Disabled
+import org.junit.{Assert, Test}
 import org.openeo.geotrellis.OpenEOProcesses
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory.Band._
 
-import scala.collection.JavaConverters._
+import java.time.format.DateTimeFormatter
+import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import scala.collection.mutable.ArrayBuffer
+import scala.jdk.CollectionConverters._
 
 class Sentinel2RadiometryPyramidFactoryTest {
 
   private val pyramidFactory = new Sentinel2RadiometryPyramidFactory
 
-  @Ignore
+  @Disabled
   @Test
   def writeGeoTiffs(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)

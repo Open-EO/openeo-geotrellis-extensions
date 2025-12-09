@@ -8,48 +8,52 @@ import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.core.LoggerContext
 import org.apache.logging.log4j.core.config.Configurator
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert.{assertEquals, assertTrue}
-import org.junit.contrib.java.lang.system.EnvironmentVariables
-import org.junit.rules.TemporaryFolder
-import org.junit.{After, AfterClass, Before, BeforeClass, Rule, Test}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.extension.ExtendWith
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.{AfterAll, AfterEach, BeforeAll, BeforeEach, Test}
 import org.slf4j.{LoggerFactory, MDC}
+import uk.org.webcompere.systemstubs.environment.EnvironmentVariables
+import uk.org.webcompere.systemstubs.jupiter.{SystemStub, SystemStubsExtension}
 
 import java.io.File
-import scala.annotation.meta.getter
+import java.nio.file.{Files, Path}
 import scala.io.Source
 
 object OpenEOJsonLogLayoutTest {
   private var loggerContext: LoggerContext = _
   private val logger = LoggerFactory.getLogger(classOf[OpenEOJsonLogLayoutTest])
 
-  @BeforeClass
+  @BeforeAll
   def initializeLog4j(): Unit = loggerContext = Configurator.initialize(null, "classpath:log4j2-sync.xml")
 
-  @AfterClass
+  @AfterAll
   def shutDownLog4j(): Unit = Configurator.shutdown(loggerContext)
 }
 
+@ExtendWith(Array(classOf[SystemStubsExtension]))
 class OpenEOJsonLogLayoutTest {
   import OpenEOJsonLogLayoutTest._
 
-  @(Rule @getter)
-  val temporaryFolder = new TemporaryFolder
-  private def tempLogFile: File = new File(temporaryFolder.getRoot, "openeo.log")
+  var tempLogFile: File = _
 
-  @(Rule @getter)
+  @SystemStub
   val environmentVariables = new EnvironmentVariables
 
-  @Before
-  def setupLogFile(): Unit = environmentVariables.set("LOG_FILE", tempLogFile.getAbsolutePath)
+  @BeforeEach
+  def setupLogFile(@TempDir temporaryFolder: Path): Unit = {
+    tempLogFile = new File(Files.createTempDirectory("logs").toFile, "openeo.log")
+    environmentVariables.set("LOG_FILE", tempLogFile.getAbsolutePath)
+  }
 
-  @Before
+  @BeforeEach
   def setupLoggingContext(): Unit = {
     MDC.put(JsonLayout.UserId, "vdboschj")
     MDC.put(JsonLayout.RequestId, "r-def456")
     MDC.put(JsonLayout.JobId, "j-abc123")
   }
 
-  @After
+  @AfterEach
   def clearLoggingContext(): Unit = MDC.clear()
 
   @Test
@@ -132,7 +136,7 @@ class OpenEOJsonLogLayoutTest {
     val executorLogEntries = Helpers.logEntries(logFile)
       .filter(logEntry => logEntry("message").asString contains "some executor log")
 
-    assertTrue(s"${executorLogEntries.size}", executorLogEntries.nonEmpty)
+    assertTrue(executorLogEntries.nonEmpty, s"${executorLogEntries.size}")
     assertTrue(executorLogEntries.forall(logEntry => logEntry("user_id").asString contains "vdboschj"))
   }
 }

@@ -1,8 +1,8 @@
 package org.openeo.geotrellis.geotiff
 
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.io.geotiff.{GeoTiff, GeoTiffOptions, Tiled}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
