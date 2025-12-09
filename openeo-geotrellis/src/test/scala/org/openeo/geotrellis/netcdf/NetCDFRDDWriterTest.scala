@@ -94,7 +94,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     val sampleNameList = new util.ArrayList[String]()
     sampleNames.foreach(sampleNameList.add)
 
-    val targetDir = temporaryFolder.getRoot.toString
+    val targetDir = temporaryFolder.toString
 
     val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
       sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M",
@@ -249,7 +249,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     sampleNames.foreach(sampleNameList.add)
     val bandNames = new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"))
 
-    val targetDir = temporaryFolder.getRoot.toString
+    val targetDir = temporaryFolder.toString
 
     val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSamples(
       layer, targetDir, polygons, sampleNameList, bandNames
