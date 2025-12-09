@@ -148,12 +148,14 @@ class TileGridTest {
 
     for (path <- expectedCroppedPaths) {
       val tile = GeoTiff.readMultiband(path)
-      Assertions.assertEquals(1, tile.overviews.size)
+      Assertions.assertEquals(2, tile.overviews.size)
       Assertions.assertEquals(Tiled(128, 128), tile.overviews.head.options.storageMethod)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
-      Assertions.assertEquals(math.ceil(colSize.toDouble / 4).toInt, tile.overviews(0).tile.cols)
-      Assertions.assertEquals(math.ceil(rowSize.toDouble / 4).toInt, tile.overviews(0).tile.rows)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 2).toInt, tile.overviews(0).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 2).toInt, tile.overviews(0).tile.rows)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 4).toInt, tile.overviews(1).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 4).toInt, tile.overviews(1).tile.rows)
     }
   }
 
