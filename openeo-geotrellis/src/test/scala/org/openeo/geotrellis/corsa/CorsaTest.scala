@@ -74,19 +74,18 @@ class CorsaTest extends RasterMatchers {
     val scalerDir = modelDir.resolve("scalers")
 
     val (Raster(cubeArray, extent), crs) = sentinel2Tile
+    val cubeArrayWithoutNaNs = cubeArray.map { (_, value) => if (isData(value)) value else 0 }
 
     val cubeArrayFile = tempDir.resolve("cubeArray.tif")
-    MultibandGeoTiff(cubeArray, extent, crs).write(cubeArrayFile.toString)
-    require(cubeArray.bandCount == Bands.size)
-    require(cubeArray.dimensions.cols == TileSize)
-    require(cubeArray.dimensions.rows == TileSize)
+    MultibandGeoTiff(cubeArrayWithoutNaNs, extent, crs).write(cubeArrayFile.toString)
 
-    // TODO: replace NaNs with 0; in this case there are none
-    cubeArray foreach { (_, value) => require(isData(value)) }
+    require(cubeArrayWithoutNaNs.bandCount == Bands.size)
+    require(cubeArrayWithoutNaNs.dimensions.cols == TileSize)
+    require(cubeArrayWithoutNaNs.dimensions.rows == TileSize)
 
     val cubeArrayNormalized =
       if (scaleByPython) preprocessDataCubeInPython(cubeArrayFile, scalerDir)
-      else preprocessDataCubeInScala(cubeArray)
+      else preprocessDataCubeInScala(cubeArrayWithoutNaNs)
 
     val (level0, level1) = processWindowOnnx(cubeArrayNormalized, modelPath)
 
