@@ -6,6 +6,7 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.{FloatArrayTile, FloatConstantNoDataCellType, GridBounds, MultibandTile, Raster, Tile, UShortArrayTile, isData}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{MultibandGeoTiff, SinglebandGeoTiff}
+import geotrellis.raster.testkit.RasterMatchers
 import io.circe.generic.auto._
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -20,22 +21,24 @@ import scala.sys.process._
 import scala.util.{Failure, Success, Using}
 
 object CorsaTest {
+  private val CorsaHome = Paths.get("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563")
+
   private val TileSize = 120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
   private val BandPowerTransformerParams = Bands.map { band =>
-    parsePowerTransformerParams(s"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/scalers/scaler2024_power_${band}_info.json")
+    parsePowerTransformerParams(CorsaHome.resolve(s"scalers/scaler2024_power_${band}_info.json"))
   }
 
   private case class PowerTransformerParams(lambda: Double, mean: Double, scale: Double)
 
-  private def parsePowerTransformerParams(configFile: String): PowerTransformerParams = {
+  private def parsePowerTransformerParams(configFile: Path): PowerTransformerParams = {
     case class PtKwargs(method: String, standardize: Boolean)
     case class ScKwargs(with_mean: Boolean, with_std: Boolean)
     case class Params(pt_kwargs: PtKwargs, scaler_mean: Seq[Double], scaler_var: Seq[Double],
                                       lambdas_ : Seq[Double], sc_kwargs: ScKwargs)
 
     val config = for {
-      json <- Using(Source.fromFile(configFile)) { source => source.mkString }
+      json <- Using(Source.fromFile(configFile.toFile)) { source => source.mkString }
       config <- CirceException.decode[Params](json).toTry
     } yield config
 
@@ -55,7 +58,7 @@ object CorsaTest {
   }
 }
 
-class CorsaTest {
+class CorsaTest extends RasterMatchers {
   import CorsaTest._
 
   @Test
@@ -65,7 +68,7 @@ class CorsaTest {
 
     val modelDir = {
       // copied from /data/users/Public/luytsa/corsa-compression/pretrain_BEN_10-20mbands_bicubic_512-128_onnx
-      Paths.get("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/pretrain_BEN_10-20mbands_bicubic_512-128_onnx")
+      CorsaHome.resolve("pretrain_BEN_10-20mbands_bicubic_512-128_onnx")
     }
     val modelPath = modelDir.resolve("encoder.onnx")
     val scalerDir = modelDir.resolve("scalers")
@@ -90,6 +93,16 @@ class CorsaTest {
     // already 20m and 40m resolution, see comment below
     SinglebandGeoTiff(level0, extent, crs).write(f"/tmp/level0_20m_$suffix.tif")
     SinglebandGeoTiff(level1, extent, crs).write(f"/tmp/level1_40m_$suffix.tif")
+
+    assertRastersEqual(
+      actual = Raster(level0.convert(FloatConstantNoDataCellType), extent),
+      expected = MultibandGeoTiff(s"$CorsaHome/level0_20m_2021-09-07Z_ref.tif").raster
+    )
+
+    assertRastersEqual(
+      actual = Raster(level1.convert(FloatConstantNoDataCellType), extent),
+      expected = MultibandGeoTiff(s"$CorsaHome/level1_40m_2021-09-07Z_ref.tif").raster
+    )
   }
 
   private def sentinel2Tile: (Raster[MultibandTile], CRS) = {
@@ -101,12 +114,13 @@ class CorsaTest {
     } yield GeoTiffRasterSource(bandFile.toString)
 
     val crs = bandRasterSources.head.crs
+    val cols = bandRasterSources.map(_.cols).max
+    val rows = bandRasterSources.map(_.rows).max
 
     val rasters = for {
       rs <- bandRasterSources
-      cols = rs.gridExtent.cols
-      rows = rs.gridExtent.rows
-      Some(raster) = rs.read(GridBounds(cols / 2, rows / 2, cols / 2 + TileSize - 1, rows / 2 + TileSize - 1)) // center of tile (arbitrary)
+      resampledRs = rs.resample(targetCols = cols, targetRows = rows)
+      Some(raster) = resampledRs.read(GridBounds(cols / 2, rows / 2, cols / 2 + TileSize - 1, rows / 2 + TileSize - 1)) // center of tile (arbitrary)
     } yield raster
 
     val extent = rasters.head.extent
