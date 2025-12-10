@@ -8,6 +8,7 @@ import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{MultibandGeoTiff, SinglebandGeoTiff}
 import geotrellis.raster.testkit.RasterMatchers
 import io.circe.generic.auto._
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.openeo.geotrelliscommon.CirceException
@@ -281,13 +282,44 @@ class CorsaTest extends RasterMatchers {
 
       val bandTiles = for {
         band <- recon
-      } yield FloatArrayTile(band.flatten, cols = 120, rows = 120)
+      } yield FloatArrayTile(band.flatten, cols = TileSize, rows = TileSize)
 
       MultibandTile(bandTiles)
     }
 
-    val sentinel2Tile = recon.get
-    // TODO: unscale
+    val sentinel2Tile = unscale(recon.get)
+    assertEquals(Bands.size, sentinel2Tile.bandCount)
+    assertEquals(TileSize, sentinel2Tile.cols)
+    assertEquals(TileSize, sentinel2Tile.rows)
+
     MultibandGeoTiff(sentinel2Tile, level0Tiff.extent, level0Tiff.crs).write("/tmp/reconstructed.tif")
   }
+
+  private def inverseYeoJohnsonTransform(tile: Tile, λ: Double): Tile =
+    tile.mapDouble { x =>
+      if (x >= 0) {
+        if (λ == 0) math.exp(x) - 1
+        else math.pow(x * λ + 1, 1 / λ) - 1
+      } else {
+        if (λ == 2) 1 - math.exp(-x)
+        else 1 - math.pow(-(2 - λ) * x + 1, 1 / (2 - λ))
+      }
+    }
+
+  private def inverseStandardScalerTransform(tile: Tile, mean: Double, scale: Double): Tile =
+    tile.mapDouble { x => x * scale + mean }
+
+  private def unscale(recon: MultibandTile): MultibandTile =
+    recon.mapBands { case (i, bandTile) =>
+      val PowerTransformerParams(lambda, mean, scale) = BandPowerTransformerParams(i)
+
+      inverseYeoJohnsonTransform(
+        inverseStandardScalerTransform(
+          bandTile,
+          mean,
+          scale
+        ),
+        lambda
+      )
+    }
 }
