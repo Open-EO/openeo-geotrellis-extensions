@@ -12,11 +12,10 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, MultiPolygon, Polygon, ProjectedExtent}
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.BandCompositeRasterSource
-import org.openeo.geotrellis.{LocalSparkContext, LocalSparkContext, ProjectedPolygons}
+import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 
