@@ -1,13 +1,11 @@
 package org.openeo.sparklisteners
 
 import org.junit.jupiter.api.{Disabled, Test}
-import org.openeo.geotrellis.LocalSparkContextJupyter
+import org.openeo.geotrellis.LocalSparkContext
 
-object TestListeners extends LocalSparkContextJupyter {}
+object TestListeners {}
 
-class TestListeners {
-
-  import TestListeners._
+class TestListeners extends LocalSparkContext {
 
   @Disabled("For debugging.")
   @Test

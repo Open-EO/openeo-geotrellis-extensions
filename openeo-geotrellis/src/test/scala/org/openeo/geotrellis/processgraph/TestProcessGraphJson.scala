@@ -2,6 +2,7 @@ package org.openeo.geotrellis.processgraph
 
 import org.junit.jupiter.api.{Disabled, Test}
 
+@Disabled("use locally for development")
 class TestProcessGraphJson {
 
   @Test

@@ -24,12 +24,13 @@ import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, ZoneId}
 import java.util
 
-object CglsPyramidFactoryTest extends LocalSparkContext {
+object CglsPyramidFactoryTest {
+
   @AfterAll
   def tearDown(): Unit = GDALWarp.deinit()
 }
 
-class CglsPyramidFactoryTest extends RasterMatchers {
+class CglsPyramidFactoryTest extends LocalSparkContext with RasterMatchers {
 
   @Test
   def readOriginalGrid(): Unit = {

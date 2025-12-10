@@ -13,8 +13,8 @@ import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.hadoop.fs.Path
-import org.junit.jupiter.api.{AfterAll, Test}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.{AfterAll, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
@@ -25,13 +25,12 @@ import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
 import scala.jdk.CollectionConverters._
 
-object GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
+object GlobalNetCdfFileLayerProviderTest {
   @AfterAll
   def tearDown(): Unit = GDALWarp.deinit()
 }
 
-class GlobalNetCdfFileLayerProviderTest {
-  import GlobalNetCdfFileLayerProviderTest._
+class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
 
   private def layerProvider = new GlobalNetCdfFileLayerProvider(
     dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",

@@ -12,10 +12,11 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, MultiPolygon, Polygon, ProjectedExtent}
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.BandCompositeRasterSource
-import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
+import org.openeo.geotrellis.{LocalSparkContext, LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 
@@ -26,7 +27,7 @@ import java.util
 import scala.jdk.CollectionConverters._
 import scala.util.matching.Regex
 
-object AgEra5PyramidFactoryTest extends LocalSparkContext {
+object AgEra5PyramidFactoryTest {
   private def deriveDate(filename: String, date: Regex): ZonedDateTime = {
     filename match {
       case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, ZoneId.of("UTC"))
@@ -34,7 +35,7 @@ object AgEra5PyramidFactoryTest extends LocalSparkContext {
   }
 }
 
-class AgEra5PyramidFactoryTest {
+class AgEra5PyramidFactoryTest extends LocalSparkContext {
   import AgEra5PyramidFactoryTest._
 
   private def getSiblings(dewPointTemperatureFile: String): Seq[String] = {
