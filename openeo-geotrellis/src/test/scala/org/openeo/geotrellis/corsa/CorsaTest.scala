@@ -22,6 +22,11 @@ import scala.util.{Failure, Success, Using}
 
 object CorsaTest {
   private val CorsaHome = Paths.get("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563")
+  private val ModelDir = {
+    // copied from /data/users/Public/luytsa/corsa-compression/pretrain_BEN_10-20mbands_bicubic_512-128_onnx
+    CorsaHome.resolve("pretrain_BEN_10-20mbands_bicubic_512-128_onnx")
+  }
+
 
   private val TileSize = 120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
@@ -44,6 +49,7 @@ object CorsaTest {
 
     config match {
       case Success(config) =>
+        // assumptions that simplify scaling implementation
         require(config.pt_kwargs.method == "yeo-johnson")
         require(config.pt_kwargs.standardize)
         require(config.scaler_mean.size == 1)
@@ -66,15 +72,11 @@ class CorsaTest extends RasterMatchers {
     val scaleByPython = false
     val suffix = if (scaleByPython) "python" else "scala"
 
-    val modelDir = {
-      // copied from /data/users/Public/luytsa/corsa-compression/pretrain_BEN_10-20mbands_bicubic_512-128_onnx
-      CorsaHome.resolve("pretrain_BEN_10-20mbands_bicubic_512-128_onnx")
-    }
-    val modelPath = modelDir.resolve("encoder.onnx")
-    val scalerDir = modelDir.resolve("scalers")
+    val modelPath = ModelDir.resolve("encoder.onnx")
+    val scalerDir = ModelDir.resolve("scalers")
 
     val (Raster(cubeArray, extent), crs) = sentinel2Tile
-    val cubeArrayWithoutNaNs = cubeArray.map { (_, value) => if (isData(value)) value else 0 }
+    val cubeArrayWithoutNaNs = cubeArray.map { (_, value) => if (isData(value)) value else 0 } // TODO: interpolate
 
     val cubeArrayFile = tempDir.resolve("cubeArray.tif")
     MultibandGeoTiff(cubeArrayWithoutNaNs, extent, crs).write(cubeArrayFile.toString)
@@ -232,5 +234,60 @@ class CorsaTest extends RasterMatchers {
     require(util.Arrays.equals(inputInfo.getShape, Array(1L, Bands.size, TileSize, TileSize))) // [???, bands, y, x]
 
     (session, inputName)
+  }
+
+  @Test
+  def pocDecode(): Unit = {
+    val modelPath = ModelDir.resolve("decoder.onnx")
+
+    val nanTo0 = (value: Int) => if (isData(value)) value else 0
+
+    val level0Tiff = SinglebandGeoTiff(s"$CorsaHome/level0_20m_2021-09-07Z_ref.tif")
+    val level1Tiff = SinglebandGeoTiff(s"$CorsaHome/level1_40m_2021-09-07Z_ref.tif")
+
+    val level0 = level0Tiff.raster.mapTile(_.map(nanTo0))
+    val level1 = level1Tiff.raster.mapTile(_.map(nanTo0))
+
+    require(level0.dimensions.cols == 60)
+    require(level0.dimensions.rows == 60)
+    require(level1.dimensions.cols == 30)
+    require(level1.dimensions.rows == 30)
+
+    val env = OrtEnvironment.getEnvironment
+    val options = new SessionOptions
+    options.setIntraOpNumThreads(1)
+
+    val recon = Using(env.createSession(modelPath.toString, options)) { session =>
+      // note: original code loops over several patches of size 60; in this case there is only one
+
+      // inputs are sorted
+      val inputNames = session.getInputInfo.keySet().iterator()
+      val level0InputName = inputNames.next()
+      val level1InputName = inputNames.next()
+
+      val patchLevel0Data = OnnxTensor.createTensor(env,
+        OrtUtil.reshape(Array[Long](level0.tile.toArray().map(_.toLong): _*), Array(1, 60, 60)))
+      val patchLevel1Data = OnnxTensor.createTensor(env,
+        OrtUtil.reshape(Array[Long](level1.tile.toArray().map(_.toLong): _*), Array(1, 30, 30)))
+
+      val ortInputs = Map(
+        level0InputName -> patchLevel0Data,
+        level1InputName -> patchLevel1Data,
+      ).asJava
+
+      val result = session.run(ortInputs) // 1 x 10 x 120 x 120
+
+      val recon = result.get(0).getValue.asInstanceOf[Array[Array[Array[Array[Float]]]]](0)
+
+      val bandTiles = for {
+        band <- recon
+      } yield FloatArrayTile(band.flatten, cols = 120, rows = 120)
+
+      MultibandTile(bandTiles)
+    }
+
+    val sentinel2Tile = recon.get
+    // TODO: unscale
+    MultibandGeoTiff(sentinel2Tile, level0Tiff.extent, level0Tiff.crs).write("/tmp/reconstructed.tif")
   }
 }
