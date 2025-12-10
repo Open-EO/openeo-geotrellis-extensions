@@ -8,8 +8,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import io.findify.s3mock.S3Mock
 import org.apache.spark.SparkContext
-import org.junit.Test
-import org.junit.jupiter.api.{AfterAll, BeforeAll}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junitpioneer.jupiter.SetEnvironmentVariable
 import org.openeo.geotrellis.LayerFixtures
 import org.openeo.geotrellis.creo.CreoS3Utils

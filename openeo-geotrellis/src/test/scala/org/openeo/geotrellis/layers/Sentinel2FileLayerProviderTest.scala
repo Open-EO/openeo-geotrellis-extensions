@@ -21,14 +21,12 @@ import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.SizeEstimator
-import org.junit.Assert._
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api._
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
-import org.junit.{AfterClass, BeforeClass}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
@@ -44,7 +42,7 @@ import java.time._
 import java.util
 import java.util.stream.Stream
 import java.util.{Arrays, Collections}
-import scala.collection.JavaConverters.mapAsJavaMapConverter
+import scala.jdk.CollectionConverters._
 
 object Sentinel2FileLayerProviderTest {
   private val openSearchEndpoint = LayerFixtures.client
@@ -620,8 +618,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val actualTile = GeoTiffRasterSource(actual.toString).read().get
     assertRastersEqual(referenceTile, actualTile, 160.0)
     //because debug logging is enabled during tests, it actually runs more jobs and stages than done in production
-    assertEquals("unexpected number of jobs", 5, listener.getJobsCompleted)
-    assertEquals("unexpected number of stages", 18, listener.getStagesCompleted)
+    assertEquals(5, listener.getJobsCompleted, "unexpected number of jobs")
+    assertEquals(18, listener.getStagesCompleted, "unexpected number of stages")
 
   }
 

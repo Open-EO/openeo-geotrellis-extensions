@@ -14,9 +14,8 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert._
-import org.junit.Test
-import org.junit.jupiter.api.{AfterAll, BeforeAll}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.saveRDD
@@ -53,7 +52,8 @@ object Sentinel2PyramidFactoryTest {
 
 class Sentinel2PyramidFactoryTest {
 
-    //@Test
+    @Disabled
+    @Test
     def testS2INCDLayer(): Unit = {
         val boundingBox: ProjectedExtent = ProjectedExtent(Extent(-5.0, 37.0, -4.0, 38.0), LatLng)
         var utmCrs : CRS = null

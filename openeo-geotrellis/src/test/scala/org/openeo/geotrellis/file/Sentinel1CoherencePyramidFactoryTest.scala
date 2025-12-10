@@ -10,9 +10,8 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert.{assertArrayEquals, assertEquals, assertTrue}
-import org.junit.Test
-import org.junit.jupiter.api.{AfterAll, BeforeAll}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertTrue}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.opensearch.OpenSearchClient
 
 import java.net.URL

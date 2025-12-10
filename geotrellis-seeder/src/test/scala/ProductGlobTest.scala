@@ -1,6 +1,5 @@
 import geotrellis.layer._
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.{Ignore, Test}
 import org.openeo.geotrellisseeder.{Band, TileSeeder}
 
 class ProductGlobTest {

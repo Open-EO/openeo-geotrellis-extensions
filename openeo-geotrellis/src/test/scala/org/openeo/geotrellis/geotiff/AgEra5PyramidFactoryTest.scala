@@ -11,9 +11,8 @@ import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, MultiPolygon, Polygon, ProjectedExtent}
 import org.apache.spark.rdd.RDD
-import org.junit.Assert.assertEquals
-import org.junit.Test
-import org.junit.jupiter.api.Disabled
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.BandCompositeRasterSource
 import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
@@ -24,7 +23,7 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.util.matching.Regex
 
 object AgEra5PyramidFactoryTest extends LocalSparkContext {

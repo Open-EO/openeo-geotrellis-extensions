@@ -10,9 +10,8 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert.{assertEquals, assertTrue}
-import org.junit.Test
-import org.junit.jupiter.api.{AfterAll, BeforeAll}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.opensearch.OpenSearchClient
 
@@ -46,8 +45,8 @@ class Sentinel5PPyramidFactoryTest {
     val bbox = ProjectedExtent(Extent(-5.52612, 51.2654, -2.31262, 52.5864), LatLng)
     val srs = s"EPSG:${bbox.crs.epsgCode.get}"
 
-    assertTrue(s"${bbox.extent.width}", bbox.extent.width > 0.05)
-    assertTrue(s"${bbox.extent.height}", bbox.extent.height > 0.05)
+    assertTrue(bbox.extent.width > 0.05, s"${bbox.extent.width}")
+    assertTrue(bbox.extent.height > 0.05, s"${bbox.extent.height}")
 
     val date = LocalDate.of(2020, 1, 1).atStartOfDay(UTC)
 

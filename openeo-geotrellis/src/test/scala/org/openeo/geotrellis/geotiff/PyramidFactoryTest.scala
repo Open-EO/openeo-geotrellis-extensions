@@ -12,9 +12,8 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.store.s3.util.S3RangeReader
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert._
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled}
-import org.junit.{AfterClass, BeforeClass, Ignore, Test}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNotNull, assertTrue, fail}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
@@ -89,7 +88,7 @@ class PyramidFactoryTest {
 
     baseLayer.cache()
 
-    assertFalse("base layer contains no tiles!", baseLayer.isEmpty())
+    assertFalse(baseLayer.isEmpty(), "base layer contains no tiles!")
 
     val uniqueTimestamps = baseLayer.keys
       .map(_.time)
@@ -129,7 +128,7 @@ class PyramidFactoryTest {
 
     baseLayer.cache()
 
-    assertFalse("base layer contains no tiles!", baseLayer.isEmpty())
+    assertFalse(baseLayer.isEmpty(), "base layer contains no tiles!")
 
     val uniqueTimestamps = baseLayer.keys
       .map(_.time)
@@ -192,8 +191,8 @@ class PyramidFactoryTest {
   def singleBandGeoTiffFromS3ForSingleDate(): Unit = {
     // otherwise the S3 client will keep retrying to access
     // http://169.254.169.254/latest/meta-data/iam/security-credentials/
-    assertNotNull("aws.accessKeyId is not set", System.getProperty("aws.accessKeyId"))
-    assertNotNull("aws.secretKey is not set", System.getProperty("aws.secretKey"))
+    assertNotNull(System.getProperty("aws.accessKeyId"), "aws.accessKeyId is not set")
+    assertNotNull(System.getProperty("aws.secretKey"), "aws.secretKey is not set")
     System.setProperty("aws.region", "eu-west-3")
 
     val boundingBox = ProjectedExtent(Extent(xmin = 679605.00, ymin = 5667337.31, xmax = 691784.50, ymax = 5678547.98),

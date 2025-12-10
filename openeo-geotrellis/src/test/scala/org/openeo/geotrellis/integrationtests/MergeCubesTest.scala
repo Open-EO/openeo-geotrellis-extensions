@@ -9,9 +9,8 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Geometry
 import org.apache.spark.SparkContext
-import org.junit.Assert._
-import org.junit.Test
-import org.junit.jupiter.api.{AfterAll, BeforeAll}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.file.PyramidFactory
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters

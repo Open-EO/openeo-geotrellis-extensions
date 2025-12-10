@@ -9,8 +9,8 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkConf
-import org.junit.jupiter.api.Disabled
-import org.junit.{Assert, Test}
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellis.OpenEOProcesses
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory.Band._
 
@@ -49,7 +49,7 @@ class Sentinel2RadiometryPyramidFactoryTest {
         .map { case (_, layer) => layer }
         .get.cache()
 
-      Assert.assertTrue(baseLayer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
+      assertTrue(baseLayer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
       println(s"got ${baseLayer.count()} tiles")
 
       val timestamps = baseLayer.keys

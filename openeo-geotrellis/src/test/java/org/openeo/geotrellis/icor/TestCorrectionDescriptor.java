@@ -1,13 +1,13 @@
 package org.openeo.geotrellis.icor;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
-import static org.junit.Assert.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 
 // this test only tests one correctiondescriptor implementation  (sentinel2), because the intention here is to test:

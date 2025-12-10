@@ -7,8 +7,6 @@ import geotrellis.layer._
 import geotrellis.proj4.WebMercator
 import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSource}
-import org.junit.Assert.{assertEquals, assertNotEquals}
-import org.junit.{Ignore, Test}
 
 import scala.collection.JavaConverters.iterableAsScalaIterableConverter
 

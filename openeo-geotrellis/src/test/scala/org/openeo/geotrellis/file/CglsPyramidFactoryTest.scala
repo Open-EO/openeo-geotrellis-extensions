@@ -11,10 +11,8 @@ import geotrellis.raster.{CellSize, GridBounds, UByteConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector._
-import org.junit.Assert.assertEquals
-import org.junit.Test
-import org.junit.jupiter.api.Assertions.assertArrayEquals
-import org.junit.jupiter.api.{AfterAll, Disabled}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.{AfterAll, Disabled, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrellis.{LayerFixtures, LocalSparkContext, ProjectedPolygons}
