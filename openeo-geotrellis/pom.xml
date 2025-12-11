@@ -304,7 +304,6 @@
             <groupId>com.microsoft.onnxruntime</groupId>
             <artifactId>onnxruntime</artifactId>
             <version>1.23.2</version>
-            <scope>test</scope>
         </dependency>
     </dependencies>
     <build>

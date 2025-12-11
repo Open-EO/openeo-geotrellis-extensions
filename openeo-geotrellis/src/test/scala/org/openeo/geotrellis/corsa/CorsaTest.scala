@@ -28,7 +28,6 @@ object CorsaTest {
     CorsaHome.resolve("pretrain_BEN_10-20mbands_bicubic_512-128_onnx")
   }
 
-
   private val TileSize = 120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
   private val BandPowerTransformerParams = Bands.map { band =>
@@ -293,6 +292,7 @@ class CorsaTest extends RasterMatchers {
     assertEquals(TileSize, sentinel2Tile.rows)
 
     MultibandGeoTiff(sentinel2Tile, level0Tiff.extent, level0Tiff.crs).write("/tmp/reconstructed.tif")
+    // TODO: compare with original?
   }
 
   private def inverseYeoJohnsonTransform(tile: Tile, λ: Double): Tile =
