@@ -6,14 +6,15 @@ import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.util.RangeReader
 import geotrellis.vector.Extent
 import net.jodah.failsafe.FailsafeException
-import org.junit.Assert.assertEquals
-import org.junit.{Ignore, Test}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows}
+import org.junit.jupiter.api.{Disabled, Test, Timeout}
 import scalaj.http.HttpStatusException
 
 import java.net.URI
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 
-@Ignore("requires a file with Terrascope credentials")
+@Disabled("requires a file with Terrascope credentials")
 class CustomizableHttpRangeReaderTest {
   private val geoTiffUri = new URI("https://services.terrascope.be/download/Sentinel2/LAI_V2/2020/01/05/S2A_20200105T071301_39RVH_LAI_V200/20M/S2A_20200105T071301_39RVH_LAI_20M_V200.tif")
 
@@ -47,28 +48,39 @@ class CustomizableHttpRangeReaderTest {
 
   def getCornerPixelValue(rs: RasterSource): Int = rs.read().get._1.toArrayTile().band(0).get(5, 5)
 
-  @Test(expected = classOf[HttpStatusException], timeout = 10000L)
+  @Timeout(value = 10, unit = TimeUnit.SECONDS)
+  @Test
   def test400Exception(): Unit = {
-    // Add '|| r.is4xx' to 'retryableResult' to see what retrying on invalid 400 looks like.
-    val url = "http://localhost:8000/echo?response_code=400"
-    val tiffRs = GeoTiffRasterSource(url)
-    getCornerPixelValue(tiffRs)
+    assertThrows(classOf[HttpStatusException],
+      () => {
+        // Add '|| r.is4xx' to 'retryableResult' to see what retrying on invalid 400 looks like.
+        val url = "http://localhost:8000/echo?response_code=400"
+        val tiffRs = GeoTiffRasterSource(url)
+        getCornerPixelValue(tiffRs)
+      })
   }
 
-  @Test(expected = classOf[FailsafeException], timeout = 5000L)
+  @Timeout(value = 5, unit = TimeUnit.SECONDS)
+  @Test
   def testNonExiestentHostException(): Unit = {
-    // Add this to 'retryableException' to what retrying on invalid DNS looks like:
-    //    case _: java.net.UnknownHostException => true
-    val url = "http://non-existent-dns-jsfdjsldfnsdfndslf.com/img.tif"
-    val tiffRs = GeoTiffRasterSource(url)
-    getCornerPixelValue(tiffRs)
+    assertThrows(classOf[FailsafeException],
+      () => {
+        // Add this to 'retryableException' to what retrying on invalid DNS looks like:
+        //    case _: java.net.UnknownHostException => true
+        val url = "http://non-existent-dns-jsfdjsldfnsdfndslf.com/img.tif"
+        val tiffRs = GeoTiffRasterSource(url)
+        getCornerPixelValue(tiffRs)
+      })
   }
 
-  @Test(expected = classOf[Exception], timeout = 5000L)
+  @Timeout(value = 5, unit = TimeUnit.SECONDS)
+  @Test
   def testNonExiestentPathException(): Unit = {
-    val url = "/data/fake-folder-jsfdjsldfnsdfndslf/img.tif"
-    val tiffRs = GeoTiffRasterSource(url)
-    getCornerPixelValue(tiffRs)
+    assertThrows(classOf[Exception], () => {
+      val url = "/data/fake-folder-jsfdjsldfnsdfndslf/img.tif"
+      val tiffRs = GeoTiffRasterSource(url)
+      getCornerPixelValue(tiffRs)
+    })
   }
 
   @Test

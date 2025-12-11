@@ -3,8 +3,8 @@ package org.openeo.geotrellis
 import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.raster.{BitArrayTile, ByteArrayFiller, ByteArrayTile, ByteConstantNoDataCellType, DoubleArrayTile, IntArrayTile, ShortArrayTile, ShortConstantNoDataCellType, Tile}
 import org.apache.commons.io.IOUtils
-import org.junit.Test
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertNotNull}
+import org.junit.jupiter.api.Test
 
 import java.nio.charset.Charset
 import java.util

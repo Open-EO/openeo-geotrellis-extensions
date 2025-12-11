@@ -2,8 +2,8 @@ package org.openeo.geotrellissentinelhub
 
 import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, Feature}
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 
 import java.time.{LocalDate, ZoneOffset}
 import java.util

@@ -11,20 +11,18 @@ import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
 import geotrellis.raster.resample.Min
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, ColorMaps, GridBounds, IntArrayTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, isData}
+import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, ColorMaps, IntArrayTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
 import geotrellis.vector.io.json.GeoJson
 import org.apache.spark.{SparkConf, SparkContext, SparkEnv}
-import org.junit.Assert._
-import org.junit.Rule
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
-import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons, geotiff}
+import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.nio.file.{Files, Path, Paths}
@@ -33,7 +31,6 @@ import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 import java.util.zip.Deflater._
-import scala.annotation.meta.getter
 import scala.io.Source
 import scala.jdk.CollectionConverters._
 import scala.reflect.io.Directory
@@ -67,9 +64,6 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
   import WriteRDDToGeotiffTest._
 
-  @(Rule @getter)
-  val temporaryFolder = new TemporaryFolder
-
   val allOverviewOptions = {
     val opts = new GTiffOptions()
     opts.setColorMap(ColorMaps.IGBP)
@@ -97,7 +91,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},1,filename,formatOptions = allOverviewOptions)
 
     val tiff = GeoTiff.readSingleband(filename)
-    assertTrue(s"no color map in $filename", tiff.options.colorMap.isDefined)
+    assertTrue(tiff.options.colorMap.isDefined, s"no color map in $filename")
     assertEquals("Band Name",tiff.tags.bandTags(0).get("BAND").get)
     assertEquals(layoutCols * layoutRows,tiff.imageData.segmentBytes.length)
     assertEquals(8*256,tiff.imageData.segmentLayout.totalCols)
@@ -124,7 +118,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},1,filename,formatOptions = allOverviewOptions)
 
     val tiff = GeoTiff.readSingleband(filename)
-    assertTrue(s"no color map in $filename", tiff.options.colorMap.isDefined)
+    assertTrue(tiff.options.colorMap.isDefined, s"no color map in $filename")
     assertEquals("Band Name",tiff.tags.bandTags(0).get("BAND").get)
     assertEquals(layoutCols * layoutRows,tiff.imageData.segmentBytes.length)
     assertEquals(8*256,tiff.imageData.segmentLayout.totalCols)

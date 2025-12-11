@@ -2,15 +2,15 @@ package org.openeo.geotrellissentinelhub
 
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
-import org.junit.Assert.assertEquals
-import org.junit.{Ignore, Test}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows}
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.time.{LocalDate, LocalTime, OffsetTime, ZoneOffset, ZonedDateTime}
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.util.{Collections, UUID}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
-@Ignore("Batch Processing API V1 was sunset on September 17, 2025; we were no longer using it at this point")
+@Disabled("Batch Processing API V1 was sunset on September 17, 2025; we were no longer using it at this point")
 class BatchProcessingApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
   private val batchProcessingApi = new BatchProcessingApi(endpoint)
@@ -18,7 +18,7 @@ class BatchProcessingApiTest {
 
   private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token
 
-  @Ignore
+  @Disabled
   @Test
   def createBatchProcess(): Unit = {
     val dateTimes = Seq("2020-11-06T16:50:26Z", "2020-11-06T16:50:26Z", "2020-11-05T05:01:26Z", "2020-11-05T05:01:26Z")
@@ -55,13 +55,13 @@ class BatchProcessingApiTest {
     assertEquals(4.0 / (24 * 60 * 60), batchProcess.temporalIntervalInDays.get, 0.000000001)
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcess(): Unit = {
     batchProcessingApi.startBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3beba", accessToken)
   }
 
-  @Ignore
+  @Disabled
   @Test
   def createCard4LBatchProcess(): Unit = {
     val bounds = // the intersection of a feature with the initial bounding box
@@ -117,11 +117,13 @@ class BatchProcessingApiTest {
     println(s"batch process ${batchProcess.id} will write to folder $card4lId")
   }
 
-  @Test(expected = classOf[SentinelHubException])
-  def getUnknownBatchProcess(): Unit =
-    batchProcessingApi.getBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3bebe", accessToken)
+  @Test
+  def getUnknownBatchProcess(): Unit = {
+    assertThrows(classOf[SentinelHubException], () =>
+      batchProcessingApi.getBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3bebe", accessToken))
+  }
 
-  @Ignore
+  @Disabled
   @Test
   def createBatchProcessForSparsePolygons(): Unit = {
     val bboxLeft = Extent(3.7614440917968746, 50.737052666897405, 3.7634181976318355, 50.738139065342224)
@@ -151,11 +153,12 @@ class BatchProcessingApiTest {
     println(batchProcess.id)
   }
 
-  @Test(expected = classOf[SentinelHubException])
+  @Test
   def startJustCreatedBatchProcessIsRetried(): Unit = {
     // mimics a batch process that should have been created but returns a 404 Not Found on /start (it's actually an
     // unknown batch process ID)
-    batchProcessingApi.startBatchProcess("18d81bca-eb5a-4dde-8066-0b42b197373e", accessToken)
+    assertThrows(classOf[SentinelHubException], () =>
+      batchProcessingApi.startBatchProcess("18d81bca-eb5a-4dde-8066-0b42b197373e", accessToken))
     // no assertions, visual inspection only (the logger output)
   }
 }

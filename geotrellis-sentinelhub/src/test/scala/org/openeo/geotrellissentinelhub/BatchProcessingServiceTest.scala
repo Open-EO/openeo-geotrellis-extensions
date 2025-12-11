@@ -1,30 +1,26 @@
 package org.openeo.geotrellissentinelhub
 
 import geotrellis.proj4.LatLng
-import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector._
-import org.junit.Assert.{assertEquals, assertNull, assertTrue}
-import org.junit.rules.TemporaryFolder
-import org.junit.{Ignore, Rule, Test}
+import geotrellis.vector.io.json.GeoJson
+import org.junit.jupiter.api.Assertions.{assertEquals, assertNull, assertThrows, assertTrue}
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellissentinelhub.BatchProcessingService.BatchProcess
 
-import java.util.{Arrays, Collections, UUID, Map => JMap}
+import java.nio.file.Path
 import java.time.LocalTime
-import scala.annotation.meta.getter
-import scala.collection.JavaConverters._
+import java.util.{Arrays, Collections, UUID, Map => JMap}
+import scala.jdk.CollectionConverters._
 
-@Ignore("Batch Processing API V1 was sunset on September 17, 2025; we were no longer using it at this point")
+@Disabled("Batch Processing API V1 was sunset on September 17, 2025; we were no longer using it at this point")
 class BatchProcessingServiceTest {
   private val endpoint = "https://services.sentinel-hub.com" // TODO: this depends on the dataset
   private val authorizer = new MemoizedAuthApiAccessTokenAuthorizer(Utils.clientId, Utils.clientSecret)
   private val batchProcessingService = new BatchProcessingService(endpoint, bucketName = "openeo-sentinelhub",
     authorizer)
 
-  @(Rule @getter)
-  val temporaryFolder = new TemporaryFolder
-  private def collectingFolder = temporaryFolder.getRoot.toPath
-
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcess(): Unit = {
     startBatchProcess(
@@ -32,7 +28,7 @@ class BatchProcessingServiceTest {
       until_datetime = "2019-10-11T00:00:00+00:00")
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcessSameFromUntil(): Unit = {
     startBatchProcess(
@@ -58,7 +54,7 @@ class BatchProcessingServiceTest {
     println(awaitDone(Seq(batchRequestId)))
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcessForOverlappingPolygons(): Unit = {
     val upperLeftPolygon =
@@ -66,7 +62,7 @@ class BatchProcessingServiceTest {
     val lowerRightPolygon =
       Extent(4.094831943511963, 50.39508660393027, 4.0970635414123535, 50.396317702692095).toPolygon()
 
-    assertTrue("polygons do not overlap", upperLeftPolygon intersects lowerRightPolygon)
+    assertTrue(upperLeftPolygon intersects lowerRightPolygon, "polygons do not overlap")
 
     val polygons = Array(
       MultiPolygon(upperLeftPolygon),
@@ -89,7 +85,7 @@ class BatchProcessingServiceTest {
     println(awaitDone(Seq(batchRequestId)))
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcessToCustomSubfolder(): Unit = {
     val subfolder = UUID.randomUUID().toString
@@ -113,7 +109,7 @@ class BatchProcessingServiceTest {
     println(awaitDone(Seq(batchRequestId)))
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcessForOrbitDirection(): Unit = {
     val batchRequestId = batchProcessingService.start_batch_process(
@@ -132,7 +128,7 @@ class BatchProcessingServiceTest {
     println(awaitDone(Seq(batchRequestId)))
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcessForEoCloudCover(): Unit = {
     val batchRequestId = batchProcessingService.start_batch_process(
@@ -151,7 +147,7 @@ class BatchProcessingServiceTest {
     println(awaitDone(Seq(batchRequestId)))
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcessForSentinel2(): Unit = {
     val batchRequestId = batchProcessingService.start_batch_process(
@@ -170,7 +166,7 @@ class BatchProcessingServiceTest {
     println(awaitDone(Seq(batchRequestId)))
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcessForModis(): Unit = {
     val batchProcessingService = new BatchProcessingService(endpoint = "https://services-uswest2.sentinel-hub.com",
@@ -192,7 +188,7 @@ class BatchProcessingServiceTest {
     println(awaitDone(Seq(batchRequestId), batchProcessingService))
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcessForMapzenDem(): Unit = {
     val batchProcessingService = new BatchProcessingService(endpoint = "https://services-uswest2.sentinel-hub.com",
@@ -214,9 +210,9 @@ class BatchProcessingServiceTest {
     println(awaitDone(Seq(batchRequestId), batchProcessingService))
   }
 
-  @Ignore
+  @Disabled
   @Test
-  def startCachedBatchProcessForSentinel2(): Unit = {
+  def startCachedBatchProcessForSentinel2(@TempDir collectingFolder: Path): Unit = {
     val subfolder = UUID.randomUUID().toString
 
     println(s"subfolder: $subfolder")
@@ -241,9 +237,9 @@ class BatchProcessingServiceTest {
     if (batchRequestId != null) println(awaitDone(Seq(batchRequestId)))
   }
 
-  @Ignore
+  @Disabled
   @Test
-  def startPolygonalCachedBatchProcessForSentinel2(): Unit = {
+  def startPolygonalCachedBatchProcessForSentinel2(@TempDir collectingFolder: Path): Unit = {
     val subfolder = UUID.randomUUID().toString
 
     println(s"subfolder: $subfolder")
@@ -303,9 +299,9 @@ class BatchProcessingServiceTest {
     if (batchRequestId != null) println(awaitDone(Seq(batchRequestId)))
   }
 
-  @Ignore
+  @Disabled
   @Test
-  def startLargePolygonCachedBatchProcessForSentinel1(): Unit = {
+  def startLargePolygonCachedBatchProcessForSentinel1(@TempDir collectingFolder: Path): Unit = {
     val subfolder = UUID.randomUUID().toString
 
     println(s"subfolder: $subfolder")
@@ -350,7 +346,7 @@ class BatchProcessingServiceTest {
       polygonsCrs,
       from_datetime = "2020-11-25T00:00:00+00:00",
       until_datetime = "2020-11-26T00:00:00+00:00",
-      band_names = Arrays.asList("VH"/*, "VV"*/),
+      band_names = Arrays.asList("VH" /*, "VV"*/),
       SampleType.FLOAT32,
       metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Map(
@@ -382,18 +378,17 @@ class BatchProcessingServiceTest {
     assertNull(batch_process.errorMessage)
   }
 
-  @Ignore("not to be run automatically; looks like FAILED batch processes are eventually deleted")
+  @Disabled("not to be run automatically; looks like FAILED batch processes are eventually deleted")
   @Test
   def getFailedBatchProcess(): Unit = {
     val batch_process =
       batchProcessingService.get_batch_process(batch_request_id = "66598165-2cf3-409f-b569-bfecef36b516")
 
     assertEquals("FAILED", batch_process.status)
-    assertTrue(batch_process.errorMessage,
-      batch_process.errorMessage contains "Requested band 'HH' is not present in Sentinel 1 tile")
+    assertTrue(batch_process.errorMessage contains "Requested band 'HH' is not present in Sentinel 1 tile", batch_process.errorMessage)
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startCard4LBatchProcesses(): Unit = {
     val requestGroupUuid = UUID.randomUUID().toString
@@ -423,7 +418,7 @@ class BatchProcessingServiceTest {
     )
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startCard4LBatchProcessesForOrbitDirection(): Unit = {
     val requestGroupUuid = UUID.randomUUID().toString
@@ -453,7 +448,7 @@ class BatchProcessingServiceTest {
     )
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcessForSparsePolygons(): Unit = {
     val bboxLeft = Extent(3.7614440917968746, 50.737052666897405, 3.7634181976318355, 50.738139065342224)
@@ -480,7 +475,7 @@ class BatchProcessingServiceTest {
     println(awaitDone(Seq(batchRequestId)))
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startCard4LBatchProcessesForSparsePolygons(): Unit = {
     val requestGroupUuid = UUID.randomUUID().toString
@@ -512,40 +507,42 @@ class BatchProcessingServiceTest {
     println(awaitDone(batchRequestIds.asScala))
   }
 
-  @Test(expected = classOf[NoSuchFeaturesException])
+  @Test
   def startBatchProcessForPeculiarTimeInterval(): Unit = {
-    batchProcessingService.start_batch_process(
-      collection_id = "sentinel-2-l2a",
-      dataset_id = "sentinel-2-l2a",
-      bbox = Extent(11.89, 41.58, 12.56, 42.2),
-      bbox_srs = "EPSG:4326",
-      from_datetime = "2021-12-07T00:00:00+00:00",
-      until_datetime = "2021-12-06T00:00:00+00:00",
-      band_names = Arrays.asList("B8A", "B11", "B05"),
-      SampleType.FLOAT32,
-      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
-      processing_options = Collections.emptyMap[String, Any]
-    )
+    assertThrows(classOf[NoSuchFeaturesException], () =>
+      batchProcessingService.start_batch_process(
+        collection_id = "sentinel-2-l2a",
+        dataset_id = "sentinel-2-l2a",
+        bbox = Extent(11.89, 41.58, 12.56, 42.2),
+        bbox_srs = "EPSG:4326",
+        from_datetime = "2021-12-07T00:00:00+00:00",
+        until_datetime = "2021-12-06T00:00:00+00:00",
+        band_names = Arrays.asList("B8A", "B11", "B05"),
+        SampleType.FLOAT32,
+        metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+        processing_options = Collections.emptyMap[String, Any]
+      ))
   }
 
-  @Ignore("not implemented yet")
-  @Test(expected = classOf[NoSuchFeaturesException])
+  @Disabled("not implemented yet")
+  @Test
   def startCard4LBatchProcessesForXXX(): Unit = {
     val requestGroupUuid = UUID.randomUUID().toString
 
-    batchProcessingService.start_card4l_batch_processes(
-      collection_id = "sentinel-1-grd",
-      dataset_id = "sentinel-1-grd",
-      bbox = Extent(11.016694, 46.538743, 11.28595, 46.745225),
-      bbox_srs = "EPSG:4326",
-      from_datetime = "2018-07-01T00:00:00+00:00",
-      until_datetime = "2018-07-04T00:00:00+00:00",
-      band_names = Arrays.asList("VV", "VH", "HV", "HH"),
-      dem_instance = "COPERNICUS_30",
-      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
-      subfolder = requestGroupUuid,
-      requestGroupUuid
-    )
+    assertThrows(classOf[NoSuchFeaturesException],
+      () => batchProcessingService.start_card4l_batch_processes(
+        collection_id = "sentinel-1-grd",
+        dataset_id = "sentinel-1-grd",
+        bbox = Extent(11.016694, 46.538743, 11.28595, 46.745225),
+        bbox_srs = "EPSG:4326",
+        from_datetime = "2018-07-01T00:00:00+00:00",
+        until_datetime = "2018-07-04T00:00:00+00:00",
+        band_names = Arrays.asList("VV", "VH", "HV", "HH"),
+        dem_instance = "COPERNICUS_30",
+        metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+        subfolder = requestGroupUuid,
+        requestGroupUuid
+      ))
   }
 
   private def awaitDone(batchRequestIds: Iterable[String],
@@ -567,7 +564,7 @@ class BatchProcessingServiceTest {
     throw new AssertionError
   }
 
-  @Ignore
+  @Disabled
   @Test
   def startBatchProcessForColombia(): Unit = {
     val colombia = """{"type":"Polygon","coordinates":[[[-74.5,4.6],[-74.5,4.9],[-73.0,4.9],[-73.0,4.6],[-74.5,4.6]]]}"""
@@ -612,7 +609,7 @@ class BatchProcessingServiceTest {
 
     val batchProcess = awaitDone(Seq(batchRequestId)).head
     assertEquals("FAILED", batchProcess.status)
-    assertTrue(batchProcess.errorMessage, batchProcess.errorMessage contains "Invalid DEM instance: retteketet")
+    assertTrue(batchProcess.errorMessage contains "Invalid DEM instance: retteketet", batchProcess.errorMessage)
   }
 
   @Test
@@ -635,7 +632,6 @@ class BatchProcessingServiceTest {
 
     val batchProcess = awaitDone(Seq(batchRequestId)).head
     assertEquals("FAILED", batchProcess.status)
-    assertTrue(batchProcess.errorMessage,
-      batchProcess.errorMessage contains "Requested band 'HH' is not present in Sentinel 1 tile")
+    assertTrue(batchProcess.errorMessage contains "Requested band 'HH' is not present in Sentinel 1 tile", batchProcess.errorMessage)
   }
 }

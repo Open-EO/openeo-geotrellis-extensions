@@ -1,8 +1,8 @@
 package org.openeo.geotrellis.layers
 
 import nl.jqno.equalsverifier.EqualsVerifier
-import org.junit.Assert.{assertEquals, assertNotEquals, assertTrue}
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.{assertEquals, assertNotEquals, assertTrue}
+import org.junit.jupiter.api.Test
 
 import java.nio.file.Paths
 import java.time.{LocalDate, ZoneId}

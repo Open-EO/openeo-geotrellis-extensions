@@ -2,14 +2,14 @@ package org.openeo.geotrellis.layers
 import geotrellis.raster.gdal.GDALPath
 import geotrellis.vector._
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
-import org.junit.{Ignore, Test}
+import org.junit.jupiter.api.{Disabled, Test}
 
 import scala.collection.parallel.CollectionConverters._
 
 class GdalCloudRasterSourceTest {
 
   @Test
-  @Ignore
+  @Disabled
   def testReadPolygonsAndExtent(): Unit = {
     val cloudPath = "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE/GRANULE/L1C_T35JPM_A028875_20210101T081145/QI_DATA/MSK_CLOUDS_B00.gml"
     val metaDataPath = "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE/GRANULE/L1C_T35JPM_A028875_20210101T081145/MTD_TL.xml"

@@ -20,12 +20,11 @@ import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert._
-import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertTrue}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
-import org.junit.{AfterClass, Assert, BeforeClass, Test}
 import org.openeo.geotrellis.AggregateSpatialTest.{assertEqualTimeseriesStats, parseCSV}
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.OpenEOProcessesSpec.getDatesForCube
@@ -71,7 +70,7 @@ object OpenEOProcessesSpec {
     _sc.get
   }
 
-  @BeforeClass
+  @BeforeAll
   def setUpSpark_BeforeClass(): Unit = sc
 
   @BeforeAll
@@ -87,7 +86,7 @@ object OpenEOProcessesSpec {
 
   var gotAfterClass = false
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark_AfterClass(): Unit = {
     gotAfterClass = true
     maybeStopSpark()
@@ -507,7 +506,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
     try {
       val resultCube = new OpenEOProcesses().convertDataTypeGeneric(datacube, "int33")
-      Assert.fail("Should have failed with IllegalArgumentException")
+      fail("Should have failed with IllegalArgumentException")
     } catch {
       case e: IllegalArgumentException => assertEquals("Data type int33 is not supported", e.getMessage)
     }
@@ -661,12 +660,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // assertEquals(withoutPartitioner.getStagesCompleted, withPartitioner.getStagesCompleted)
     // might need to change threshold in the future:
     assertTrue(
-      "sparsePartitioner.getTasksCompleted should be smaller than 15. Actually: " + sparsePartitioner.getTasksCompleted,
       sparsePartitioner.getTasksCompleted < 15,
+      "sparsePartitioner.getTasksCompleted should be smaller than 15. Actually: " + sparsePartitioner.getTasksCompleted
     )
     assertTrue(
-      "byTilePartitioner.getTasksCompleted should be smaller than 6. Actually: " + byTilePartitioner.getTasksCompleted,
       byTilePartitioner.getTasksCompleted < 6,
+      "byTilePartitioner.getTasksCompleted should be smaller than 6. Actually: " + byTilePartitioner.getTasksCompleted
     )
   }
 
