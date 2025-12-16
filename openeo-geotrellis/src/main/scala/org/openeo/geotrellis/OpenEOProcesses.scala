@@ -11,7 +11,7 @@ import geotrellis.raster.buffer.{BufferSizes, BufferedTile}
 import geotrellis.raster.crop.Crop
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
-import geotrellis.raster.io.geotiff.{GeoTiffOptions, MultibandGeoTiff, Tags}
+import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize.Rasterizer
@@ -1142,18 +1142,14 @@ class OpenEOProcesses extends Serializable {
   }
 
   def corsaCompress(datacube: MultibandTileLayerRDD[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
-    // TODO: regrid from 120x120 to accommodate for 60x60 tiles
-    /*
-    -    val retiled = retileGeneric(datacube, sizeX = 120, sizeY = 120, overlapX = 0, overlapY = 0) // retiling will not change the original 10m resolution (extent and cols/rows stay the same)
--    val compressed = retiled.mapValues(corsa.compress(_)/*.resample(targetCols = 120, targetRows = 120)*/) // compress produces MultibandTiles of 60x60 at a resolution of 20m
--
--    val TileLayout(layoutCols, layoutRows, tileCols, tileRows) = retiled.metadata.tileLayout
--    val md = retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = TileLayout(layoutCols, layoutRows, 60, 60)))
--
--    //retileGeneric(ContextRDD(compressed, md), sizeX = 60, sizeY = 60, overlapX = 0, overlapY = 0)
--    ContextRDD(compressed, md)
-     */
-    datacube.withContext(_.mapValues(corsa.compress))
+    val newTileLayout = datacube.metadata.tileLayout.copy(tileCols = 60, tileRows = 60)
+    val newBounds = datacube.metadata.bounds.flatMap { keyBounds =>
+      keyBounds.rekey(datacube.metadata.layout, datacube.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    ContextRDD(
+      datacube.mapValues(corsa.compress),
+      datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds))
   }
 
   def convertDataType(datacube: Object, dataType: String): Object = {

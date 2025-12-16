@@ -31,9 +31,8 @@ package object corsa {
     assert(level1.rows == 30)
 
     MultibandTile(
-      // TODO: return 60x60 instead
-      ResampledTile(level0, sourceCols = level0.cols, sourceRows = level0.rows, targetCols = 120, targetRows = 120),
-      ResampledTile(level1, sourceCols = level1.cols, sourceRows = level1.rows, targetCols = 120, targetRows = 120)
+      level0,
+      ResampledTile(level1, sourceCols = level1.cols, sourceRows = level1.rows, targetCols = level0.cols, targetRows = level0.rows)
     )
   }
 
