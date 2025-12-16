@@ -2,7 +2,7 @@ package org.openeo.geotrellis
 
 import ai.onnxruntime.OrtSession.SessionOptions
 import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, OrtUtil, TensorInfo}
-import geotrellis.raster.{FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, Tile, UShortArrayTile}
+import geotrellis.raster.{FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, Tile, UShortArrayTile, isData}
 import io.circe.generic.auto._
 import org.openeo.geotrelliscommon.{CirceException, ResampledTile}
 
@@ -18,12 +18,7 @@ package object corsa {
     require(tile.cols == 120, tile.cols.toString)
     require(tile.rows == 120, tile.rows.toString)
 
-    val modelDir = {
-      // copied from /data/users/Public/luytsa/corsa-compression/pretrain_BEN_10-20mbands_bicubic_512-128_onnx
-      CorsaHome.resolve("pretrain_BEN_10-20mbands_bicubic_512-128_onnx")
-    }
-
-    val (level0, level1) = processWindowOnnx(preprocessDataCubeInScala(tile), modelPath = modelDir.resolve("encoder.onnx"))
+    val (level0, level1) = processWindowOnnx(preprocessDataCubeInScala(tile), modelPath = ModelDir.resolve("encoder.onnx"))
 
     assert(level0.cols == 60)
     assert(level0.rows == 60)
@@ -37,6 +32,11 @@ package object corsa {
   }
 
   private val CorsaHome = Paths.get("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563")
+
+  private val ModelDir = {
+    // copied from /data/users/Public/luytsa/corsa-compression/pretrain_BEN_10-20mbands_bicubic_512-128_onnx
+    CorsaHome.resolve("pretrain_BEN_10-20mbands_bicubic_512-128_onnx")
+  }
 
   private val TileSize = 120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
@@ -166,4 +166,78 @@ package object corsa {
 
     (session, inputName)
   }
+
+  def decompress(tile: MultibandTile): MultibandTile = {
+    val modelPath = ModelDir.resolve("decoder.onnx")
+
+    require(tile.bandCount == 2, tile.bandCount.toString)
+    require(tile.dimensions.cols == 60)
+    require(tile.dimensions.rows == 60)
+
+    val nanTo0 = (value: Int) => if (isData(value)) value else 0
+
+    val level0 = tile.band(0).map(nanTo0)
+    val level1 = ResampledTile(tile.band(1), sourceCols = 60, sourceRows = 60, targetCols = 30, targetRows = 30)
+
+    val env = OrtEnvironment.getEnvironment
+    val options = new SessionOptions
+    options.setIntraOpNumThreads(1)
+
+    val recon = Using(env.createSession(modelPath.toString, options)) { session =>
+      // inputs are sorted
+      val inputNames = session.getInputInfo.keySet().iterator()
+      val level0InputName = inputNames.next()
+      val level1InputName = inputNames.next()
+
+      val patchLevel0Data = OnnxTensor.createTensor(env,
+        OrtUtil.reshape(Array[Long](level0.toArray().map(_.toLong): _*), Array(1, 60, 60)))
+      val patchLevel1Data = OnnxTensor.createTensor(env,
+        OrtUtil.reshape(Array[Long](level1.toArray().map(_.toLong): _*), Array(1, 30, 30)))
+
+      val ortInputs = Map(
+        level0InputName -> patchLevel0Data,
+        level1InputName -> patchLevel1Data,
+      ).asJava
+
+      val result = session.run(ortInputs) // 1 x 10 x 120 x 120
+
+      val recon = result.get(0).getValue.asInstanceOf[Array[Array[Array[Array[Float]]]]](0)
+
+      val bandTiles = for {
+        band <- recon
+      } yield FloatArrayTile(band.flatten, cols = TileSize, rows = TileSize)
+
+      MultibandTile(bandTiles)
+    }
+
+    unscale(recon.get)
+  }
+
+  private def inverseYeoJohnsonTransform(tile: Tile, λ: Double): Tile =
+    tile.mapDouble { x =>
+      if (x >= 0) {
+        if (λ == 0) math.exp(x) - 1
+        else math.pow(x * λ + 1, 1 / λ) - 1
+      } else {
+        if (λ == 2) 1 - math.exp(-x)
+        else 1 - math.pow(-(2 - λ) * x + 1, 1 / (2 - λ))
+      }
+    }
+
+  private def inverseStandardScalerTransform(tile: Tile, mean: Double, scale: Double): Tile =
+    tile.mapDouble { x => x * scale + mean }
+
+  private def unscale(recon: MultibandTile): MultibandTile =
+    recon.mapBands { case (i, bandTile) =>
+      val PowerTransformerParams(lambda, mean, scale) = BandPowerTransformerParams(i)
+
+      inverseYeoJohnsonTransform(
+        inverseStandardScalerTransform(
+          bandTile,
+          mean,
+          scale
+        ),
+        lambda
+      )
+    }
 }

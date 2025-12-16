@@ -1149,7 +1149,20 @@ class OpenEOProcesses extends Serializable {
 
     ContextRDD(
       datacube.mapValues(corsa.compress),
-      datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds))
+      datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
+  def corsaDecompress(datacube: MultibandTileLayerRDD[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val newTileLayout = datacube.metadata.tileLayout.copy(tileCols = 120, tileRows = 120)
+    val newBounds = datacube.metadata.bounds.flatMap { keyBounds =>
+      keyBounds.rekey(datacube.metadata.layout, datacube.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    ContextRDD(
+      datacube.mapValues(corsa.decompress),
+      datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
   }
 
   def convertDataType(datacube: Object, dataType: String): Object = {
