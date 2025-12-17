@@ -62,6 +62,7 @@ package object corsa {
 
     config match {
       case Success(config) =>
+        // assumptions that simplify scaling implementation
         require(config.pt_kwargs.method == "yeo-johnson")
         require(config.pt_kwargs.standardize)
         require(config.scaler_mean.size == 1)
