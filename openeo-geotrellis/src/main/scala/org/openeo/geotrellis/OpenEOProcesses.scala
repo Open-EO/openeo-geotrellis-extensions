@@ -1609,6 +1609,9 @@ class OpenEOProcesses extends Serializable {
       val resultTile = flattenNestedArray(resultValue, outputShape, outputType)
       resultTile
     }
+    if (isTemp){
+      Files.delete(Paths.get(modelFile))
+    }
     ContextRDD(result,datacube.metadata)
   }
 
@@ -1644,17 +1647,14 @@ class OpenEOProcesses extends Serializable {
       val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
       val outputShape = outputInfo.getShape
 
-      if (!inputShape.sameElements(outputShape)) {
-        // TODO Analyze the problems that might occur if the input and output shape differ
-        throw new IllegalArgumentException(
-          s"ONNX: only supports output shape that is the same as input shape, with output shape ${outputShape.mkString("Array(", ", ", ")")} and input shape ${inputShape.mkString("Array(", ", ", ")")}.")
-      }
+      if (checkShape(inputShape))
+        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${inputShape.mkString("Array(", ", ", ")")}.")
+      if (checkShape(outputShape))
+        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${outputShape.mkString("Array(", ", ", ")")}.")
 
       val inputType = inputInfo.`type`
       val outputType = outputInfo.`type`
 
-      val bandCount = tile.bandCount
-      if (bandCount!=1) throw new IllegalArgumentException(f"ONNX: only support one band as input, but got: ${bandCount}")
       val inputArray = inputType match {
         case OnnxJavaType.FLOAT =>
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[FloatArrayTile].array).toArray
@@ -1679,6 +1679,9 @@ class OpenEOProcesses extends Serializable {
       val resultValue = results.get(0).getValue.asInstanceOf[Array[_]]
       val resultTile = flattenNestedArray(resultValue, outputShape, outputType)
       resultTile
+    }
+    if (isTemp){
+      Files.delete(Paths.get(modelFile))
     }
     ContextRDD(result,datacube.metadata)
   }
