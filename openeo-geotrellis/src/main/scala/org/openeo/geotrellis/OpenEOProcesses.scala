@@ -1475,52 +1475,73 @@ class OpenEOProcesses extends Serializable {
         predictONNXSpatial(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
         predictONNXTemporal(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
-      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for predict_onnx: ${datacube}")
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for predict_onnx: $datacube")
     }
   }
 
 
   private def flattenNestedArray(multiArray: Array[_], outputShape: Array[Long], onnxType:OnnxJavaType): MultibandTile = {
-    val tile = onnxType match {
+    val shapeDimension = outputShape.length
+    onnxType match {
       // TODO check if the multiArray contains the right type (same as the onnx type) and throw clear error if not.
-      // TODO make it possible to have multiple bands
       case OnnxJavaType.FLOAT =>
-        val resultArray = if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Float]]]]].flatten.flatten.flatten
-        else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Float]]]].flatten.flatten
-        else if (outputShape.length == 2) multiArray.asInstanceOf[Array[Array[Float]]].flatten
-        else throw new IllegalArgumentException(f"ONNX: Unsupported output shape : ${outputShape.mkString("Array(", ", ", ")")}")
-        FloatArrayTile(resultArray, outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
+        val resultArray = shapeDimension match {
+          case 4 => multiArray.asInstanceOf[Array[Array[Array[Array[Float]]]]].flatten
+          case 3 => multiArray.asInstanceOf[Array[Array[Array[Float]]]]
+          case 2 => Array(multiArray.asInstanceOf[Array[Array[Float]]])
+          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape:${outputShape.mkString("Array(", ", ", ")")} ")
+        }
+        val flattenBands = resultArray.map(x => FloatArrayTile(x.flatten, outputShape(shapeDimension-2).toInt,outputShape(shapeDimension-1).toInt))
+        MultibandTile(flattenBands)
       case OnnxJavaType.DOUBLE =>
-        val resultArray =
-          if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Double]]]]].flatten.flatten.flatten
-          else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Double]]]].flatten.flatten
-          else if (outputShape.length == 2) multiArray.asInstanceOf[Array[Array[Double]]].flatten
-          else throw new IllegalArgumentException(f"ONNX: Unsupported output shape : ${outputShape.mkString("Array(", ", ", ")")}")
-        DoubleArrayTile(resultArray, outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
+        val resultArray = shapeDimension match {
+          case 4 => multiArray.asInstanceOf[Array[Array[Array[Array[Double]]]]].flatten
+          case 3 => multiArray.asInstanceOf[Array[Array[Array[Double]]]]
+          case 2 => Array(multiArray.asInstanceOf[Array[Array[Double]]])
+          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape:${outputShape.mkString("Array(", ", ", ")")} ")
+        }
+        val flattenBands = resultArray.map(x => DoubleArrayTile(x.flatten, outputShape(shapeDimension-2).toInt,outputShape(shapeDimension-1).toInt))
+        MultibandTile(flattenBands)
       case OnnxJavaType.INT32 =>
-        val resultArray =
-          if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Double]]]]].flatten.flatten.flatten
-          else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Double]]]].flatten.flatten
-          else if (outputShape.length == 2) multiArray.asInstanceOf[Array[Array[Double]]].flatten
-          else throw new IllegalArgumentException(f"ONNX: Unsupported output shape : ${outputShape.mkString("Array(", ", ", ")")}")
-        IntArrayTile(resultArray.asInstanceOf[Array[Int]], outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
+        val resultArray = shapeDimension match {
+          case 4 => multiArray.asInstanceOf[Array[Array[Array[Array[Int]]]]].flatten
+          case 3 => multiArray.asInstanceOf[Array[Array[Array[Int]]]]
+          case 2 => Array(multiArray.asInstanceOf[Array[Array[Int]]])
+          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape:${outputShape.mkString("Array(", ", ", ")")} ")
+        }
+        val flattenBands = resultArray.map(x => IntArrayTile(x.flatten, outputShape(shapeDimension-2).toInt,outputShape(shapeDimension-1).toInt))
+        MultibandTile(flattenBands)
       case OnnxJavaType.INT16 =>
-        val resultArray =
-          if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Double]]]]].flatten.flatten.flatten
-          else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Double]]]].flatten.flatten
-          else if (outputShape.length == 2) multiArray.asInstanceOf[Array[Array[Double]]].flatten
-          else throw new IllegalArgumentException(f"ONNX: Unsupported output shape : ${outputShape.mkString("Array(", ", ", ")")}")
-        ShortArrayTile(resultArray.asInstanceOf[Array[Short]], outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
+        val resultArray = shapeDimension match {
+          case 4 => multiArray.asInstanceOf[Array[Array[Array[Array[Short]]]]].flatten
+          case 3 => multiArray.asInstanceOf[Array[Array[Array[Short]]]]
+          case 2 => Array(multiArray.asInstanceOf[Array[Array[Short]]])
+          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape:${outputShape.mkString("Array(", ", ", ")")} ")
+        }
+        val flattenBands = resultArray.map(x => ShortArrayTile(x.flatten, outputShape(shapeDimension-2).toInt,outputShape(shapeDimension-1).toInt))
+        MultibandTile(flattenBands)
       case OnnxJavaType.INT8 =>
-        val resultArray =
-          if (outputShape.length == 4) multiArray.asInstanceOf[Array[Array[Array[Array[Double]]]]].flatten.flatten.flatten
-          else if (outputShape.length == 3) multiArray.asInstanceOf[Array[Array[Array[Double]]]].flatten.flatten
-          else if (outputShape.length == 2) multiArray.asInstanceOf[Array[Array[Double]]].flatten
-          else throw new IllegalArgumentException(f"ONNX: Unsupported output shape : ${outputShape.mkString("Array(", ", ", ")")}")
-        ByteArrayTile(resultArray.asInstanceOf[Array[Byte]], outputShape(outputShape.length-2).toInt,outputShape(outputShape.length-1).toInt)
+        val resultArray = shapeDimension match {
+          case 4 => multiArray.asInstanceOf[Array[Array[Array[Array[Byte]]]]].flatten
+          case 3 => multiArray.asInstanceOf[Array[Array[Array[Byte]]]]
+          case 2 => Array(multiArray.asInstanceOf[Array[Array[Byte]]])
+          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape:${outputShape.mkString("Array(", ", ", ")")} ")
+        }
+        val flattenBands = resultArray.map(x => ByteArrayTile(x.flatten, outputShape(shapeDimension-2).toInt,outputShape(shapeDimension-1).toInt))
+        MultibandTile(flattenBands)
       case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported output type of ONNX model : $onnxType")
     }
-    MultibandTile(tile)
+  }
+
+  private def checkShape(shape: Array[Long]): Boolean = {
+    val len = shape.length
+    if (len<2) true
+    else if (len>4) true
+    else if (len==4) {
+      if (shape(0) != 1) true
+      else false
+    }
+    else false
   }
 
   def predictONNXSpatial(datacube:MultibandTileLayerRDD[SpatialKey], model:String): RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = {
@@ -1555,17 +1576,14 @@ class OpenEOProcesses extends Serializable {
       val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
       val outputShape = outputInfo.getShape
 
-      if (!inputShape.sameElements(outputShape)) {
-        // TODO Analyze the problems that might occur if the input and output shape differ
-        throw new IllegalArgumentException(
-          s"ONNX: only supports output shape that is the same as input shape, with output shape ${outputShape.mkString("Array(", ", ", ")")} and input shape ${inputShape.mkString("Array(", ", ", ")")}.")
-      }
+      if (checkShape(inputShape))
+        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${inputShape.mkString("Array(", ", ", ")")}.")
+      if (checkShape(outputShape))
+        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${outputShape.mkString("Array(", ", ", ")")}.")
 
       val inputType = inputInfo.`type`
       val outputType = outputInfo.`type`
 
-      val bandCount = tile.bandCount
-      if (bandCount!=1) throw new IllegalArgumentException(f"ONNX: only support one band as input, but got: ${bandCount}")
       val inputArray = inputType match {
         case OnnxJavaType.FLOAT =>
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[FloatArrayTile].array).toArray
