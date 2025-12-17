@@ -14,9 +14,12 @@ import scala.util.{Failure, Success, Using}
 
 package object corsa {
   def compress(tile: MultibandTile): MultibandTile = {
-    // assumes tiled to 120x120 (e.g. with featureflags: tilesize: 120)
-    require(tile.cols == 120, tile.cols.toString)
-    require(tile.rows == 120, tile.rows.toString)
+    // assumes tiled to 120x120 (e.g. with featureflags: tilesize: 120) with the expected 10 bands
+    require(tile.cols == TileSize, tile.cols.toString)
+    require(tile.rows == TileSize, tile.rows.toString)
+    require(tile.bandCount == Bands.size, s"expected bands: ${Bands mkString ", "}")
+
+    // TODO: replace NaNs with 0 using interpolation
 
     val (level0, level1) = processWindowOnnx(preprocessDataCubeInScala(tile), modelPath = ModelDir.resolve("encoder.onnx"))
 
