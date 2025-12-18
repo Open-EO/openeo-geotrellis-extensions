@@ -1533,15 +1533,17 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  private def checkShape(shape: Array[Long], rows:Int, cols:Int): Boolean = {
+  private def checkShape(shape: Array[Long], rows:Int, cols:Int): String = {
     val len = shape.length
-    if (len<2) true
-      else if (len>4) true
+    if (len<2) s"shape should have at least length 2, but got shape ${shape.mkString("Array(", ", ", ")")}"
+      else if (len>4)  s"shape should have at most length 4, but got shape ${shape.mkString("Array(", ", ", ")")}"
       else if (len==4) {
-        if (shape(0) != 1) true
-        else !(rows==shape(len-2) && cols==shape(len-1))
+        if (shape(0) != 1) s"first element should be 1 when length is 4, but got ${shape.mkString("Array(", ", ", ")")}"
+          else if (rows==shape(len-2) && cols==shape(len-1)) ""
+          else s"shape of the onnx model should have same dimensions as tile, but got shape ${shape.mkString("Array(", ", ", ")")} and rows and cols are $rows and $cols"
       }
-      else !(rows==shape(len-2) && cols==shape(len-1))
+      else if (rows==shape(len-2) && cols==shape(len-1)) ""
+      else s"shape of the onnx model should have same dimensions as tile, but got shape ${shape.mkString("Array(", ", ", ")")} and rows and cols are $rows and $cols"
   }
 
   def predictONNXSpatial(datacube:MultibandTileLayerRDD[SpatialKey], model:String): RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = {
@@ -1576,10 +1578,10 @@ class OpenEOProcesses extends Serializable {
       val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
       val outputShape = outputInfo.getShape
 
-      if (checkShape(inputShape, tile.cols, tile.rows))
-        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${inputShape.mkString("Array(", ", ", ")")}.")
-      if (checkShape(outputShape, tile.cols, tile.rows))
-        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${outputShape.mkString("Array(", ", ", ")")}.")
+      if (checkShape(inputShape, tile.cols, tile.rows).nonEmpty)
+        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${checkShape(inputShape, tile.cols, tile.rows)}.")
+      if (checkShape(outputShape, tile.cols, tile.rows).nonEmpty)
+        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${checkShape(outputShape, tile.cols, tile.rows)}.")
 
       val inputType = inputInfo.`type`
       val outputType = outputInfo.`type`
@@ -1658,10 +1660,10 @@ class OpenEOProcesses extends Serializable {
       val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
       val outputShape = outputInfo.getShape
 
-      if (checkShape(inputShape, tile.cols, tile.rows))
-        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${inputShape.mkString("Array(", ", ", ")")}.")
-      if (checkShape(outputShape, tile.cols, tile.rows))
-        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${outputShape.mkString("Array(", ", ", ")")}.")
+      if (checkShape(inputShape, tile.cols, tile.rows).nonEmpty)
+        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${checkShape(inputShape, tile.cols, tile.rows)}.")
+      if (checkShape(outputShape, tile.cols, tile.rows).nonEmpty)
+        throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${checkShape(outputShape, tile.cols, tile.rows)}.")
 
       val inputType = inputInfo.`type`
       val outputType = outputInfo.`type`
