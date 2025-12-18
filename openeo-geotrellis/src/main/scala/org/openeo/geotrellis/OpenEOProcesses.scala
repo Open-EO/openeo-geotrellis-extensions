@@ -1533,15 +1533,15 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  private def checkShape(shape: Array[Long]): Boolean = {
+  private def checkShape(shape: Array[Long], rows:Int, cols:Int): Boolean = {
     val len = shape.length
     if (len<2) true
-    else if (len>4) true
-    else if (len==4) {
-      if (shape(0) != 1) true
-      else false
-    }
-    else false
+      else if (len>4) true
+      else if (len==4) {
+        if (shape(0) != 1) true
+        else !(rows==shape(len-2) && cols==shape(len-1))
+      }
+      else !(rows==shape(len-2) && cols==shape(len-1))
   }
 
   def predictONNXSpatial(datacube:MultibandTileLayerRDD[SpatialKey], model:String): RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = {
@@ -1576,28 +1576,42 @@ class OpenEOProcesses extends Serializable {
       val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
       val outputShape = outputInfo.getShape
 
-      if (checkShape(inputShape))
+      if (checkShape(inputShape, tile.cols, tile.rows))
         throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${inputShape.mkString("Array(", ", ", ")")}.")
-      if (checkShape(outputShape))
+      if (checkShape(outputShape, tile.cols, tile.rows))
         throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${outputShape.mkString("Array(", ", ", ")")}.")
 
       val inputType = inputInfo.`type`
       val outputType = outputInfo.`type`
 
+      if (inputType!=outputType)
+        throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
+
+
       val inputArray = inputType match {
         case OnnxJavaType.FLOAT =>
+          if (!tile.cellType.isInstanceOf[FloatCells])
+            throw new IllegalArgumentException (s"ONNX: onnx type float does not match celltype ${tile.cellType}.")
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[FloatArrayTile].array).toArray
           OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.DOUBLE =>
+          if (!tile.cellType.isInstanceOf[DoubleCells])
+            throw new IllegalArgumentException (s"ONNX: onnx type double does not match celltype ${tile.cellType}.")
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[DoubleArrayTile].array).toArray
           OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT32 =>
+          if (!tile.cellType.isInstanceOf[IntCells])
+            throw new IllegalArgumentException (s"ONNX: onnx type int does not match celltype ${tile.cellType}.")
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[IntArrayTile].array).toArray
           OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT16 =>
+          if (!tile.cellType.isInstanceOf[ShortCells])
+            throw new IllegalArgumentException (s"ONNX: onnx type short does not match celltype ${tile.cellType}.")
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[ShortArrayTile].array).toArray
           OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT8 =>
+          if (!tile.cellType.isInstanceOf[ByteCells])
+            throw new IllegalArgumentException (s"ONNX: onnx type byte does not match celltype ${tile.cellType}.")
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[ByteArrayTile].array).toArray
           OrtUtil.reshape(flat, inputShape)
         case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported input type of ONNX model : $onnxType")
@@ -1644,9 +1658,9 @@ class OpenEOProcesses extends Serializable {
       val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
       val outputShape = outputInfo.getShape
 
-      if (checkShape(inputShape))
+      if (checkShape(inputShape, tile.cols, tile.rows))
         throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${inputShape.mkString("Array(", ", ", ")")}.")
-      if (checkShape(outputShape))
+      if (checkShape(outputShape, tile.cols, tile.rows))
         throw new IllegalArgumentException (s"ONNX: unsupported input shape: ${outputShape.mkString("Array(", ", ", ")")}.")
 
       val inputType = inputInfo.`type`
@@ -1656,18 +1670,28 @@ class OpenEOProcesses extends Serializable {
 
       val inputArray = inputType match {
         case OnnxJavaType.FLOAT =>
+          if (!tile.cellType.isInstanceOf[FloatCells])
+            throw new IllegalArgumentException (s"ONNX: onnx type float does not match celltype ${tile.cellType}.")
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[FloatArrayTile].array).toArray
           OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.DOUBLE =>
+          if (!tile.cellType.isInstanceOf[DoubleCells])
+            throw new IllegalArgumentException (s"ONNX: onnx type double does not match celltype ${tile.cellType}.")
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[DoubleArrayTile].array).toArray
           OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT32 =>
+          if (!tile.cellType.isInstanceOf[IntCells])
+            throw new IllegalArgumentException (s"ONNX: onnx type int does not match celltype ${tile.cellType}.")
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[IntArrayTile].array).toArray
           OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT16 =>
+          if (!tile.cellType.isInstanceOf[ShortCells])
+            throw new IllegalArgumentException (s"ONNX: onnx type short does not match celltype ${tile.cellType}.")
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[ShortArrayTile].array).toArray
           OrtUtil.reshape(flat, inputShape)
         case OnnxJavaType.INT8 =>
+          if (!tile.cellType.isInstanceOf[ByteCells])
+            throw new IllegalArgumentException (s"ONNX: onnx type byte does not match celltype ${tile.cellType}.")
           val flat = tile.bands.flatMap(x=>x.asInstanceOf[ByteArrayTile].array).toArray
           OrtUtil.reshape(flat, inputShape)
         case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported input type of ONNX model : $onnxType")
