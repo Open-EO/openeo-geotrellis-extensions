@@ -13,9 +13,9 @@ import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaPairRDD$;
 import org.apache.spark.rdd.RDD;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import scala.Option;
 import scala.Tuple2;
 import scala.collection.JavaConverters;
@@ -26,13 +26,13 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.DoubleStream;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.openeo.geotrellis.TestOpenEOProcessScriptBuilder.createMax;
 import static org.openeo.geotrellis.TestOpenEOProcessScriptBuilder.createStandardDeviation;
 
 public class TestOpenEOProcesses {
 
-    @BeforeClass
+    @BeforeAll
     public static void sparkContext() {
 
         SparkConf conf = new SparkConf();
@@ -45,7 +45,7 @@ public class TestOpenEOProcesses {
 
     }
 
-    @AfterClass
+    @AfterAll
     public static void shutDownSparkContext() {
         SparkContext.getOrCreate().stop();
     }
@@ -76,7 +76,7 @@ public class TestOpenEOProcesses {
 
         //bounds needs to be updated to reflect the new bounds
         assertEquals(new KeyBounds<SpaceTimeKey>(new SpaceTimeKey(0,0,1483228800000L),new SpaceTimeKey(0,0,1484438400000L)),mappedRDD.metadata().bounds());
-        assertTrue(mappedRDD.partitioner().get() instanceof SpacePartitioner);
+        assertInstanceOf(SpacePartitioner.class, mappedRDD.partitioner().get());
         Map<SpaceTimeKey, MultibandTile> map = JavaPairRDD$.MODULE$.fromJavaRDD(mappedRDD.toJavaRDD()).collectAsMap();
         //map.forEach(spaceTimeKey -> System.out.println("spaceTimeKey = " + spaceTimeKey._1.time()));
         System.out.println("map = " + map);
@@ -242,7 +242,7 @@ public class TestOpenEOProcesses {
 
         BigInt p1 = ((SpacePartitioner<SpatialKey>) result.partitioner().get()).index().toIndex(new SpatialKey(0, 0));
         BigInt p2 = ((SpacePartitioner<SpatialKey>) result.partitioner().get()).index().toIndex(new SpatialKey(1, 0));
-        assertNotEquals("Partitions for neighbouring keys should be different",p1,p2);
+        assertNotEquals(p1,p2, "Partitions for neighbouring keys should be different");
         List<Tuple2<String,MultibandTile>> results = JavaPairRDD.fromJavaRDD(result.toJavaRDD()).map(spaceTimeKeyMultibandTileTuple2 -> new Tuple2<String,MultibandTile>(spaceTimeKeyMultibandTileTuple2._1.toString(),spaceTimeKeyMultibandTileTuple2._2)).collect();
         MultibandTile interpolatedTile = results.stream().collect(Collectors.toList()).get(0)._2;
         assertEquals(5,interpolatedTile.bandCount());

@@ -2,20 +2,17 @@ package org.openeo.geotrelliscommon
 
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, TileLayout, UByteConstantNoDataCellType}
+import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, TileLayout, UByteConstantNoDataCellType}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
-import jp.ne.opt.chronoscala.Imports.richZonedDateTime
-import org.junit.Assert.{assertEquals, assertTrue}
-import org.junit.{Ignore, Test}
-import software.amazon.awssdk.services.s3.model.ParquetInput
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import scala.util.Random
-import scala.util.control.Breaks.{break, breakable}
 
 class DataCubeSupportSpec {
 
-  @Ignore
+  @Disabled
   @Test def testLayerMetadata(): Unit = {
 
     val box = ProjectedExtent(Extent(660280.2335363723, 4830543.527054116, 660807.1934326619, 4830999.507525481),CRS.fromEpsgCode(32630))
@@ -162,6 +159,4 @@ class DataCubeSupportSpec {
     }
 
   }
-
-
 }

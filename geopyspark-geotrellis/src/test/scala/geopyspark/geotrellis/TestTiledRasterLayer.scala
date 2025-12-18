@@ -2,8 +2,8 @@ package geopyspark.geotrellis
 
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TemporalKey}
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.{AfterClass, BeforeClass, Test}
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.LayerFixtures
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -14,7 +14,7 @@ object TestTiledRasterLayer{
 
   var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark():Unit = {
     sc = {
       val conf = new SparkConf().setMaster("local[8]").setAppName(getClass.getSimpleName)
@@ -26,7 +26,7 @@ object TestTiledRasterLayer{
     if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 

@@ -1,12 +1,11 @@
 import geotrellis.spark.util.SparkUtils
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 import org.openeo.geotrellisseeder.{Band, TileSeeder}
 
 object ProbaVLayerTest {
   private implicit var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = {
     val sparkConf = new SparkConf()
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
@@ -15,13 +14,13 @@ object ProbaVLayerTest {
     sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, sparkConf)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = {
     sc.stop()
   }
 }
 
-@Ignore
+@Disabled
 class ProbaVLayerTest {
 
   import ProbaVLayerTest._

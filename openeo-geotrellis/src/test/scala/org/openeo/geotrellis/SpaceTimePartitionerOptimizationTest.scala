@@ -5,8 +5,8 @@ import geotrellis.proj4.{CRS, LatLng, Proj4Transform}
 import geotrellis.raster.{ByteConstantNoDataCellType, CellSize}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.Assert._
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.Test
 import org.openeo.geotrelliscommon
 import org.openeo.geotrelliscommon._
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex

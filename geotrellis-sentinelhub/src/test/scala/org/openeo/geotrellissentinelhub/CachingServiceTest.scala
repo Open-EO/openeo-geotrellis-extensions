@@ -1,10 +1,10 @@
 package org.openeo.geotrellissentinelhub
 
-import org.junit.{Ignore, Test}
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.nio.file.Files
 
-@Ignore
+@Disabled
 class CachingServiceTest {
 
   private val cachingService = new CachingService

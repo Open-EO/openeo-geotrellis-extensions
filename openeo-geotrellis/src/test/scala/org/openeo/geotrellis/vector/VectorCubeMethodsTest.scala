@@ -8,12 +8,10 @@ import geotrellis.vector.{Feature, Geometry}
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert.assertEquals
-import org.junit.jupiter.api.{AfterAll, BeforeAll}
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.LayerFixtures
 import org.openeo.geotrellis.LayerFixtures.sentinel2B04Layer
-import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.{saveSingleNetCDFSpatial}
 import org.openeo.geotrellis.vector.VectorCubeMethods.extractFeatures
 
 import java.time.ZonedDateTime
@@ -38,7 +36,7 @@ object VectorCubeMethodsTest {
     _sc.get
   }
 
-  @BeforeClass
+  @BeforeAll
   def setUpSpark_BeforeClass(): Unit = sc
 
   @BeforeAll
@@ -54,7 +52,7 @@ object VectorCubeMethodsTest {
 
   var gotAfterClass = false
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark_AfterClass(): Unit = {
     gotAfterClass = true;
     maybeStopSpark()

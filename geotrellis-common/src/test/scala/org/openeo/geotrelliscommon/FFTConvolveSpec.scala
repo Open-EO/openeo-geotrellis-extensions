@@ -3,8 +3,8 @@ package org.openeo.geotrelliscommon
 import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{IntArrayTile, RasterExtent}
 import geotrellis.vector.Extent
-import org.junit.Assert._
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 
 class FFTConvolveSpec  extends  RasterMatchers{
 

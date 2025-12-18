@@ -1,7 +1,5 @@
 package org.openeo.geotrellis.layers
 
-// import org.openeo.geotrellis.TestImplicits._
-import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.SpatialKey
 import geotrellis.proj4.CRS
@@ -13,8 +11,9 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
-import org.junit.Assert.assertEquals
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
+import org.openeo.opensearch.OpenSearchClient
 
 import java.net.URL
 import java.time.LocalTime.MIDNIGHT
@@ -24,11 +23,11 @@ import java.time.{LocalDate, ZonedDateTime}
 object S1GrdSigma0FileLayerProviderTest {
   private var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[*]",
     appName = S1GrdSigma0FileLayerProviderTest.getClass.getName)
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 
