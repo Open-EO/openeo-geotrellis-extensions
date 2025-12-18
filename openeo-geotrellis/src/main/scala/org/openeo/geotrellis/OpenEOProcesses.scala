@@ -1651,6 +1651,8 @@ class OpenEOProcesses extends Serializable {
 
       val inputType = inputInfo.`type`
       val outputType = outputInfo.`type`
+      if (inputType!=outputType)
+        throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
 
       val inputArray = inputType match {
         case OnnxJavaType.FLOAT =>
