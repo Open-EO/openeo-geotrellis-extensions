@@ -1027,8 +1027,11 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val tileSize = 256
 
     def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
+      val model =
+        if (path.startsWith("http")) path
+        else getClass.getResource(path).getPath
       val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tileSize, tileSize))
-      val resultCube = new OpenEOProcesses().predictONNXSpatial(datacube,getClass.getResource(path).getPath)
+      val resultCube = new OpenEOProcesses().predictONNXSpatial(datacube,model)
       assertEquals(expectedType, resultCube.metadata.cellType)
       val theResultTile = resultCube.stitch().tile
       assertEquals(expectedNBands,theResultTile.bandCount)
@@ -1092,6 +1095,11 @@ class OpenEOProcessesSpec extends RasterMatchers {
       new ArrayMultibandTile(Array[Tile](tileShort(1),tileShort(2),tileShort(3))),
       Seq(resultArray(3),resultArray(1)),ShortConstantNoDataCellType, 2
     )
+    // test download model
+    runONNX("https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx",
+      new ArrayMultibandTile(Array(tileFloat(4))),
+      Seq(resultArray(0)), FloatConstantNoDataCellType
+    )
 
   }
 
@@ -1113,7 +1121,10 @@ class OpenEOProcessesSpec extends RasterMatchers {
       .withContext(_.mapValues(x => MultibandTile(x.map(_*mul(0)),x.map(_*mul(1)),x.map(_*mul(2)))))
 
     def runONNX(path: String, datacube:  MultibandTileLayerRDD[SpaceTimeKey], expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
-      val resultCube = new OpenEOProcesses().predictONNXTemporal(datacube,getClass.getResource(path).getPath)
+      val model =
+        if (path.startsWith("http")) path
+       else getClass.getResource(path).getPath
+      val resultCube = new OpenEOProcesses().predictONNXTemporal(datacube,model)
       assertEquals(expectedType, resultCube.metadata.cellType)
 
       val results = resultCube.toSpatial(date)
@@ -1179,6 +1190,11 @@ class OpenEOProcessesSpec extends RasterMatchers {
     runONNX("/org/openeo/geotrellis/onnx/test_model_gather_short.onnx",
             datacubeThreeBands(tileShort(1),Seq(1,2,3)),
       Seq(resultArray(3),resultArray(1)),ShortConstantNoDataCellType, 2
+    )
+    // test download model
+    runONNX("https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx",
+      datacubeOneBand(tileFloat(4)),
+      Seq(resultArray(0)), FloatConstantNoDataCellType
     )
   }
 

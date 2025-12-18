@@ -1609,9 +1609,6 @@ class OpenEOProcesses extends Serializable {
       val resultTile = flattenNestedArray(resultValue, outputShape, outputType)
       resultTile
     }
-    if (isTemp){
-      Files.delete(Paths.get(modelFile))
-    }
     ContextRDD(result,datacube.metadata)
   }
 
@@ -1679,9 +1676,6 @@ class OpenEOProcesses extends Serializable {
       val resultValue = results.get(0).getValue.asInstanceOf[Array[_]]
       val resultTile = flattenNestedArray(resultValue, outputShape, outputType)
       resultTile
-    }
-    if (isTemp){
-      Files.delete(Paths.get(modelFile))
     }
     ContextRDD(result,datacube.metadata)
   }
