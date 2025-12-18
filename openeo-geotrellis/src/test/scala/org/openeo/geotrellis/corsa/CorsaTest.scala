@@ -76,13 +76,11 @@ class CorsaTest extends RasterMatchers {
 
   @Test
   def decode(): Unit = {
-    val nanTo0 = (value: Int) => if (isData(value)) value else 0
-
     val level0Tiff = SinglebandGeoTiff(s"$CorsaHome/level0_20m_2021-09-07Z_ref.tif")
     val level1Tiff = SinglebandGeoTiff(s"$CorsaHome/level1_40m_2021-09-07Z_ref.tif")
 
-    val level0 = level0Tiff.raster.mapTile(_.map(nanTo0))
-    val level1 = level1Tiff.raster.mapTile(_.map(nanTo0))
+    val level0 = level0Tiff.raster
+    val level1 = level1Tiff.raster
 
     require(level0.dimensions.cols == 60)
     require(level0.dimensions.rows == 60)

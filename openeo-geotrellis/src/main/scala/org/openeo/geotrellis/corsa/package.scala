@@ -175,13 +175,13 @@ package object corsa {
     val modelPath = ModelDir.resolve("decoder.onnx")
 
     require(tile.bandCount == 2, tile.bandCount.toString)
-    require(tile.dimensions.cols == 60)
-    require(tile.dimensions.rows == 60)
+    require(tile.dimensions.cols == 60, tile.dimensions.cols.toString)
+    require(tile.dimensions.rows == 60, tile.dimensions.rows.toString)
 
     val nanTo0 = (value: Int) => if (isData(value)) value else 0
 
     val level0 = tile.band(0).map(nanTo0)
-    val level1 = ResampledTile(tile.band(1), sourceCols = 60, sourceRows = 60, targetCols = 30, targetRows = 30)
+    val level1 = ResampledTile(tile.band(1).map(nanTo0), sourceCols = 60, sourceRows = 60, targetCols = 30, targetRows = 30)
 
     val env = OrtEnvironment.getEnvironment
     val options = new SessionOptions
