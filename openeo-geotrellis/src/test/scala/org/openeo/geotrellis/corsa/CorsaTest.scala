@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.corsa
 
 import geotrellis.proj4.CRS
-import geotrellis.raster.{FloatConstantNoDataCellType, GridBounds, MultibandTile, Raster, Tile, isData}
+import geotrellis.raster.{FloatConstantNoDataCellType, GridBounds, MultibandTile, Raster, isData}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{MultibandGeoTiff, SinglebandGeoTiff}
 import geotrellis.raster.testkit.RasterMatchers
