@@ -53,18 +53,21 @@
       <artifactId>uzaygezen-core</artifactId>
       <version>0.2</version>
     </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-api</artifactId>
-      <version>5.10.3</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.vintage</groupId>
-      <artifactId>junit-vintage-engine</artifactId>
-      <version>5.10.3</version>
-      <scope>test</scope>
-    </dependency>
+      <dependency>
+          <groupId>org.junit.jupiter</groupId>
+          <artifactId>junit-jupiter-api</artifactId>
+          <scope>test</scope>
+      </dependency>
+      <dependency>
+          <groupId>org.junit.jupiter</groupId>
+          <artifactId>junit-jupiter-engine</artifactId>
+          <scope>test</scope>
+      </dependency>
+      <dependency>
+          <groupId>org.junit.jupiter</groupId>
+          <artifactId>junit-jupiter-params</artifactId>
+          <scope>test</scope>
+      </dependency>
     <dependency>
       <groupId>org.locationtech.geotrellis</groupId>
       <artifactId>geotrellis-raster-testkit_${scala.binary.version}</artifactId>
@@ -107,7 +110,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>2.22.2</version>
+        <version>${maven-surefire-plugin.version}</version>
         <configuration>
           <includes>
             <include>**/Test*.*</include>

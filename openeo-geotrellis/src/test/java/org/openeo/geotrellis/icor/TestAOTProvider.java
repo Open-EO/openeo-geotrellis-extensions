@@ -9,7 +9,7 @@ import geotrellis.raster.Tile;
 import geotrellis.raster.geotiff.GeoTiffRasterSource;
 import geotrellis.vector.Extent;
 import geotrellis.vector.reproject.Reproject;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.openeo.geotrellis.ProjectedPolygons;
 
 import java.net.URISyntaxException;
@@ -18,7 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.ZonedDateTime;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestAOTProvider {
 
@@ -62,7 +62,6 @@ public class TestAOTProvider {
 
     @Test
     public void testClosestPathFinder(){
-
         AOTProvider.ClosestPathFinder finder = new AOTProvider.ClosestPathFinder(ZonedDateTime.parse("2017-01-26T17:00:00Z"));
         finder.accept(Paths.get("/bla/bla/CAMS_NRT_aod550_20170126T210000Z.tif"));
         finder.accept(Paths.get("/bla/bla/CAMS_NRT_aod550_20170126T240000Z.tif"));

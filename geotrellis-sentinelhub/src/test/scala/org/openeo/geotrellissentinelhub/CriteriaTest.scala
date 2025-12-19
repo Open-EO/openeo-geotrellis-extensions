@@ -1,10 +1,10 @@
 package org.openeo.geotrellissentinelhub
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows}
+import org.junit.jupiter.api.Test
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 class CriteriaTest {
   private val objectMapper = new ObjectMapper
@@ -90,13 +90,16 @@ class CriteriaTest {
     assertEquals("""{"eo:cloud_cover":{"lte":20}}""", objectMapper.writeValueAsString(actual))
   }
 
-  @Test(expected=classOf[IllegalArgumentException])
+  @Test
   def acceptOnlyLteQueryPropertiesForEoCloudCover(): Unit = {
-    val metadata_properties = Map(
-      "eo:cloud_cover" -> Map("eq" -> (20: Any)).asJava
-    ).asJava
+    assertThrows(classOf[IllegalArgumentException],
+      () => {
+        val metadata_properties = Map(
+          "eo:cloud_cover" -> Map("eq" -> (20: Any)).asJava
+        ).asJava
 
-    Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-2-l2a")
+        Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-2-l2a")
+      })
   }
 
 
@@ -262,13 +265,16 @@ class CriteriaTest {
     assertEquals("""{"maxCloudCoverage":20}""", objectMapper.writeValueAsString(actual))
   }
 
-  @Test(expected = classOf[IllegalArgumentException])
+  @Test
   def acceptOnlyLteDataFiltersForEoCloudCover(): Unit = {
-    val metadata_properties = Map(
-      "eo:cloud_cover" -> Map("eq" -> (20: Any)).asJava
-    ).asJava
+    assertThrows(classOf[IllegalArgumentException],
+      () => {
+        val metadata_properties = Map(
+          "eo:cloud_cover" -> Map("eq" -> (20: Any)).asJava
+        ).asJava
 
-    Criteria.toDataFilters(metadata_properties)
+        Criteria.toDataFilters(metadata_properties)
+      })
   }
 
   @Test

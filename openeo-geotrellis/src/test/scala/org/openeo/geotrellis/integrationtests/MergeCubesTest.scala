@@ -9,8 +9,8 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Geometry
 import org.apache.spark.SparkContext
-import org.junit.Assert._
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.file.PyramidFactory
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
@@ -23,10 +23,10 @@ object MergeCubesTest {
   private var sc: SparkContext = _
   private val openSearchEndpoint = "https://services.terrascope.be/catalogue"
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[*]", classOf[MergeCubesTest].getName)
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 

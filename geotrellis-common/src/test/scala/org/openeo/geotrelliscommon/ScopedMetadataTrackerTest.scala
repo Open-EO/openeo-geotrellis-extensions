@@ -1,13 +1,13 @@
 package org.openeo.geotrelliscommon
 
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert.{assertEquals, assertNotSame, assertSame}
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 
 object ScopedMetadataTrackerTest {
   private implicit var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = sc = {
     val conf = new SparkConf()
       .setMaster("local[*]")
@@ -16,7 +16,7 @@ object ScopedMetadataTrackerTest {
     SparkContext.getOrCreate(conf)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 
 }

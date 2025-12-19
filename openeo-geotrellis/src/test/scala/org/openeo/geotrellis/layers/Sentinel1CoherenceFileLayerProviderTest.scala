@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.proj4.LatLng
 import geotrellis.raster.CellSize
@@ -12,8 +11,9 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.SparkContext
-import org.junit.Assert._
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue, fail}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
+import org.openeo.opensearch.OpenSearchClient
 
 import java.net.URL
 import java.nio.file.{Files, Paths}
@@ -25,11 +25,11 @@ import scala.reflect.io.Directory
 object Sentinel1CoherenceFileLayerProviderTest {
   private var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[2]",
     appName = Sentinel1CoherenceFileLayerProviderTest.getClass.getName)
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 

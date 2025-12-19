@@ -2,15 +2,14 @@ package org.openeo.geotrellis
 
 import geotrellis.spark.util.SparkUtils
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.ClassRule
-import org.junit.jupiter.api.{AfterAll, BeforeAll}
-import org.junit.rules.ExternalResource
+import org.junit.jupiter.api.{AfterEach, BeforeEach}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.nio.file.{Files, Paths}
 
-protected trait LocalSparkContextBase {
-  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[LocalSparkContextBase])
+class LocalSparkContext {
+
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[LocalSparkContext])
   protected var _sc: Option[SparkContext] = None
 
   implicit def sc: SparkContext = {
@@ -49,24 +48,10 @@ protected trait LocalSparkContextBase {
       _sc = None
     }
   }
-}
 
-//noinspection JUnitMalformedDeclaration
-trait LocalSparkContext extends LocalSparkContextBase {
-  @ClassRule
-  def sparkContext: ExternalResource = new ExternalResource {
-    override def before(): Unit = sc
+  @BeforeEach
+  def beforeEach(): Unit = sc
 
-    override def after(): Unit = tearDownSpark()
-  }
-}
-
-//noinspection JUnitMalformedDeclaration
-trait LocalSparkContextJupyter extends LocalSparkContextBase {
-
-  @BeforeAll
-  def setupSpark(): Unit = sc
-
-  @AfterAll
-  def after(): Unit = tearDownSpark()
+  @AfterEach
+  def afterEach(): Unit = tearDownSpark()
 }
