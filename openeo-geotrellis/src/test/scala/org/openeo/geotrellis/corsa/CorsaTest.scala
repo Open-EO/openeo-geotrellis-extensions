@@ -14,14 +14,15 @@ import java.nio.file.{Files, Path, Paths}
 import scala.jdk.StreamConverters._
 
 object CorsaTest {
-  private val CorsaHome = Paths.get("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563")
-
   private val TileSize = 120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
 }
 
 class CorsaTest extends RasterMatchers {
   import CorsaTest._
+
+  private def testResourcePath(filename: String): String =
+    getClass.getResource(s"/org/openeo/geotrellis/corsa/$filename").getPath
 
   @Test
   def encode(@TempDir tempDir: Path): Unit = {
@@ -32,7 +33,7 @@ class CorsaTest extends RasterMatchers {
     MultibandGeoTiff(cubeArray, extent, crs).write(cubeArrayFile.toString)
 
     val (level0, level1) = {
-      val Vector(level0, level1) = corsa.compress(tile = cubeArray).bands
+      val Vector(level0, level1) = corsa.compress(modelDir, tile = cubeArray).bands
       (level0, level1.resample(extent, targetCols = 30, targetRows = 30))
     }
 
@@ -41,12 +42,12 @@ class CorsaTest extends RasterMatchers {
 
     assertRastersEqual(
       actual = Raster(level0.convert(FloatConstantNoDataCellType), extent),
-      expected = MultibandGeoTiff(s"$CorsaHome/level0_20m_2021-09-07Z_ref.tif").raster
+      expected = MultibandGeoTiff(testResourcePath("level0_20m_2021-09-07Z_ref.tif")).raster
     )
 
     assertRastersEqual(
       actual = Raster(level1.convert(FloatConstantNoDataCellType), extent),
-      expected = MultibandGeoTiff(s"$CorsaHome/level1_40m_2021-09-07Z_ref.tif").raster
+      expected = MultibandGeoTiff(testResourcePath("level1_40m_2021-09-07Z_ref.tif")).raster
     )
   }
 
@@ -76,8 +77,8 @@ class CorsaTest extends RasterMatchers {
 
   @Test
   def decode(): Unit = {
-    val level0Tiff = SinglebandGeoTiff(s"$CorsaHome/level0_20m_2021-09-07Z_ref.tif")
-    val level1Tiff = SinglebandGeoTiff(s"$CorsaHome/level1_40m_2021-09-07Z_ref.tif")
+    val level0Tiff = SinglebandGeoTiff(testResourcePath("level0_20m_2021-09-07Z_ref.tif"))
+    val level1Tiff = SinglebandGeoTiff(testResourcePath("level1_40m_2021-09-07Z_ref.tif"))
 
     val level0 = level0Tiff.raster
     val level1 = level1Tiff.raster
@@ -87,7 +88,7 @@ class CorsaTest extends RasterMatchers {
     require(level1.dimensions.cols == 30)
     require(level1.dimensions.rows == 30)
 
-    val sentinel2Tile = corsa.decompress(tile = MultibandTile(
+    val sentinel2Tile = corsa.decompress(modelDir, tile = MultibandTile(
       level0.tile,
       level1.resample(targetCols = level0.cols, targetRows = level0.rows).tile
     ))
@@ -97,6 +98,6 @@ class CorsaTest extends RasterMatchers {
     assertEquals(TileSize, sentinel2Tile.rows)
 
     MultibandGeoTiff(sentinel2Tile, level0Tiff.extent, level0Tiff.crs).write("/tmp/reconstructed.tif")
-    // TODO: compare with original?
+    // TODO: compare with reference file of decoded
   }
 }

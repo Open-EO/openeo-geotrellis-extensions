@@ -1,41 +1,31 @@
 package org.openeo.geotrellis
 
 import ai.onnxruntime.OrtSession.SessionOptions
-import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtUtil, TensorInfo}
+import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, OrtUtil, TensorInfo}
 import geotrellis.raster.{FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, Tile, UShortArrayTile, isData}
 import io.circe.generic.auto._
 import org.openeo.geotrelliscommon.{CirceException, ResampledTile}
 
 import java.nio.file.{Files, Path, Paths}
 import java.util
+import java.util.concurrent.ConcurrentHashMap
 import scala.io.Source
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Using}
 
 package object corsa {
-  private lazy val decodeSession = env.createSession(ModelDir.resolve("decoder.onnx").toString, sessionOptions)
+  def modelDir: String = {
+    val modelDirEnvar = "CORSA_MODEL_DIR"
 
-  private lazy val (encodeSession, encodeInputName) = {
-    val session = env.createSession(ModelDir.resolve("encoder.onnx").toString, sessionOptions)
-
-    require(session.getNumInputs == 1)
-    val inputName = session.getInputNames.iterator().next()
-
-    val inputInfo: TensorInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
-    require(inputInfo.`type` == OnnxJavaType.FLOAT)
-    require(util.Arrays.equals(inputInfo.getShape, Array(1L, Bands.size, TileSize, TileSize))) // [???, bands, y, x]
-
-    (session, inputName)
+    Option(System.getenv(modelDirEnvar))
+      .getOrElse(throw new IllegalStateException(s"$modelDirEnvar is not set"))
   }
 
-  private lazy val (decodeLevel0InputName, decodeLevel1InputName) = {
-    // inputs are sorted
-    val inputNames = decodeSession.getInputInfo.keySet().iterator()
-    val level0InputName = inputNames.next()
-    val level1InputName = inputNames.next()
+  private case class EncodeSessionDetails(session: OrtSession, inputName: String)
+  private val encodeSessions = new ConcurrentHashMap[Path, EncodeSessionDetails]
 
-    (level0InputName, level1InputName)
-  }
+  private case class DecodeSessionDetails(session: OrtSession, level0InputName: String, level1InputName: String)
+  private val decodeSessions = new ConcurrentHashMap[Path, DecodeSessionDetails]
 
   private lazy val sessionOptions = {
     val options = new SessionOptions
@@ -43,31 +33,25 @@ package object corsa {
     options
   }
 
-  private lazy val env = OrtEnvironment.getEnvironment
-
-  private val CorsaHome = Paths.get("/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563")
-
-  private val ModelDir = {
-    // copied from /data/users/Public/luytsa/corsa-compression/pretrain_BEN_10-20mbands_bicubic_512-128_onnx
-    CorsaHome.resolve("pretrain_BEN_10-20mbands_bicubic_512-128_onnx")
-  }
+  private lazy val Env = OrtEnvironment.getEnvironment
 
   private val TileSize = 120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
   private val BandPowerTransformerParams = Bands.map { band =>
-    parsePowerTransformerParams(CorsaHome.resolve(s"scalers/scaler2024_power_${band}_info.json"))
+    val configClasspathResource =  s"org/openeo/geotrellis/corsa/scalers/scaler2024_power_${band}_info.json"
+    parsePowerTransformerParams(configClasspathResource)
   }
 
   private case class PowerTransformerParams(lambda: Double, mean: Double, scale: Double)
 
-  private def parsePowerTransformerParams(configFile: Path): PowerTransformerParams = {
+  private def parsePowerTransformerParams(configClasspathResource: String): PowerTransformerParams = {
     case class PtKwargs(method: String, standardize: Boolean)
     case class ScKwargs(with_mean: Boolean, with_std: Boolean)
     case class Params(pt_kwargs: PtKwargs, scaler_mean: Seq[Double], scaler_var: Seq[Double],
                       lambdas_ : Seq[Double], sc_kwargs: ScKwargs)
 
     val config = for {
-      json <- Using(Source.fromFile(configFile.toFile)) { source => source.mkString }
+      json <- Using(Source.fromResource(configClasspathResource)) { source => source.mkString }
       config <- CirceException.decode[Params](json).toTry
     } yield config
 
@@ -87,7 +71,7 @@ package object corsa {
     }
   }
 
-  def compress(tile: MultibandTile): MultibandTile = {
+  def compress(modelDir: String, tile: MultibandTile): MultibandTile = {
     // assumes tiled to 120x120 (e.g. with featureflags: tilesize: 120) with the expected 10 bands
     require(tile.cols == TileSize, tile.cols.toString)
     require(tile.rows == TileSize, tile.rows.toString)
@@ -95,7 +79,7 @@ package object corsa {
 
     // TODO: replace NaNs with 0 using interpolation
 
-    val (level0, level1) = processWindowOnnx(preprocessDataCubeInScala(tile), modelPath = ModelDir.resolve("encoder.onnx"))
+    val (level0, level1) = processWindowOnnx(preprocessDataCubeInScala(tile), Paths.get(modelDir).resolve("encoder.onnx"))
 
     assert(level0.cols == 60)
     assert(level0.rows == 60)
@@ -153,7 +137,20 @@ package object corsa {
     require(data.head.head.length == 120)
     require(data.head.head.head.length == 120)
 
-    val tensor = OnnxTensor.createTensor(env, data)
+    val EncodeSessionDetails(encodeSession, encodeInputName) = encodeSessions.computeIfAbsent(modelPath, path => {
+      val session = Env.createSession(path.toString, sessionOptions)
+
+      require(session.getNumInputs == 1)
+      val inputName = session.getInputNames.iterator().next()
+
+      val inputInfo: TensorInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+      require(inputInfo.`type` == OnnxJavaType.FLOAT)
+      require(util.Arrays.equals(inputInfo.getShape, Array(1L, Bands.size, TileSize, TileSize))) // [???, bands, y, x]
+
+      EncodeSessionDetails(session, inputName)
+    })
+
+    val tensor = OnnxTensor.createTensor(Env, data)
     val ortInputs = Map(encodeInputName -> tensor).asJava
 
     val result = encodeSession.run(ortInputs)
@@ -184,7 +181,7 @@ package object corsa {
     Array(bands) // some additional dimension
   }
 
-  def decompress(tile: MultibandTile): MultibandTile = {
+  def decompress(modelDir: String, tile: MultibandTile): MultibandTile = {
     require(tile.bandCount == 2, tile.bandCount.toString)
     require(tile.dimensions.cols == 60, tile.dimensions.cols.toString)
     require(tile.dimensions.rows == 60, tile.dimensions.rows.toString)
@@ -194,10 +191,22 @@ package object corsa {
     val level0 = tile.band(0).map(nanTo0)
     val level1 = ResampledTile(tile.band(1).map(nanTo0), sourceCols = 60, sourceRows = 60, targetCols = 30, targetRows = 30)
 
-    val patchLevel0Data = OnnxTensor.createTensor(env,
+    val patchLevel0Data = OnnxTensor.createTensor(Env,
       OrtUtil.reshape(Array[Long](level0.toArray().map(_.toLong): _*), Array(1, 60, 60)))
-    val patchLevel1Data = OnnxTensor.createTensor(env,
+    val patchLevel1Data = OnnxTensor.createTensor(Env,
       OrtUtil.reshape(Array[Long](level1.toArray().map(_.toLong): _*), Array(1, 30, 30)))
+
+    val DecodeSessionDetails(decodeSession, decodeLevel0InputName, decodeLevel1InputName) =
+      decodeSessions.computeIfAbsent(Paths.get(modelDir).resolve("decoder.onnx"), path => {
+        val decodeSession = Env.createSession(path.toString, sessionOptions)
+
+        // inputs are sorted
+        val inputNames = decodeSession.getInputInfo.keySet().iterator()
+        val level0InputName = inputNames.next()
+        val level1InputName = inputNames.next()
+
+        DecodeSessionDetails(decodeSession, level0InputName, level1InputName)
+      })
 
     val ortInputs = Map(
       decodeLevel0InputName -> patchLevel0Data,

@@ -1153,8 +1153,10 @@ class OpenEOProcesses extends Serializable {
       keyBounds.rekey(datacube.metadata.layout, datacube.metadata.layout.copy(tileLayout = newTileLayout))
     }
 
+    val modelDir = corsa.modelDir
+
     ContextRDD(
-      datacube.mapValues(corsa.compress),
+      datacube.mapValues(tile => corsa.compress(modelDir, tile)),
       datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
     )
   }
@@ -1171,8 +1173,10 @@ class OpenEOProcesses extends Serializable {
       keyBounds.rekey(datacube.metadata.layout, datacube.metadata.layout.copy(tileLayout = newTileLayout))
     }
 
+    val modelDir = corsa.modelDir
+
     ContextRDD(
-      datacube.mapValues(corsa.decompress),
+      datacube.mapValues(tile => corsa.decompress(modelDir, tile)),
       datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
     )
   }
