@@ -58,17 +58,21 @@ package object onnx {
     }
   }
 
-  private def checkShape(shape: Array[Long], rows:Int, cols:Int): String = {
+  private def checkShape(shape: Array[Long], rows:Int, cols:Int, bandcount:Option[Int]=None): String = {
     val len = shape.length
     val correctXY =
       if (rows==shape(len-2) && cols==shape(len-1)) ""
       else s"shape of the onnx model should have same dimensions as tile, but got shape ${shape.mkString("Array(", ", ", ")")} and rows and cols are $rows and $cols"
     len match {
       case 2 => correctXY
-      case 3 => correctXY
+      case 3 =>
+        if (bandcount.isEmpty || bandcount.get==shape(len-3)) correctXY
+        else s"band count of model is ${shape(len-3)}, but actual band count is $bandcount "
       case 4 =>
-        if (shape(0) != 1) s"first element should be 1 when length is 4, but got ${shape.mkString("Array(", ", ", ")")}"
-        else correctXY
+        if (bandcount.isEmpty || bandcount.get==shape(len-3))
+          if (shape(0) != 1) s"first element should be 1 when length is 4, but got ${shape.mkString("Array(", ", ", ")")}"
+          else correctXY
+        else s"band count of model is ${shape(len-3)}, but actual band count is $bandcount "
       case x =>
         if (x<2) s"shape should have at least length 2, but got shape ${shape.mkString("Array(", ", ", ")")}"
         else s"shape should have at most length 4, but got shape ${shape.mkString("Array(", ", ", ")")}"
@@ -108,6 +112,7 @@ package object onnx {
   }
 
   def predictOnnx(tile: MultibandTile, model: String): MultibandTile = {
+    val bandCount = tile.bandCount
     val env = OrtEnvironment.getEnvironment()
     val session = env.createSession(model, new OrtSession.SessionOptions())
     val inputNames = session.getInputNames
@@ -130,10 +135,12 @@ package object onnx {
     val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
     val outputShape = outputInfo.getShape
 
-    if (checkShape(inputShape, tile.cols, tile.rows).nonEmpty)
-      throw new IllegalArgumentException(s"ONNX: unsupported input shape: ${checkShape(inputShape, tile.cols, tile.rows)}.")
-    if (checkShape(outputShape, tile.cols, tile.rows).nonEmpty)
-      throw new IllegalArgumentException(s"ONNX: unsupported input shape: ${checkShape(outputShape, tile.cols, tile.rows)}.")
+    val errorMessageInput = checkShape(inputShape, tile.cols, tile.rows, Some(bandCount))
+    if (errorMessageInput.nonEmpty)
+      throw new IllegalArgumentException(s"ONNX: unsupported input shape: $errorMessageInput.")
+    val errorMessageOutput = checkShape(outputShape, tile.cols, tile.rows)
+    if (errorMessageOutput.nonEmpty)
+      throw new IllegalArgumentException(s"ONNX: unsupported input shape: $errorMessageOutput.")
 
     val inputType = inputInfo.`type`
     val outputType = outputInfo.`type`
