@@ -614,6 +614,33 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
   }
 
+
+  @Test
+  def testWriteMultibandTemporalRDDTileSize(): Unit = {
+    val tileSize = 30
+    val layoutCols = 64
+    val layoutRows = 64
+    val arrayTile = IntArrayTile(Array.fill(tileSize * layoutCols * tileSize * layoutRows)(0), tileSize*layoutCols, tileSize*layoutRows, noDataValue = 256)
+    val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, layoutCols, layoutRows, nbDates = 1)
+
+    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsOverwrite/")
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
+    Files.createDirectories(outDir)
+    val filename = outDir.resolve("openEO_2017-01-02Z.tif")
+
+    val opts = new GTiffOptions()
+    opts.overviews = "ALL"
+    saveRDDTemporal(layer, outDir.toString, formatOptions = opts)
+    val result = GeoTiff.readMultiband(filename.toString)
+    val overviews = result.overviews
+    // currently outcomes
+    assertEquals(1, overviews.size)
+    assertEquals(Tiled(15,15),overviews(0).options.storageMethod) // gives error when it is smaller than 16
+    // correct outcome
+    assertEquals(0, overviews.size)
+
+  }
+
   @Test
   def testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBand(): Unit = {
     val layoutCols = 8
