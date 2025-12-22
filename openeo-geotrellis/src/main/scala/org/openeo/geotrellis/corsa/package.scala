@@ -77,9 +77,12 @@ package object corsa {
     require(tile.rows == TileSize, tile.rows.toString)
     require(tile.bandCount == Bands.size, s"expected bands: ${Bands mkString ", "}")
 
-    // TODO: replace NaNs with 0 using interpolation
+    def avoidNaN(bandIndex: Int, value: Double): Double = {
+      // TODO: interpolate
+      if (isData(value)) value else 0
+    }
 
-    val (level0, level1) = processWindowOnnx(preprocessDataCubeInScala(tile), Paths.get(modelDir).resolve("encoder.onnx"))
+    val (level0, level1) = processWindowOnnx(preprocessDataCubeInScala(tile.mapDouble(avoidNaN)), Paths.get(modelDir).resolve("encoder.onnx"))
 
     assert(level0.cols == 60)
     assert(level0.rows == 60)
@@ -186,10 +189,10 @@ package object corsa {
     require(tile.dimensions.cols == 60, tile.dimensions.cols.toString)
     require(tile.dimensions.rows == 60, tile.dimensions.rows.toString)
 
-    val nanTo0 = (value: Int) => if (isData(value)) value else 0
+    def nanTo0(value: Int): Int = if (isData(value)) value else 0
 
-    val level0 = tile.band(0).map(nanTo0)
-    val level1 = ResampledTile(tile.band(1).map(nanTo0), sourceCols = 60, sourceRows = 60, targetCols = 30, targetRows = 30)
+    val level0 = tile.band(0).map(nanTo0 _)
+    val level1 = ResampledTile(tile.band(1).map(nanTo0 _), sourceCols = 60, sourceRows = 60, targetCols = 30, targetRows = 30)
 
     val patchLevel0Data = OnnxTensor.createTensor(Env,
       OrtUtil.reshape(Array[Long](level0.toArray().map(_.toLong): _*), Array(1, 60, 60)))
