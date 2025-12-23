@@ -1141,6 +1141,46 @@ class OpenEOProcesses extends Serializable {
     datacube.slope()
   }
 
+  def corsaCompress(datacube: MultibandTileLayerRDD[_]): AnyRef =
+    datacube.metadata.bounds.get.maxKey match {
+      case _: SpatialKey => corsaCompressGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case _: SpaceTimeKey => corsaCompressGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+    }
+
+  def corsaCompressGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K]): MultibandTileLayerRDD[K] = {
+    val newTileLayout = datacube.metadata.tileLayout.copy(tileCols = 60, tileRows = 60)
+    val newBounds = datacube.metadata.getComponent[Bounds[K]].flatMap { keyBounds =>
+      keyBounds.rekey(datacube.metadata.layout, datacube.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    val modelDir = corsa.modelDir
+
+    ContextRDD(
+      datacube.mapValues(tile => corsa.compress(modelDir, tile)),
+      datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
+  def corsaDecompress(datacube: MultibandTileLayerRDD[_]): AnyRef =
+    datacube.metadata.bounds.get.maxKey match {
+      case _: SpatialKey => corsaDecompressGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case _: SpaceTimeKey => corsaDecompressGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+    }
+
+  def corsaDecompressGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K]): MultibandTileLayerRDD[K] = {
+    val newTileLayout = datacube.metadata.tileLayout.copy(tileCols = 120, tileRows = 120)
+    val newBounds = datacube.metadata.bounds.flatMap { keyBounds =>
+      keyBounds.rekey(datacube.metadata.layout, datacube.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    val modelDir = corsa.modelDir
+
+    ContextRDD(
+      datacube.mapValues(tile => corsa.decompress(modelDir, tile)),
+      datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
   def convertDataType(datacube: Object, dataType: String): Object = {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
