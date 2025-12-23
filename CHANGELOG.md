@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `saveRDDTemporalAllowAssetPerBand`: add support for overviews ([openeo-geopyspark-driver#1151](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1151))
 - Collect and expose input features as STAC item collection files with `derived_from` links ([openeo-geopyspark-driver#1278](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1278))
 - Experimental support for CORSA compression and decompression ([#563](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/563), [#577](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/577))
+- Experimental support for ONNX models
 
 ### Changed
 
