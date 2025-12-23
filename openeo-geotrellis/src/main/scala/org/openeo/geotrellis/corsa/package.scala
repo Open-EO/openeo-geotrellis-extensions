@@ -2,8 +2,9 @@ package org.openeo.geotrellis
 
 import ai.onnxruntime.OrtSession.SessionOptions
 import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, OrtUtil, TensorInfo}
-import geotrellis.raster.{FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, Tile, UShortArrayTile, isData}
+import geotrellis.raster.{DoubleArrayTile, FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, Tile, UShortArrayTile, isData}
 import io.circe.generic.auto._
+import org.apache.commons.math3.linear.MatrixUtils
 import org.openeo.geotrelliscommon.{CirceException, ResampledTile}
 
 import java.nio.file.{Files, Path, Paths}
@@ -77,12 +78,11 @@ package object corsa {
     require(tile.rows == TileSize, tile.rows.toString)
     require(tile.bandCount == Bands.size, s"expected bands: ${Bands mkString ", "}")
 
-    def avoidNaN(bandIndex: Int, value: Double): Double = {
-      // TODO: interpolate
-      if (isData(value)) value else 0
-    }
+    val normalizedTile = tile.mapBands { case (_, bandTile) => replaceNaNsWith0(bandTile) }
 
-    val (level0, level1) = processWindowOnnx(preprocessDataCubeInScala(tile.mapDouble(avoidNaN)), Paths.get(modelDir).resolve("encoder.onnx"))
+    val (level0, level1) = processWindowOnnx(
+      preprocessDataCubeInScala(normalizedTile), Paths.get(modelDir).resolve("encoder.onnx")
+    )
 
     assert(level0.cols == 60)
     assert(level0.rows == 60)
@@ -93,6 +93,72 @@ package object corsa {
       level0,
       ResampledTile(level1, sourceCols = level1.cols, sourceRows = level1.rows, targetCols = level0.cols, targetRows = level0.rows)
     )
+  }
+
+  private def replaceNaNsWith0(bandTile: Tile): Tile = {
+    val mRows = OrtUtil.reshape(bandTile.toArrayDouble(), Array(bandTile.rows, bandTile.cols)).asInstanceOf[Array[Array[Double]]]
+    val tRows = MatrixUtils.createRealMatrix(mRows).copy().transpose().getData
+
+    val limit = 2
+
+    mRows.foreach(row => interpolateNaN(row, limit))
+    tRows.foreach(row => interpolateNaN(row, limit))
+
+    val interpolated = (MatrixUtils.createRealMatrix(mRows) add MatrixUtils.createRealMatrix(tRows).transpose())
+      .scalarMultiply(0.5)
+
+    DoubleArrayTile(interpolated.getData.flatten, cols = bandTile.cols, rows = bandTile.rows)
+      .mapDouble((x: Double) => if (isData(x)) x else 0)
+      .convert(FloatConstantNoDataCellType)
+  }
+
+  private def interpolateNaN(row: Array[Double], limit: Int): Unit = { // modifies row in-place
+    def gapIndicesFrom(index: Int): (Int, Int) = {
+      var lower = -1
+      var upper = -1
+
+      for (i <- index until row.length if lower == -1) {
+        if (row(i).isNaN) {
+          lower = i
+        }
+      }
+
+      if (lower == -1) return null
+
+      for (i <- (lower + 1) until row.length if upper == -1) {
+        if (!row(i).isNaN) {
+          upper = i
+        }
+      }
+
+      if (upper == -1) null else (lower, upper) // upper is exclusive
+    }
+
+    def interpolate(lower: Int, upper: Int, limit: Int): Unit = { // gap indices
+      if (lower <= 0 || upper >= row.length) return // row starts or ends with NaN; do not interpolate
+
+      val deltaX = upper - (lower - 1)
+      val deltaY = row(upper) - row(lower - 1)
+      val delta = deltaY / deltaX
+
+      for (i <- lower until upper if i - lower < limit) {
+        val interpolated = row(lower - 1) + (i - lower + 1) * delta
+        row(i) = interpolated
+      }
+    }
+
+    var from = 0
+    var gapIndices: (Int, Int) = null
+
+    do {
+      gapIndices = gapIndicesFrom(from)
+
+      if (gapIndices != null) {
+        val (lower, upper) = gapIndices
+        interpolate(lower, upper, limit)
+        from = upper
+      }
+    } while (from < row.length && gapIndices != null)
   }
 
   private def preprocessDataCubeInScala(cubeArray: MultibandTile): MultibandTile =
