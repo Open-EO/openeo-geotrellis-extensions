@@ -111,21 +111,11 @@ package object onnx {
     inputArray
   }
 
-  def predictOnnx(tile: MultibandTile, model: String): MultibandTile = {
+  def predictOnnx(tile: MultibandTile, session: OrtSession): MultibandTile = {
     val bandCount = tile.bandCount
     val env = OrtEnvironment.getEnvironment()
-    val session = env.createSession(model, new OrtSession.SessionOptions())
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
-
-    if (inputNames.size() > 1)
-      // TODO support the case for multiple inputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
-    if (outputNames.size() > 1)
-      // TODO support the case for multiple outputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
 
     val inputName = inputNames.toArray()(0).asInstanceOf[String]
     val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
@@ -140,14 +130,10 @@ package object onnx {
       throw new IllegalArgumentException(s"ONNX: unsupported input shape: $errorMessageInput.")
     val errorMessageOutput = checkShape(outputShape, tile.cols, tile.rows)
     if (errorMessageOutput.nonEmpty)
-      throw new IllegalArgumentException(s"ONNX: unsupported input shape: $errorMessageOutput.")
+      throw new IllegalArgumentException(s"ONNX: unsupported output shape: $errorMessageOutput.")
 
     val inputType = inputInfo.`type`
     val outputType = outputInfo.`type`
-
-    if (inputType != outputType)
-      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
-
     val inputArray = reshape(inputType, tile, inputShape)
     val tensor = OnnxTensor.createTensor(env, inputArray)
     val inputs = java.util.Map.of(inputName, tensor)

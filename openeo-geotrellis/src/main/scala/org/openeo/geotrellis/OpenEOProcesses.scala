@@ -1,5 +1,6 @@
 package org.openeo.geotrellis
 
+import ai.onnxruntime.{OrtEnvironment, OrtSession, TensorInfo}
 import geotrellis.layer.SpatialKey._
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
@@ -1519,18 +1520,46 @@ class OpenEOProcesses extends Serializable {
   }
 
   def predictONNXGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
+    val env = OrtEnvironment.getEnvironment()
     val modelPath = Paths.get(model)
     val (modelFile, isTemp) = if (Files.exists(modelPath)) {
-      (model,false)
+      (modelPath,false)
     } else {
       val tempFileName = Files.createTempFile(null, ".onnx")
       FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
-      (tempFileName.toString,true)
+      (tempFileName,true)
     }
-    ContextRDD(
-      datacube.mapValues(x => onnx.predictOnnx(x,modelFile)),
+    val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
+    val inputNames = session.getInputNames
+    val outputNames = session.getOutputNames
+
+    if (inputNames.size() > 1)
+      // TODO support the case for multiple inputs
+      throw new IllegalArgumentException(
+        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
+    if (outputNames.size() > 1)
+      // TODO support the case for multiple outputs
+      throw new IllegalArgumentException(
+        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
+
+
+    val inputName = inputNames.toArray()(0).asInstanceOf[String]
+    val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+    val outputName = outputNames.toArray()(0).asInstanceOf[String]
+    val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
+
+    val inputType = inputInfo.`type`
+    val outputType = outputInfo.`type`
+    if (inputType != outputType)
+      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
+
+    val broadcastSession = sc.broadcast(session)
+    val result = ContextRDD(
+      datacube.mapValues(x => onnx.predictOnnx(x,broadcastSession.value)),
       datacube.metadata
     )
+    if (isTemp) Files.delete(modelFile)
+    result
   }
 
 }
