@@ -7,6 +7,7 @@ import geotrellis.raster.io.geotiff.{MultibandGeoTiff, SinglebandGeoTiff}
 import geotrellis.raster.testkit.RasterMatchers
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 import org.openeo.geotrellis.corsa
 
@@ -18,6 +19,7 @@ object CorsaTest {
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
 }
 
+@EnabledIfEnvironmentVariable(named = "CORSA_MODEL_DIR", matches=".+")
 class CorsaTest extends RasterMatchers {
   import CorsaTest._
 
