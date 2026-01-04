@@ -225,7 +225,8 @@ public class TestOpenEOProcesses {
         assertArrayEquals(new int[]{noData,noData,noData,noData,290,317,346,375,405},interpolatedPixel);
     }
 
-    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasNoIssues")
+    // TODO why does this not run locally ??
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
     @Test
     public void testApplyTimeDimensionToBandB04() {
 
@@ -267,7 +268,6 @@ public class TestOpenEOProcesses {
 
     }
 
-    //@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
     @Test
     public void testApplyTimeDimensionToBandB04PreservesOrder() {
 
