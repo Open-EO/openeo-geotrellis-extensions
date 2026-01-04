@@ -11,6 +11,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.opensearch.OpenSearchClient
@@ -40,6 +41,7 @@ object Sentinel5PPyramidFactoryTest {
 
 class Sentinel5PPyramidFactoryTest {
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSentinel5P(): Unit = {
     val bbox = ProjectedExtent(Extent(-5.52612, 51.2654, -2.31262, 52.5864), LatLng)

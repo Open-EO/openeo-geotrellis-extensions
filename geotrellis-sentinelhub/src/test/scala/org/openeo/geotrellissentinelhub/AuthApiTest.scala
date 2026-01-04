@@ -2,10 +2,12 @@ package org.openeo.geotrellissentinelhub
 
 import org.junit.jupiter.api.Assertions.{assertFalse, assertTrue, fail}
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIf
 import org.openeo.geotrellissentinelhub.AuthApi.AuthResponse
 
 import java.time.Duration
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
 class AuthApiTest {
   private val authApi = new AuthApi
 

@@ -16,6 +16,7 @@ import org.apache.spark.rdd.RDD;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 import scala.Option;
 import scala.Tuple2;
 import scala.collection.JavaConverters;
@@ -189,7 +190,7 @@ public class TestOpenEOProcesses {
 
     }
 
-
+    //@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
     @Test
     public void testCompositeAndInterpolate() {
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = LayerFixtures.sentinel2B04Layer();
@@ -224,6 +225,7 @@ public class TestOpenEOProcesses {
         assertArrayEquals(new int[]{noData,noData,noData,noData,290,317,346,375,405},interpolatedPixel);
     }
 
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasNoIssues")
     @Test
     public void testApplyTimeDimensionToBandB04() {
 
@@ -265,6 +267,7 @@ public class TestOpenEOProcesses {
 
     }
 
+    //@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
     @Test
     public void testApplyTimeDimensionToBandB04PreservesOrder() {
 

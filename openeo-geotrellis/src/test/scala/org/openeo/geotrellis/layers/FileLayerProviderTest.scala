@@ -21,6 +21,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
@@ -134,6 +135,7 @@ class FileLayerProviderTest extends RasterMatchers{
     layoutScheme = sentinel5PLayoutScheme
   )
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def cache(): Unit = {
     // important: multiple instances like in openeo-geopyspark-driver
@@ -147,6 +149,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertSame(metadataCall1, metadataCall2)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def smallBoundingBox(): Unit = {
     val smallBbox = ProjectedExtent(Point(x = 4.9754, y = 50.3244).buffer(0.0251).extent, LatLng)
@@ -180,6 +183,7 @@ class FileLayerProviderTest extends RasterMatchers{
     (rasterSources, metadata)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def retainNoDataTilesTest(): Unit = {
     val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
@@ -201,6 +205,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(1, resultRetainNoDatatilesColl.count(_._2.isInstanceOf[EmptyMultibandTile]))
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def sparsePartitionerTest(): Unit = {
     val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
@@ -269,6 +274,7 @@ class FileLayerProviderTest extends RasterMatchers{
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def sparsePartitionerMergeTest(): Unit = {
     val zoom = 6
@@ -307,6 +313,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(defaultMergedLayerKeys, sparseMergedLayerKeys)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def sparsePartitionerMaskTest(): Unit = {
     // Create the base layers.
@@ -360,6 +367,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def overlapsFilterTest(): Unit = {
     val date = LocalDate.of(2022, 7, 1).atStartOfDay(UTC)
@@ -1091,6 +1099,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(crs,raster._2.crs)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSinglePoint(): Unit = {
     val date = LocalDate.of(2019, 9, 25).atStartOfDay(UTC)

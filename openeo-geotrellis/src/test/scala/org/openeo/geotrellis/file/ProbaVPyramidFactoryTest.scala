@@ -11,6 +11,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 
 import java.nio.file.{Files, Paths}
@@ -43,6 +44,7 @@ class ProbaVPyramidFactoryTest extends RasterMatchers {
   val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_333M_COG_V2", allTocBands, "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_333M", CellSize(0.000992063492063, 0.000992063492063))
   private val pyramidFactoryS10NDVI = new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_NDVI_333M_COG_V2", util.Arrays.asList("NDVI"), "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_NDVI_333M", CellSize(0.000992063492063, 0.000992063492063))
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def writeS5GeoTiffs(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.591, ymax = 51.080), LatLng)
@@ -79,6 +81,7 @@ class ProbaVPyramidFactoryTest extends RasterMatchers {
     }
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def writeS10GeoTiffs(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.5, ymin = 49.5, xmax = 2.55, ymax = 49.55), LatLng)
@@ -108,6 +111,7 @@ class ProbaVPyramidFactoryTest extends RasterMatchers {
     assertEquals(allTocBands.size(), tiff.bandCount)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def writeS10NDVIGeoTiffs(): Unit = {
     val outDir = Paths.get("tmp/writeS10NDVIGeoTiffs/")
@@ -141,6 +145,7 @@ class ProbaVPyramidFactoryTest extends RasterMatchers {
     assertEquals(1, tiff.bandCount)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasProjectsData")
   @Test
   def testResultReflectsBandsOrder(): Unit = {
     val (raster1, _) = s5Raster(bands = util.Arrays.asList("SWIRVAA", "NDVI", "SWIRVZA"))
@@ -151,6 +156,7 @@ class ProbaVPyramidFactoryTest extends RasterMatchers {
     assertEquals(raster1.tile.band(2), raster2.tile.band(1))
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testRequestDuplicateBand(): Unit = {
     val (raster, _) = s5Raster(bands = util.Arrays.asList("NDVI", "NDVI"))
@@ -163,6 +169,7 @@ class ProbaVPyramidFactoryTest extends RasterMatchers {
     }
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasProjectsData")
   @Test
   def compareS5ReferenceImage(): Unit = {
     val (referenceRaster, referenceCrs) = this.referenceRaster("PROBAV_S5_20200101.tif")

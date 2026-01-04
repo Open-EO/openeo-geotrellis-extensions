@@ -12,6 +12,7 @@ import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector._
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, Disabled, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.saveRDD
@@ -189,6 +190,7 @@ class CglsPyramidFactoryTest extends LocalSparkContext with RasterMatchers {
     assertEquals(0.21796850248444263, physicalMean, 0.001) // from QGIS with the corresponding geotiff
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def datacube_seqSparse(): Unit = {
     val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2018/201806*/*/*.nc"
