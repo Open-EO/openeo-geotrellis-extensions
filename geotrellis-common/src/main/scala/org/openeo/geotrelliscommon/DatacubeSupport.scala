@@ -42,6 +42,7 @@ object DatacubeSupport {
 
   // note: make sure to express boundingBox and maxSpatialResolution in the same units
   def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize, globalBounds: Option[ProjectedExtent] = Option.empty, multiple_polygons_flag: Boolean = false) = {
+    logger.info(f"getLayout params : (layoutScheme : $layoutScheme, boundingBox : $boundingBox, zoom : $zoom, maxSpatialResolution : $maxSpatialResolution, globalBounds : $globalBounds, multiple_polygons_flag : $multiple_polygons_flag)")
     val LayoutLevel(_, worldLayout) = layoutScheme match {
       case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom)
       case scheme: FloatingLayoutScheme => {
