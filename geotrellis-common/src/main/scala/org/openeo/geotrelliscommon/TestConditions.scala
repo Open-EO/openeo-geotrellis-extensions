@@ -14,6 +14,11 @@ object TestConditions {
     (System.getenv("AWS_ACCESS_KEY_ID") != null) && (System.getenv("AWS_SECRET_ACCESS_KEY") != null)
   }
 
+  def hasS3Credentials: Boolean = {
+    (sys.env.getOrElse("SWIFT_ACCESS_KEY_ID", System.getenv("AWS_ACCESS_KEY_ID")) != null) &&
+      (sys.env.getOrElse("SWIFT_SECRET_ACCESS_KEY", System.getenv("AWS_SECRET_ACCESS_KEY")) != null)
+  }
+
   def hasMTDAData: Boolean = {
     val folder = Path.of("/data/MTDA").toFile
     folder.exists && folder.isDirectory && folder.list() != null && !folder.list().isEmpty
@@ -47,7 +52,6 @@ object TestConditions {
     try {
       val cacheSize = Integer.valueOf(System.getenv().getOrDefault("GDAL_DATASET_CACHE_SIZE", "32"))
       GDALWarp.init(cacheSize)
-      GDALWarp.deinit()
       true
     } catch {
       case _: LinkageError =>
