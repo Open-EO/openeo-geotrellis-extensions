@@ -20,6 +20,7 @@ object S3ServiceTest {
   }
 }
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasAwsCredentials")
 class S3ServiceTest {
   private val s3Service = new S3Service
   private val bucketName = "openeo-sentinelhub"
