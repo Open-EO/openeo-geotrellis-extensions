@@ -45,17 +45,11 @@ object TestConditions {
   }
 
   def hasGdalInstalled: Boolean = {
-    gdalInstalled
-  }
-
-  private lazy val gdalInstalled = {
     try {
-      val cacheSize = Integer.valueOf(System.getenv().getOrDefault("GDAL_DATASET_CACHE_SIZE", "32"))
-      GDALWarp.init(cacheSize)
+      GDALWarp.get_version_info("VERSION_NUM")
       true
     } catch {
-      case _: LinkageError =>
-        false
+      case _: Throwable => false
     }
   }
 }
