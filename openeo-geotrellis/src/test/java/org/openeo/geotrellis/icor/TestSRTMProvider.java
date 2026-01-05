@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.Arrays;
 
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.openeo.geotrellis.ProjectedPolygons;
 
 import geotrellis.layer.FloatingLayoutScheme;
@@ -48,7 +49,7 @@ public class TestSRTMProvider {
         }
     }
 
-
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
     @Test
     public void testLoad() throws URISyntaxException {
 
