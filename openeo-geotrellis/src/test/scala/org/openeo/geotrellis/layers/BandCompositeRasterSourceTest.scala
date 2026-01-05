@@ -9,6 +9,7 @@ import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIf
 
 class BandCompositeRasterSourceTest extends RasterMatchers {
 
@@ -17,6 +18,7 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
   private val singleBandGeotiffPath =
     Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/cgls_ndvi300.tif").getPath
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def readManyBounds(): Unit = {
 

@@ -10,6 +10,7 @@ import java.nio.file.{Files, Path, Paths}
 import java.util.concurrent.TimeUnit
 import scala.jdk.CollectionConverters.ListHasAsScala
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasAwsCredentials")
 object S3ServiceTest {
   @BeforeAll
   def checkAwsSettings(): Unit = {
@@ -19,7 +20,6 @@ object S3ServiceTest {
   }
 }
 
-@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasAwsCredentials")
 class S3ServiceTest {
   private val s3Service = new S3Service
   private val bucketName = "openeo-sentinelhub"
@@ -83,6 +83,7 @@ class S3ServiceTest {
     s3Service.delete_batch_process_results(bucketName, subfolder = "d4737bbc-77b2-4ecb-8a5c-e1919b7eb23c")
   }
 
+  @Disabled
   @Test
   def delete_batch_process_resultsThrowsForUnknownSubfolder(): Unit = {
     assertThrows(

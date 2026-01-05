@@ -31,6 +31,7 @@ object CglsPyramidFactoryTest {
   def tearDown(): Unit = GDALWarp.deinit()
 }
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
 class CglsPyramidFactoryTest extends LocalSparkContext with RasterMatchers {
 
   @Test

@@ -1198,6 +1198,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals((2*cols*rows).toInt,all.length)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testPixelValueOffsetNeededCorner(@TempDir outDir: Path): Unit = {
     // This selection will go over a corner that has nodata pixels
@@ -1217,6 +1218,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(187, at_137_747.get._2.toArrayTile().band(0).get(160, 5), 1)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testPixelValueOffsetNeededDark(@TempDir outDir: Path): Unit = {
     // This will cover an area where pixels go under 0
@@ -1244,7 +1246,7 @@ class FileLayerProviderTest extends RasterMatchers{
     LayerFixtures.sentinel2Cube(localDate, projected_polygons_native_crs, jsonPath)
   }
 
-
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testMissingS2(@TempDir outDir: Path): Unit = {
     val from = ZonedDateTime.parse("2024-03-24T00:00:00Z")
@@ -1318,6 +1320,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(outDir + "/" + uniqueName + ".tiff")
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @ParameterizedTest
   @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
@@ -1638,6 +1641,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testSamplingLoadPerProduct(@TempDir outDir: Path):Unit = {
     val srs32631 = "EPSG:32631"

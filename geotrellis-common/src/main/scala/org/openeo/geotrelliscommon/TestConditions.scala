@@ -1,45 +1,57 @@
 package org.openeo.geotrelliscommon
 
-import java.nio.file.{Files, Path}
+import com.azavea.gdal.GDALWarp
+
+import java.nio.file.Path
 
 object TestConditions {
 
-  def hasSentinelHubCredentials(): Boolean = {
+  def hasSentinelHubCredentials: Boolean = {
     (System.getenv("SENTINELHUB_CLIENT_ID") != null) && (System.getenv("SENTINELHUB_CLIENT_SECRET") != null)
   }
 
-  def hasAwsCredentials(): Boolean = {
-    // TODO dfs
-    false && (System.getenv("AWS_ACCESS_KEY_ID") != null) && (System.getenv("AWS_SECRET_ACCESS_KEY") != null)
+  def hasAwsCredentials: Boolean = {
+    (System.getenv("AWS_ACCESS_KEY_ID") != null) && (System.getenv("AWS_SECRET_ACCESS_KEY") != null)
   }
 
-  def hasMTDAData(): Boolean = {
+  def hasMTDAData: Boolean = {
     val folder = Path.of("/data/MTDA").toFile
     folder.exists && folder.isDirectory && folder.list() != null && !folder.list().isEmpty
   }
 
-  def hasProjectsData(): Boolean = {
+  def hasProjectsData: Boolean = {
     val folder = Path.of("/data/projects").toFile
     folder.exists && folder.isDirectory && folder.list() != null && !folder.list().isEmpty
   }
 
-  def hasMtdaDevData(): Boolean = {
+  def hasMtdaDevData: Boolean = {
     val folder = Path.of("/data/MTDA_DEV").toFile
     folder.exists && folder.isDirectory && folder.list() != null && !folder.list().isEmpty
   }
 
-  def hasMepData(): Boolean = {
+  def hasMepData: Boolean = {
     val folder = Path.of("/data/MEP").toFile
     folder.exists && folder.isDirectory && folder.list() != null && !folder.list().isEmpty
   }
 
-  def hasHttpCredentials(): Boolean = {
+  def hasHttpCredentials: Boolean = {
     val credentialsFile = Path.of(Option(System.getProperty("http.credentials.file")).getOrElse("./http_credentials.json")).toFile
     credentialsFile.isFile && credentialsFile.exists
   }
 
-  // TODO
-  def hasGdalInstalled(): Boolean = {
-    false
+  def hasGdalInstalled: Boolean = {
+    gdalInstalled
+  }
+
+  private lazy val gdalInstalled = {
+    try {
+      val cacheSize = Integer.valueOf(System.getenv().getOrDefault("GDAL_DATASET_CACHE_SIZE", "32"))
+      GDALWarp.init(cacheSize)
+      GDALWarp.deinit()
+      true
+    } catch {
+      case _: LinkageError =>
+        false
+    }
   }
 }
