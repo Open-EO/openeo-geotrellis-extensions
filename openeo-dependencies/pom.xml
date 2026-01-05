@@ -231,6 +231,7 @@
                                         <Implementation-Vendor>Vito</Implementation-Vendor>
                                         <Implementation-Title>${project.artifactId}</Implementation-Title>
                                         <Implementation-Version>${project.version}</Implementation-Version>
+                                        <SCM-Revision>${git.commit.id.describe}</SCM-Revision>
                                         <Sealed>false</Sealed>
                                     </manifestEntries>
                                 </transformer>
