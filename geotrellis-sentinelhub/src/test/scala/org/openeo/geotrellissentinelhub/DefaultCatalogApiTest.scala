@@ -4,12 +4,14 @@ import geotrellis.proj4.LatLng
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, fail}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{Disabled, Test}
 
 import java.time.{LocalDate, ZoneId}
 import java.util.Collections.{emptyMap, singletonMap}
 import scala.jdk.CollectionConverters._
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
 class DefaultCatalogApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
   private val catalogApi = new DefaultCatalogApi(endpoint)

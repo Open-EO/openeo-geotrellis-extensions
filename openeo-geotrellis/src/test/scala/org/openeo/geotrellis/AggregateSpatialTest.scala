@@ -8,7 +8,8 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertTrue, assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertTrue}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygon2}
 import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
@@ -125,11 +126,13 @@ class AggregateSpatialTest {
     ContextRDD(datacube, updatedMetadata)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test def computeVectorCube_on_datacube_from_polygons(): Unit = {
     val cube = LayerFixtures.sentinel2B04Layer
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube("max",cube,LayerFixtures.b04Polygons,"/tmp/csvoutput")
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasHttpCredentials")
   @Test def multiple_statistics(): Unit = {
     val cube = LayerFixtures.sentinel2B04Layer
 

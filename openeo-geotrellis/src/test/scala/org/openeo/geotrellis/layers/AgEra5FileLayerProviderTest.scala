@@ -9,6 +9,7 @@ import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.io.TempDir
 import org.openeo.geotrellis.TestImplicits._
@@ -21,6 +22,7 @@ import scala.jdk.CollectionConverters._
 
 object AgEra5FileLayerProviderTest
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
 class AgEra5FileLayerProviderTest extends LocalSparkContext {
   import AgEra5FileLayerProviderTest._
 

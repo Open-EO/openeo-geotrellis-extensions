@@ -15,6 +15,7 @@ import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions._
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 import org.openeo.geotrellis.stac.Item
@@ -67,6 +68,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
 
   import org.openeo.geotrellis.netcdf.NetCDFRDDWriterTest._
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testWriteSamples(@TempDir temporaryFolder: Path): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -212,7 +214,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)), polygon = polygon1, expectedShape = Array(86, 52))
   }
 
-
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testWriteSamplesWithGlobalBoundsBuffer(@TempDir temporaryFolder: Path): Unit = {
     val utm30 = CRS.fromEpsgCode(32630)
@@ -664,6 +666,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     assertEquals(true, true)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testWriteCGLS(): Unit = {
 

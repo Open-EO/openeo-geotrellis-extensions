@@ -12,6 +12,7 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, MultiPolygon, Polygon, ProjectedExtent}
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.BandCompositeRasterSource
@@ -99,6 +100,7 @@ class AgEra5PyramidFactoryTest extends LocalSparkContext {
     bandMeans(bandIndex).mean * scalingFactor + offset
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
   @Test
   def sparsePolygons(): Unit = {
     val dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif"
@@ -135,6 +137,7 @@ class AgEra5PyramidFactoryTest extends LocalSparkContext {
     assertEquals(0.19, physicalMean(baseLayer,bbox2.extent.toPolygon(), to.minusDays(1), bandIndex = 1), 0.03)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
   @Test
   def smallPolygon(): Unit = {
     val dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif"

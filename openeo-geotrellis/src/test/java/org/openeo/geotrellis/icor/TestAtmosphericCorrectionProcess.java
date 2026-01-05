@@ -20,6 +20,7 @@ import org.apache.spark.rdd.RDD;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.openeo.geotrellis.smac.SMACCorrection;
 import scala.Option;
 import scala.Tuple2;
@@ -192,6 +193,7 @@ public class TestAtmosphericCorrectionProcess {
     	icorS2Params.add(0.33d);
     }
 
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
     @Test
     public void testICORWithSentinel2() throws URISyntaxException {
     	String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
@@ -319,9 +321,9 @@ public class TestAtmosphericCorrectionProcess {
     	smacS2Params.add(Double.NaN);
     	smacS2Params.add(0.33d);
     }
-    
-    
-	@Test
+
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
+    @Test
 	public void testSMACWithSentinel2() throws URISyntaxException {
 		String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
 	
@@ -435,6 +437,7 @@ public class TestAtmosphericCorrectionProcess {
     	icorL8Params.add(0.33d);
     }
 
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
     @Test
     public void testICORWithLandsat8() throws URISyntaxException {
     	String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
@@ -537,8 +540,9 @@ public class TestAtmosphericCorrectionProcess {
     	smacL8Params.add(Double.NaN);
     	smacL8Params.add(0.33d);
     }
-    
-	@Test
+
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
+    @Test
 	public void testSMACWithLandsat8() throws URISyntaxException {
 		String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
 	

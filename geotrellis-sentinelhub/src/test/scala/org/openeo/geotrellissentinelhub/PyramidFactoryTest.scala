@@ -19,6 +19,7 @@ import org.hamcrest.{CustomMatcher, Matcher}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, fail}
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.mockito.ArgumentMatchers.{any, eq => eqTo}
@@ -135,6 +136,7 @@ object PyramidFactoryTest {
   )
 }
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
 class PyramidFactoryTest {
 
   import PyramidFactoryTest._
@@ -766,6 +768,7 @@ class PyramidFactoryTest {
 
     // TODO: add assertions
   }
+
 
   @ParameterizedTest
   @MethodSource(Array("testFilterByTileIdsParams"))

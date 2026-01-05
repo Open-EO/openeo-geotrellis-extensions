@@ -11,11 +11,13 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.runners.Parameterized.Parameters
 import org.openeo.geotrellis.AggregateSpatialTest.parseCSV
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.TimeSeriesServiceResponses._
+import org.openeo.opensearch.OpenSearchResponses.FeatureCollection
 
 import java.nio.file.Files
 import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
@@ -221,10 +223,9 @@ class ComputeStatsGeotrellisAdapterTest() {
     ))
   }
 
-
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def compute_median_ndvi_timeseries_on_accumulo_datacube(): Unit = {
-
     val minDateString = "2017-11-01T00:00:00Z"
     val maxDateString = "2017-11-16T02:00:00Z"
     val minDate = ZonedDateTime.parse(minDateString)
@@ -244,6 +245,7 @@ class ComputeStatsGeotrellisAdapterTest() {
     assertMedianComputedCorrectly(ndviDataCube, minDateString, minDate, maxDate, Seq(polygon1))
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def validateAccumuloDataCubeAgainstTimeSeriesServiceMeans(): Unit = {
     val minDateString = "2017-11-01T00:00:00Z"
@@ -288,7 +290,7 @@ class ComputeStatsGeotrellisAdapterTest() {
     assertArrayEquals(referenceAverages.keys.map((_.toEpochSecond)).toArray.sorted,actualAverages.filter(_._2.exists(!_.isNaN)).keys.map((_.toEpochSecond)).toArray.sorted)
   }
 
-
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def compute_median_masked_ndvi_timeseries_on_accumulo_datacube(): Unit = {
 

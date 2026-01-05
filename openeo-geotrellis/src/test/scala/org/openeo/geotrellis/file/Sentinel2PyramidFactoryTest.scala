@@ -15,6 +15,7 @@ import geotrellis.vector._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.TestImplicits._
@@ -169,6 +170,7 @@ class Sentinel2PyramidFactoryTest {
         saveRDD(baseLayerSpatial, 1, "tmp/testPixelShift/testPixelShift.tiff")
     }
 
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
     @Test
     def testDemLayer(): Unit = {
         val localFromDate = LocalDate.of(2010, 1, 1)
@@ -219,6 +221,7 @@ class Sentinel2PyramidFactoryTest {
         assertArrayEquals(refTiff.raster.tile.band(0).toArrayDouble(), actualTiffs.head.raster.tile.band(0).toArrayDouble(),0.1)
     }
 
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
     @Test
     def testStatsFromPyramid(): Unit = {
         val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))
@@ -228,6 +231,7 @@ class Sentinel2PyramidFactoryTest {
         checkStatsResult("testStatsFromPyramid", bbox, spatialLayer)
     }
 
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
     @Test
     def testStatsFromNativeUTM(): Unit = {
         val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))

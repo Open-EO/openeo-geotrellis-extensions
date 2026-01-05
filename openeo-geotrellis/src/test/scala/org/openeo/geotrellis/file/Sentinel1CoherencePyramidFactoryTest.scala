@@ -11,6 +11,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertTrue}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.opensearch.OpenSearchClient
 
@@ -41,6 +42,7 @@ object Sentinel1CoherencePyramidFactoryTest {
 
 class Sentinel1CoherencePyramidFactoryTest {
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def polygonalMean(): Unit = {
     val outDir = Paths.get("tmp/Sentinel1CoherencePyramidFactoryTest/")

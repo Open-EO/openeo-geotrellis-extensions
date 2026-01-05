@@ -10,6 +10,7 @@ import geotrellis.vector.Extent
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.ProjectedPolygons
@@ -54,6 +55,7 @@ class Sentinel3PyramidFactoryTest extends RasterMatchers {
       math.abs(e1.ymax - e2.ymax) < tolerance
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasProjectsData")
   @Test
   def compareReferenceImage(): Unit = {
     val referenceGeoTiff = MultibandGeoTiff("/data/projects/OpenEO/automated_test_files/Sentinel3_2020-07-01.tif")
@@ -101,6 +103,7 @@ class Sentinel3PyramidFactoryTest extends RasterMatchers {
     (raster, targetCrs)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @ParameterizedTest
   @MethodSource(Array("testIntroducingEmptyBandRetainsCellTypeArgumentsProvider"))
   def testIntroducingEmptyBandRetainsCellType(bands: util.List[String], resultContainsNoDataBand: Boolean): Unit = {
