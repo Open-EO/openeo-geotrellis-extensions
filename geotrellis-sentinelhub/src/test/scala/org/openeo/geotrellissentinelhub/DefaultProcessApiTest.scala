@@ -3,6 +3,7 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue, fail}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{Test, Timeout}
 import org.openeo.geotrellissentinelhub.DefaultProcessApi.withRetryAfterRetries
 import org.slf4j.{Logger, LoggerFactory}
@@ -22,6 +23,7 @@ object DefaultProcessApiTest {
   }
 }
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
 class DefaultProcessApiTest {
 
   import DefaultProcessApiTest._
@@ -85,6 +87,7 @@ class DefaultProcessApiTest {
     assertTrue(delay >= retryAfter)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
   @Test
   def testSentinel1BandNotPresentException(): Unit = {
     try {

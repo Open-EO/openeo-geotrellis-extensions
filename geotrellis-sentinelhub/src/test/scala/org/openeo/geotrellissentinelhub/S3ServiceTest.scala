@@ -1,6 +1,7 @@
 package org.openeo.geotrellissentinelhub
 
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotNull, assertThrows}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{BeforeAll, Disabled, Test, Timeout}
 import org.openeo.geotrellissentinelhub.S3Service.{StacMetadataUnavailableException, UnknownFolderException}
@@ -18,6 +19,7 @@ object S3ServiceTest {
   }
 }
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasAwsCredentials")
 class S3ServiceTest {
   private val s3Service = new S3Service
   private val bucketName = "openeo-sentinelhub"

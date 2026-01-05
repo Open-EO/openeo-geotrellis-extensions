@@ -10,6 +10,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Geometry
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.file.PyramidFactory
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
@@ -33,6 +34,7 @@ object MergeCubesTest {
 class MergeCubesTest {
   import MergeCubesTest._
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testMergeSigma0AscendingAndFapar(): Unit = {
     val vector_file = getClass.getResource("/org/openeo/geotrellis/integrationtests/Field_test.geojson").getFile

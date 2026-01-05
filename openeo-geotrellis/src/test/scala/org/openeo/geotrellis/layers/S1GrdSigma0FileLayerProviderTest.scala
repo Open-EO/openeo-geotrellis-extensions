@@ -12,6 +12,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.opensearch.OpenSearchClient
 
@@ -34,6 +35,7 @@ object S1GrdSigma0FileLayerProviderTest {
 class S1GrdSigma0FileLayerProviderTest {
   import S1GrdSigma0FileLayerProviderTest._
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def polygonalMeanMultiband(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)

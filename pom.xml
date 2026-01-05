@@ -78,17 +78,7 @@
                 <module>geotrellis-common</module>
                 <module>openeo-logging</module>
                 <module>geopyspark-geotrellis</module>
-                <module>geotrellis-integrationtests</module>
                 <module>openeo-dependencies</module>
-            </modules>
-        </profile>
-        <profile>
-            <id>integrationtests</id>
-            <activation>
-                <activeByDefault>false</activeByDefault>
-            </activation>
-            <modules>
-                <module>geotrellis-integrationtests</module>
             </modules>
         </profile>
     </profiles>

@@ -8,6 +8,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel.DISK_ONLY
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, Assertions, BeforeAll, Test}
 import org.openeo.geotrellis.LayerFixtures.rgbLayerProvider
@@ -52,6 +53,7 @@ class TileGridTest {
 
   import TileGridTest._
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSaveStitchWithTileGrids(@TempDir outDir: Path): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -99,6 +101,7 @@ class TileGridTest {
     Assertions.assertEquals(expectedCroppedPaths, actualCroppedPaths.toSet)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSaveStitchWithTileGridsWithOptions(@TempDir outDir: Path): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -202,6 +205,7 @@ class TileGridTest {
 
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSaveStitchWithTileGridsTemporal(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -227,6 +231,7 @@ class TileGridTest {
     Assertions.assertEquals(expectedTiles, actualTiles.toSet)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSaveStitchWithTileGridsTemporalWithOptions(@TempDir outDir: Path): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -255,6 +260,7 @@ class TileGridTest {
     }
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSaveStitchWithTileGridsTemporalPrefix(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -280,6 +286,7 @@ class TileGridTest {
     Assertions.assertEquals(expectedTiles, actualTiles.toSet)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testWriteRDDTileGrid(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)

@@ -3,12 +3,14 @@ package org.openeo.geotrellis.layers
 import nl.jqno.equalsverifier.EqualsVerifier
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotEquals, assertTrue}
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIf
 
 import java.nio.file.Paths
 import java.time.{LocalDate, ZoneId}
 
 class PathDateExtractorTest {
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMtdaDevData")
   @Test
   def testSentinel5PDaily(): Unit = {
     val pathDateExtractor = Sentinel5PPathDateExtractor.Daily
@@ -19,6 +21,7 @@ class PathDateExtractorTest {
     assertTrue(dates contains expected)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMtdaDevData")
   @Test
   def testSentinel5PMonthly(): Unit = {
     val pathDateExtractor = Sentinel5PPathDateExtractor.Monthly
@@ -29,6 +32,7 @@ class PathDateExtractorTest {
     assertTrue(dates contains expected)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSentinel2(): Unit = {
     val pathDateExtractor = SplitYearMonthDayPathDateExtractor
@@ -39,6 +43,7 @@ class PathDateExtractorTest {
     assertTrue(dates contains expected)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testProbaV(): Unit = {
     val pathDateExtractor = ProbaVPathDateExtractor
@@ -49,6 +54,7 @@ class PathDateExtractorTest {
     assertTrue(dates contains expected)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSigma0(): Unit = {
     val pathDateExtractor = SplitYearMonthDayPathDateExtractor
@@ -59,6 +65,7 @@ class PathDateExtractorTest {
     assertTrue(dates contains expected)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testCoherence(): Unit = {
     val pathDateExtractor = SplitYearMonthDayPathDateExtractor

@@ -14,6 +14,7 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.hadoop.fs.Path
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons}
@@ -30,6 +31,7 @@ object GlobalNetCdfFileLayerProviderTest {
   def tearDown(): Unit = GDALWarp.deinit()
 }
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
 class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
 
   private def layerProvider = new GlobalNetCdfFileLayerProvider(

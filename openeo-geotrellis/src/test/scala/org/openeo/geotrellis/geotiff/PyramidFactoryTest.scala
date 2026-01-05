@@ -13,6 +13,7 @@ import geotrellis.store.s3.util.S3RangeReader
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNotNull, assertTrue, fail}
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
@@ -52,6 +53,7 @@ object PyramidFactoryTest {
 class PyramidFactoryTest {
   import PyramidFactoryTest._
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def singleBandGeoTiffFromDiskForSingleDate(): Unit = {
     val from = ZonedDateTime.of(LocalDate.of(2019, 4, 24), MIDNIGHT, UTC)
@@ -61,6 +63,7 @@ class PyramidFactoryTest {
       globPattern = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/24/*/10M/*_FAPAR_10M_V200.tif", from, to)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def singleBandGeoTiffFromDiskForMultipleDates(): Unit = {
     val from = ZonedDateTime.of(LocalDate.of(2019, 4, 24), MIDNIGHT, UTC)
@@ -70,6 +73,7 @@ class PyramidFactoryTest {
       globPattern = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/2[34567]/*/10M/*_FAPAR_10M_V200.tif", from, to)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def singleBandGeoTiffFromDiskForSingleFixedDate(): Unit = {
     val singlePath = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2023/01/03/S2B_20230103T110349_31UES_FAPAR_V210/20M/S2B_20230103T110349_31UES_FAPAR_20M_V210.tif"
@@ -99,6 +103,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, maxZoom)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasProjectsData")
   @Test
   def loadResultGeoTiffFromDiskForSingleFixedDate(): Unit = {
     val singlePath = "file:/data/projects/OpenEO/automated_test_files/load_result_openEO_2019-09-22Z.tif"
@@ -399,6 +404,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def joinLayers(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)

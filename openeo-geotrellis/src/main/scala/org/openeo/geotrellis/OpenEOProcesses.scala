@@ -875,7 +875,7 @@ class OpenEOProcesses extends Serializable {
     // For performance reasons we only check a small subset of tile band counts
     maybeBandCount(cube).getOrElse({
       logger.info(s"Computing number of bands in cube: ${cube.metadata}")
-      val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
+      val counts = cube.take(3).map({ case (k, t) => t.bandCount }).distinct
 
       if (counts.length == 0) {
         if (cube.isEmpty())
