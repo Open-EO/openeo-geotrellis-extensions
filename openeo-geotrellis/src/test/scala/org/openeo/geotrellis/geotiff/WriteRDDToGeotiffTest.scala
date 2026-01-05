@@ -503,7 +503,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       def reductionsForTest(dims: (Int, Int), options: GTiffOptions): List[Int] = {
         List(4, 8, 16)
       }
-      saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = reductionsForTest)
+      saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = reductionsForTest, minTileSize = 1)
 
       val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
       assertEquals(3, result.overviews.size)
@@ -543,7 +543,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     def testReductionFunction(dims: (Int, Int), options: GTiffOptions): List[Int] = {
       List(4,8,16)
     }
-    saveRDDTemporalInternal(layer, outDir.toString,formatOptions = options, overviewReductions = testReductionFunction)
+    saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = testReductionFunction, minTileSize = 16)
     val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
     assertEquals(3,result.overviews.size)
     val resampled = imageTile.resample(256*layoutCols/2,256*layoutRows/2)
@@ -616,16 +616,13 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
 
   @Test
-  def testWriteMultibandTemporalRDDTileSize(): Unit = {
+  def testWriteMultibandTemporalRDDTileSize(@TempDir outDir: Path): Unit = {
     val tileSize = 30
     val layoutCols = 64
     val layoutRows = 64
     val arrayTile = IntArrayTile(Array.fill(tileSize * layoutCols * tileSize * layoutRows)(0), tileSize*layoutCols, tileSize*layoutRows, noDataValue = 256)
     val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, layoutCols, layoutRows, nbDates = 1)
 
-    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsOverwrite/")
-    new Directory(outDir.toFile).deepList().foreach(_.delete())
-    Files.createDirectories(outDir)
     val filename = outDir.resolve("openEO_2017-01-02Z.tif")
 
     val opts = new GTiffOptions()
@@ -633,12 +630,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     saveRDDTemporal(layer, outDir.toString, formatOptions = opts)
     val result = GeoTiff.readMultiband(filename.toString)
     val overviews = result.overviews
-    // currently outcomes
-    assertEquals(1, overviews.size)
-    assertEquals(Tiled(15,15),overviews(0).options.storageMethod) // gives error when it is smaller than 16
-    // correct outcome
     assertEquals(0, overviews.size)
-
   }
 
   @Test
@@ -683,7 +675,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     options.addBandTag(1, "DESCRIPTION", "B02")
     options.addBandTag(2, "DESCRIPTION", "B03")
     options.setOverview("ALL")
-    val tiles = saveRDDTemporalAllowAssetPerBandInternal(layer, outDir.toString, formatOptions = options)
+    val tiles = saveRDDTemporalAllowAssetPerBandInternal(layer, outDir.toString, formatOptions = options, minTileSize = 16)
 
     val expectedPaths = List(
       outDir + "/openEO_2017-01-02Z_B01.tif",

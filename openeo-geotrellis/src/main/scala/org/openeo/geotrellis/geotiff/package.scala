@@ -147,12 +147,11 @@ package object geotiff {
                       zLevel: Int = 6,
                       cropBounds: Option[Extent] = Option.empty[Extent],
                       formatOptions: GTiffOptions = new GTiffOptions,
-                      overviewReductions: ((Int, Int), GTiffOptions) => List[Int] = defaultOverviewReductions
-
-  ): JList[(String, String, Extent)] = {
+                      overviewReductions: ((Int, Int), GTiffOptions) => List[Int] = defaultOverviewReductions,
+                      minTileSize: Int = 16): JList[(String, String, Extent)] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
     formatOptions.assertNoConflicts()
-    val ret = saveRDDTemporalAllowAssetPerBandInternal(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction = overviewReductions)
+    val ret = saveRDDTemporalAllowAssetPerBandInternal(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction = overviewReductions, minTileSize=minTileSize)
     logger.warn("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
     ret.stream()
       .flatMap { item =>
@@ -262,7 +261,7 @@ package object geotiff {
                                        cropBounds: Option[Extent] = Option.empty[Extent],
                                        formatOptions: GTiffOptions = new GTiffOptions,
                                       ): JList[Item] = {
-    saveRDDTemporalAllowAssetPerBandInternal(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction=defaultOverviewReductions)
+    saveRDDTemporalAllowAssetPerBandInternal(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction = defaultOverviewReductions, 16)
   }
 
     /**
@@ -280,7 +279,8 @@ package object geotiff {
                                        zLevel: Int = 6,
                                        cropBounds: Option[Extent] = Option.empty[Extent],
                                        formatOptions: GTiffOptions = new GTiffOptions,
-                                       overviewReductionsFunction: ((Int, Int), GTiffOptions) => List[Int] = defaultOverviewReductions
+                                       overviewReductionsFunction: ((Int, Int), GTiffOptions) => List[Int] = defaultOverviewReductions,
+                                       minTileSize: Int = 16
                                       ): JList[Item] = {
     formatOptions.assertNoConflicts()
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd, cropBounds)
@@ -351,7 +351,7 @@ package object geotiff {
 
         decimationFactors.indices.toList
           .filter(i => {
-            val tileSizeIsBigEnough = math.min(tileLayout.tileCols, tileLayout.tileRows) >= decimationFactors(i)
+            val tileSizeIsBigEnough = (math.min(tileLayout.tileCols, tileLayout.tileRows) / decimationFactors(i)) >= minTileSize
             if (!tileSizeIsBigEnough) {
               logger.warn(s"Could not generate all overviews due to small tile size (${tileLayout.tileDimensions}).")
             }
