@@ -63,7 +63,7 @@ object NetCDFRDDWriterTest {
   }
 }
 
-
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
 class NetCDFRDDWriterTest extends RasterMatchers {
 
   import org.openeo.geotrellis.netcdf.NetCDFRDDWriterTest._

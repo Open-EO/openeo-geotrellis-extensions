@@ -9,10 +9,11 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, AfterEach, BeforeEach, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
-import org.openeo.geotrellis.layers.NetCDFCollectionTest.{getClass, sc}
+import org.openeo.geotrellis.layers.NetCDFCollectionTest.sc
 import org.openeo.geotrelliscommon.{DataCubeParameters, SpatialKeysProvider}
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 
@@ -29,6 +30,7 @@ object NetCDFCollectionTest {
 
 }
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
 class NetCDFCollectionTest {
 
   @BeforeEach

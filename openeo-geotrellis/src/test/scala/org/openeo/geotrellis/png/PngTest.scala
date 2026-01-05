@@ -8,6 +8,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import io.findify.s3mock.S3Mock
 import org.apache.spark.SparkContext
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junitpioneer.jupiter.SetEnvironmentVariable
 import org.openeo.geotrellis.LayerFixtures
@@ -74,6 +75,7 @@ class PngTest {
     saveStitched(singleBand, "/tmp/testSaveStitchedColormap.png", null, opts)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasS3Credentials")
   @SetEnvironmentVariable(key = "SWIFT_URL", value = "http://localhost:8001")
   @Test
   def testSaveStitchedS3(): Unit = {

@@ -745,6 +745,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     spatialMaskedLayer.writeGeoTiff("test_L1C_tile_mask.tif", boundingBox)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testL1CMultibandTileMask(@TempDir tempDir: java.nio.file.Path): Unit = {
     val listener = new BatchJobProgressListener()
