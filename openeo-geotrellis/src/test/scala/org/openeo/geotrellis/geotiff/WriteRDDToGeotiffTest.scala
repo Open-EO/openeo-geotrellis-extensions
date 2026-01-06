@@ -500,10 +500,10 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     def testValues(resampleMethod: String, expectedValues0:Array[Int], expectedValues1:Array[Int],expectedValue2:Int) = {
       options.setResampleMethod(resampleMethod)
-      def reductionsForTest(dims: (Int, Int), options: GTiffOptions): List[Int] = {
+      def reductionsForTest(dims: (Int, Int), options: GTiffOptions, tileLayout: TileLayout): List[Int] = {
         List(4, 8, 16)
       }
-      saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = reductionsForTest, minTileSize = 1)
+      saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = reductionsForTest)
 
       val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
       assertEquals(3, result.overviews.size)
@@ -540,10 +540,10 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val options = new GTiffOptions()
     options.setOverview("ALL")
-    def testReductionFunction(dims: (Int, Int), options: GTiffOptions): List[Int] = {
+    def testReductionFunction(dims: (Int, Int), options: GTiffOptions, tileLayout: TileLayout): List[Int] = {
       List(4,8,16)
     }
-    saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = testReductionFunction, minTileSize = 16)
+    saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = testReductionFunction)
     val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
     assertEquals(3,result.overviews.size)
     val resampled = imageTile.resample(256*layoutCols/2,256*layoutRows/2)
@@ -675,7 +675,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     options.addBandTag(1, "DESCRIPTION", "B02")
     options.addBandTag(2, "DESCRIPTION", "B03")
     options.setOverview("ALL")
-    val tiles = saveRDDTemporalAllowAssetPerBandInternal(layer, outDir.toString, formatOptions = options, minTileSize = 16)
+    val tiles = saveRDDTemporalAllowAssetPerBandInternal(layer, outDir.toString, formatOptions = options)
 
     val expectedPaths = List(
       outDir + "/openEO_2017-01-02Z_B01.tif",
