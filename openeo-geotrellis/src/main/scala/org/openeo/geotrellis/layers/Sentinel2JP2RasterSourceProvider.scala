@@ -113,6 +113,7 @@ class Sentinel2JP2RasterSourceProvider extends ItemRasterSourceProvider {
       (getBandAssetsByLinkTitle).map {
         case Some((link, bandIndex)) =>
           val path = deriveFilePath(link.href)
+          val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
           //special case handling for data that does not declare nodata properly
@@ -134,7 +135,7 @@ class Sentinel2JP2RasterSourceProvider extends ItemRasterSourceProvider {
           }
 
           val rasterSourceRaw = rasterSource(path, cloudPath, targetCellType, sentinelXmlAngleBandIndex = bandIndex)
-          val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
+          val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueScale, pixelValueOffset, targetTargetCellType)
           Some((rasterSourceWrapped, bandIndex))
         case _ => None
       }

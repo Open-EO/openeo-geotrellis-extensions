@@ -1,14 +1,13 @@
 package org.openeo.geotrellis.water_vapor;
 
-import static org.junit.Assert.assertArrayEquals;
-
-import org.junit.Test;
-import org.openeo.geotrellis.icor.LookupTable;
-
 import geotrellis.raster.ArrayMultibandTile;
 import geotrellis.raster.DoubleRawArrayTile;
 import geotrellis.raster.MultibandTile;
 import geotrellis.raster.Tile;
+import org.junit.jupiter.api.Test;
+import org.openeo.geotrellis.icor.LookupTable;
+
+import static org.junit.Assert.assertArrayEquals;
 
 public class TestFirstInBlockProcessor {
 

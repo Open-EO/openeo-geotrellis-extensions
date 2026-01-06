@@ -10,18 +10,20 @@ import geotrellis.vector.{Polygon, _}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert._
-import org.junit._
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.condition.EnabledIf
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.runners.Parameterized.Parameters
 import org.openeo.geotrellis.AggregateSpatialTest.parseCSV
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.TimeSeriesServiceResponses._
+import org.openeo.opensearch.OpenSearchResponses.FeatureCollection
 
 import java.nio.file.Files
 import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
 import java.util
-import scala.jdk.CollectionConverters._
 import scala.collection.immutable
+import scala.jdk.CollectionConverters._
 
 object ComputeStatsGeotrellisAdapterTest {
   type JMap[K, V] = java.util.Map[K, V]
@@ -36,12 +38,7 @@ object ComputeStatsGeotrellisAdapterTest {
     list
   }
 
-  @BeforeClass
-  def assertKerberosAuthentication(): Unit = {
-    //assertNotNull(getClass.getResourceAsStream("/core-site.xml"))
-  }
-
-  @BeforeClass
+  @BeforeAll
   def setUpSpark(): Unit = {
     sc = {
 
@@ -50,7 +47,7 @@ object ComputeStatsGeotrellisAdapterTest {
     }
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = {
     sc.stop()
   }
@@ -151,16 +148,16 @@ object ComputeStatsGeotrellisAdapterTest {
       """.stripMargin.parseGeoJson[Polygon]()
 
   def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: JList[JList[Double]]): Unit = {
-    assertEquals("should have same polygon count", expected.length, actual.size())
+    assertEquals(expected.length, actual.size(), "should have same polygon count")
     expected.indices.foreach { i =>
-      assertArrayEquals("should have same band stats", expected(i).toArray, actual.get(i).asScala.toArray, 1e-6)
+      assertArrayEquals(expected(i).toArray, actual.get(i).asScala.toArray, 1e-6, "should have same band stats")
     }
   }
 
   def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: Seq[collection.Seq[Double]]): Unit = {
-    assertEquals("should have same polygon count", expected.length, actual.size)
+    assertEquals(expected.length, actual.size, "should have same polygon count")
     expected.indices.foreach { i =>
-      assertArrayEquals("should have same band stats", expected(i).toArray, actual(i).toArray, 1e-6)
+      assertArrayEquals(expected(i).toArray, actual(i).toArray, 1e-6, "should have same band stats")
     }
   }
 }
@@ -169,18 +166,7 @@ object ComputeStatsGeotrellisAdapterTest {
 class ComputeStatsGeotrellisAdapterTest() {
   import ComputeStatsGeotrellisAdapterTest._
 
-
-
-  @Before
-  def setup():Unit = {
-    //System.setProperty("pixels.treshold","" + threshold)
-
-  }
-
-
   val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter()
-
-
 
   private def buildCubeRdd(from: ZonedDateTime, to: ZonedDateTime): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
@@ -237,10 +223,9 @@ class ComputeStatsGeotrellisAdapterTest() {
     ))
   }
 
-
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def compute_median_ndvi_timeseries_on_accumulo_datacube(): Unit = {
-
     val minDateString = "2017-11-01T00:00:00Z"
     val maxDateString = "2017-11-16T02:00:00Z"
     val minDate = ZonedDateTime.parse(minDateString)
@@ -260,6 +245,7 @@ class ComputeStatsGeotrellisAdapterTest() {
     assertMedianComputedCorrectly(ndviDataCube, minDateString, minDate, maxDate, Seq(polygon1))
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def validateAccumuloDataCubeAgainstTimeSeriesServiceMeans(): Unit = {
     val minDateString = "2017-11-01T00:00:00Z"
@@ -304,7 +290,7 @@ class ComputeStatsGeotrellisAdapterTest() {
     assertArrayEquals(referenceAverages.keys.map((_.toEpochSecond)).toArray.sorted,actualAverages.filter(_._2.exists(!_.isNaN)).keys.map((_.toEpochSecond)).toArray.sorted)
   }
 
-
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def compute_median_masked_ndvi_timeseries_on_accumulo_datacube(): Unit = {
 

@@ -21,14 +21,13 @@ import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.SizeEstimator
-import org.junit.Assert._
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
-import org.junit.{AfterClass, BeforeClass}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
@@ -44,7 +43,7 @@ import java.time._
 import java.util
 import java.util.stream.Stream
 import java.util.{Arrays, Collections}
-import scala.collection.JavaConverters.mapAsJavaMapConverter
+import scala.jdk.CollectionConverters._
 
 object Sentinel2FileLayerProviderTest {
   private val openSearchEndpoint = LayerFixtures.client
@@ -75,7 +74,7 @@ object Sentinel2FileLayerProviderTest {
     _sc.get
   }
 
-  @BeforeClass
+  @BeforeAll
   def setUpSpark_BeforeClass(): Unit = sc
 
   @BeforeAll
@@ -91,7 +90,7 @@ object Sentinel2FileLayerProviderTest {
 
   var gotAfterClass = false
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark_AfterClass(): Unit = {
     gotAfterClass = true;
     maybeStopSpark()
@@ -135,6 +134,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     BatchJobMetadataTracker.clearGlobalTracker()
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def polygonalMultiplePolygon(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -160,6 +160,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertArrayEquals(resultArray, values.sorted,0.001)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def polygonalMean(): Unit = {
 
@@ -185,6 +186,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertEquals(1,inputs.asInstanceOf[util.Map[String,util.List[String]]].get("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2").size())
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def derivedFromDocument(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -207,6 +209,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertTrue(itemCollection.getAllGeometries().nonEmpty)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def polygonalMeanOnOverlap(): Unit = {
     val bbox = ProjectedExtent(Extent(3.032755, 50.839076, 3.039980, 50.843650), LatLng)
@@ -228,7 +231,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertEquals(7225,meanList.head.count)
 
   }
-
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def polygonalMeanOnOverlapNativeUTM(): Unit = {
     val utm31 = CRS.fromEpsgCode(32631)
@@ -256,6 +259,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Timeout(2000)
   @Test
   def loadMetadata(): Unit = {
@@ -273,6 +277,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertTrue(uniqueYears contains 2020)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def multiband(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -295,6 +300,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     m
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @ParameterizedTest
   @MethodSource(Array("datacubeParams"))
   def multibandWithSpacetimeMask(parameters: DataCubeParameters, expectedNBStages: Int, @TempDir tempDir: java.nio.file.Path): Unit = {
@@ -358,6 +364,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
    *  Simulate 'patch extraction' as performed by WorldCereal.
    *  This should be as efficiënt as possible, working in native projection.
    */
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testPatchExtract(): Unit = {
     val start = ZonedDateTime.of(LocalDate.of(2020, 3, 1), MIDNIGHT, UTC)
@@ -464,6 +471,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertEquals(actualMean, meanList.apply(1).mean, actualMean * 0.1)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testS2ResampledTilesCRSEqualToRasterSource(): Unit = {
     // When feature.crs == targetExtent.crs
@@ -472,13 +480,15 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
 
-    @Test
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
+  @Test
   def testS2ResampledTilesCRSDiffersFromRasterSource(): Unit = {
     // When feature.crs != targetExtent.crs
     // This case normally uses GeoTiffReprojectRasterSources.
     assertResampledLayerValid(CRS.fromEpsgCode(32632), 9589.844968268359)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testReadDifferentProjection(@TempDir tempDir: java.nio.file.Path):Unit = {
 
@@ -517,6 +527,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertEquals(utm32,spatialLayer.metadata.crs)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @ParameterizedTest
   @MethodSource(Array("maskingParams"))
   def testMaskSclDilationOnS2TileEdge(params:util.Map[String,Object],ref:String, @TempDir tempDir: java.nio.file.Path): Unit = {
@@ -556,6 +567,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   /**
    * Test simulates the very common case where an 'scl dilation mask' is applied at load time.
    */
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testToSclDilationMaskOnS2TileEdge(@TempDir tempDir: java.nio.file.Path): Unit = {
     val ref = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/toscldilationmask_masked_ref.tif"
@@ -620,8 +632,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val actualTile = GeoTiffRasterSource(actual.toString).read().get
     assertRastersEqual(referenceTile, actualTile, 160.0)
     //because debug logging is enabled during tests, it actually runs more jobs and stages than done in production
-    assertEquals("unexpected number of jobs", 5, listener.getJobsCompleted)
-    assertEquals("unexpected number of stages", 18, listener.getStagesCompleted)
+    assertEquals(5, listener.getJobsCompleted, "unexpected number of jobs")
+    assertEquals(18, listener.getStagesCompleted, "unexpected number of stages")
 
   }
 
@@ -733,6 +745,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     spatialMaskedLayer.writeGeoTiff("test_L1C_tile_mask.tif", boundingBox)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testL1CMultibandTileMask(@TempDir tempDir: java.nio.file.Path): Unit = {
     val listener = new BatchJobProgressListener()

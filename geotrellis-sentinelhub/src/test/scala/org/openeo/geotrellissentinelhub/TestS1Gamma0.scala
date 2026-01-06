@@ -2,11 +2,12 @@ package org.openeo.geotrellissentinelhub
 
 import java.time.{LocalDate, ZoneId}
 import java.util.Collections
-
 import geotrellis.proj4.WebMercator
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.Test
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIf
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
 class TestS1Gamma0 {
   private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token
 

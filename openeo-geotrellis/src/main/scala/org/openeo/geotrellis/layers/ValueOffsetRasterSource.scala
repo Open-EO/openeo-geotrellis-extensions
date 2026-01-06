@@ -20,25 +20,28 @@ object ValueOffsetRasterSource {
    * Only wraps the rasterSources when needed
    */
   def wrapRasterSource(rasterSource: RasterSource,
+                       pixelValueScale: Double,
                        pixelValueOffset: Double,
                        targetCellType: Option[TargetCellType] = None
                       ): RasterSource = {
-    if (pixelValueOffset == 0 && targetCellType.isEmpty) rasterSource
-    else new ValueOffsetRasterSource(rasterSource, pixelValueOffset, targetCellType)
+    if (pixelValueScale == 1.0 && pixelValueOffset == 0 && targetCellType.isEmpty) rasterSource
+    else new ValueOffsetRasterSource(rasterSource, pixelValueScale, pixelValueOffset, targetCellType)
   }
 }
 
 class ValueOffsetRasterSource(val rasterSource: RasterSource,
+                              pixelValueScale: Double,
                               pixelValueOffset: Double,
                               val targetCellType: Option[TargetCellType] = None, //
                              ) extends RasterSource {
 
   import ValueOffsetRasterSource._
 
-  private def withOffset(bandTile: Tile): Tile = {
+  private def withScaleAndOffset(bandTile: Tile): Tile = {
     if (pixelValueOffset == 0) bandTile
-    else if (cellType.isFloatingPoint) bandTile.convert(cellType).mapIfSetDouble(x => x + pixelValueOffset)
-    else bandTile.convert(cellType).mapIfSet(i => i + pixelValueOffset.toInt)
+    else if (cellType.isFloatingPoint) bandTile.convert(cellType).mapIfSetDouble(x => x * pixelValueScale + pixelValueOffset)
+    else {
+      bandTile.convert(cellType).mapIfSet(i => (i * pixelValueScale + pixelValueOffset).toInt)    }
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
@@ -46,7 +49,7 @@ class ValueOffsetRasterSource(val rasterSource: RasterSource,
 
     // Convert tiles in raster
     val newRaster = raster.map(r => {
-      val newTile = r.tile.mapBands((_, band) => withOffset(band))
+      val newTile = r.tile.mapBands((_, band) => withScaleAndOffset(band))
       Raster(newTile, r.extent)
     })
     newRaster
@@ -70,12 +73,12 @@ class ValueOffsetRasterSource(val rasterSource: RasterSource,
 
   override protected def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = {
     val rs = rasterSource.reproject(targetCRS, resampleTarget, method, strategy)
-    new ValueOffsetRasterSource(rs, pixelValueOffset, targetCellType)
+    new ValueOffsetRasterSource(rs, pixelValueScale, pixelValueOffset, targetCellType)
   }
 
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = {
     val rs = rasterSource.resample(resampleTarget, method, strategy)
-    new ValueOffsetRasterSource(rs, pixelValueOffset, targetCellType)
+    new ValueOffsetRasterSource(rs, pixelValueScale, pixelValueOffset, targetCellType)
   }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
@@ -85,7 +88,7 @@ class ValueOffsetRasterSource(val rasterSource: RasterSource,
 
   override def convert(targetCellType: TargetCellType): RasterSource = {
     val rs = rasterSource.convert(targetCellType)
-    new ValueOffsetRasterSource(rs, pixelValueOffset, Some(targetCellType))
+    new ValueOffsetRasterSource(rs, pixelValueScale, pixelValueOffset, Some(targetCellType))
   }
 
   override def name: SourceName = rasterSource.name

@@ -1,5 +1,6 @@
 package org.openeo.geotrellis
 
+import ai.onnxruntime.{OrtEnvironment, OrtSession, TensorInfo}
 import geotrellis.layer.SpatialKey._
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
@@ -21,10 +22,12 @@ import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
+import org.apache.commons.io.FileUtils
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
+import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
@@ -32,6 +35,7 @@ import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPar
 import org.slf4j.LoggerFactory
 
 import java.io.File
+import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.format.DateTimeFormatter
@@ -41,7 +45,6 @@ import scala.collection.parallel.CollectionConverters._
 import scala.collection.{immutable, mutable}
 import scala.jdk.CollectionConverters._
 import scala.reflect._
-import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 
 
 object OpenEOProcesses{
@@ -849,14 +852,7 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def maybeBandLabels[K](cube: RDD[(K, MultibandTile)]): Option[Seq[String]] = {
-    if (cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount > 0) {
-      val labels = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bands
-      return Some(labels)
-    }else{
-      return None
-    }
-  }
+
 
   def maybeCellType[K](cube: RDD[(K, MultibandTile)]): Option[CellType] = {
     if (cube.isInstanceOf[MultibandTileLayerRDD[K]]) {
@@ -879,7 +875,7 @@ class OpenEOProcesses extends Serializable {
     // For performance reasons we only check a small subset of tile band counts
     maybeBandCount(cube).getOrElse({
       logger.info(s"Computing number of bands in cube: ${cube.metadata}")
-      val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
+      val counts = cube.take(3).map({ case (k, t) => t.bandCount }).distinct
 
       if (counts.length == 0) {
         if (cube.isEmpty())
@@ -1146,6 +1142,66 @@ class OpenEOProcesses extends Serializable {
   def slopeGeneric[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
     datacube.sparkContext.setCallSite(s"slope")
     datacube.slope()
+  }
+
+  def corsaCompress(datacube: MultibandTileLayerRDD[_]): AnyRef =
+    datacube.metadata.bounds.get.maxKey match {
+      case _: SpatialKey => corsaCompressGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case _: SpaceTimeKey => corsaCompressGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+    }
+
+  def corsaCompressGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K]): MultibandTileLayerRDD[K] = {
+    val newTileLayout = datacube.metadata.tileLayout.copy(tileCols = 60, tileRows = 60)
+    val newBounds = datacube.metadata.getComponent[Bounds[K]].flatMap { keyBounds =>
+      keyBounds.rekey(datacube.metadata.layout, datacube.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    val modelDir = corsa.modelDir
+
+    ContextRDD(
+      datacube.mapValues(tile => corsa.compress(modelDir, tile)),
+      datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
+  def corsaDecompress(datacube: MultibandTileLayerRDD[_]): AnyRef =
+    datacube.metadata.bounds.get.maxKey match {
+      case _: SpatialKey => corsaDecompressGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case _: SpaceTimeKey => corsaDecompressGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+    }
+
+  def corsaDecompressGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K]): MultibandTileLayerRDD[K] = {
+    val newTileLayout = datacube.metadata.tileLayout.copy(tileCols = 120, tileRows = 120)
+    val newBounds = datacube.metadata.bounds.flatMap { keyBounds =>
+      keyBounds.rekey(datacube.metadata.layout, datacube.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    val modelDir = corsa.modelDir
+
+    ContextRDD(
+      datacube.mapValues(tile => corsa.decompress(modelDir, tile)),
+      datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
+  def convertDataType(datacube: Object, dataType: String): Object = {
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        convertDataTypeGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], dataType)
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        convertDataTypeGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], dataType)
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for convert_data_type: ${datacube}")
+    }
+  }
+
+  private[geotrellis] def convertDataTypeGeneric[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K], dataType: String): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    datacube.sparkContext.setCallSite(s"convert_data_type")
+    val targetCellType = try {
+      CellType.fromName(dataType)
+    } catch {
+      case _: IllegalArgumentException => throw new IllegalArgumentException(s"Data type $dataType is not supported")
+    }
+    datacube.convert(targetCellType)
   }
 
 
@@ -1452,6 +1508,60 @@ class OpenEOProcesses extends Serializable {
       "size_estimate_mb" -> estimatedSize
     ).asJava
   }
+
+  def predictONNX(datacube: Object, model: String): Object = {
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        predictONNXGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        predictONNXGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type for predict_onnx: $datacube")
+    }
+  }
+
+  def predictONNXGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
+    val env = OrtEnvironment.getEnvironment()
+    val modelPath = Paths.get(model)
+    val (modelFile, isTemp) = if (Files.exists(modelPath)) {
+      (modelPath,false)
+    } else {
+      val tempFileName = Files.createTempFile(null, ".onnx")
+      FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
+      (tempFileName,true)
+    }
+    val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
+    val inputNames = session.getInputNames
+    val outputNames = session.getOutputNames
+
+    if (inputNames.size() > 1)
+      // TODO support the case for multiple inputs
+      throw new IllegalArgumentException(
+        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
+    if (outputNames.size() > 1)
+      // TODO support the case for multiple outputs
+      throw new IllegalArgumentException(
+        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
+
+
+    val inputName = inputNames.toArray()(0).asInstanceOf[String]
+    val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+    val outputName = outputNames.toArray()(0).asInstanceOf[String]
+    val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
+
+    val inputType = inputInfo.`type`
+    val outputType = outputInfo.`type`
+    if (inputType != outputType)
+      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
+
+    val broadcastSession = sc.broadcast(session)
+    val result = ContextRDD(
+      datacube.mapValues(x => onnx.predictOnnx(x,broadcastSession.value)),
+      datacube.metadata
+    )
+    if (isTemp) Files.delete(modelFile)
+    result
+  }
+
 }
 
 

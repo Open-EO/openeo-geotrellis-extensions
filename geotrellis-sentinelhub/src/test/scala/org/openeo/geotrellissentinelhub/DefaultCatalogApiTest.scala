@@ -3,13 +3,15 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.proj4.LatLng
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.Assert.{assertEquals, assertTrue, fail}
-import org.junit.{Ignore, Test}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, fail}
+import org.junit.jupiter.api.condition.EnabledIf
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.time.{LocalDate, ZoneId}
 import java.util.Collections.{emptyMap, singletonMap}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
 class DefaultCatalogApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
   private val catalogApi = new DefaultCatalogApi(endpoint)
@@ -119,7 +121,7 @@ class DefaultCatalogApiTest {
       accessToken
     )
 
-    assertTrue(s"number of features ${features.size} should exceed default page size 10", features.size > 10)
+    assertTrue(features.size > 10, s"number of features ${features.size} should exceed default page size 10")
   }
 
   @Test
@@ -175,7 +177,7 @@ class DefaultCatalogApiTest {
         if responseBody contains "Querying is not supported on property 'someUnknownProperty'" => /* expected */
     }
 
-  @Ignore("not to be run automatically")
+  @Disabled("not to be run automatically")
   @Test
   def debugReadTimedOut(): Unit = {
     val geometries = ShapeFileReader
@@ -203,7 +205,7 @@ class DefaultCatalogApiTest {
     println(features.size)
   }
 
-  @Ignore("test-drive CDSE Catalog API; not to be run automatically")
+  @Disabled("test-drive CDSE Catalog API; not to be run automatically")
   @Test
   def testSearchCdseCatalog(): Unit = {
     val geometry = ProjectedExtent(Extent(5.027, 51.1974, 5.0438, 51.2213), LatLng)

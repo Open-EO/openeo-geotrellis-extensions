@@ -1,0 +1,31 @@
+{
+  "process_graph": {
+    "load1": {
+      "arguments": {
+        "spatial_extent": {
+          "crs": "EPSG:4326",
+          "east": 6.5154,
+          "north": 51.5678,
+          "south": 49.51234,
+          "west": 2.54578
+        },
+        "temporal_extent": [
+          "2024-06-07",
+          "2024-06-08"
+        ],
+        "url": "https://stac.terrascope.be/collections/terrascope-s5p-l3-ch4-td-v2"
+      },
+      "process_id": "load_stac"
+    },
+    "saveresult1": {
+      "arguments": {
+        "data": {
+          "from_node": "load1"
+        },
+        "format": "GTiff"
+      },
+      "process_id": "save_result",
+      "result": true
+    }
+  }
+}

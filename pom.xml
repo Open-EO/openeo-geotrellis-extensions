@@ -16,16 +16,25 @@
         <geotrellis.version>3.8.0+15-ec9f3348-SNAPSHOT</geotrellis.version>
         <gdal-bindings.version>3.8.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
-        <openeo-opensearch-client.version>2.0.0_2.13-SNAPSHOT</openeo-opensearch-client.version>
+        <openeo-opensearch-client.version>2.0.1_2.13-SNAPSHOT</openeo-opensearch-client.version>
         <catboost-spark.version>1.2.8</catboost-spark.version>
         <awssdk.version>2.23.19</awssdk.version>
         <jaxb.api.version>2.3.0</jaxb.api.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <revision>2.6.0_2.13-SNAPSHOT</revision>
+        <revision>2.6.1_2.13-SNAPSHOT</revision>
+        <junit.version>5.14.1</junit.version>
+        <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-core</artifactId>
@@ -71,17 +80,7 @@
                 <module>geotrellis-common</module>
                 <module>openeo-logging</module>
                 <module>geopyspark-geotrellis</module>
-                <module>geotrellis-integrationtests</module>
                 <module>openeo-dependencies</module>
-            </modules>
-        </profile>
-        <profile>
-            <id>integrationtests</id>
-            <activation>
-                <activeByDefault>false</activeByDefault>
-            </activation>
-            <modules>
-                <module>geotrellis-integrationtests</module>
             </modules>
         </profile>
     </profiles>

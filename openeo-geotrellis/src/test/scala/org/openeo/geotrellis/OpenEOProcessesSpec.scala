@@ -20,12 +20,11 @@ import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert._
-import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNotEquals, assertTrue}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
-import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.AggregateSpatialTest.{assertEqualTimeseriesStats, parseCSV}
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.OpenEOProcessesSpec.getDatesForCube
@@ -71,7 +70,7 @@ object OpenEOProcessesSpec {
     _sc.get
   }
 
-  @BeforeClass
+  @BeforeAll
   def setUpSpark_BeforeClass(): Unit = sc
 
   @BeforeAll
@@ -87,7 +86,7 @@ object OpenEOProcessesSpec {
 
   var gotAfterClass = false
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark_AfterClass(): Unit = {
     gotAfterClass = true
     maybeStopSpark()
@@ -479,6 +478,40 @@ class OpenEOProcessesSpec extends RasterMatchers {
     assertEquals(40, slopeTile.get(1, 1279)) // border case ()
   }
 
+  @Test
+  def convertDataType_int8(): Unit = {
+    val tile = IntArrayTile.fill(0,1280, 1280).map((c: Int, r: Int, v: Int) => c)
+    val tileSize = 256
+    val extent = new Extent(50,2,50.01,2.01)
+    val crs = LatLng
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+    val resultCube = new OpenEOProcesses().convertDataTypeGeneric(datacube, "int8")
+
+    val convertedTile = time{ resultCube.stitch().tile.band(0) }
+
+    assertEquals(ByteConstantNoDataCellType, resultCube.metadata.cellType)
+    assertEquals(1, convertedTile.get(1, 0))
+    assertEquals(2, convertedTile.get(2, 5))
+    assertEquals(21, convertedTile.get(277, 5)) // mod 256
+  }
+
+  @Test
+  def convertDataType_unsupported(): Unit = {
+    val tile = IntArrayTile.fill(0,1280, 1280).map((c: Int, r: Int, v: Int) => c)
+    val tileSize = 256
+    val extent = new Extent(50,2,50.01,2.01)
+    val crs = LatLng
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, Raster(new ArrayMultibandTile(Array[Tile](tile)), extent), layout, crs)
+    try {
+      val resultCube = new OpenEOProcesses().convertDataTypeGeneric(datacube, "int33")
+      fail("Should have failed with IllegalArgumentException")
+    } catch {
+      case e: IllegalArgumentException => assertEquals("Data type int33 is not supported", e.getMessage)
+    }
+  }
+
 
   @Test
   def applyMaskFFT(): Unit = {
@@ -627,12 +660,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // assertEquals(withoutPartitioner.getStagesCompleted, withPartitioner.getStagesCompleted)
     // might need to change threshold in the future:
     assertTrue(
-      "sparsePartitioner.getTasksCompleted should be smaller than 15. Actually: " + sparsePartitioner.getTasksCompleted,
       sparsePartitioner.getTasksCompleted < 15,
+      "sparsePartitioner.getTasksCompleted should be smaller than 15. Actually: " + sparsePartitioner.getTasksCompleted
     )
     assertTrue(
-      "byTilePartitioner.getTasksCompleted should be smaller than 6. Actually: " + byTilePartitioner.getTasksCompleted,
       byTilePartitioner.getTasksCompleted < 6,
+      "byTilePartitioner.getTasksCompleted should be smaller than 6. Actually: " + byTilePartitioner.getTasksCompleted
     )
   }
 
@@ -984,6 +1017,184 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val resampled = new OpenEOProcesses().resampleCubeSpatial_spacetime(datacube, WebMercator, targetLayout, NearestNeighbor, null)._2
     saveRDDTemporal(resampled,"./resampleCubeTest")
     assertEquals(16, resampled.partitions.length)
+  }
+
+  @Test
+  def testPredictONNXSpatial(): Unit = {
+    val layoutCols = 2
+    val layoutRows = 1
+    val tileSize = 256
+
+    def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
+      val model =
+        if (path.startsWith("http")) path
+        else getClass.getResource(path).getPath
+      val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tileSize, tileSize))
+      val resultCube = new OpenEOProcesses().predictONNXGeneric(datacube,model)
+      assertEquals(expectedType, resultCube.metadata.cellType)
+      val theResultTile = resultCube.stitch().tile
+      assertEquals(expectedNBands,theResultTile.bandCount)
+      (0 until expectedNBands).foreach {n =>
+        assertArrayEquals(expectedBands(n), theResultTile.band(n).toArray())
+      }
+    }
+    // test where the ONNX model doubles the values
+    val tileFloat = (i:Float) => FloatArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    val resultArray = (i:Int) =>  Array.fill(layoutCols * tileSize * layoutRows * tileSize)(i)
+    runONNX("/org/openeo/geotrellis/onnx/test_model_float.onnx",
+      new ArrayMultibandTile(Array(tileFloat(1))),
+      Seq(resultArray(2)), FloatConstantNoDataCellType
+    )
+    val tileDouble = (i:Double) =>  DoubleArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    runONNX("/org/openeo/geotrellis/onnx/test_model_double.onnx",
+      new ArrayMultibandTile(Array(tileDouble(2))),
+      Seq(resultArray(4)), DoubleConstantNoDataCellType
+    )
+    val tileInt = (i:Int) => IntArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    runONNX("/org/openeo/geotrellis/onnx/test_model_int.onnx",
+      new ArrayMultibandTile(Array(tileInt(5))),
+      Seq(resultArray(10)), IntConstantNoDataCellType
+    )
+    val tileShort = (i:Short) => ShortArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    runONNX("/org/openeo/geotrellis/onnx/test_model_short.onnx",
+      new ArrayMultibandTile(Array(tileShort(4))),
+      Seq(resultArray(8)), ShortConstantNoDataCellType
+    )
+    // test where the ONNX model sums the values of the bands
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_float.onnx",
+      new ArrayMultibandTile(Array[Tile](tileFloat(1),tileFloat(2),tileFloat(3))),
+      Seq(resultArray(6)),FloatConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_double.onnx",
+      new ArrayMultibandTile(Array[Tile](tileDouble(1),tileDouble(1),tileDouble(2))),
+      Seq(resultArray(4)),DoubleConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_int.onnx",
+      new ArrayMultibandTile(Array[Tile](tileInt(3),tileInt(5),tileInt(7))),
+      Seq(resultArray(15)),IntConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_short.onnx",
+      new ArrayMultibandTile(Array[Tile](tileShort(10),tileShort(1),tileShort(15))),
+      Seq(resultArray(26)),ShortConstantNoDataCellType
+    )
+    // test where the ONNX model reorganize bands from [0,1,2] to [2,0]
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_float.onnx",
+      new ArrayMultibandTile(Array[Tile](tileFloat(1),tileFloat(2),tileFloat(3))),
+      Seq(resultArray(3),resultArray(1)),FloatConstantNoDataCellType, 2
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_double.onnx",
+      new ArrayMultibandTile(Array[Tile](tileDouble(1),tileDouble(2),tileDouble(3))),
+      Seq(resultArray(3),resultArray(1)),DoubleConstantNoDataCellType, 2
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_int.onnx",
+      new ArrayMultibandTile(Array[Tile](tileInt(1),tileInt(2),tileInt(3))),
+      Seq(resultArray(3),resultArray(1)),IntConstantNoDataCellType, 2
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_short.onnx",
+      new ArrayMultibandTile(Array[Tile](tileShort(1),tileShort(2),tileShort(3))),
+      Seq(resultArray(3),resultArray(1)),ShortConstantNoDataCellType, 2
+    )
+    // test download model
+    runONNX("https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx",
+      new ArrayMultibandTile(Array(tileFloat(4))),
+      Seq(resultArray(0)), FloatConstantNoDataCellType
+    )
+
+  }
+
+  @Test
+  def testPredictONNXTemporal(): Unit = {
+    val date = ZonedDateTime.parse("2017-01-01T00:00:00Z").plusDays(1)
+    val layoutCols = 2
+    val layoutRows = 1
+    val tileSize = 256
+
+    val datacubeOneBand = (tile:Tile) => TileLayerRDDBuilders
+      .createSpaceTimeTileLayerRDD(Seq((tile, date)), TileLayout(layoutCols, layoutRows, tileSize, tileSize),
+        tile.cellType)(OpenEOProcessesSpec.sc)
+      .withContext(_.mapValues(MultibandTile(_)))
+
+    val datacubeThreeBands = (tile: Tile, mul: Seq[Int]) => TileLayerRDDBuilders
+      .createSpaceTimeTileLayerRDD(Seq((tile, date)), TileLayout(layoutCols, layoutRows, tileSize, tileSize),
+        tile.cellType)(OpenEOProcessesSpec.sc)
+      .withContext(_.mapValues(x => MultibandTile(x.map(_*mul(0)),x.map(_*mul(1)),x.map(_*mul(2)))))
+
+    def runONNX(path: String, datacube:  MultibandTileLayerRDD[SpaceTimeKey], expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
+      val model =
+        if (path.startsWith("http")) path
+       else getClass.getResource(path).getPath
+      val resultCube = new OpenEOProcesses().predictONNXGeneric(datacube,model)
+      assertEquals(expectedType, resultCube.metadata.cellType)
+
+      val results = resultCube.toSpatial(date)
+      val theResultTile = results.stitch().tile
+      assertEquals(expectedNBands,theResultTile.bandCount)
+      (0 until expectedNBands).foreach {n =>
+        assertArrayEquals(expectedBands(n), theResultTile.band(n).toArray())
+      }
+    }
+    val resultArray = (i:Int) =>  Array.fill(layoutCols * tileSize * layoutRows * tileSize)(i)
+
+    // test where the ONNX model doubles the values
+    val tileFloat = (i:Float) => FloatArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    runONNX("/org/openeo/geotrellis/onnx/test_model_float.onnx",
+      datacubeOneBand(tileFloat(1)),
+      Seq(resultArray(2)), FloatConstantNoDataCellType
+    )
+    val tileDouble = (i:Double) =>  DoubleArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    runONNX("/org/openeo/geotrellis/onnx/test_model_double.onnx",
+      datacubeOneBand(tileDouble(2)),
+      Seq(resultArray(4)), DoubleConstantNoDataCellType
+    )
+    val tileInt = (i:Int) => IntArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    runONNX("/org/openeo/geotrellis/onnx/test_model_int.onnx",
+      datacubeOneBand(tileInt(5)),
+      Seq(resultArray(10)), IntConstantNoDataCellType
+    )
+    val tileShort = (i:Short) => ShortArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    runONNX("/org/openeo/geotrellis/onnx/test_model_short.onnx",
+      datacubeOneBand(tileShort(4)),
+      Seq(resultArray(8)), ShortConstantNoDataCellType
+    )
+    // test where the ONNX model sums the values of the bands
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_float.onnx",
+      datacubeThreeBands(tileFloat(1), Seq(1,2,3)),
+      Seq(resultArray(6)),FloatConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_double.onnx",
+      datacubeThreeBands(tileDouble(1), Seq(1,1,2)),
+      Seq(resultArray(4)),DoubleConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_int.onnx",
+      datacubeThreeBands(tileInt(1), Seq(3,5,7)),
+      Seq(resultArray(15)),IntConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_short.onnx",
+      datacubeThreeBands(tileShort(1), Seq(10,1,15)),
+      Seq(resultArray(26)),ShortConstantNoDataCellType
+    )
+    // test where the ONNX model reorganize bands from [0,1,2] to [2,0]
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_float.onnx",
+      datacubeThreeBands(tileFloat(1), Seq(1,2,3)),
+      Seq(resultArray(3),resultArray(1)),FloatConstantNoDataCellType, 2
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_double.onnx",
+        datacubeThreeBands(tileDouble(1),Seq(1,2,3)),
+      Seq(resultArray(3),resultArray(1)),DoubleConstantNoDataCellType, 2
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_int.onnx",
+          datacubeThreeBands(tileInt(1),Seq(1,2,3)),
+      Seq(resultArray(3),resultArray(1)),IntConstantNoDataCellType, 2
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_short.onnx",
+            datacubeThreeBands(tileShort(1),Seq(1,2,3)),
+      Seq(resultArray(3),resultArray(1)),ShortConstantNoDataCellType, 2
+    )
+    // test download model
+    runONNX("https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx",
+      datacubeOneBand(tileFloat(4)),
+      Seq(resultArray(0)), FloatConstantNoDataCellType
+    )
   }
 
 }

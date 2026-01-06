@@ -3,22 +3,22 @@ package org.openeo.geotrellissentinelhub
 import io.circe.generic.auto._
 import io.circe.parser.{decode => circeDecode}
 import io.circe.{DecodingFailure, ParsingFailure}
-import org.junit.Assert.{assertEquals, assertTrue}
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
+import org.junit.jupiter.api.Test
 import org.openeo.geotrellissentinelhub.BatchProcessingApi.GetBatchProcessResponse
 import org.openeo.geotrelliscommon.CirceException
 import org.openeo.geotrelliscommon.CirceException.decode
-import org.slf4j.LoggerFactory
+import org.slf4j.{Logger, LoggerFactory}
 
 class CirceExceptionTest {
-  private implicit val logger = LoggerFactory.getLogger(getClass)
+  private implicit val logger: Logger = LoggerFactory.getLogger(getClass)
 
   @Test
   def assertCirceDecodeContainsNoStackTrace(): Unit = {
     val Left(circeError) = circeDecode[GetBatchProcessResponse](input = "")
     circeError.printStackTrace()
 
-    assertTrue("expected an empty stack trace in the Circe error", circeError.getStackTrace.isEmpty)
+    assertTrue(circeError.getStackTrace.isEmpty, "expected an empty stack trace in the Circe error")
   }
 
   @Test
@@ -27,8 +27,7 @@ class CirceExceptionTest {
 
     circeException.printStackTrace()
 
-    assertTrue("expected this test class in the stack trace",
-      circeException.getStackTrace.exists(stackTraceElement => stackTraceElement.getClassName == this.getClass.getName))
+    assertTrue(circeException.getStackTrace.exists(stackTraceElement => stackTraceElement.getClassName == this.getClass.getName), "expected this test class in the stack trace")
 
     val parsingFailure = circeException.getCause.asInstanceOf[ParsingFailure]
     val rootCause = parsingFailure.getCause
@@ -42,16 +41,17 @@ class CirceExceptionTest {
 
     circeException.printStackTrace()
 
-    assertTrue("expected this test class in the stack trace",
-      circeException.getStackTrace.exists(stackTraceElement => stackTraceElement.getClassName == this.getClass.getName))
+    assertTrue(
+      circeException.getStackTrace.exists(stackTraceElement => stackTraceElement.getClassName == this.getClass.getName), "expected this test class in the stack trace")
 
-    assertTrue(s"expected a ${classOf[DecodingFailure].getName}", circeException.getCause.isInstanceOf[DecodingFailure])
+    assertTrue(circeException.getCause.isInstanceOf[DecodingFailure], s"expected a ${classOf[DecodingFailure].getName}")
   }
 
-  @Test(expected = classOf[CirceException])
+  @Test
   def testFailingRetriesReturnOriginalExceptionInsteadOfFailsafeException(): Unit = {
-    withRetries(context = "testFailingRetriesReturnOriginalExceptionInsteadOfFailsafeException") {
-      throw new CirceException("expected", cause = null)
-    }
+    assertThrows(classOf[CirceException], () =>
+      withRetries(context = "testFailingRetriesReturnOriginalExceptionInsteadOfFailsafeException") {
+        throw new CirceException("expected", cause = null)
+      })
   }
 }

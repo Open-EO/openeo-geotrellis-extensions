@@ -1,8 +1,8 @@
 package org.openeo.geotrelliscommon
 
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
-import org.junit.Test
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 import org.slf4j.{Logger, LoggerFactory}
 
 object GeoTiffRasterSourceTest {

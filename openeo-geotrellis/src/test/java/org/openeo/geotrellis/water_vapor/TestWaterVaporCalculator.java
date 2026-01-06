@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.water_vapor;
 
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.openeo.geotrellis.icor.CorrectionDescriptor;
 import org.openeo.geotrellis.icor.ICorCorrectionDescriptor;
 import org.openeo.geotrellis.icor.LookupTable;
@@ -17,8 +17,8 @@ import geotrellis.raster.FloatCells;
 import geotrellis.raster.FloatConstantTile;
 import scala.Tuple2;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.Arrays;
 
@@ -50,7 +50,7 @@ public class TestWaterVaporCalculator {
 		return value;//*Math.PI/(Math.cos(sza*Math.PI/180.)*cd.getIrradiance(band));
 	}
 	
-	@BeforeClass
+	@BeforeAll
     public static void setup_fields() throws Exception {
 		lut=LookupTableIO.readLUT(cd.getLookupTableURL());
     }
@@ -63,37 +63,37 @@ public class TestWaterVaporCalculator {
 
 		// forward: regular in-domain
 		double r=wvc.interpolate(1.8, x, y);
-		assertEquals(r,6.2,1.e-3);
+		assertEquals(6.2, r,1.e-3);
 
 		// forward: outside on the left
 		r=wvc.interpolate(0.25, x, y);
-		assertEquals(r,-2.,1.e-3);
+		assertEquals(-2., r,1.e-3);
 
 		// forward: outside on the right
 		r=wvc.interpolate(5., x, y);
-		assertEquals(r,8.5,1.e-3);
+		assertEquals(8.5, r,1.e-3);
 
 		// reverse: regular in-domain
 		r=wvc.interpolate(4.8, z, x);
-		assertEquals(r,1.8,1.e-3);
+		assertEquals(1.8, r,1.e-3);
 
 		// reverse: outside on the left
 		r=wvc.interpolate(11., z, x);
-		assertEquals(r,0.25,1.e-3);
+		assertEquals(0.25, r,1.e-3);
 
 		// reverse: outside on the right
 		r=wvc.interpolate(2.5, z, x);
-		assertEquals(r,5.,1.e-3);
+		assertEquals(5., r,1.e-3);
 	}
 
 	@Test
 	public void testPrepare() throws Exception {
 		wvc.prepare(cd, "B09", "B8A", "B11");
-		assertEquals(wvc.wvBand,9);
-		assertEquals(wvc.r0Band,8);
-		assertEquals(wvc.r1Band,11);
-		assertArrayEquals(wvc.refWeights,new double[]{0.269641,0.032007},1.e-4);
-		assertArrayEquals(wvc.wv,new double[]{1.,2.,3.,3.5},1.e-4);
+		assertEquals(9, wvc.wvBand);
+		assertEquals(8, wvc.r0Band);
+		assertEquals(11, wvc.r1Band);
+		assertArrayEquals(new double[]{0.269641,0.032007}, wvc.refWeights,1.e-4);
+		assertArrayEquals(new double[]{1.,2.,3.,3.5}, wvc.wv,1.e-4);
 	}
 
 	@Test

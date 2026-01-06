@@ -18,7 +18,8 @@ import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.{CustomMatcher, Matcher}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, fail}
 import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.{AfterAll, BeforeAll, BeforeEach, Disabled, Test}
+import org.junit.jupiter.api._
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.mockito.ArgumentMatchers.{any, eq => eqTo}
@@ -26,7 +27,7 @@ import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ScopedMetadataTracker, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ScopedMetadataTracker, SparseSpaceOnlyPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
 import java.net.URL
@@ -39,11 +40,12 @@ import java.util.Collections
 import java.util.concurrent.atomic.AtomicLong
 import java.util.stream.{Stream => JStream}
 import java.util.zip.Deflater.BEST_COMPRESSION
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.io.Source
 
 object PyramidFactoryTest {
   private implicit var sc: SparkContext = _
+
   private def testClassScopeMetadataTracker = ScopedMetadataTracker(scope = getClass.getName)
 
   implicit class WithRootCause(e: Throwable) {
@@ -60,8 +62,8 @@ object PyramidFactoryTest {
       catalogApi.dateTimes(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
 
     override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
-                              to: ZonedDateTime, accessToken: String,
-                              queryProperties: util.Map[String, util.Map[String, Any]]):
+                        to: ZonedDateTime, accessToken: String,
+                        queryProperties: util.Map[String, util.Map[String, Any]]):
     Map[String, Feature[Geometry, FeatureData]] = {
       searchCounter.incrementAndGet()
       catalogApi.search(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
@@ -134,7 +136,9 @@ object PyramidFactoryTest {
   )
 }
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
 class PyramidFactoryTest {
+
   import PyramidFactoryTest._
 
   private val clientId = Utils.clientId
@@ -263,7 +267,7 @@ class PyramidFactoryTest {
       Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
       from_datetime = ISO_OFFSET_DATE_TIME format date,
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
-      band_names = Seq("B08", "B04",  "SCL").asJava,
+      band_names = Seq("B08", "B04", "SCL").asJava,
       metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
       dataCubeParameters,
       correlationId = testClassScopeMetadataTracker.scope,
@@ -334,7 +338,7 @@ class PyramidFactoryTest {
 
     test(baseLayer)
 
-    val raster @ Raster(multibandTile, extent) = baseLayer
+    val raster@Raster(multibandTile, extent) = baseLayer
       .toSpatial()
       .crop(boundingBox.reproject(baseLayer.metadata.crs).extent)
       .stitch()
@@ -372,7 +376,7 @@ class PyramidFactoryTest {
 
       val endpoint = "https://services.sentinel-hub.com"
       val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "S2L2A", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10,10))
+        new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10, 10))
 
       val dataCubeParameters = new DataCubeParameters()
       dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
@@ -391,14 +395,16 @@ class PyramidFactoryTest {
       assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
 
       val spatialLayer = layer
-        .toSpatial().withContext{_.map(t=> {
-          assert(t._1.row>=0 && t._1.col>=0)
-          t
-        } )}
+        .toSpatial().withContext {
+          _.map(t => {
+            assert(t._1.row >= 0 && t._1.col >= 0)
+            t
+          })
+        }
         .crop(utmBoundingBox.extent)
         .cache()
 
-      val actual @ Raster(multibandTile, extent) = spatialLayer.stitch()
+      val actual@Raster(multibandTile, extent) = spatialLayer.stitch()
 
       val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/utm.tif")
@@ -456,24 +462,24 @@ class PyramidFactoryTest {
 
     assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
 
-    val sentinel1Layer: MultibandTileLayerRDD[SpaceTimeKey] = sparseSentinel1Layer(utmPolygons,utmCrs, date)
+    val sentinel1Layer: MultibandTileLayerRDD[SpaceTimeKey] = sparseSentinel1Layer(utmPolygons, utmCrs, date)
     assertTrue(sentinel1Layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
     val s2Part = layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
     val s1Part = sentinel1Layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
 
     print(s2Part)
     print(s1Part)
-    assertEquals(s2Part.bounds,s1Part.bounds)
+    assertEquals(s2Part.bounds, s1Part.bounds)
     assertTrue(s2Part.index.isInstanceOf[SparseSpaceOnlyPartitioner])
     assertTrue(s1Part.index.isInstanceOf[SparseSpaceOnlyPartitioner])
 
     val spatialLayer = layer
       .toSpatial().withContext {
-      _.map(t => {
-        assert(t._1.row >= 0 && t._1.col >= 0)
-        t
-      })
-    }
+        _.map(t => {
+          assert(t._1.row >= 0 && t._1.col >= 0)
+          t
+        })
+      }
       .cache()
 
     val utmPolygonsExtent = utmPolygons.toSeq.extent
@@ -528,11 +534,11 @@ class PyramidFactoryTest {
 
     val spatialLayer = layer
       .toSpatial().withContext {
-      _.map(t => {
-        assert(t._1.row >= 0 && t._1.col >= 0)
-        t
-      })
-    }
+        _.map(t => {
+          assert(t._1.row >= 0 && t._1.col >= 0)
+          t
+        })
+      }
       .cache()
 
     val utmPolygonsExtent = utmPolygons.toSeq.extent
@@ -559,7 +565,7 @@ class PyramidFactoryTest {
       .crop(boundingBox.extent)
       .cache()
 
-    val actual @ Raster(multibandTile, extent) = spatialLayer.stitch()
+    val actual@Raster(multibandTile, extent) = spatialLayer.stitch()
 
     val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
     tif.write(s"/tmp/polarization.tif")
@@ -567,7 +573,7 @@ class PyramidFactoryTest {
     assertEquals(expected, actual)
   }
 
-  private def sparseSentinel1Layer(polygon: Array[MultiPolygon], crs:CRS, date: ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] = {
+  private def sparseSentinel1Layer(polygon: Array[MultiPolygon], crs: CRS, date: ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] = {
     val endpoint = "https://services.sentinel-hub.com"
     val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10, 10),
@@ -763,6 +769,7 @@ class PyramidFactoryTest {
     // TODO: add assertions
   }
 
+
   @ParameterizedTest
   @MethodSource(Array("testFilterByTileIdsParams"))
   def testFilterByTileIds(metadata_properties: util.Map[String, util.Map[String, Any]], expectedTileIds: Set[String],
@@ -859,7 +866,7 @@ class PyramidFactoryTest {
       val spatialLayer = layer
         .toSpatial(from.toLocalDate.atStartOfDay(ZoneOffset.UTC))
 
-      val raster @ Raster(multibandTile, extent) = spatialLayer
+      val raster@Raster(multibandTile, extent) = spatialLayer
         .crop(boundingBox.extent)
         .stitch()
 
@@ -916,7 +923,7 @@ class PyramidFactoryTest {
         .crop(boundingBox.reproject(baseLayer.metadata.crs))
         .cache()
 
-      val raster @ Raster(multibandTile, extent) = spatialLayer.stitch()
+      val raster@Raster(multibandTile, extent) = spatialLayer.stitch()
 
       val tif = MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/testCatalogApiLimitsProcessApiCalls_collectionId_$collectionId.tif")
@@ -1127,7 +1134,7 @@ class PyramidFactoryTest {
     val catalogApiSpy = spy(new DefaultCatalogApi(endpoint))
 
     val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", catalogApiSpy,
-      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32, maxSpatialResolution = CellSize(0.0001,0.0001))
+      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32, maxSpatialResolution = CellSize(0.0001, 0.0001))
 
     // should fail while querying the Catalog API so no RDD evaluation is necessary/desired
     pyramidFactory.datacube_seq(

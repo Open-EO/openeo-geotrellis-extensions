@@ -1,7 +1,5 @@
 package org.openeo.geotrellisaccumulo
 
-import org.junit.{Assert, Test}
-
 
 class PackageTest {
 

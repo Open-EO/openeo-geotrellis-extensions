@@ -1,11 +1,10 @@
 import java.time.{LocalDate, ZoneId}
-
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.store.index.zcurve.ZSpaceTimeKeyIndex
-import org.junit.{Ignore, Test}
+import org.junit.jupiter.api.{Disabled, Test}
 
-@Ignore
+@Disabled
 class Z3Test {
 
   private val start = SpaceTimeKey(0, 0, LocalDate.of(2015, 1, 1).atStartOfDay(ZoneId.systemDefault()))

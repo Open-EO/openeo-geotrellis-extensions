@@ -1,7 +1,29 @@
 package org.openeo.geotrellis.icor;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import geotrellis.layer.*;
+import geotrellis.proj4.CRS;
+import geotrellis.raster.ArrayMultibandTile;
+import geotrellis.raster.MultibandTile;
+import geotrellis.raster.Tile;
+import geotrellis.raster.TileLayout;
+import geotrellis.raster.geotiff.GeoTiffRasterSource;
+import geotrellis.raster.stitch.Stitcher.MultibandTileStitcher$;
+import geotrellis.spark.ContextRDD;
+import geotrellis.spark.testkit.TileLayerRDDBuilders$;
+import geotrellis.vector.Extent;
+import org.apache.spark.SparkConf;
+import org.apache.spark.SparkContext;
+import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaPairRDD$;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.rdd.RDD;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
+import org.openeo.geotrellis.smac.SMACCorrection;
+import scala.Option;
+import scala.Tuple2;
 
 import java.io.InputStream;
 import java.net.URISyntaxException;
@@ -10,32 +32,13 @@ import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.Map.Entry;
 
-import org.apache.spark.SparkConf;
-import org.apache.spark.SparkContext;
-import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaPairRDD$;
-import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.rdd.RDD;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.openeo.geotrellis.smac.SMACCorrection;
-
-import geotrellis.layer.*;
-import geotrellis.proj4.*;
-import geotrellis.raster.*;
-import geotrellis.raster.geotiff.GeoTiffRasterSource;
-import geotrellis.raster.stitch.Stitcher.MultibandTileStitcher$;
-import geotrellis.spark.ContextRDD;
-import geotrellis.spark.testkit.TileLayerRDDBuilders$;
-import geotrellis.vector.Extent;
-import scala.Option;
-import scala.Tuple2;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 
 public class TestAtmosphericCorrectionProcess {
 
-    @BeforeClass
+    @BeforeAll
     public static void sparkContext() {
         SparkConf conf = new SparkConf();
         conf.setAppName("OpenEOTest");
@@ -45,7 +48,7 @@ public class TestAtmosphericCorrectionProcess {
         SparkContext.getOrCreate(conf);
     }
 
-    @AfterClass
+    @AfterAll
     public static void shutDownSparkContext() {
         SparkContext.getOrCreate().stop();
     }
@@ -187,9 +190,10 @@ public class TestAtmosphericCorrectionProcess {
     	icorS2Params.add(Double.NaN);
     	icorS2Params.add(Double.NaN);
     	icorS2Params.add(Double.NaN);
-    	icorS2Params.add(new Double(0.33));
+    	icorS2Params.add(0.33d);
     }
 
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
     @Test
     public void testICORWithSentinel2() throws URISyntaxException {
     	String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
@@ -315,11 +319,11 @@ public class TestAtmosphericCorrectionProcess {
     	smacS2Params.add(Double.NaN);
     	smacS2Params.add(Double.NaN);
     	smacS2Params.add(Double.NaN);
-    	smacS2Params.add(new Double(0.33));
+    	smacS2Params.add(0.33d);
     }
-    
-    
-	@Test
+
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
+    @Test
 	public void testSMACWithSentinel2() throws URISyntaxException {
 		String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
 	
@@ -430,9 +434,10 @@ public class TestAtmosphericCorrectionProcess {
     	icorL8Params.add(Double.NaN);
     	icorL8Params.add(Double.NaN);
     	icorL8Params.add(Double.NaN);
-    	icorL8Params.add(new Double(0.33));
+    	icorL8Params.add(0.33d);
     }
 
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
     @Test
     public void testICORWithLandsat8() throws URISyntaxException {
     	String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
@@ -533,10 +538,11 @@ public class TestAtmosphericCorrectionProcess {
     	smacL8Params.add(Double.NaN);
     	smacL8Params.add(Double.NaN);
     	smacL8Params.add(Double.NaN);
-    	smacL8Params.add(new Double(0.33));
+    	smacL8Params.add(0.33d);
     }
-    
-	@Test
+
+    @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
+    @Test
 	public void testSMACWithLandsat8() throws URISyntaxException {
 		String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
 	

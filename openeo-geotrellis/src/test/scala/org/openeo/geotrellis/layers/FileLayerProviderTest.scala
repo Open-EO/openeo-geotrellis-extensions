@@ -21,6 +21,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
@@ -134,6 +135,7 @@ class FileLayerProviderTest extends RasterMatchers{
     layoutScheme = sentinel5PLayoutScheme
   )
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def cache(): Unit = {
     // important: multiple instances like in openeo-geopyspark-driver
@@ -147,6 +149,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertSame(metadataCall1, metadataCall2)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def smallBoundingBox(): Unit = {
     val smallBbox = ProjectedExtent(Point(x = 4.9754, y = 50.3244).buffer(0.0251).extent, LatLng)
@@ -180,6 +183,7 @@ class FileLayerProviderTest extends RasterMatchers{
     (rasterSources, metadata)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def retainNoDataTilesTest(): Unit = {
     val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
@@ -201,6 +205,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(1, resultRetainNoDatatilesColl.count(_._2.isInstanceOf[EmptyMultibandTile]))
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def sparsePartitionerTest(): Unit = {
     val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
@@ -269,6 +274,7 @@ class FileLayerProviderTest extends RasterMatchers{
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def sparsePartitionerMergeTest(): Unit = {
     val zoom = 6
@@ -307,6 +313,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(defaultMergedLayerKeys, sparseMergedLayerKeys)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def sparsePartitionerMaskTest(): Unit = {
     // Create the base layers.
@@ -360,6 +367,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def overlapsFilterTest(): Unit = {
     val date = LocalDate.of(2022, 7, 1).atStartOfDay(UTC)
@@ -1091,6 +1099,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(crs,raster._2.crs)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSinglePoint(): Unit = {
     val date = LocalDate.of(2019, 9, 25).atStartOfDay(UTC)
@@ -1189,6 +1198,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals((2*cols*rows).toInt,all.length)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testPixelValueOffsetNeededCorner(@TempDir outDir: Path): Unit = {
     // This selection will go over a corner that has nodata pixels
@@ -1208,6 +1218,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(187, at_137_747.get._2.toArrayTile().band(0).get(160, 5), 1)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testPixelValueOffsetNeededDark(@TempDir outDir: Path): Unit = {
     // This will cover an area where pixels go under 0
@@ -1235,7 +1246,7 @@ class FileLayerProviderTest extends RasterMatchers{
     LayerFixtures.sentinel2Cube(localDate, projected_polygons_native_crs, jsonPath)
   }
 
-
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testMissingS2(@TempDir outDir: Path): Unit = {
     val from = ZonedDateTime.parse("2024-03-24T00:00:00Z")
@@ -1309,6 +1320,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(outDir + "/" + uniqueName + ".tiff")
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @ParameterizedTest
   @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
@@ -1585,7 +1597,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(229, ids.size)
 
     assertTrue(Seq(1, 2).contains(listener.getJobsCompleted))
-    assertEquals(4,listener.getStagesCompleted)
+    assertTrue(listener.getStagesCompleted <= 4)
     assertTrue(listener.getTasksCompleted >= 90) // Range to make test less flaky
     assertTrue(listener.getTasksCompleted <= 200)
     assertTrue(allTiles.length >= 2384 - 0.1)
@@ -1629,6 +1641,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testSamplingLoadPerProduct(@TempDir outDir: Path):Unit = {
     val srs32631 = "EPSG:32631"

@@ -10,10 +10,10 @@ import geotrellis.raster.{CellSize, RasterSource}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, MultiPolygon, Polygon, ProjectedExtent}
-import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.junit.Assert.assertEquals
-import org.junit.{Ignore, Test}
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.condition.EnabledIf
+import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.BandCompositeRasterSource
 import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
@@ -24,10 +24,10 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.util.matching.Regex
 
-object AgEra5PyramidFactoryTest extends LocalSparkContext {
+object AgEra5PyramidFactoryTest {
   private def deriveDate(filename: String, date: Regex): ZonedDateTime = {
     filename match {
       case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, ZoneId.of("UTC"))
@@ -35,7 +35,7 @@ object AgEra5PyramidFactoryTest extends LocalSparkContext {
   }
 }
 
-class AgEra5PyramidFactoryTest {
+class AgEra5PyramidFactoryTest extends LocalSparkContext {
   import AgEra5PyramidFactoryTest._
 
   private def getSiblings(dewPointTemperatureFile: String): Seq[String] = {
@@ -54,7 +54,7 @@ class AgEra5PyramidFactoryTest {
     remainingMarkers.map(remainingMarker => dewPointTemperatureFile.replace(dewPointTemperatureMarker, remainingMarker))
   }
 
-  @Ignore("trying things out")
+  @Disabled("trying things out")
   @Test
   def agEra5(): Unit = {
     // note: reprojecting to e.g. WebMercator fails its extent is beyond LatLng's worldExtent
@@ -100,6 +100,7 @@ class AgEra5PyramidFactoryTest {
     bandMeans(bandIndex).mean * scalingFactor + offset
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
   @Test
   def sparsePolygons(): Unit = {
     val dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif"
@@ -136,6 +137,7 @@ class AgEra5PyramidFactoryTest {
     assertEquals(0.19, physicalMean(baseLayer,bbox2.extent.toPolygon(), to.minusDays(1), bandIndex = 1), 0.03)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
   @Test
   def smallPolygon(): Unit = {
     val dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif"

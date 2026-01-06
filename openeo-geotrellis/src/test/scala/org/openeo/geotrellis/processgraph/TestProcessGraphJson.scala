@@ -1,16 +1,20 @@
 package org.openeo.geotrellis.processgraph
 
-import org.junit.Test
-import org.junit.jupiter.api.Disabled
+import org.junit.jupiter.api.{Disabled, Test}
 
+@Disabled("use locally for development")
 class TestProcessGraphJson {
 
   @Test
-  @Disabled
   def loadSyntheticData(): Unit = {
-    // TODO fix tests
-    //    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_synthetic_data.json")
+    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_synthetic_data.json")
   }
+
+  @Test
+  def loadSentinel5PData(): Unit = {
+    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_sentinel_5p_data.json")
+  }
+
 
   @Test
   @Disabled
