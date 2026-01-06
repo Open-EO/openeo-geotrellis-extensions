@@ -411,8 +411,7 @@ package object geotiff {
   private def generateOverviews(formatOptions: GTiffOptions, croppedExtent: Extent, tileLayout: TileLayout, tile: Tile, compressor: Compressor, overviewReductions: List[Int]): List[Array[Byte]] = {
     var overviewBytes = List[Array[Byte]]()
 
-    val usableReductions = overviewReductions.filter(r => tileLayout.tileCols >= r && tileLayout.tileRows >= r)
-    if (formatOptions.overviews == "OFF" || usableReductions.isEmpty) {
+    if (formatOptions.overviews == "OFF" || overviewReductions.isEmpty) {
       // do nothing
     } else {
       val resampleMethod = getOverviewResampleMethod(formatOptions)
@@ -423,9 +422,9 @@ package object geotiff {
         previousTile = tile.resample(croppedExtent, tileLayout.tileCols / 2, tileLayout.tileRows / 2, resampleMethod)
         reductionFactor *= 2
       }
-      while (usableReductions.last >= reductionFactor) {
+      while (overviewReductions.last >= reductionFactor) {
         val resampledTile = previousTile.resample(croppedExtent, tileLayout.tileCols / reductionFactor, tileLayout.tileRows / reductionFactor, resampleMethod)
-        if (usableReductions.contains(reductionFactor)) {
+        if (overviewReductions.contains(reductionFactor)) {
           overviewBytes = overviewBytes :+ {
             val croppedBytes = raster.CroppedTile(resampledTile, raster.GridBounds(0, 0, tileLayout.tileCols / reductionFactor - 1, tileLayout.tileRows / reductionFactor - 1)).toBytes()
             compressor.compress(croppedBytes, 0)
@@ -1170,10 +1169,10 @@ package object geotiff {
         overview = overview.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
         reductionFactor *= 2
       }
-      val usableReductions: List[Int] = defaultOverviewReductions(fo, new TileLayout(geotiff.tile.cols, geotiff.tile.rows,tileCols,tileRows))
-      while (usableReductions.nonEmpty && usableReductions.last >= reductionFactor) {
+      val overviewReductions: List[Int] = defaultOverviewReductions(fo, new TileLayout(geotiff.tile.cols, geotiff.tile.rows,tileCols,tileRows))
+      while (overviewReductions.nonEmpty && overviewReductions.last >= reductionFactor) {
         overview = overview.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
-        if (usableReductions.contains(reductionFactor)) {
+        if (overviewReductions.contains(reductionFactor)) {
           overviews = overviews :+ overview
         }
         reductionFactor *= 2
