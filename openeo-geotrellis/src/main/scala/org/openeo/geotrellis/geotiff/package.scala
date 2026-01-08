@@ -147,7 +147,7 @@ package object geotiff {
                                                zLevel: Int = 6,
                                                cropBounds: Option[Extent] = Option.empty[Extent],
                                                formatOptions: GTiffOptions = new GTiffOptions,
-                                               overviewReductions: (GTiffOptions, TileLayout) => List[Int] = defaultOverviewReductions
+                                               overviewReductions: (GTiffOptions, Int, Int, Int, Int) => List[Int] = defaultOverviewReductions
                                               ): JList[(String, String, Extent)] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
     formatOptions.assertNoConflicts()
@@ -230,9 +230,9 @@ package object geotiff {
     }
   }
 
-  private def defaultOverviewReductions(options: GTiffOptions, tileLayout: TileLayout): List[Int] = {
+  private def defaultOverviewReductions(options: GTiffOptions, totalCols: Int, totalRows: Int, tileCols: Int, tileRows: Int): List[Int] = {
     val overviewLevels: Int = {
-      val pixels = math.max(tileLayout.layoutRows, tileLayout.layoutCols).toDouble
+      val pixels = math.max(totalCols, totalRows).toDouble
       val blocks = pixels / 1024
       math.ceil(math.log(blocks) / math.log(2)).toInt
     }
@@ -242,7 +242,7 @@ package object geotiff {
       case "ALL" => 0
     }
     (start until overviewLevels).map { l => math.pow(2, l + 1).toInt }.toList.filter(
-      r => (tileLayout.tileCols / r) > 16 && (tileLayout.tileRows / r) > 16
+      r => (tileCols / r) > 16 && (tileRows / r) > 16
     )
   }
 
@@ -280,7 +280,7 @@ package object geotiff {
                                        zLevel: Int = 6,
                                        cropBounds: Option[Extent] = Option.empty[Extent],
                                        formatOptions: GTiffOptions = new GTiffOptions,
-                                       overviewReductionsFunction: (GTiffOptions, TileLayout) => List[Int] = defaultOverviewReductions,
+                                       overviewReductionsFunction: (GTiffOptions, Int, Int, Int, Int) => List[Int] = defaultOverviewReductions,
                                       ): JList[Item] = {
     formatOptions.assertNoConflicts()
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd, cropBounds)
@@ -324,7 +324,7 @@ package object geotiff {
             // ':' is not valid in a Windows filename
             DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
           }
-          val overviews = generateOverviews(formatOptions, croppedExtent, tileLayout, tile, theCompressor, overviewReductionsFunction(formatOptions, new TileLayout(gridBounds.width, gridBounds.height, tileLayout.tileCols, tileLayout.tileRows)))
+          val overviews = generateOverviews(formatOptions, croppedExtent, tileLayout, tile, theCompressor, overviewReductionsFunction(formatOptions, gridBounds.width, gridBounds.height, tileLayout.tileCols, tileLayout.tileRows))
 
           val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
           val filename = formatOptions.filepathPerBand match {
@@ -347,7 +347,7 @@ package object geotiff {
 
       val overviewTiles = if (formatOptions.overviews.toUpperCase == "ALL" || formatOptions.overviews.toUpperCase == "AUTO") {
         logger.info(s"Add overviews for ${filename}, with resample method ${getOverviewResampleMethod(formatOptions)}")
-        val decimationFactors = overviewReductionsFunction(formatOptions, new TileLayout(gridBounds.width, gridBounds.height, tileLayout.tileRows, tileLayout.tileCols))
+        val decimationFactors = overviewReductionsFunction(formatOptions, gridBounds.width, gridBounds.height, tileLayout.tileRows, tileLayout.tileCols)
 
         decimationFactors.indices.toList
           .map(i => {
@@ -1169,7 +1169,7 @@ package object geotiff {
         overview = overview.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
         reductionFactor *= 2
       }
-      val overviewReductions: List[Int] = defaultOverviewReductions(fo, new TileLayout(geotiff.tile.cols, geotiff.tile.rows,tileCols,tileRows))
+      val overviewReductions: List[Int] = defaultOverviewReductions(fo, geotiff.tile.cols, geotiff.tile.rows,tileCols,tileRows)
       while (overviewReductions.nonEmpty && overviewReductions.last >= reductionFactor) {
         overview = overview.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
         if (overviewReductions.contains(reductionFactor)) {

@@ -500,7 +500,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     def testValues(resampleMethod: String, expectedValues0:Array[Int], expectedValues1:Array[Int],expectedValue2:Int) = {
       options.setResampleMethod(resampleMethod)
-      def reductionsForTest(options: GTiffOptions, tileLayout: TileLayout): List[Int] = {
+      def reductionsForTest(options: GTiffOptions, totalCols: Int, totalRows: Int, tileCols: Int, tileRows: Int): List[Int] = {
         List(4, 8, 16)
       }
       saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = reductionsForTest)
@@ -540,7 +540,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val options = new GTiffOptions()
     options.setOverview("ALL")
-    def testReductionFunction(options: GTiffOptions, tileLayout: TileLayout): List[Int] = {
+    def testReductionFunction(options: GTiffOptions, totalCols: Int, totalRows: Int, tileCols: Int, tileRows: Int): List[Int] = {
       List(4,8,16)
     }
     saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = testReductionFunction)
