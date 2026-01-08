@@ -1807,10 +1807,10 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
   private def userConstantFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
     val constantValue = arguments.get("x")
-    constantFunction(constantValue)
+    constantFunction(constantValue.asInstanceOf[Number])
   }
 
-  private def constantFunction(constantValue: Object) = {
+  private def constantFunction(constantValue: java.lang.Number) = {
     val (value, dataType) = constantValue match {
       case x: lang.Short => (x, ShortConstantNoDataCellType)
       case x: Integer => (x, IntConstantNoDataCellType)
