@@ -948,6 +948,7 @@ object NetCDFRDDWriter {
       val (histogram,size) = bandHistograms(bandName)
       (histogram.merge(tile.histogramDouble()),size+tile.size)
     } else (StreamingHistogram(tile.histogramDouble()),tile.size)
+    logger.info(s"added statistics $result for band $bandName")
     bandHistograms.update(bandName,result)
   }
 
@@ -969,6 +970,7 @@ object NetCDFRDDWriter {
       })
       rasterBands.put("statistics",bandStats)
       rasterBands.put("name",bandNames.get(bandId))
+      logger.info(s"added statistics ${rasterBands.get("statistics")} for band ${rasterBands.get("name")}")
       stats.add(rasterBands)
     }
     stats
