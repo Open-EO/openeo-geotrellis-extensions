@@ -60,6 +60,28 @@ private class LayoutTileSourceFixed[K: SpatialComponent](
 
 }
 
+final case class RasterRegionContext(
+  requiredKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])],
+  regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))],
+  metadata: TileLayerMetadata[SpaceTimeKey],
+  maskStrategy: Option[CloudFilterStrategy],
+  partitioner: Option[SpacePartitioner[SpaceTimeKey]],
+  sources: Seq[(RasterSource, Feature)]
+) {
+  def unpersist(): Unit =
+    requiredKeys.unpersist(false)
+
+  // Py4J-friendly getters.
+  def hasMaskStrategy: Boolean = maskStrategy.isDefined
+  def getMaskStrategy: CloudFilterStrategy = maskStrategy.orNull
+  def hasPartitioner: Boolean = partitioner.isDefined
+  def getPartitioner: SpacePartitioner[SpaceTimeKey] = partitioner.orNull
+  def getSourcesAsJavaList: java.util.List[(RasterSource, Feature)] = {
+    sources.asJava
+  }
+}
+
+
 object FileLayerProvider {
 
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
@@ -1118,40 +1140,98 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     selectedLayoutScheme
   }
 
-
-
-  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon], polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val readKeysToRasterSourcesResult:
-      (
-        RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])],  // RequiredSpaceTimeKeys
-        TileLayerMetadata[SpaceTimeKey],  // metadata
-        Option[CloudFilterStrategy],  // maskStrategy
-        Seq[(RasterSource, Feature)]  // sources
-      ) = readKeysToRasterSources(from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams)
-
-    val requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = readKeysToRasterSourcesResult._1.persist()
-    requiredSpacetimeKeys.setName(s"FileLayerProvider_keys_${this.openSearchCollectionId}_${from.toString}_${to.toString}")
-
+  def readMultibandTileLayer(
+    from: ZonedDateTime,
+    to: ZonedDateTime,
+    boundingBox: ProjectedExtent,
+    polygons: Array[MultiPolygon],
+    polygons_crs: CRS,
+    zoom: Int,
+    sc: SparkContext,
+    datacubeParams: Option[DataCubeParameters]
+  ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val rasterRegionContext = prepareRasterRegions(
+      from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
+    )
     try {
-      val metadata = readKeysToRasterSourcesResult._2
-      val partitioner: Option[SpacePartitioner[SpaceTimeKey]] =
-        createSpaceTimePartitioner(metadata.bounds.get.toSpatial, datacubeParams, requiredSpacetimeKeys.keys, metadata, readKeysToRasterSourcesResult._4)
-
-      val regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] =
-        convertToRasterRegions(requiredSpacetimeKeys, metadata.layout, datacubeParams)
-
-      regions.name = s"FileCollection-${openSearchCollectionId}"
-
-      val cube: MultibandTileLayerRDD[SpaceTimeKey] =
-        loadRasterRegionsToTiles(regions, metadata, readKeysToRasterSourcesResult._3, partitioner, datacubeParams, readKeysToRasterSourcesResult._4)
-
-      logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
-
+      val cube = loadRasterTiles(rasterRegionContext, datacubeParams)
+      logger.info(
+        s"Created cube for $openSearchCollectionId with metadata ${cube.metadata} " +
+          s"and partitioner ${cube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}"
+      )
       cube
-    }finally{
-      requiredSpacetimeKeys.unpersist(false)
+    } finally {
+      rasterRegionContext.unpersist()
     }
   }
+
+  def prepareRasterRegions(
+    from: ZonedDateTime,
+    to: ZonedDateTime,
+    boundingBox: ProjectedExtent,
+    polygons: Array[MultiPolygon],
+    polygons_crs: CRS,
+    zoom: Int,
+    sc: SparkContext,
+    datacubeParams: Option[DataCubeParameters]
+  ): RasterRegionContext = {
+
+    val (keys, metadata, maskStrategy, sources) =
+      readKeysToRasterSources(
+        from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
+      )
+
+    val requiredKeys = keys.persist()
+    requiredKeys.setName(
+      s"FileLayerProvider_keys_${openSearchCollectionId}_${from}_${to}"
+    )
+
+    try {
+      val partitioner =
+        createSpaceTimePartitioner(
+          metadata.bounds.get.toSpatial,
+          datacubeParams,
+          requiredKeys.keys,
+          metadata,
+          sources
+        )
+
+      val regions =
+        convertToRasterRegions(
+          requiredKeys,
+          metadata.layout,
+          datacubeParams
+        )
+
+      regions.setName(s"FileCollection-$openSearchCollectionId")
+
+      RasterRegionContext(
+        requiredKeys = requiredKeys,
+        regions = regions,
+        metadata = metadata,
+        maskStrategy = maskStrategy,
+        partitioner = partitioner,
+        sources = sources
+      )
+    } catch {
+      case e: Throwable =>
+        requiredKeys.unpersist(false)
+        throw e
+    }
+  }
+
+  def loadRasterTiles(
+     prepared: RasterRegionContext,
+     datacubeParams: Option[DataCubeParameters]
+   ): MultibandTileLayerRDD[SpaceTimeKey] =
+    loadRasterRegionsToTiles(
+      prepared.regions,
+      prepared.metadata,
+      prepared.maskStrategy,
+      prepared.partitioner,
+      datacubeParams,
+      prepared.sources
+    )
 
   private def convertToRasterRegions(
     requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])],
