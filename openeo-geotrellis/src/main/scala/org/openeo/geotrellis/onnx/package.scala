@@ -138,6 +138,7 @@ package object onnx {
 
     val inputType = inputInfo.`type`
     val outputType = outputInfo.`type`
+    logger.info(s"input type of the model $inputType, output type of the model $outputType")
     val inputArray = reshape(inputType, tile, inputShape)
     val tensor = OnnxTensor.createTensor(env, inputArray)
     val inputs = java.util.Map.of(inputName, tensor)
