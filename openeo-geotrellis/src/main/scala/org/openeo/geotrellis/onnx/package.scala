@@ -2,11 +2,14 @@ package org.openeo.geotrellis
 
 import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, OrtUtil, TensorInfo}
 import geotrellis.raster.{ByteArrayTile, ByteCells, DoubleArrayTile, DoubleCells, FloatArrayTile, FloatCells, IntArrayTile, IntCells, MultibandTile, ShortArrayTile, ShortCells}
+import org.slf4j.LoggerFactory
 
 package object onnx {
+  private val logger = LoggerFactory.getLogger(getClass)
 
   private def flattenNestedArray(multiArray: Array[_], outputShape: Array[Long], onnxType:OnnxJavaType): MultibandTile = {
     val shapeDimension = outputShape.length
+    logger.info(s"ONNX: flatten array from shape ${outputShape.mkString("(", ", ", ")")}")
     onnxType match {
       // TODO check if the multiArray contains the right type (same as the onnx type) and throw clear error if not.
       case OnnxJavaType.FLOAT =>
@@ -112,6 +115,7 @@ package object onnx {
   }
 
   def predictOnnx(tile: MultibandTile, session: OrtSession): MultibandTile = {
+    logger.info("ONNX: start predictOnnx")
     val bandCount = tile.bandCount
     val env = OrtEnvironment.getEnvironment()
     val inputNames = session.getInputNames

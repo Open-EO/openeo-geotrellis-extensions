@@ -1522,6 +1522,7 @@ class OpenEOProcesses extends Serializable {
   def predictONNXGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
     val env = OrtEnvironment.getEnvironment()
     val modelPath = Paths.get(model)
+    logger.info(s"ONNX: get model from $modelPath")
     val (modelFile, isTemp) = if (Files.exists(modelPath)) {
       (modelPath,false)
     } else {
