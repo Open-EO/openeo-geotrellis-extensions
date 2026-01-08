@@ -83,6 +83,7 @@ package object onnx {
   }
 
   def reshape(inputType:OnnxJavaType, tile:MultibandTile, inputShape:Array[Long]): AnyRef = {
+    logger.info(s"input type of the data is ${tile.cellType}")
     val inputArray = inputType match {
       case OnnxJavaType.FLOAT =>
         if (!tile.cellType.isInstanceOf[FloatCells])
@@ -130,6 +131,7 @@ package object onnx {
     val outputShape = outputInfo.getShape
 
     val errorMessageInput = checkShape(inputShape, tile.cols, tile.rows, Some(bandCount))
+    logger.info(s"number of bands of the data is $bandCount")
     if (errorMessageInput.nonEmpty)
       throw new IllegalArgumentException(s"ONNX: unsupported input shape: $errorMessageInput.")
     val errorMessageOutput = checkShape(outputShape, tile.cols, tile.rows)
