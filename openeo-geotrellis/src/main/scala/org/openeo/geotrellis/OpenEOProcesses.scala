@@ -22,7 +22,6 @@ import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
-import org.apache.commons.io.FileUtils
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
@@ -35,7 +34,6 @@ import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPar
 import org.slf4j.LoggerFactory
 
 import java.io.File
-import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.format.DateTimeFormatter
@@ -1520,20 +1518,10 @@ class OpenEOProcesses extends Serializable {
   }
 
   def predictONNXGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
-    val modelPath = Paths.get(model)
-    logger.info(s"ONNX: get model from $modelPath")
-    val (modelFile, isTemp) = if (Files.exists(modelPath)) {
-      (modelPath.toString,false)
-    } else {
-      val tempFileName = Files.createTempFile(null, ".onnx")
-      FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
-      (tempFileName.toString,true)
-    }
-    val result = ContextRDD(
-      datacube.mapValues(x => onnx.predictOnnx(x,modelFile)),
+    ContextRDD(
+      datacube.mapValues(x => onnx.predictOnnx(x,model)),
       datacube.metadata
     )
-    result
   }
 
 }

@@ -2,7 +2,12 @@ package org.openeo.geotrellis
 
 import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, OrtUtil, TensorInfo}
 import geotrellis.raster.{ByteArrayTile, ByteCells, DoubleArrayTile, DoubleCells, FloatArrayTile, FloatCells, IntArrayTile, IntCells, MultibandTile, ShortArrayTile, ShortCells}
+import org.apache.commons.io.FileUtils
+
+import java.nio.file.{Files, Paths}
 import org.slf4j.LoggerFactory
+
+import java.net.URL
 
 package object onnx {
   private val logger = LoggerFactory.getLogger(getClass)
@@ -116,10 +121,20 @@ package object onnx {
   }
 
   def predictOnnx(tile: MultibandTile, model: String): MultibandTile = {
+    val modelPath = Paths.get(model)
+    logger.info(s"ONNX: get model from $modelPath")
+    val (modelFile, isTemp) = if (Files.exists(modelPath)) {
+      (modelPath,false)
+    } else {
+      val tempFileName = Files.createTempFile(null, ".onnx")
+      logger.info(s"ONNX: copy file from $modelPath to $tempFileName")
+      FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
+      (tempFileName,true)
+    }
     logger.info("ONNX: start predictOnnx")
     val bandCount = tile.bandCount
     val env = OrtEnvironment.getEnvironment()
-    val session = env.createSession(model, new OrtSession.SessionOptions())
+    val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
     logger.info(s"ONNX: created OrtEnvironment")
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
@@ -160,9 +175,11 @@ package object onnx {
     val inputArray = reshape(inputType, tile, inputShape)
     val tensor = OnnxTensor.createTensor(env, inputArray)
     val inputs = java.util.Map.of(inputName, tensor)
-    val results = session.run(inputs)
-    val resultValue = results.get(0).getValue.asInstanceOf[Array[_]]
-    flattenNestedArray(resultValue, outputShape, outputType)
+    val onnxResults = session.run(inputs)
+    val resultValue = onnxResults.get(0).getValue.asInstanceOf[Array[_]]
+    val flattenedResult = flattenNestedArray(resultValue, outputShape, outputType)
+    if (isTemp) Files.delete(modelFile)
+    flattenedResult
   }
 
 }
