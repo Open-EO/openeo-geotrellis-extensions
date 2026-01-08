@@ -1121,86 +1121,110 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
 
   def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon], polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val readKeysToRasterSourcesResult:
+      (
+        RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])],  // RequiredSpaceTimeKeys
+        TileLayerMetadata[SpaceTimeKey],  // metadata
+        Option[CloudFilterStrategy],  // maskStrategy
+        Seq[(RasterSource, Feature)]  // sources
+      ) = readKeysToRasterSources(from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams)
 
-    val readKeysToRasterSourcesResult: (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy], Seq[(RasterSource, Feature)]) = readKeysToRasterSources(from,to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams)
-
-    var maskStrategy: Option[CloudFilterStrategy] = readKeysToRasterSourcesResult._3
-    val metadata = readKeysToRasterSourcesResult._2
     val requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = readKeysToRasterSourcesResult._1.persist()
     requiredSpacetimeKeys.setName(s"FileLayerProvider_keys_${this.openSearchCollectionId}_${from.toString}_${to.toString}")
 
-    try{
+    try {
+      val metadata = readKeysToRasterSourcesResult._2
+      val partitioner: Option[SpacePartitioner[SpaceTimeKey]] =
+        createSpaceTimePartitioner(metadata.bounds.get.toSpatial, datacubeParams, requiredSpacetimeKeys.keys, metadata, readKeysToRasterSourcesResult._4)
 
-      val spatialBounds = metadata.bounds.get.toSpatial
-      val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
-
-      val partitioner: Option[SpacePartitioner[SpaceTimeKey]] = {
-        if(maxKeys>4) {
-          DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
-        }else{
-
-          //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
-          val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
-          val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
-          val dates = readKeysToRasterSourcesResult._4.map(_._2.nominalDate).distinct
-          val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
-          val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
-          Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction,theKeys = Some(allKeys.toArray))))
-        }
-
-      }
-
-      val layoutDefinition = metadata.layout
-      val resample = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) >= 0.0000001 * layoutDefinition.cellSize.resolution
-      val reduction = if (resample) 1 else 5
-      //resampling is still needed in case bounding boxes are not aligned with pixels
-      // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
-      val theResampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
-
-      requiredSpacetimeKeys.sparkContext.setCallSite(s"load_collection: determine raster regions to read resample: ${resample}")
-
-      val regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys
-        .groupBy { case (_, vector.Feature(_, (rasterSource, _))) => rasterSource }
-        .flatMap { case (rasterSource, keyedFeatures) =>
-          val source = if (resample) {
-            //slow path
-            rasterSource.tileToLayout(layoutDefinition, theResampleMethod)
-          } else {
-            //fast path
-            new LayoutTileSourceFixed(rasterSource, layoutDefinition, identity)
-          }
-
-          keyedFeatures
-            .map { case (spaceTimeKey, vector.Feature(_, (rasterSource, _))) =>
-              (spaceTimeKey, (source.rasterRegionForKey(spaceTimeKey.spatialKey), rasterSource.name))
-            }
-            .filter { case (spaceTimeKey, (rasterRegion, sourceName)) =>
-              val canRead = rasterRegion.isDefined
-              if (!canRead) logger.warn(s"no RasterRegion for $spaceTimeKey in $sourceName")
-              canRead
-            }
-            .map { case (spaceTimeKey, (Some(rasterRegion), sourceName)) => (spaceTimeKey, (rasterRegion, sourceName)) }
-        }
+      val regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] =
+        convertToRasterRegions(requiredSpacetimeKeys, metadata.layout, datacubeParams)
 
       regions.name = s"FileCollection-${openSearchCollectionId}"
 
-      val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
+      val cube: MultibandTileLayerRDD[SpaceTimeKey] =
+        loadRasterRegionsToTiles(regions, metadata, readKeysToRasterSourcesResult._3, partitioner, datacubeParams, readKeysToRasterSourcesResult._4)
 
-      //convert to raster region
-      val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
-      val cube=
-        if(!datacubeParams.exists(_.loadPerProduct) || theMaskStrategy != NoCloudFilterStrategy ){
-          rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
-        }else{
-          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size,readKeysToRasterSourcesResult._4, softErrors)
-        }
       logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
+
       cube
     }finally{
       requiredSpacetimeKeys.unpersist(false)
     }
+  }
 
+  private def convertToRasterRegions(
+    requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])],
+    layoutDefinition: LayoutDefinition,
+    datacubeParams: Option[DataCubeParameters]
+  ): RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = {
+    val resample = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) >= 0.0000001 * layoutDefinition.cellSize.resolution
+    // Resampling is still needed in case bounding boxes are not aligned with pixels
+    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
+    val theResampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
 
+    requiredSpacetimeKeys.sparkContext.setCallSite(s"load_collection: determine raster regions to read resample: ${resample}")
+
+    requiredSpacetimeKeys
+      .groupBy { case (_, vector.Feature(_, (rasterSource, _))) => rasterSource }
+      .flatMap { case (rasterSource, keyedFeatures) =>
+        val source = if (resample) {
+          //slow path
+          rasterSource.tileToLayout(layoutDefinition, theResampleMethod)
+        } else {
+          //fast path
+          new LayoutTileSourceFixed(rasterSource, layoutDefinition, identity)
+        }
+
+        keyedFeatures
+          .map { case (spaceTimeKey, vector.Feature(_, (rasterSource, _))) =>
+            (spaceTimeKey, (source.rasterRegionForKey(spaceTimeKey.spatialKey), rasterSource.name))
+          }
+          .filter { case (spaceTimeKey, (rasterRegion, sourceName)) =>
+            val canRead = rasterRegion.isDefined
+            if (!canRead) logger.warn(s"no RasterRegion for $spaceTimeKey in $sourceName")
+            canRead
+          }
+          .map { case (spaceTimeKey, (Some(rasterRegion), sourceName)) => (spaceTimeKey, (rasterRegion, sourceName)) }
+      }
+  }
+
+  private def loadRasterRegionsToTiles(
+    regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))],
+    metadata: TileLayerMetadata[SpaceTimeKey],
+    maskStrategy: Option[CloudFilterStrategy],
+    partitioner: Option[SpacePartitioner[SpaceTimeKey]],
+    datacubeParams: Option[DataCubeParameters],
+    sources: Seq[(RasterSource, Feature)]
+  ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
+    val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
+    if (!datacubeParams.exists(_.loadPerProduct) || theMaskStrategy != NoCloudFilterStrategy) {
+      rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
+    } else {
+      rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size, sources, softErrors)
+    }
+  }
+
+  private def createSpaceTimePartitioner(
+    spatialBounds: KeyBounds[SpatialKey],
+    datacubeParams: Option[DataCubeParameters],
+    spaceTimeKeys: RDD[SpaceTimeKey],
+    metadata: TileLayerMetadata[SpaceTimeKey],
+    sources: Seq[(RasterSource, Feature)]
+  ): Option[SpacePartitioner[SpaceTimeKey]] = {
+    val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
+    if (maxKeys > 4) {
+      DatacubeSupport.createPartitioner(datacubeParams, spaceTimeKeys, metadata)
+    } else {
+      //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
+      val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
+      val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
+      val dates = sources.map(_._2.nominalDate).distinct
+      val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
+      val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
+      Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(allKeys.toArray))))
+    }
   }
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
