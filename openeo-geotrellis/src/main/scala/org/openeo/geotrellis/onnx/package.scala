@@ -115,19 +115,37 @@ package object onnx {
     inputArray
   }
 
-  def predictOnnx(tile: MultibandTile, session: OrtSession): MultibandTile = {
+  def predictOnnx(tile: MultibandTile, model: String): MultibandTile = {
     logger.info("ONNX: start predictOnnx")
     val bandCount = tile.bandCount
     val env = OrtEnvironment.getEnvironment()
+    val session = env.createSession(model, new OrtSession.SessionOptions())
+    logger.info(s"ONNX: created OrtEnvironment")
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
 
+    if (inputNames.size() > 1)
+      // TODO support the case for multiple inputs
+      throw new IllegalArgumentException(
+        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
+    if (outputNames.size() > 1)
+      // TODO support the case for multiple outputs
+      throw new IllegalArgumentException(
+        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
+
+
     val inputName = inputNames.toArray()(0).asInstanceOf[String]
     val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
-    val inputShape = inputInfo.getShape
-
     val outputName = outputNames.toArray()(0).asInstanceOf[String]
     val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
+
+    val inputType = inputInfo.`type`
+    val outputType = outputInfo.`type`
+    if (inputType != outputType)
+      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
+
+    val inputShape = inputInfo.getShape
+
     val outputShape = outputInfo.getShape
 
     val errorMessageInput = checkShape(inputShape, tile.cols, tile.rows, Some(bandCount))
@@ -138,8 +156,6 @@ package object onnx {
     if (errorMessageOutput.nonEmpty)
       throw new IllegalArgumentException(s"ONNX: unsupported output shape: $errorMessageOutput.")
 
-    val inputType = inputInfo.`type`
-    val outputType = outputInfo.`type`
     logger.info(s"input type of the model $inputType, output type of the model $outputType")
     val inputArray = reshape(inputType, tile, inputShape)
     val tensor = OnnxTensor.createTensor(env, inputArray)
