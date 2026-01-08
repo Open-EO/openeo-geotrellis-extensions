@@ -894,12 +894,13 @@ object NetCDFRDDWriter {
     } else new java.util.HashMap[String,Any]()
     val bands = if (addBandsStats) {
       val maps = new util.ArrayList[util.Map[String,Any]]()
-      histograms.foreach {case (banName,(histogram,size)) => {
+      histograms.foreach {case (bandName,(histogram,size)) => {
         val statistics = histogram.statistics()
         val mapStatistics = statistics.fold(new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))){ statistics =>
           new util.HashMap[String, Any](util.Map.of("max", statistics.zmax, "min", statistics.zmin, "mean", statistics.mean,"stddev",statistics.stddev, "valid_percent", statistics.dataCells.toDouble/size*100))
         }
-        val band = new util.HashMap[String,Any](util.Map.of("name", banName, "statistics", mapStatistics))
+        logger.info(s"added statistics $mapStatistics for band $bandName")
+        val band = new util.HashMap[String,Any](util.Map.of("name", bandName, "statistics", mapStatistics))
         maps.add(band)
 
       }}
@@ -948,7 +949,6 @@ object NetCDFRDDWriter {
       val (histogram,size) = bandHistograms(bandName)
       (histogram.merge(tile.histogramDouble()),size+tile.size)
     } else (StreamingHistogram(tile.histogramDouble()),tile.size)
-    logger.info(s"added statistics $result for band $bandName")
     bandHistograms.update(bandName,result)
   }
 
