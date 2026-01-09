@@ -231,19 +231,24 @@ package object geotiff {
   }
 
   private def defaultOverviewReductions(options: GTiffOptions, totalCols: Int, totalRows: Int, tileCols: Int, tileRows: Int): List[Int] = {
-    val overviewLevels: Int = {
-      val pixels = math.max(totalCols, totalRows).toDouble
-      val blocks = pixels / 1024
-      math.ceil(math.log(blocks) / math.log(2)).toInt
-    }
+    options.overviews.toUpperCase() match {
+      case "AUTO" | "ALL" => {
+        val overviewLevels: Int = {
+          val pixels = math.max(totalCols, totalRows).toDouble
+          val blocks = pixels / 1024
+          math.ceil(math.log(blocks) / math.log(2)).toInt
+        }
 
-    val start = options.overviews.toUpperCase() match {
-      case "AUTO" => 1
-      case "ALL" => 0
+        val start = options.overviews.toUpperCase() match {
+          case "AUTO" => 1
+          case "ALL" => 0
+        }
+        (start until overviewLevels).map { l => math.pow(2, l + 1).toInt }.toList.filter(
+          r => (tileCols / r) > 16 && (tileRows / r) > 16
+        )
+      }
+      case _ => List.empty
     }
-    (start until overviewLevels).map { l => math.pow(2, l + 1).toInt }.toList.filter(
-      r => (tileCols / r) > 16 && (tileRows / r) > 16
-    )
   }
 
   /**
@@ -265,7 +270,7 @@ package object geotiff {
     saveRDDTemporalAllowAssetPerBandInternal(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction = defaultOverviewReductions)
   }
 
-    /**
+  /**
    * Save temporal rdd, on the executors
    *
    * @param rdd
@@ -276,12 +281,12 @@ package object geotiff {
    */
   //noinspection ScalaWeakerAccess
   private[geotiff] def saveRDDTemporalAllowAssetPerBandInternal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                                       path: String,
-                                       zLevel: Int = 6,
-                                       cropBounds: Option[Extent] = Option.empty[Extent],
-                                       formatOptions: GTiffOptions = new GTiffOptions,
-                                       overviewReductionsFunction: (GTiffOptions, Int, Int, Int, Int) => List[Int] = defaultOverviewReductions,
-                                      ): JList[Item] = {
+                                                                path: String,
+                                                                zLevel: Int = 6,
+                                                                cropBounds: Option[Extent] = Option.empty[Extent],
+                                                                formatOptions: GTiffOptions = new GTiffOptions,
+                                                                overviewReductionsFunction: (GTiffOptions, Int, Int, Int, Int) => List[Int] = defaultOverviewReductions,
+                                                               ): JList[Item] = {
     formatOptions.assertNoConflicts()
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd, cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
@@ -351,11 +356,11 @@ package object geotiff {
 
         decimationFactors.indices.toList
           .map(i => {
-          val decimationFactor = decimationFactors(i)
-          val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._3(i))).toMap
-          val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor)
-          toTiff(overviewSequence, GridBounds(0, 0, gridBounds.colMax / decimationFactor, gridBounds.rowMax / decimationFactor), overviewLayout, compression, cellTypes.head, tiffBands, segmentCount)
-        })
+            val decimationFactor = decimationFactors(i)
+            val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._3(i))).toMap
+            val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor)
+            toTiff(overviewSequence, GridBounds(0, 0, gridBounds.colMax / decimationFactor, gridBounds.rowMax / decimationFactor), overviewLayout, compression, cellTypes.head, tiffBands, segmentCount)
+          })
 
       } else Nil
       // Each executor writes to a unique folder to avoid conflicts:
@@ -1169,7 +1174,7 @@ package object geotiff {
         overview = overview.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
         reductionFactor *= 2
       }
-      val overviewReductions: List[Int] = defaultOverviewReductions(fo, geotiff.tile.cols, geotiff.tile.rows,tileCols,tileRows)
+      val overviewReductions: List[Int] = defaultOverviewReductions(fo, geotiff.tile.cols, geotiff.tile.rows, tileCols, tileRows)
       while (overviewReductions.nonEmpty && overviewReductions.last >= reductionFactor) {
         overview = overview.buildOverview(resampleMethod, 2, blockSize = fo.tileSize)
         if (overviewReductions.contains(reductionFactor)) {
