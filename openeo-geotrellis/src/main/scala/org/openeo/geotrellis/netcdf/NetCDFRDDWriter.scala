@@ -897,7 +897,7 @@ object NetCDFRDDWriter {
       histograms.foreach {case (bandName,(histogram,size)) => {
         val statistics = histogram.statistics()
         val mapStatistics = statistics.fold(new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))){ statistics =>
-          new util.HashMap[String, Any](util.Map.of("max", statistics.zmax, "min", statistics.zmin, "mean", statistics.mean,"stddev",statistics.stddev, "valid_percent", statistics.dataCells.toDouble/size*100))
+          new util.HashMap[String, Any](util.Map.of("maximum", statistics.zmax, "minimum", statistics.zmin, "mean", statistics.mean,"stddev",statistics.stddev, "valid_percent", statistics.dataCells.toDouble/size*100))
         }
         logger.info(s"added statistics $mapStatistics for band $bandName")
         val band = new util.HashMap[String,Any](util.Map.of("name", bandName, "statistics", mapStatistics))
@@ -966,7 +966,7 @@ object NetCDFRDDWriter {
       val statistics = result.statistics()
       val rasterBands = new java.util.HashMap[String,Any]()
       val bandStats = statistics.fold(new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0)))(statistics => {
-        new java.util.HashMap[String, Any](java.util.Map.of("mean", statistics.mean, "max", statistics.zmax, "min", statistics.zmin, "stddev", statistics.stddev, "valid_percent", statistics.dataCells.toDouble / size*100))
+        new java.util.HashMap[String, Any](java.util.Map.of("mean", statistics.mean, "maximum", statistics.zmax, "minimum", statistics.zmin, "stddev", statistics.stddev, "valid_percent", statistics.dataCells.toDouble / size*100))
       })
       rasterBands.put("statistics",bandStats)
       rasterBands.put("name",bandNames.get(bandId))
