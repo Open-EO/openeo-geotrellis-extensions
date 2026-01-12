@@ -899,7 +899,6 @@ object NetCDFRDDWriter {
         val mapStatistics = statistics.fold(new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))){ statistics =>
           new util.HashMap[String, Any](util.Map.of("maximum", statistics.zmax, "minimum", statistics.zmin, "mean", statistics.mean,"stddev",statistics.stddev, "valid_percent", statistics.dataCells.toDouble/size*100))
         }
-        logger.info(s"added statistics $mapStatistics for band $bandName")
         val band = new util.HashMap[String,Any](util.Map.of("name", bandName, "statistics", mapStatistics))
         maps.add(band)
 
@@ -970,7 +969,6 @@ object NetCDFRDDWriter {
       })
       rasterBands.put("statistics",bandStats)
       rasterBands.put("name",bandNames.get(bandId))
-      logger.info(s"added statistics ${rasterBands.get("statistics")} for band ${rasterBands.get("name")}")
       stats.add(rasterBands)
     }
     stats
