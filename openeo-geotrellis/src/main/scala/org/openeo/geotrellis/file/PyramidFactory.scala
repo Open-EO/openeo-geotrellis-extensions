@@ -8,7 +8,7 @@ import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrellis.layers.{FileLayerProvider, RasterRegionContext, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.geotrelliscommon.DatacubeSupport
 import org.openeo.opensearch.OpenSearchClient
@@ -38,13 +38,13 @@ object PyramidFactory {
  * @param maxSpatialResolution The spatial resolution used at the highest zoom level. Its units depend on the CRS.
  * @param experimental
  */
-class PyramidFactory(openSearchClient: OpenSearchClient,
-                     openSearchCollectionId: String,
-                     openSearchLinkTitles: util.List[String],
-                     rootPath: String,
-                     maxSpatialResolution: CellSize,
-                     experimental: Boolean = false,
-                     maxSoftErrorsRatio: Double = 0.0,
+class PyramidFactory(val openSearchClient: OpenSearchClient,
+                     val openSearchCollectionId: String,
+                     val openSearchLinkTitles: util.List[String],
+                     val rootPath: String,
+                     val maxSpatialResolution: CellSize,
+                     val experimental: Boolean = false,
+                     val maxSoftErrorsRatio: Double = 0.0,
                     ) {
   require(openSearchLinkTitles.size() > 0, "List of titles should not be empty")
 
@@ -228,4 +228,37 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
   def pyramid_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
                   metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
     pyramid_seq(polygons, polygons_crs, from_date, to_date, metadata_properties, correlationId = "")
+
+  def prepareRasterRegions(projectedPolygons:ProjectedPolygons, from_date: String, to_date: String,
+                             metadata_properties: util.Map[String, Any], correlationId: String,
+                             dataCubeParameters: DataCubeParameters): RasterRegionContext = {
+    implicit val sc: SparkContext = SparkContext.getOrCreate()
+
+    val polygons: Array[MultiPolygon] = projectedPolygons.polygons
+    val polygons_crs: CRS = projectedPolygons.crs
+    val from = ZonedDateTime.parse(from_date)
+    val to = ZonedDateTime.parse(to_date)
+
+    var cleanedPolygons = 0
+    val polysCleaned = polygons map { p =>
+      if (p.isValid) p
+      else {
+        cleanedPolygons += 1
+        val validPolygon = p.union()
+        validPolygon match  {
+          case p: Polygon => MultiPolygon(p)
+          case mp: MultiPolygon => mp
+          case _ => throw new IllegalArgumentException("Union of polygons should result in a Polygon or MultiPolygon")
+        }
+
+      }
+    }
+    if (cleanedPolygons > 0) logger.warn(f"Cleaned up $cleanedPolygons polygon(s)")
+
+    val boundingBox = ProjectedExtent(polygons.toSeq.extent, polygons_crs)
+    val layerProvider = fileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
+    layerProvider.prepareRasterRegions(
+      from, to, boundingBox, polysCleaned, polygons_crs, 0, sc, Some(dataCubeParameters)
+    )
+  }
 }
