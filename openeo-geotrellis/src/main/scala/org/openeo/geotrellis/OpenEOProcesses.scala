@@ -1518,6 +1518,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def predictONNXGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
+    logger.info("ONNX: start predictOnnx")
     ContextRDD(
       datacube.mapValues(x => onnx.predictOnnx(x,model)),
       datacube.metadata

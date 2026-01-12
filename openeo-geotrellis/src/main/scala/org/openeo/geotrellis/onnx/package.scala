@@ -14,7 +14,6 @@ package object onnx {
 
   private def flattenNestedArray(multiArray: Array[_], outputShape: Array[Long], onnxType:OnnxJavaType): MultibandTile = {
     val shapeDimension = outputShape.length
-    logger.info(s"ONNX: flatten array from shape ${outputShape.mkString("(", ", ", ")")}")
     onnxType match {
       // TODO check if the multiArray contains the right type (same as the onnx type) and throw clear error if not.
       case OnnxJavaType.FLOAT =>
@@ -88,7 +87,6 @@ package object onnx {
   }
 
   def reshape(inputType:OnnxJavaType, tile:MultibandTile, inputShape:Array[Long]): AnyRef = {
-    logger.info(s"input type of the data is ${tile.cellType}")
     val inputArray = inputType match {
       case OnnxJavaType.FLOAT =>
         if (!tile.cellType.isInstanceOf[FloatCells])
@@ -122,20 +120,16 @@ package object onnx {
 
   def predictOnnx(tile: MultibandTile, model: String): MultibandTile = {
     val modelPath = Paths.get(model)
-    logger.info(s"ONNX: get model from $modelPath")
     val (modelFile, isTemp) = if (Files.exists(modelPath)) {
       (modelPath,false)
     } else {
       val tempFileName = Files.createTempFile(null, ".onnx")
-      logger.info(s"ONNX: copy file from $modelPath to $tempFileName")
       FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
       (tempFileName,true)
     }
-    logger.info("ONNX: start predictOnnx")
     val bandCount = tile.bandCount
     val env = OrtEnvironment.getEnvironment()
     val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
-    logger.info(s"ONNX: created OrtEnvironment")
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
 
@@ -164,14 +158,12 @@ package object onnx {
     val outputShape = outputInfo.getShape
 
     val errorMessageInput = checkShape(inputShape, tile.cols, tile.rows, Some(bandCount))
-    logger.info(s"number of bands of the data is $bandCount, cols are ${tile.cols} and rows ${tile.rows} ")
     if (errorMessageInput.nonEmpty)
       throw new IllegalArgumentException(s"ONNX: unsupported input shape: $errorMessageInput.")
     val errorMessageOutput = checkShape(outputShape, tile.cols, tile.rows)
     if (errorMessageOutput.nonEmpty)
       throw new IllegalArgumentException(s"ONNX: unsupported output shape: $errorMessageOutput.")
 
-    logger.info(s"input type of the model $inputType, output type of the model $outputType")
     val inputArray = reshape(inputType, tile, inputShape)
     val tensor = OnnxTensor.createTensor(env, inputArray)
     val inputs = java.util.Map.of(inputName, tensor)
