@@ -894,12 +894,12 @@ object NetCDFRDDWriter {
     } else new java.util.HashMap[String,Any]()
     val bands = if (addBandsStats) {
       val maps = new util.ArrayList[util.Map[String,Any]]()
-      histograms.foreach {case (banName,(histogram,size)) => {
+      histograms.foreach {case (bandName,(histogram,size)) => {
         val statistics = histogram.statistics()
         val mapStatistics = statistics.fold(new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))){ statistics =>
-          new util.HashMap[String, Any](util.Map.of("max", statistics.zmax, "min", statistics.zmin, "mean", statistics.mean,"stddev",statistics.stddev, "valid_percent", statistics.dataCells.toDouble/size*100))
+          new util.HashMap[String, Any](util.Map.of("maximum", statistics.zmax, "minimum", statistics.zmin, "mean", statistics.mean,"stddev",statistics.stddev, "valid_percent", statistics.dataCells.toDouble/size*100))
         }
-        val band = new util.HashMap[String,Any](util.Map.of("name", banName, "statistics", mapStatistics))
+        val band = new util.HashMap[String,Any](util.Map.of("name", bandName, "statistics", mapStatistics))
         maps.add(band)
 
       }}
@@ -965,7 +965,7 @@ object NetCDFRDDWriter {
       val statistics = result.statistics()
       val rasterBands = new java.util.HashMap[String,Any]()
       val bandStats = statistics.fold(new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0)))(statistics => {
-        new java.util.HashMap[String, Any](java.util.Map.of("mean", statistics.mean, "max", statistics.zmax, "min", statistics.zmin, "stddev", statistics.stddev, "valid_percent", statistics.dataCells.toDouble / size*100))
+        new java.util.HashMap[String, Any](java.util.Map.of("mean", statistics.mean, "maximum", statistics.zmax, "minimum", statistics.zmin, "stddev", statistics.stddev, "valid_percent", statistics.dataCells.toDouble / size*100))
       })
       rasterBands.put("statistics",bandStats)
       rasterBands.put("name",bandNames.get(bandId))
