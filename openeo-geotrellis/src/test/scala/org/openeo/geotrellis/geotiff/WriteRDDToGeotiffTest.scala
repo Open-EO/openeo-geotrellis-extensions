@@ -500,7 +500,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     def testValues(resampleMethod: String, expectedValues0:Array[Int], expectedValues1:Array[Int],expectedValue2:Int) = {
       options.setResampleMethod(resampleMethod)
-      def reductionsForTest(dims: (Int, Int), options: GTiffOptions): List[Int] = {
+      def reductionsForTest(options: GTiffOptions, totalCols: Int, totalRows: Int, tileCols: Int, tileRows: Int): List[Int] = {
         List(4, 8, 16)
       }
       saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = reductionsForTest)
@@ -540,10 +540,10 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val options = new GTiffOptions()
     options.setOverview("ALL")
-    def testReductionFunction(dims: (Int, Int), options: GTiffOptions): List[Int] = {
+    def testReductionFunction(options: GTiffOptions, totalCols: Int, totalRows: Int, tileCols: Int, tileRows: Int): List[Int] = {
       List(4,8,16)
     }
-    saveRDDTemporalInternal(layer, outDir.toString,formatOptions = options, overviewReductions = testReductionFunction)
+    saveRDDTemporalInternal(layer, outDir.toString, formatOptions = options, overviewReductions = testReductionFunction)
     val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
     assertEquals(3,result.overviews.size)
     val resampled = imageTile.resample(256*layoutCols/2,256*layoutRows/2)
@@ -612,6 +612,25 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     assertArrayEquals(croppedReference.toArray(), croppedOutput.toArray())
     val result2 = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z.tif").toString).raster.tile
     assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
+  }
+
+
+  @Test
+  def testWriteMultibandTemporalRDDTileSize(@TempDir outDir: Path): Unit = {
+    val tileSize = 30
+    val layoutCols = 35
+    val layoutRows = 1
+    val arrayTile = IntArrayTile(Array.fill(tileSize * layoutCols * tileSize * layoutRows)(0), tileSize*layoutCols, tileSize*layoutRows, noDataValue = 256)
+    val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, layoutCols, layoutRows, nbDates = 1)
+
+    val filename = outDir.resolve("openEO_2017-01-02Z.tif")
+
+    val opts = new GTiffOptions()
+    opts.overviews = "ALL"
+    saveRDDTemporal(layer, outDir.toString, formatOptions = opts)
+    val result = GeoTiff.readMultiband(filename.toString)
+    val overviews = result.overviews
+    assertEquals(0, overviews.size)
   }
 
   @Test
