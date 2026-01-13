@@ -19,7 +19,7 @@ import spire.syntax.cfor.cfor
 import java.time.format.DateTimeFormatter
 import java.time.temporal.{ChronoUnit, TemporalAccessor}
 import java.time.{Duration, ZonedDateTime}
-import java.util
+import java.{lang, util}
 import scala.Double.NaN
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
@@ -1148,7 +1148,10 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           case "date_shift" => dateShift(arguments)
           case "date_replace_component" => dateReplaceComponent(arguments)
           case "if" => ifProcess(arguments)
-          case "constant" if hasX => constantFunction(arguments)
+          case "e" => constantFunction(java.lang.Math.E)
+          case "pi" => constantFunction(java.lang.Math.PI)
+          case "nan" => constantFunction(java.lang.Float.NaN)
+          case "constant" if hasX => userConstantFunction(arguments)
           // Comparison operators
           case "gt" if hasXY => xyFunction(Greater.apply, convertBitCells = false)
           case "lt" if hasXY => xyFunction(Less.apply, convertBitCells = false)
@@ -1790,12 +1793,29 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     clipFunction
   }
 
-  private def constantFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+  private def e(arguments:java.util.Map[String,Object]): OpenEOProcess = {
     val (value, dataType) = arguments.get("x") match {
       case x: java.lang.Short => (x, ShortConstantNoDataCellType)
       case x: Integer => (x,IntConstantNoDataCellType)
       case x: java.lang.Float =>(x,FloatConstantNoDataCellType)
       case x: java.lang.Double => (x, DoubleConstantNoDataCellType)
+    }
+    resultingDataType = dataType
+    wrapSimpleProcess(createConstantTileFunction(value))
+  }
+
+
+  private def userConstantFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val constantValue = arguments.get("x")
+    constantFunction(constantValue.asInstanceOf[Number])
+  }
+
+  private def constantFunction(constantValue: java.lang.Number) = {
+    val (value, dataType) = constantValue match {
+      case x: lang.Short => (x, ShortConstantNoDataCellType)
+      case x: Integer => (x, IntConstantNoDataCellType)
+      case x: lang.Float => (x, FloatConstantNoDataCellType)
+      case x: lang.Double => (x, DoubleConstantNoDataCellType)
     }
     resultingDataType = dataType
     wrapSimpleProcess(createConstantTileFunction(value))

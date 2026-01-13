@@ -15,12 +15,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import scala.Function1;
-import scala.Tuple2;
-import scala.collection.JavaConverters;
 import scala.collection.Seq;
 import scala.collection.mutable.Buffer;
 import scala.jdk.javaapi.CollectionConverters;
-import scala.jdk.javaapi.CollectionConverters$;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -332,6 +329,78 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(1, result.length());
         Tile res = result.apply(0);
         assertTileEquals(fillBitArrayTile(3, 2, expectedValues), res);
+    }
+
+    @DisplayName("Test logical 'gt' with pi")
+    @Test
+    public void testLogicalGtWithPi() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> args = dummyMap("x", "y");
+        builder.expressionStart("gt", args);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.argumentStart("y");
+        builder.expressionStart("pi",dummyMap());
+        builder.expressionEnd("pi",dummyMap());
+        builder.argumentEnd();
+        builder.expressionEnd("gt", args);
+
+        Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
+
+        assertEquals(BitCellType$.MODULE$, builder.getOutputCellType());
+        Tile tile = fillByteArrayTile(4, 3, 1, 2, 3, 4, 5);
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile)).toSeq());
+        assertEquals(1, result.length());
+        Tile res = result.apply(0);
+        assertTileEquals(fillBitArrayTile(4, 3, 0, 0, 0, 1, 1), res);
+    }
+
+    @DisplayName("Test logical 'gt' with pi")
+    @Test
+    public void testLogicalGtWithE() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> args = dummyMap("x", "y");
+        builder.expressionStart("gt", args);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.argumentStart("y");
+        builder.expressionStart("e",dummyMap());
+        builder.expressionEnd("e",dummyMap());
+        builder.argumentEnd();
+        builder.expressionEnd("gt", args);
+
+        Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
+
+        assertEquals(BitCellType$.MODULE$, builder.getOutputCellType());
+        Tile tile = fillByteArrayTile(4, 3, 1, 2, 3, 4, 5);
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile)).toSeq());
+        assertEquals(1, result.length());
+        Tile res = result.apply(0);
+        assertTileEquals(fillBitArrayTile(4, 3, 0, 0, 1, 1, 1), res);
+    }
+
+    @DisplayName("Test logical 'eq' with NaN")
+    @Test
+    public void testLogicalEqWithNan() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> args = dummyMap("x", "y");
+        builder.expressionStart("eq", args);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.argumentStart("y");
+        builder.expressionStart("nan",dummyMap());
+        builder.expressionEnd("nan",dummyMap());
+        builder.argumentEnd();
+        builder.expressionEnd("eq", args);
+
+        Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
+
+        assertEquals(BitCellType$.MODULE$, builder.getOutputCellType());
+        Tile tile = fillByteArrayTile(4, 3, 1, 2, 3, 4, 5);
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile)).toSeq());
+        assertEquals(1, result.length());
+        Tile res = result.apply(0);
+        assertTileEquals(fillBitArrayTile(4, 3, 0, 0, 0, 0, 0), res);
     }
 
     @DisplayName("Test logical 'eq' between bands")
