@@ -618,8 +618,8 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   @Test
   def testWriteMultibandTemporalRDDTileSize(@TempDir outDir: Path): Unit = {
     val tileSize = 30
-    val layoutCols = 64
-    val layoutRows = 64
+    val layoutCols = 35
+    val layoutRows = 1
     val arrayTile = IntArrayTile(Array.fill(tileSize * layoutCols * tileSize * layoutRows)(0), tileSize*layoutCols, tileSize*layoutRows, noDataValue = 256)
     val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, layoutCols, layoutRows, nbDates = 1)
 
