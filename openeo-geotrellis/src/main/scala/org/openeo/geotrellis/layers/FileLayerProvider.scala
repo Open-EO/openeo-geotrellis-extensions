@@ -1423,8 +1423,18 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
     }
 
-    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, sentinelXmlAngleBandIndex: Int): RasterSource = {
-      if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
+    def rasterSource(dataPath: String, cloudPath: Option[(String, String)], targetCellType: Option[TargetCellType], targetExtent: ProjectedExtent, sentinelXmlAngleBandIndex: Int): RasterSource = {
+      if (dataPath.endsWith("MTD_TL.xml")) {
+        val targetProjectedExtent = featureExtentInLayout match {
+          case None => None
+          case Some(featureExtentInLayoutGet) =>
+            Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
+        }
+        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
+      } else if (dataPath.endsWith(".zarr")) {
+        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod), te = Some(targetExtent.extent))
+        GDALRasterSource(GDALPath(dataPath), options = warpOptions, targetCellType = targetCellType)
+      } else if (dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         var warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
         if (dataPath.endsWith("SCL_20m.jp2")) {
           // The overviews in the S2 SCL bands can be wrong, so we need to use the original resolution.
@@ -1440,33 +1450,24 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           predefinedExtent = featureExtentInLayout
           GDALRasterSource(GDALPath(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
         }
-      }else if(dataPath.endsWith("MTD_TL.xml")) {
-        val targetProjectedExtent = featureExtentInLayout match {
-          case None => None
-          case Some(featureExtentInLayoutGet) =>
-            Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
-        }
-        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
-      }else if(dataPath.endsWith(".zarr")) {
-        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
-        GDALRasterSource(GDALPath(dataPath),options = warpOptions, targetCellType = targetCellType)
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
-            // When noResampleOnRead is set, we retrieve the actual resolution from the dataPath.
-            // Note: This is only supported for S2 dataPaths.
-            // E.g. S2A_20190307T105021_31UFT_TOC-B05_20M_V200.tif = 20.0
-            val splitPath: Array[String] = dataPath.split("_")
-            val tiffResolution = splitPath(splitPath.length - 2).replace("M", "").toDouble
-            val tiffCellSize = CellSize(tiffResolution, tiffResolution)
-            val tiffRe = RasterExtent(expandToCellSize(projectedExtent.extent, tiffCellSize), tiffCellSize)
-            TargetRegion(tiffRe)
+          // When noResampleOnRead is set, we retrieve the actual resolution from the dataPath.
+          // Note: This is only supported for S2 dataPaths.
+          // E.g. S2A_20190307T105021_31UFT_TOC-B05_20M_V200.tif = 20.0
+          val splitPath: Array[String] = dataPath.split("_")
+          val tiffResolution = splitPath(splitPath.length - 2).replace("M", "").toDouble
+          val tiffCellSize = CellSize(tiffResolution, tiffResolution)
+          val tiffRe = RasterExtent(expandToCellSize(projectedExtent.extent, tiffCellSize), tiffCellSize)
+          TargetRegion(tiffRe)
         }
-        if( feature.crs.isDefined && feature.crs.get != null && feature.crs.get.equals(targetExtent.crs)) {
+
+        if (feature.crs.isDefined && feature.crs.get != null && feature.crs.get.equals(targetExtent.crs)) {
           // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
-          if(experimental) {
-            GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType)
-          }else{
+          if (experimental) {
+            GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod = Some(resampleMethod)), targetCellType = targetCellType)
+          } else {
             val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
@@ -1476,11 +1477,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
               GeoTiffResampleRasterSource(geotiffPath, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None)
             }
           }
-        }else{
-          if(experimental) {
-            val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
-            GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
-          }else{
+        } else {
+          if (experimental) {
+            val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod), te = Some(targetExtent.extent))
+            GDALRasterSource(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
+          } else {
             val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)

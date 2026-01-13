@@ -67,7 +67,14 @@ class Sentinel2JP2RasterSourceProvider extends ItemRasterSourceProvider {
     }
 
     def rasterSource(dataPath: String, cloudPath: Option[(String, String)], targetCellType: Option[TargetCellType], sentinelXmlAngleBandIndex: Int): RasterSource = {
-      if (dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
+      if (dataPath.endsWith("MTD_TL.xml")) {
+        val targetProjectedExtent = featureExtentInLayout match {
+          case None => None
+          case Some(featureExtentInLayoutGet) =>
+            Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetCRS))
+        }
+        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
+      } else if (dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         var warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
         if (dataPath.endsWith("SCL_20m.jp2")) {
           // The overviews in the S2 SCL bands can be wrong, so we need to use the original resolution.
@@ -82,13 +89,6 @@ class Sentinel2JP2RasterSourceProvider extends ItemRasterSourceProvider {
           predefinedExtent = featureExtentInLayout
           GDALRasterSource(GDALPath(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
         }
-      } else if (dataPath.endsWith("MTD_TL.xml")) {
-        val targetProjectedExtent = featureExtentInLayout match {
-          case None => None
-          case Some(featureExtentInLayoutGet) =>
-            Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetCRS))
-        }
-        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
       } else {
         null
       }

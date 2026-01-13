@@ -92,7 +92,17 @@ case class DefaultItemRasterSourceProvider(openSearch: OpenSearchClient, openSea
     }
 
     def rasterSource(dataPath: String, cloudPath: Option[(String, String)], targetCellType: Option[TargetCellType], targetExtent: ProjectedExtent, sentinelXmlAngleBandIndex: Int): RasterSource = {
-      if (dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
+      if (dataPath.endsWith("MTD_TL.xml")) {
+        val targetProjectedExtent = featureExtentInLayout match {
+          case None => None
+          case Some(featureExtentInLayoutGet) =>
+            Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
+        }
+        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
+      } else if (dataPath.endsWith(".zarr")) {
+        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod), te = Some(targetExtent.extent))
+        GDALRasterSource(GDALPath(dataPath), options = warpOptions, targetCellType = targetCellType)
+      } else if (dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         var warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
         if (dataPath.endsWith("SCL_20m.jp2")) {
           // The overviews in the S2 SCL bands can be wrong, so we need to use the original resolution.
@@ -108,18 +118,7 @@ case class DefaultItemRasterSourceProvider(openSearch: OpenSearchClient, openSea
           predefinedExtent = featureExtentInLayout
           GDALRasterSource(GDALPath(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
         }
-      } else if (dataPath.endsWith("MTD_TL.xml")) {
-        val targetProjectedExtent = featureExtentInLayout match {
-          case None => None
-          case Some(featureExtentInLayoutGet) =>
-            Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
-        }
-        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
-      } else if (dataPath.endsWith(".zarr")) {
-        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod), te = Some(targetExtent.extent))
-        GDALRasterSource(GDALPath(dataPath), options = warpOptions, targetCellType = targetCellType)
-      }
-      else {
+      } else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
           // When noResampleOnRead is set, we retrieve the actual resolution from the dataPath.
           // Note: This is only supported for S2 dataPaths.
