@@ -120,7 +120,9 @@ package object onnx {
 
   def predictOnnx(tile: MultibandTile, session: OrtSession): MultibandTile = {
     val bandCount = tile.bandCount
+    logger.info("predict onnx for each tile")
     val env = OrtEnvironment.getEnvironment()
+    logger.info("create environment")
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
 
@@ -141,6 +143,7 @@ package object onnx {
 
     val inputType = inputInfo.`type`
     val outputType = outputInfo.`type`
+    logger.info("gathered information about session")
     if (inputType != outputType)
       throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
 
@@ -158,9 +161,12 @@ package object onnx {
     val inputArray = reshape(inputType, tile, inputShape)
     val tensor = OnnxTensor.createTensor(env, inputArray)
     val inputs = java.util.Map.of(inputName, tensor)
+    logger.info("before running model")
     val onnxResults = session.run(inputs)
+    logger.info("after running model")
     val resultValue = onnxResults.get(0).getValue.asInstanceOf[Array[_]]
     val flattenedResult = flattenNestedArray(resultValue, outputShape, outputType)
+    logger.info("result is reshaped into multibandtile")
     flattenedResult
   }
 

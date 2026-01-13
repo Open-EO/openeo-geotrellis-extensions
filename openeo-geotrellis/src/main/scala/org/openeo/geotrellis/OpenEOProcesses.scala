@@ -1531,6 +1531,7 @@ class OpenEOProcesses extends Serializable {
     }
     val env = OrtEnvironment.getEnvironment()
     val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
+    logger.info("created session")
     val broadcastSession = sc.broadcast(session)
     ContextRDD(
       datacube.mapValues(x => onnx.predictOnnx(x,broadcastSession.value)),
