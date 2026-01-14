@@ -42,7 +42,7 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
           s3Client(Region.of("RegionOne"), uri)
         } else if (s3Uri.getBucket.toLowerCase().startsWith("lcfm") || s3Uri.getBucket.toLowerCase().startsWith("eugw")) {
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
-        } else if (s3Uri.getBucket.toLowerCase().startsWith("hr-vpp-products-") || s3Uri.getBucket.toLowerCase() == "topography") {
+        } else if (s3Uri.getBucket.toLowerCase().startsWith("hr-vpp-products-") || s3Uri.getBucket.toLowerCase() == "topography" || s3Uri.getBucket.toLowerCase() == "hr-vpp-auxdata") {
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
         } else if (s3Uri.getBucket.toLowerCase().contains("waw4-1") || s3Uri.getBucket.toLowerCase().startsWith("landsat-bimonthly-mosaics-")) {
           //For moved buckets we should still go to waw4-1
