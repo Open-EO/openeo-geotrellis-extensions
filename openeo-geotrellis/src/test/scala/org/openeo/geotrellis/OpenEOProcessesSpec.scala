@@ -21,6 +21,7 @@ import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNotEquals, assertTrue}
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
@@ -36,7 +37,7 @@ import org.openeo.geotrellis.layers.FileLayerProviderTest
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, DataCubeParameters, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Files, Path, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
@@ -815,6 +816,24 @@ class OpenEOProcessesSpec extends RasterMatchers {
     firstSeries.zip(originalSeries).foreach(t=> if(t._2._2==max) assertTrue(t._1._2==1 ) else assertTrue(t._1._2==0 ))
 
   }
+
+  @Test
+  def relabelTemporalTest(): Unit = {
+    val pixelType = PixelType.Short
+    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType,cols = 64,rows=64)
+
+    val sourceLabels = List("2019-01-21T00:00:00Z")
+    val targetLabels = List("2020-01-21T00:00:00Z")
+    val relabeledLayer = new OpenEOProcesses().relabel_temporal_generic(layer, sourceLabels, targetLabels)
+
+    assertEquals(ZonedDateTime.parse("2019-01-21T00:00:00Z"), layer.metadata.bounds.get.minKey.time)
+    assertEquals(ZonedDateTime.parse("2019-01-25T00:00:00Z"), layer.metadata.bounds.get.maxKey.time)
+    assertEquals(ZonedDateTime.parse("2019-01-22T00:00:00Z"), relabeledLayer.metadata.bounds.get.minKey.time)
+    assertEquals(ZonedDateTime.parse("2020-01-21T00:00:00Z"), relabeledLayer.metadata.bounds.get.maxKey.time)
+    assertEquals(ZonedDateTime.parse("2020-01-21T00:00:00Z").toInstant.toEpochMilli, relabeledLayer.take(1)(0)._1.instant)
+  }
+
+
 
   @Test
   def resampleCubeSpatial_spatial():Unit = {
