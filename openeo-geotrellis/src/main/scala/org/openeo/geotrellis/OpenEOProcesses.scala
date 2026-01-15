@@ -1456,7 +1456,7 @@ class OpenEOProcesses extends Serializable {
 
   }
 
-  def relabel_temporal(datacube: Object, sourceLabels: util.List[String], targetLabels: util.List[String]): Object = {
+  def relabel_temporal(datacube: Object, sourceLabels: util.ArrayList[String], targetLabels: util.ArrayList[String]): Object = {
     datacube match {
       case rdd if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
         relabel_temporal_generic(rdd.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], sourceLabels.asScala.toList, targetLabels.asScala.toList)
