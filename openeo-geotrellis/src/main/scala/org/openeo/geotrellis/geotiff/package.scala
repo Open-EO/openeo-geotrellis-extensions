@@ -184,6 +184,8 @@ package object geotiff {
     val str = CreoS3Utils.readFileAsString(jsonFilePath)
     val mapper = new ObjectMapper()
     val node = mapper.readTree(str)
+    if (!node.isInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode])
+      throw new Exception(s"not able to update gdal info file. Expected ObjectNode, but got ${node.getClass}.")
     node.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].put("description", tiffFilePath)
     val filesNode = node.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].putArray("files")
     filesNode.add(tiffFilePath)
