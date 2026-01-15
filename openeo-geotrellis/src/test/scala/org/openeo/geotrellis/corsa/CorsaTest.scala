@@ -1,12 +1,10 @@
 package org.openeo.geotrellis.corsa
 
-import ai.onnxruntime.OrtUtil
 import geotrellis.proj4.CRS
-import geotrellis.raster.{DoubleArrayTile, FloatConstantNoDataCellType, GridBounds, MultibandTile, Raster, Tile, isData}
+import geotrellis.raster.{FloatConstantNoDataCellType, GridBounds, MultibandTile, Raster, isData}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{MultibandGeoTiff, SinglebandGeoTiff}
 import geotrellis.raster.testkit.RasterMatchers
-import org.apache.commons.math3.linear.MatrixUtils
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
@@ -109,156 +107,10 @@ class CorsaTest extends RasterMatchers {
   }
 
   @Test
-  def interpolate(): Unit = {
-    val row = Array(n, 1, n, n, n, 5, n, 7, n)
+  def interpolateNaN(): Unit = {
+    val row = Array(n, n, n, 4, n, 6, n, n, n, 10, n)
+    corsa.interpolateNaN(row, limit = 2)
 
-    interpolate(row, limit = 2)
-
-    assertArrayEquals(Array(n, 1, 2, 3, n, 5, 6, 7, n), row)
-  }
-
-  @Test
-  def interpolateTileRows(): Unit = {
-    val tile = DoubleArrayTile(Array(
-      1, 2, 3, 4, 5,
-      1, n, n, 4, n,
-      n, n, 3, 4, 5,
-      1, n, n, n, 5,
-    ), cols = 5, rows = 4)
-
-    val interpolated = interpolateTileRows(tile, limit = 2)
-
-    print(interpolated.toArrayDouble().mkString("Array(", ", ", ")"))
-
-    assertArrayEquals(Array(
-      1, 2, 3, 4, 5,
-      1, 2, 3, 4, n,
-      n, n, 3, 4, 5,
-      1, 2, 3, n, 5,
-    ), interpolated.toArrayDouble())
-  }
-
-  @Test
-  def replaceNaNsWith0(): Unit = {
-    val bandTile = DoubleArrayTile(Array(
-      1, 2, 3, 4, 5,
-      1, n, n, 4, n,
-      n, n, 3, 4, 5,
-      1, n, n, n, 5,
-    ), cols = 5, rows = 4)
-
-    println(bandTile.asciiDraw())
-
-    // add interpolateTile(bandTile) to transpose(interpolateTile(transpose(bandTile))), divide by 2 and replace remaining NaNs with 0
-    val mRows = OrtUtil.reshape(bandTile.array, Array(bandTile.rows, bandTile.cols)).asInstanceOf[Array[Array[Double]]]
-
-    val tRows = MatrixUtils.createRealMatrix(mRows).copy().transpose().getData
-
-    mRows.foreach(row => interpolate(row, limit = 2))
-    println("interpolated m:\n" + dump(mRows))
-
-    println("original t:\n" + dump(tRows))
-    tRows.foreach(row => interpolate(row, limit = 2))
-    println("interpolated t:\n" + dump(tRows))
-
-    val interpolated = (MatrixUtils.createRealMatrix(mRows) add MatrixUtils.createRealMatrix(tRows).transpose()).scalarMultiply(0.5)
-    val interpolatedTile = DoubleArrayTile(interpolated.getData.flatten, cols = bandTile.cols, rows = bandTile.rows)
-
-    println(interpolatedTile.asciiDraw())
-
-    val tileWithoutNaN = interpolatedTile.mapDouble((x: Double) => if (isData(x)) x else 0)
-
-    println(tileWithoutNaN.asciiDraw())
-  }
-
-  private def dump(matrix: Array[Array[Double]]): String = {
-    def dumpRow(row: Array[Double]): String = row mkString " "
-    matrix.map(dumpRow) mkString "\n"
-  }
-
-  def replaceNaNsWith0(bandTile: Tile): Tile = {
-    val mRows = OrtUtil.reshape(bandTile.toArrayDouble(), Array(bandTile.rows, bandTile.cols)).asInstanceOf[Array[Array[Double]]]
-    val tRows = MatrixUtils.createRealMatrix(mRows).copy().transpose().getData
-
-    mRows.foreach(row => interpolate(row, limit = 2))
-    tRows.foreach(row => interpolate(row, limit = 2))
-
-    val interpolated = (MatrixUtils.createRealMatrix(mRows) add MatrixUtils.createRealMatrix(tRows).transpose())
-      .scalarMultiply(0.5)
-
-    DoubleArrayTile(interpolated.getData.flatten, cols = bandTile.cols, rows = bandTile.rows)
-      .mapDouble((x: Double) => if (isData(x)) x else 0)
-      .convert(FloatConstantNoDataCellType)
-  }
-
-  @Test
-  def replaceNaNsWith0IsBackwardsCompatible(): Unit = {
-    val original = MultibandGeoTiff(testResourcePath("reconstructed_2021-09-07Z_ref.tif")).tile
-
-    val interpolatedBands = for {
-      bandTile <- original.bands
-    } yield replaceNaNsWith0(bandTile)
-
-    assertTilesEqual(actual = MultibandTile(interpolatedBands), expected = original)
-  }
-
-  def interpolateTileRows(tile: Tile, limit: Int): Tile = {
-    val interpolatedRows = for {
-      row <- OrtUtil.reshape(tile.toArrayDouble(), Array(tile.rows, tile.cols)).asInstanceOf[Array[Array[Double]]] // allocates a new array
-    } yield {
-      interpolate(row, limit)
-      row
-    }
-
-    DoubleArrayTile(interpolatedRows.flatten, tile.cols, tile.rows)
-  }
-
-  def interpolate(row: Array[Double], limit: Int): Unit = { // modifies row in-place
-    def gapIndicesFrom(index: Int): (Int, Int) = {
-      var lower = -1
-      var upper = -1
-
-      for (i <- index until row.length if lower == -1) {
-        if (row(i).isNaN) {
-          lower = i
-        }
-      }
-
-      if (lower == -1) return null
-
-      for (i <- (lower + 1) until row.length if upper == -1) {
-        if (!row(i).isNaN) {
-          upper = i
-        }
-      }
-
-      if (upper == -1) null else (lower, upper) // upper is exclusive
-    }
-
-    def interpolate(lower: Int, upper: Int, limit: Int): Unit = { // gap indices
-      if (lower <= 0 || upper >= row.length) return // row starts or ends with NaN; do not interpolate
-
-      val deltaX = upper - (lower - 1)
-      val deltaY = row(upper) - row(lower - 1)
-      val delta = deltaY / deltaX
-
-      for (i <- lower until upper if i - lower < limit) {
-        val interpolated = row(lower - 1) + (i - lower + 1) * delta
-        row(i) = interpolated
-      }
-    }
-
-    var from = 0
-    var gapIndices: (Int, Int) = null
-
-    do {
-      gapIndices = gapIndicesFrom(from)
-
-      if (gapIndices != null) {
-        val (lower, upper) = gapIndices
-        interpolate(lower, upper, limit)
-        from = upper
-      }
-    } while (from < row.length && gapIndices != null)
+    assertArrayEquals(Array(n, n, n, 4, 5, 6, 7, 8, n, 10, n), row, 0.0)
   }
 }

@@ -112,7 +112,7 @@ package object corsa {
       .convert(FloatConstantNoDataCellType)
   }
 
-  private def interpolateNaN(row: Array[Double], limit: Int): Unit = { // modifies row in-place
+  def interpolateNaN(row: Array[Double], limit: Int): Unit = { // modifies row in-place
     def gapIndicesFrom(index: Int): (Int, Int) = {
       var lower = -1
       var upper = -1
