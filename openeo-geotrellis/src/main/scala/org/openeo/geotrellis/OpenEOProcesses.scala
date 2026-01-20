@@ -1456,6 +1456,34 @@ class OpenEOProcesses extends Serializable {
 
   }
 
+  def relabel_temporal(datacube: Object, sourceLabels: util.ArrayList[String], targetLabels: util.ArrayList[String]): Object = {
+    datacube match {
+      case rdd if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
+        relabel_temporal_generic(rdd.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], sourceLabels.asScala.toList, targetLabels.asScala.toList)
+      case _ => throw new IllegalArgumentException("Unsupported rdd type to relabel along time dimension: ${rdd}")
+    }
+  }
+
+  def relabel_temporal_generic(datacube: MultibandTileLayerRDD[SpaceTimeKey], sourceLabels: List[String], targetLabels: List[String]): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val sourceInstants = sourceLabels.map(l => ZonedDateTime.parse(l).toInstant.toEpochMilli)
+    val targetInstants = targetLabels.map(l => ZonedDateTime.parse(l).toInstant.toEpochMilli)
+
+    val resultRDD = datacube.map { case (k,v) => {
+      val i = sourceInstants.indexOf(k.instant)
+      if (i < 0) {
+        (k, v)
+      } else {
+        (SpaceTimeKey(k.spatialKey, TemporalKey(targetInstants(i))), v)
+      }
+    }}
+    val timestamps = resultRDD.keys.map(k => k.temporalKey.instant).collect()
+
+    val minKey: SpaceTimeKey = SpaceTimeKey(datacube.metadata.bounds.get.minKey.spatialKey, TemporalKey(timestamps.min))
+    val maxKey: SpaceTimeKey = SpaceTimeKey(datacube.metadata.bounds.get.maxKey.spatialKey, TemporalKey(timestamps.max))
+    val newMetadata = datacube.metadata.copy(bounds = Bounds[SpaceTimeKey](minKey, maxKey))
+    ContextRDD(resultRDD, newMetadata)
+  }
+
   def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
     val filter = new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
     // Buffer each input tile so that the dilation is consistent across tile boundaries.
