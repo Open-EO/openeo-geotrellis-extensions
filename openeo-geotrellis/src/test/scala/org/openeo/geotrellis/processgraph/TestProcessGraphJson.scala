@@ -15,6 +15,12 @@ class TestProcessGraphJson {
     ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_sentinel_5p_data.json")
   }
 
+  @Test
+  def issue(): Unit = {
+    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/issue_.json")
+  }
+
+
 
   @Test
   @Disabled
