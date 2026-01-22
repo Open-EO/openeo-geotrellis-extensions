@@ -532,6 +532,8 @@ object NetCDFRDDWriter {
             throw t
 
         }
+        val bands = assetsMetadata.get("bands")
+        logger.info(s"assets contain bands: $bands")
 
         Item(id = UUID.randomUUID().toString, datetime = null , bbox = tiles.head._3,
           assets = Collections.singletonMap("openEO", Asset(path = assetPath,metadata = assetsMetadata)))
@@ -620,6 +622,9 @@ object NetCDFRDDWriter {
         } catch {
           case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
+
+        val bands = assetMetadata.get("bands")
+        logger.info(s"assets contain the bands: $bands")
 
         Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent.extent,
           assets = Collections.singletonMap("openEO", Asset(assetPath, metadata = assetMetadata)))
@@ -967,6 +972,7 @@ object NetCDFRDDWriter {
       val bandStats = statistics.fold(new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0)))(statistics => {
         new java.util.HashMap[String, Any](java.util.Map.of("mean", statistics.mean, "maximum", statistics.zmax, "minimum", statistics.zmin, "stddev", statistics.stddev, "valid_percent", statistics.dataCells.toDouble / size*100))
       })
+      logger.info(s"computed statistics for band ${bandNames.get(bandId)}: $bandStats")
       rasterBands.put("statistics",bandStats)
       rasterBands.put("name",bandNames.get(bandId))
       stats.add(rasterBands)
