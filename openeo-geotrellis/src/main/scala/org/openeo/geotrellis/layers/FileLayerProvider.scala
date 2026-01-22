@@ -1499,21 +1499,28 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
 
     def getBandAssetsByBandInfo: Seq[Option[(Link, Int)]] = { // [Some((href, bandIndex))]
+      val indexedBandNamePattern = "^.+##(\\d+)$".r
+
       def getBandAsset(bandName: String): Option[(Link, Int)] = { // (href, bandIndex)
-        feature.links
-          .flatMap(link => link.bandNames match {
-            case Some(assetBandNames) =>
-              val bandIndex = assetBandNames.indexWhere(_ == bandName)
-              if (bandIndex >= 0) {
-                convertNetcdfLinksToGDALFormat(link, bandName, bandIndex)
-              } else None
-            case _ => None
-          })
-          .headOption
-          .orElse {
-            logger.warn(s"asset with band name $bandName not found in feature ${feature.id}; inserting NODATA band instead")
-            None
-          }
+        bandName match {
+          case indexedBandNamePattern(index) => convertNetcdfLinksToGDALFormat(feature.links.head, bandName, Integer.valueOf(index))
+          case _ => feature.links
+            .flatMap(link => link.bandNames match {
+              case Some(assetBandNames) =>
+                val bandIndex = assetBandNames.indexWhere(_ == bandName)
+                if (bandIndex >= 0) {
+                  convertNetcdfLinksToGDALFormat(link, bandName, bandIndex)
+                } else None
+              case _ => None
+            })
+            .headOption
+            .orElse {
+              logger.warn(s"asset with band name $bandName not found in feature ${feature.id}; inserting NODATA band instead")
+              None
+            }
+
+        }
+
       }
 
       bandNames
