@@ -22,6 +22,7 @@ import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
+import org.apache.commons.io.FileUtils
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
@@ -34,6 +35,7 @@ import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPar
 import org.slf4j.LoggerFactory
 
 import java.io.File
+import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.format.DateTimeFormatter
@@ -1547,9 +1549,50 @@ class OpenEOProcesses extends Serializable {
 
   def predictONNXGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
     logger.info("ONNX: start predictOnnx")
+    val modelPath = Paths.get(model)
+    val (modelFile, isTemp) = if (Files.exists(modelPath)) {
+      (modelPath,false)
+    } else {
+      val tempFileName = Files.createTempFile(null, ".onnx")
+      FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
+      (tempFileName,true)
+    }
+    val env = OrtEnvironment.getEnvironment()
+    val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
+    val inputNames = session.getInputNames
+    val outputNames = session.getOutputNames
+
+    if (inputNames.size() > 1)
+      // TODO support the case for multiple inputs
+      throw new IllegalArgumentException(
+        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
+    if (outputNames.size() > 1)
+      // TODO support the case for multiple outputs
+      throw new IllegalArgumentException(
+        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
+
+
+    val inputName = inputNames.toArray()(0).asInstanceOf[String]
+    val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+    val outputName = outputNames.toArray()(0).asInstanceOf[String]
+    val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
+
+    val inputType = inputInfo.`type`
+    val outputType = outputInfo.`type`
+    if (inputType != outputType)
+      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
+
+    val inputShape = inputInfo.getShape
+    val tileCols = datacube.metadata.tileLayout.tileCols
+    val tileRows = datacube.metadata.tileLayout.tileRows
+    val retiled = if (tileCols != inputShape(inputShape.length-1) || tileRows != inputShape(inputShape.length-2)) {
+      logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows")
+      retileGeneric(datacube,inputShape(inputShape.length-2).toInt,inputShape(inputShape.length-1).toInt,0,0)
+    } else datacube
+    if (isTemp) Files.delete(modelFile)
     ContextRDD(
-      datacube.mapValues(x => onnx.predictOnnx(x,model)),
-      datacube.metadata
+      retiled.mapValues(x => onnx.predictOnnx(x,model)),
+      retiled.metadata
     )
   }
 

@@ -133,16 +133,6 @@ package object onnx {
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
 
-    if (inputNames.size() > 1)
-      // TODO support the case for multiple inputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
-    if (outputNames.size() > 1)
-      // TODO support the case for multiple outputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
-
-
     val inputName = inputNames.toArray()(0).asInstanceOf[String]
     val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
     val outputName = outputNames.toArray()(0).asInstanceOf[String]
@@ -150,11 +140,7 @@ package object onnx {
 
     val inputType = inputInfo.`type`
     val outputType = outputInfo.`type`
-    if (inputType != outputType)
-      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
-
     val inputShape = inputInfo.getShape
-
     val outputShape = outputInfo.getShape
 
     val errorMessageInput = checkShape(inputShape, tile.cols, tile.rows, Some(bandCount))
