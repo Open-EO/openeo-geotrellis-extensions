@@ -1529,7 +1529,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     } yield linkWithTitle.map(convertNetcdfLinksToGDALFormat(_,title,bandIndex).get)
 
     // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
-    val byLinkTitle = !fromLoadStac
+//    val byLinkTitle = !fromLoadStac
+    val byLinkTitle = true
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 

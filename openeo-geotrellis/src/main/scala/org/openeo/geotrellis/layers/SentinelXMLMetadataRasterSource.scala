@@ -106,6 +106,8 @@ case class SentinelXMLMetadataRasterSource(
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
+    val supportedBandIndices = Seq(0)
+    require(bands == supportedBandIndices)
     bounds.intersection(gridExtent.dimensions)
       .map { intersection =>
         val intersectionGridBounds = intersection.toGridType[Int]
