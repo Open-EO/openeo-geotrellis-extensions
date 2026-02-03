@@ -949,10 +949,13 @@ object NetCDFRDDWriter {
   }
 
   private def bandsStatistics(tile:Tile, bandHistograms:collection.mutable.Map[String,(StreamingHistogram,Int)], bandName:String): Unit = {
+    val minmax = tile.findMinMax
+    logger.info(s"tile for band ${bandName} has values max: ${minmax._2}, min: ${minmax._1}")
     val result = if (bandHistograms.contains(bandName)) {
       val (histogram,size) = bandHistograms(bandName)
       (histogram.merge(tile.histogramDouble()),size+tile.size)
     } else (StreamingHistogram(tile.histogramDouble()),tile.size)
+    logger.info(s"histogram for band ${bandName} has values max: ${result._1.statistics().get.zmax}, min: ${result._1.statistics().get.zmin}")
     bandHistograms.update(bandName,result)
   }
 
@@ -960,7 +963,12 @@ object NetCDFRDDWriter {
     val stats = new java.util.ArrayList[java.util.HashMap[String,Any]]()
     for (bandId <- 0 until bandNames.size()){
       val histogramsAndSizes = rasters.map(raster => {
-        (raster.tile.band(bandId).histogramDouble(),raster.tile.size)
+        val minmax = raster.tile.band(bandId).findMinMax
+        logger.info(s"tile has for band ${bandNames.get(bandId)} values max: ${minmax._2}, min: ${minmax._1}")
+        val histogram = raster.tile.band(bandId).histogramDouble()
+        val statistics = histogram.statistics().get
+        logger.info(s"histogram has for band ${bandNames.get(bandId)} values max: ${statistics.zmax}, min: ${statistics.zmin}")
+        (histogram,raster.tile.size)
       })
       val (result,size )= histogramsAndSizes.foldLeft((StreamingHistogram(),0)) {
         case ((accHistogram, accSize), (histogram, size)) => {
