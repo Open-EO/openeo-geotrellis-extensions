@@ -1557,8 +1557,10 @@ class OpenEOProcesses extends Serializable {
       FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
       (tempFileName,true)
     }
+    logger.info(f"ONNX: create environment")
     val env = OrtEnvironment.getEnvironment()
     val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
+    logger.info(f"ONNX: get model names")
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
 
@@ -1577,11 +1579,13 @@ class OpenEOProcesses extends Serializable {
     val outputName = outputNames.toArray()(0).asInstanceOf[String]
     val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
 
+    logger.info(f"ONNX: get types of model")
     val inputType = inputInfo.`type`
     val outputType = outputInfo.`type`
     if (inputType != outputType)
       throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
 
+    logger.info(f"ONNX: get shape of model")
     val inputShape = inputInfo.getShape
     val tileCols = datacube.metadata.tileLayout.tileCols
     val tileRows = datacube.metadata.tileLayout.tileRows
