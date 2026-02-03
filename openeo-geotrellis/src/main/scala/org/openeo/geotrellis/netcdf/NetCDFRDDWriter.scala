@@ -955,7 +955,8 @@ object NetCDFRDDWriter {
       val (histogram,size) = bandHistograms(bandName)
       (histogram.merge(tile.histogramDouble()),size+tile.size)
     } else (StreamingHistogram(tile.histogramDouble()),tile.size)
-    logger.info(s"histogram for band ${bandName} has values max: ${result._1.statistics().get.zmax}, min: ${result._1.statistics().get.zmin}")
+    if (result._1.statistics().nonEmpty)
+      logger.info(s"histogram for band ${bandName} has values max: ${result._1.statistics().get.zmax}, min: ${result._1.statistics().get.zmin}")
     bandHistograms.update(bandName,result)
   }
 
@@ -966,8 +967,9 @@ object NetCDFRDDWriter {
         val minmax = raster.tile.band(bandId).findMinMax
         logger.info(s"tile has for band ${bandNames.get(bandId)} values max: ${minmax._2}, min: ${minmax._1}")
         val histogram = raster.tile.band(bandId).histogramDouble()
-        val statistics = histogram.statistics().get
-        logger.info(s"histogram has for band ${bandNames.get(bandId)} values max: ${statistics.zmax}, min: ${statistics.zmin}")
+        val statistics = histogram.statistics()
+        if (statistics.nonEmpty)
+          logger.info(s"histogram has for band ${bandNames.get(bandId)} values max: ${statistics.get.zmax}, min: ${statistics.get.zmin}")
         (histogram,raster.tile.size)
       })
       val (result,size )= histogramsAndSizes.foldLeft((StreamingHistogram(),0)) {
