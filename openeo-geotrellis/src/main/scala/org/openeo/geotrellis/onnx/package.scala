@@ -119,6 +119,7 @@ package object onnx {
   }
 
   def predictOnnx(tile: MultibandTile, model: String): MultibandTile = {
+    logger.info(f"ONNX: start predict tile")
     val modelPath = Paths.get(model)
     val (modelFile, isTemp) = if (Files.exists(modelPath)) {
       (modelPath,false)
@@ -149,11 +150,14 @@ package object onnx {
     val errorMessageOutput = checkShape(outputShape, tile.cols, tile.rows)
     if (errorMessageOutput.nonEmpty)
       throw new IllegalArgumentException(s"ONNX: unsupported output shape: $errorMessageOutput.")
-
+    logger.info(f"ONNX: checked model shape")
     val inputArray = reshape(inputType, tile, inputShape)
+    logger.info(f"ONNX: reshaped tile")
     val tensor = OnnxTensor.createTensor(env, inputArray)
     val inputs = java.util.Map.of(inputName, tensor)
+    logger.info(f"ONNX: start running session")
     val onnxResults = session.run(inputs)
+    logger.info(f"ONNX: reshape result")
     val resultValue = onnxResults.get(0).getValue.asInstanceOf[Array[_]]
     val flattenedResult = flattenNestedArray(resultValue, outputShape, outputType)
     if (isTemp) Files.delete(modelFile)
