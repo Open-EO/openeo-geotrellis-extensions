@@ -5,13 +5,10 @@ import geotrellis.raster.{ByteArrayTile, ByteCells, DoubleArrayTile, DoubleCells
 import org.apache.commons.io.FileUtils
 
 import java.nio.file.{Files, Paths}
-import org.slf4j.LoggerFactory
 
 import java.net.URL
 
 package object onnx {
-  private val logger = LoggerFactory.getLogger(getClass)
-
   private def flattenNestedArray(multiArray: Array[_], outputShape: Array[Long], onnxType:OnnxJavaType): MultibandTile = {
     val shapeDimension = outputShape.length
     onnxType match {
@@ -119,7 +116,6 @@ package object onnx {
   }
 
   def predictOnnx(tile: MultibandTile, model: String): MultibandTile = {
-    logger.info(f"ONNX: start predict tile")
     val modelPath = Paths.get(model)
     val (modelFile, isTemp) = if (Files.exists(modelPath)) {
       (modelPath,false)
