@@ -1548,7 +1548,6 @@ class OpenEOProcesses extends Serializable {
   }
 
   def predictONNXGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
-    logger.info("ONNX: start predictOnnx")
     val modelPath = Paths.get(model)
     val (modelFile, isTemp) = if (Files.exists(modelPath)) {
       (modelPath,false)
@@ -1557,10 +1556,8 @@ class OpenEOProcesses extends Serializable {
       FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
       (tempFileName,true)
     }
-    logger.info(f"ONNX: create environment")
     val env = OrtEnvironment.getEnvironment()
     val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
-    logger.info(f"ONNX: get model names")
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
 
@@ -1579,18 +1576,16 @@ class OpenEOProcesses extends Serializable {
     val outputName = outputNames.toArray()(0).asInstanceOf[String]
     val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
 
-    logger.info(f"ONNX: get types of model")
     val inputType = inputInfo.`type`
     val outputType = outputInfo.`type`
     if (inputType != outputType)
       throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
 
-    logger.info(f"ONNX: get shape of model")
     val inputShape = inputInfo.getShape
     val tileCols = datacube.metadata.tileLayout.tileCols
     val tileRows = datacube.metadata.tileLayout.tileRows
     val retiled = if (tileCols != inputShape(inputShape.length-1) || tileRows != inputShape(inputShape.length-2)) {
-      logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows")
+      logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(inputShape.length-1)},${inputShape(inputShape.length-2)})")
       retileGeneric(datacube,inputShape(inputShape.length-2).toInt,inputShape(inputShape.length-1).toInt,0,0)
     } else datacube
     if (isTemp) Files.delete(modelFile)
