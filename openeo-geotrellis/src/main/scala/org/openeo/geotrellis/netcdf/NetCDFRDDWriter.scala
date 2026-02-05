@@ -197,7 +197,7 @@ object NetCDFRDDWriter {
       }else{
         path
       }
-    val bandHistograms = collection.mutable.Map[String,(Histogram[Int],Int)]()
+    val bandStatistics = collection.mutable.Map[String,(Double,Double,Option[Double],Int,Int)]()
     var netcdfFile: NetcdfFileWriter = null
     for(tuple <- cachedRDD.toLocalIterator){
 
@@ -257,7 +257,7 @@ object NetCDFRDDWriter {
               tile = tile.crop(rasterExtent.cols-gridExtent.colMin,rasterExtent.rows-gridExtent.rowMin,raster.CropOptions(force=true))
               logger.debug(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
             }
-            if (addBandsStatistics) bandsStatistics(tile, bandHistograms, variable)
+            if (addBandsStatistics) bandsStatistics(tile, bandStatistics, variable)
             try{
               writeTile(variable, origin, tile, netcdfFile)
             }catch {
@@ -274,7 +274,7 @@ object NetCDFRDDWriter {
         netcdfFile.flush()
       }
     }
-    val assetsMetadata = setupAssetMetadata(rdd.metadata, dates, bandNames, preProcessResult._1, extent, addBandsStatistics, bandHistograms)
+    val assetsMetadata = setupAssetMetadata(rdd.metadata, dates, bandNames, preProcessResult._1, extent, addBandsStatistics, bandStatistics)
     if(dates.nonEmpty) {
       val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
       writeTime(timeDimName, netcdfFile, dates)
@@ -893,17 +893,17 @@ object NetCDFRDDWriter {
     if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"add_offset",bandsMetadata.get("OFFSET").toFloat)
   }
 
-  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], dates: List[Int], bandNames: ArrayList[String], gridBounds: GridBounds[Int], bbox: Extent, addBandsStats: Boolean, histograms:scala.collection.mutable.Map[String,(Histogram[Int],Int)]): java.util.Map[String, Any] = {
+  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], dates: List[Int], bandNames: ArrayList[String], gridBounds: GridBounds[Int], bbox: Extent, addBandsStats: Boolean, bandStatistics:scala.collection.mutable.Map[String,(Double,Double,Option[Double],Int,Int)]): java.util.Map[String, Any] = {
     val assetMetadata = if (dates.nonEmpty) {
       new util.HashMap[String,Any](util.Map.of("time", new util.HashMap[String,Any](util.Map.of("type", "temporal", "extent",Array(dates.head, dates.last), "values", dates.toArray))))
     } else new java.util.HashMap[String,Any]()
     val bands = if (addBandsStats) {
       val maps = new util.ArrayList[util.Map[String,Any]]()
-      histograms.foreach {case (bandName,(histogram,size)) => {
-        val statistics = histogram.statistics()
-        val mapStatistics = statistics.fold(new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))){ statistics =>
-          new util.HashMap[String, Any](util.Map.of("maximum", statistics.zmax, "minimum", statistics.zmin, "mean", statistics.mean,"stddev",statistics.stddev, "valid_percent", statistics.dataCells.toDouble/size*100))
+      bandStatistics.foreach {case (bandName,(min,max,mean,validCount,size)) => {
+        val mapStatistics = mean.fold(new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))){ mean =>
+          new util.HashMap[String, Any](util.Map.of("maximum", max, "minimum", min, "mean", mean, "valid_percent", validCount.toDouble/size*100))
         }
+        logger.info(s"computed statistics for band ${bandName}: $mapStatistics")
         val band = new util.HashMap[String,Any](util.Map.of("name", bandName, "statistics", mapStatistics))
         maps.add(band)
 
@@ -948,39 +948,52 @@ object NetCDFRDDWriter {
     assetMetadata
   }
 
-  private def bandsStatistics(tile:Tile, bandHistograms:collection.mutable.Map[String,(Histogram[Int],Int)], bandName:String): Unit = {
-    val minmax = tile.findMinMax
-    logger.info(s"tile for band ${bandName} has values max: ${minmax._2}, min: ${minmax._1}")
-    val result = if (bandHistograms.contains(bandName)) {
-      val (histogram,size) = bandHistograms(bandName)
-      (histogram.merge(tile.histogram),size+tile.size)
-    } else (tile.histogram,tile.size)
-    if (result._1.statistics().nonEmpty)
-      logger.info(s"histogram for band ${bandName} has values max: ${result._1.statistics().get.zmax}, min: ${result._1.statistics().get.zmin}")
-    bandHistograms.update(bandName,result)
+  private def bandsStatistics(tile:Tile, bandStatistics:collection.mutable.Map[String,(Double,Double,Option[Double],Int,Int)], bandName:String): Unit = {
+    val (tempMin,tempMax, tempMean, tempValidCount) = tile.cellType match {
+      case _:FloatCells => statsDouble(tile)
+      case _:DoubleCells => statsDouble(tile)
+      case _:ShortCells => statsInt(tile)
+      case _:UShortCells => statsInt(tile)
+      case _:IntCells => statsInt(tile)
+      case _:DoubleCells => statsInt(tile)
+    }
+    val result = if (bandStatistics.contains(bandName)) {
+      val (curMin,curMax,curMean, curValidCount,size) = bandStatistics(bandName)
+      val newMean = if (tempValidCount+curValidCount > 0){
+        Some((tempMean.getOrElse(0.0)*tempValidCount + curMean.getOrElse(0.0)*curValidCount)/(tempValidCount+curValidCount))
+      } else None
+      (Math.min(tempMin,curMin), Math.max(tempMax,curMax),newMean,tempValidCount+curValidCount,size+tile.size)
+    } else (tempMin,tempMax,tempMean,tempValidCount,tile.size)
+    bandStatistics.update(bandName,result)
   }
 
   private def bandsStatistics(rasters:Seq[Raster[MultibandTile]], bandNames: ArrayList[String]): java.util.ArrayList[java.util.HashMap[String,Any]] = {
     val stats = new java.util.ArrayList[java.util.HashMap[String,Any]]()
     for (bandId <- 0 until bandNames.size()){
-      val histogramsAndSizes = rasters.map(raster => {
-        val minmax = raster.tile.band(bandId).findMinMax
-        logger.info(s"tile has for band ${bandNames.get(bandId)} values max: ${minmax._2}, min: ${minmax._1}")
-        val histogram = raster.tile.band(bandId).histogram
-        val statistics = histogram.statistics()
-        if (statistics.nonEmpty)
-          logger.info(s"histogram has for band ${bandNames.get(bandId)} values max: ${statistics.get.zmax}, min: ${statistics.get.zmin}")
-        (histogram,raster.tile.size)
+      val bandStatistics = rasters.map(raster => {
+        val tile = raster.tile.band(bandId)
+        val (min, max, mean, validCount) = tile.cellType match {
+          case _:FloatCells => statsDouble(tile)
+          case _:DoubleCells => statsDouble(tile)
+          case _:ShortCells => statsInt(tile)
+          case _:UShortCells => statsInt(tile)
+          case _:IntCells => statsInt(tile)
+          case _:DoubleCells => statsInt(tile)
+        }
+        (min, max, mean, validCount, raster.tile.size)
       })
-      val (result,size )= histogramsAndSizes.foldLeft((IntHistogram(),0)) {
-        case ((accHistogram, accSize), (histogram, size)) => {
-          (accHistogram.merge(histogram), accSize + size)
+      val (min,max,mean,validCount,size)= bandStatistics.reduce{(x,y) => {
+          val (accMin, accMax, accMean, accValidCount, accSize) = x
+          val (min, max, mean, validCount, size) = y
+          val newMean = if (accValidCount+validCount > 0){
+            Some((accMean.getOrElse(0.0)*accValidCount + mean.getOrElse(0.0)*validCount)/(accValidCount+validCount))
+          } else None
+          (Math.min(accMin,min), Math.max(accMax,max),newMean,accValidCount+validCount, accSize + size)
         }
       }
-      val statistics = result.statistics()
       val rasterBands = new java.util.HashMap[String,Any]()
-      val bandStats = statistics.fold(new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0)))(statistics => {
-        new java.util.HashMap[String, Any](java.util.Map.of("mean", statistics.mean, "maximum", statistics.zmax, "minimum", statistics.zmin, "stddev", statistics.stddev, "valid_percent", statistics.dataCells.toDouble / size*100))
+      val bandStats = mean.fold(new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0)))(mean => {
+        new java.util.HashMap[String, Any](java.util.Map.of("mean", mean, "maximum", max, "minimum", min, "valid_percent", validCount.toDouble/ size*100))
       })
       logger.info(s"computed statistics for band ${bandNames.get(bandId)}: $bandStats")
       rasterBands.put("statistics",bandStats)
@@ -988,6 +1001,54 @@ object NetCDFRDDWriter {
       stats.add(rasterBands)
     }
     stats
+  }
+
+  private def statsDouble(tile: Tile): (Double,Double,Option[Double],Int) = {
+    var zmin = Double.NaN
+    var zmax = Double.NaN
+    var sum = 0.0
+    var validCount = 0
+    tile.foreachDouble { z =>
+      if (isData(z)) {
+        validCount +=1
+        if(isNoData(zmin)) {
+          zmin = z
+          zmax = z
+        } else {
+          zmin = math.min(zmin, z)
+          zmax = math.max(zmax, z)
+          sum += z
+        }
+      }
+    }
+    val mean:Option[Double] = if(validCount == 0) {
+      None
+    }else{
+      Some(sum/validCount)
+    }
+    (zmin,zmax,mean,validCount)
+  }
+  private def statsInt(tile:Tile): (Double,Double,Option[Double],Int) = {
+    var zmin = Int.MaxValue
+    var zmax = Int.MinValue
+    var sum = 0
+    var validCount = 0
+
+    tile.foreach { z =>
+      if (isData(z)) {
+        validCount +=1
+        zmin = math.min(zmin, z)
+        zmax = math.max(zmax, z)
+        sum += z
+      }
+    }
+
+    val mean:Option[Double] = if(validCount == 0) {
+      None
+    }else{
+      Some(sum.toDouble/validCount)
+    }
+    (zmin,zmax,mean,validCount)
   }
 
 
