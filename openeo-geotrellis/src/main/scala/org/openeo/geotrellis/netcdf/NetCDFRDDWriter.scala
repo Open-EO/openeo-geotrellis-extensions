@@ -957,7 +957,7 @@ object NetCDFRDDWriter {
       case _:IntCells => statsInt(tile)
       case _:DoubleCells => statsInt(tile)
     }
-    val minmax = tile.findMinMax
+    val minmax = tile.toArrayTile().findMinMax
     logger.info(s"the calulated min and max are $tempMin and $tempMax while the function found $minmax")
     val result = if (bandStatistics.contains(bandName)) {
       val (curMin,curMax,curMean, curValidCount,size) = bandStatistics(bandName)
@@ -974,7 +974,7 @@ object NetCDFRDDWriter {
     for (bandId <- 0 until bandNames.size()){
       val bandStatistics = rasters.map(raster => {
         val tile = raster.tile.band(bandId)
-        val minmax =tile.findMinMax
+        val minmax =tile.toArrayTile().findMinMax
         val (min, max, mean, validCount) = tile.cellType match {
           case _:FloatCells => statsDouble(tile)
           case _:DoubleCells => statsDouble(tile)
