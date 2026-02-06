@@ -903,7 +903,7 @@ object NetCDFRDDWriter {
         val mapStatistics = mean.fold(new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))){ mean =>
           new util.HashMap[String, Any](util.Map.of("maximum", max, "minimum", min, "mean", mean, "valid_percent", validCount.toDouble/size*100))
         }
-        logger.info(s"computed statistics for band ${bandName}: $mapStatistics")
+        logger.info(s"computed statistics for the band ${bandName}: $mapStatistics")
         val band = new util.HashMap[String,Any](util.Map.of("name", bandName, "statistics", mapStatistics))
         maps.add(band)
 
@@ -957,6 +957,8 @@ object NetCDFRDDWriter {
       case _:IntCells => statsInt(tile)
       case _:DoubleCells => statsInt(tile)
     }
+    val minmax = tile.findMinMax
+    logger.info(s"the calulated min and max are $tempMin and $tempMax while the function found $minmax")
     val result = if (bandStatistics.contains(bandName)) {
       val (curMin,curMax,curMean, curValidCount,size) = bandStatistics(bandName)
       val newMean = if (tempValidCount+curValidCount > 0){
@@ -972,6 +974,7 @@ object NetCDFRDDWriter {
     for (bandId <- 0 until bandNames.size()){
       val bandStatistics = rasters.map(raster => {
         val tile = raster.tile.band(bandId)
+        val minmax =tile.findMinMax
         val (min, max, mean, validCount) = tile.cellType match {
           case _:FloatCells => statsDouble(tile)
           case _:DoubleCells => statsDouble(tile)
@@ -980,6 +983,7 @@ object NetCDFRDDWriter {
           case _:IntCells => statsInt(tile)
           case _:DoubleCells => statsInt(tile)
         }
+        logger.info(s"calulated min and max are $min and $max while the function found $minmax")
         (min, max, mean, validCount, raster.tile.size)
       })
       val (min,max,mean,validCount,size)= bandStatistics.reduce{(x,y) => {
