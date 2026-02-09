@@ -352,6 +352,15 @@ object NetCDFRDDWriter {
         case t: DoubleArrayTile => ucar.ma2.Array.factory(DataType.DOUBLE, shape, t.array)
       }
 
+    var min:Int = Int.MaxValue
+    var max:Int = Int.MinValue
+    val iter = bandArray.getIndexIterator
+    while (iter.hasNext){
+      val nextInt = iter.getIntNext
+      if (max < nextInt) max = nextInt
+      if (nextInt < min) min = nextInt
+    }
+    logger.info(s"before write min and max is $min and $max")
 
     netcdfFile.write(variable, origin, bandArray)
   }
@@ -974,7 +983,7 @@ object NetCDFRDDWriter {
     for (bandId <- 0 until bandNames.size()){
       val bandStatistics = rasters.map(raster => {
         val tile = raster.tile.band(bandId)
-        val minmax =tile.toArrayTile().findMinMax
+        val minmax = tile.toArrayTile().findMinMax
         val (min, max, mean, validCount) = tile.cellType match {
           case _:FloatCells => statsDouble(tile)
           case _:DoubleCells => statsDouble(tile)
