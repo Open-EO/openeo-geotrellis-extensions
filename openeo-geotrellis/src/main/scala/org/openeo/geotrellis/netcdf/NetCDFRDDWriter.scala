@@ -360,7 +360,7 @@ object NetCDFRDDWriter {
       if (max < nextInt) max = nextInt
       if (nextInt < min) min = nextInt
     }
-    logger.info(s"before write min and max is $min and $max")
+    logger.info(s"before write $variable: min and max is $min and $max")
 
     netcdfFile.write(variable, origin, bandArray)
   }
