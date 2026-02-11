@@ -90,9 +90,9 @@ object ProcessGraphRunner {
         val sparkUIPort = findFirstOpenPort(4040)
         logger.info(f"Waiting for remote debugger on port $debugPort")
         logger.info(f"SparkUI will be available at http://localhost:$sparkUIPort")
-        f"docker run --net host -e LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/jep -p $debugPort:5005 -p $sparkUIPort:4040 $credentialsFileMapping $optionalDataMapping $optionalEODataMapping -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath DEBUG"
+        f"docker run -e ZOOKEEPERNODES=192.168.207.56,192.168.207.57,192.168.207.58 -e LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/jep -p $debugPort:5005 -p $sparkUIPort:4040 $credentialsFileMapping $optionalDataMapping $optionalEODataMapping -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath DEBUG"
       } else {
-        f"docker run --net host -e LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/jep -v $outputDir:/out $credentialsFileMapping $optionalDataMapping $optionalEODataMapping -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath"
+        f"docker run -e ZOOKEEPERNODES= -e LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/jep -v $outputDir:/out $credentialsFileMapping $optionalDataMapping $optionalEODataMapping -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath"
       }
     logger.debug(f"Prepared command: $cmd")
     val output = cmd.!!
