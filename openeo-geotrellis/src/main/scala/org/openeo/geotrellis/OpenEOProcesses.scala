@@ -1566,7 +1566,7 @@ class OpenEOProcesses extends Serializable {
     } else {
       val tempFileName = Files.createTempFile(null, ".onnx")
       FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
-      (tempFileName.toString,true)
+      (tempFileName,true)
     }
     val env = OrtEnvironment.getEnvironment()
     val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
