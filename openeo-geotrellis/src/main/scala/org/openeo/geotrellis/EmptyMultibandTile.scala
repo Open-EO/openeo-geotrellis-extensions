@@ -20,7 +20,7 @@ object EmptyMultibandTile{
         val theNoData: Short = t.asInstanceOf[HasNoData[Short]].noDataValue
         ShortConstantTile(theNoData ,cols, rows, ct)
       }
-      case ct: UShortUserDefinedNoDataCellType => UShortArrayTile.fill(ct.noDataValue ,cols, rows, ct)
+      case ct: UShortUserDefinedNoDataCellType => UShortArrayTile.fill(ct.noDataValue ,cols, rows, ct) // ushortconstanttile doesn't behave as expected
       case ct: UShortCells => UShortConstantTile(t.asInstanceOf[HasNoData[Short]].noDataValue ,cols, rows, ct)
       case ct: IntUserDefinedNoDataCellType => IntConstantTile(ct.noDataValue ,cols, rows, ct)
       case ct: IntCells => IntConstantTile(t.asInstanceOf[HasNoData[Int]].noDataValue ,cols, rows, ct)
