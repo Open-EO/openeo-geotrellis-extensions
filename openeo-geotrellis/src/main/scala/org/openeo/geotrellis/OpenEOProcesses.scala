@@ -1562,14 +1562,14 @@ class OpenEOProcesses extends Serializable {
   def predictONNXGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
     val modelPath = Paths.get(model)
     val (modelFile, isTemp) = if (Files.exists(modelPath)) {
-      (modelPath,false)
+      (modelPath.toString,false)
     } else {
       val tempFileName = Files.createTempFile(null, ".onnx")
       FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
-      (tempFileName,true)
+      (tempFileName.toString,true)
     }
     val env = OrtEnvironment.getEnvironment()
-    val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
+    val session = env.createSession(modelFile, new OrtSession.SessionOptions())
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
 
@@ -1600,9 +1600,8 @@ class OpenEOProcesses extends Serializable {
       logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(inputShape.length-1)},${inputShape(inputShape.length-2)})")
       retileGeneric(datacube,inputShape(inputShape.length-2).toInt,inputShape(inputShape.length-1).toInt,0,0)
     } else datacube
-    val broadcast = sc.broadcast(modelFile.toString)
     ContextRDD(
-      retiled.mapValues(x => onnx.predictOnnx(x,broadcast.value)),
+      retiled.mapValues(x => onnx.predictOnnx(x,modelFile)),
       retiled.metadata
     )
   }
