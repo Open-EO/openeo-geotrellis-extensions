@@ -1600,9 +1600,9 @@ class OpenEOProcesses extends Serializable {
       logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(inputShape.length-1)},${inputShape(inputShape.length-2)})")
       retileGeneric(datacube,inputShape(inputShape.length-2).toInt,inputShape(inputShape.length-1).toInt,0,0)
     } else datacube
-    if (isTemp) Files.delete(modelFile)
+    val broadcast = sc.broadcast(modelFile.toString)
     ContextRDD(
-      retiled.mapValues(x => onnx.predictOnnx(x,model)),
+      retiled.mapValues(x => onnx.predictOnnx(x,broadcast.value)),
       retiled.metadata
     )
   }

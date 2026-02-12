@@ -88,27 +88,27 @@ package object onnx {
       case OnnxJavaType.FLOAT =>
         if (!tile.cellType.isInstanceOf[FloatCells])
           throw new IllegalArgumentException(s"ONNX: onnx type float does not match celltype ${tile.cellType}.")
-        val flat = tile.bands.flatMap(x => x.toArrayTile().asInstanceOf[FloatArrayTile].array).toArray
+        val flat = tile.bands.flatMap(x => x.asInstanceOf[FloatArrayTile].array).toArray
         OrtUtil.reshape(flat, inputShape)
       case OnnxJavaType.DOUBLE =>
         if (!tile.cellType.isInstanceOf[DoubleCells])
           throw new IllegalArgumentException(s"ONNX: onnx type double does not match celltype ${tile.cellType}.")
-        val flat = tile.bands.flatMap(x => x.toArrayTile().asInstanceOf[DoubleArrayTile].array).toArray
+        val flat = tile.bands.flatMap(x => x.asInstanceOf[DoubleArrayTile].array).toArray
         OrtUtil.reshape(flat, inputShape)
       case OnnxJavaType.INT32 =>
         if (!tile.cellType.isInstanceOf[IntCells])
           throw new IllegalArgumentException(s"ONNX: onnx type int does not match celltype ${tile.cellType}.")
-        val flat = tile.bands.flatMap(x => x.toArrayTile().asInstanceOf[IntArrayTile].array).toArray
+        val flat = tile.bands.flatMap(x => x.asInstanceOf[IntArrayTile].array).toArray
         OrtUtil.reshape(flat, inputShape)
       case OnnxJavaType.INT16 =>
         if (!tile.cellType.isInstanceOf[ShortCells])
           throw new IllegalArgumentException(s"ONNX: onnx type short does not match celltype ${tile.cellType}.")
-        val flat = tile.bands.flatMap(x => x.toArrayTile().asInstanceOf[ShortArrayTile].array).toArray
+        val flat = tile.bands.flatMap(x => x.asInstanceOf[ShortArrayTile].array).toArray
         OrtUtil.reshape(flat, inputShape)
       case OnnxJavaType.INT8 =>
         if (!tile.cellType.isInstanceOf[ByteCells])
           throw new IllegalArgumentException(s"ONNX: onnx type byte does not match celltype ${tile.cellType}.")
-        val flat = tile.bands.flatMap(x => x.toArrayTile().asInstanceOf[ByteArrayTile].array).toArray
+        val flat = tile.bands.flatMap(x => x.asInstanceOf[ByteArrayTile].array).toArray
         OrtUtil.reshape(flat, inputShape)
       case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported input type of ONNX model : $onnxType")
     }
@@ -116,17 +116,9 @@ package object onnx {
   }
 
   def predictOnnx(tile: MultibandTile, model: String): MultibandTile = {
-    val modelPath = Paths.get(model)
-    val (modelFile, isTemp) = if (Files.exists(modelPath)) {
-      (modelPath,false)
-    } else {
-      val tempFileName = Files.createTempFile(null, ".onnx")
-      FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
-      (tempFileName,true)
-    }
     val bandCount = tile.bandCount
     val env = OrtEnvironment.getEnvironment()
-    val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
+    val session = env.createSession(model, new OrtSession.SessionOptions())
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
 
@@ -152,7 +144,6 @@ package object onnx {
     val onnxResults = session.run(inputs)
     val resultValue = onnxResults.get(0).getValue.asInstanceOf[Array[_]]
     val flattenedResult = flattenNestedArray(resultValue, outputShape, outputType)
-    if (isTemp) Files.delete(modelFile)
     flattenedResult
   }
 
