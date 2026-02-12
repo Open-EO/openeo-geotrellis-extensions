@@ -116,9 +116,17 @@ package object onnx {
   }
 
   def predictOnnx(tile: MultibandTile, model: String): MultibandTile = {
+    val modelPath = Paths.get(model)
+    val (modelFile, isTemp) = if (Files.exists(modelPath)) {
+      (modelPath,false)
+    } else {
+      val tempFileName = Files.createTempFile(null, ".onnx")
+      FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
+      (tempFileName,true)
+    }
     val bandCount = tile.bandCount
     val env = OrtEnvironment.getEnvironment()
-    val session = env.createSession(model, new OrtSession.SessionOptions())
+    val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
     val inputNames = session.getInputNames
     val outputNames = session.getOutputNames
 
@@ -144,6 +152,7 @@ package object onnx {
     val onnxResults = session.run(inputs)
     val resultValue = onnxResults.get(0).getValue.asInstanceOf[Array[_]]
     val flattenedResult = flattenNestedArray(resultValue, outputShape, outputType)
+    if (isTemp) Files.delete(modelFile)
     flattenedResult
   }
 
