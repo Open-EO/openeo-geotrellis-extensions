@@ -1800,10 +1800,10 @@ class FileLayerProviderTest extends RasterMatchers{
   def testVsis3ToS3(): Unit = {
     assertEquals(FileLayerProvider.vsis3ToS3(
       "/vsis3/eodata/auxdata/test.tif"),
-      "S3://EODATA/auxdata/test.tif")
+      "S3://eodata/auxdata/test.tif")
 
     assertEquals(FileLayerProvider.vsis3ToS3(
       "/vsis3/EODATA/auxdata/ESA_WORLD_COVER/2021/ESA_WorldCover_10m_2021_v200_N51E012/ESA_WorldCover_10m_2021_v200_N51E012_Map.tif"),
-      "S3://EODATA/auxdata/ESA_WORLD_COVER/2021/ESA_WorldCover_10m_2021_v200_N51E012/ESA_WorldCover_10m_2021_v200_N51E012_Map.tif")
+      "S3://eodata/auxdata/ESA_WORLD_COVER/2021/ESA_WorldCover_10m_2021_v200_N51E012/ESA_WorldCover_10m_2021_v200_N51E012_Map.tif")
   }
 }

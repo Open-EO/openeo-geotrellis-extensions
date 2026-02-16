@@ -110,7 +110,7 @@ object FileLayerProvider {
   def vsis3ToS3(path: String): String = {
     val vsis3Prefix = "/vsis3/eodata/"
     if (path.toLowerCase().startsWith(vsis3Prefix)) {
-      "S3://EODATA/" + path.substring(vsis3Prefix.length)
+      "S3://eodata/" + path.substring(vsis3Prefix.length)
     } else {
       path
     }
@@ -1438,7 +1438,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
         } else {
           predefinedExtent = featureExtentInLayout
-          GDALRasterSource(GDALPath(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
+          GDALRasterSource(GDALPath(dataPath.replace("/vsis3/EODATA/", "/vsis3/eodata/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         val targetProjectedExtent = featureExtentInLayout match {
@@ -1479,7 +1479,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }else{
           if(experimental) {
             val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
-            GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
+            GDALRasterSource(dataPath.replace("/vsis3/EODATA/","/vsis3/eodata/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
           }else{
             val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
