@@ -21,6 +21,7 @@ import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNotEquals, assertTrue}
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
@@ -36,7 +37,7 @@ import org.openeo.geotrellis.layers.FileLayerProviderTest
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, DataCubeParameters, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Files, Path, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
@@ -817,6 +818,24 @@ class OpenEOProcessesSpec extends RasterMatchers {
   }
 
   @Test
+  def relabelTemporalTest(): Unit = {
+    val pixelType = PixelType.Short
+    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType,cols = 64,rows=64)
+
+    val sourceLabels = List("2019-01-21T00:00:00Z")
+    val targetLabels = List("2020-01-21T00:00:00Z")
+    val relabeledLayer = new OpenEOProcesses().relabel_temporal_generic(layer, sourceLabels, targetLabels)
+
+    assertEquals(ZonedDateTime.parse("2019-01-21T00:00:00Z"), layer.metadata.bounds.get.minKey.time)
+    assertEquals(ZonedDateTime.parse("2019-01-25T00:00:00Z"), layer.metadata.bounds.get.maxKey.time)
+    assertEquals(ZonedDateTime.parse("2019-01-22T00:00:00Z"), relabeledLayer.metadata.bounds.get.minKey.time)
+    assertEquals(ZonedDateTime.parse("2020-01-21T00:00:00Z"), relabeledLayer.metadata.bounds.get.maxKey.time)
+    assertEquals(ZonedDateTime.parse("2020-01-21T00:00:00Z").toInstant.toEpochMilli, relabeledLayer.take(1)(0)._1.instant)
+  }
+
+
+
+  @Test
   def resampleCubeSpatial_spatial():Unit = {
     val tile: Tile = DoubleArrayTile.fill(1.0,1280, 1280)
     val tileSize = 256
@@ -1099,6 +1118,13 @@ class OpenEOProcessesSpec extends RasterMatchers {
       new ArrayMultibandTile(Array(tileFloat(4))),
       Seq(resultArray(0)), FloatConstantNoDataCellType
     )
+    val biggerTileSize = 512
+    val biggerTileFloat = (i: Float) => FloatArrayTile.fill(i, layoutCols * biggerTileSize, layoutRows * biggerTileSize)
+    val biggerResultArray = (i: Int) => Array.fill(layoutCols * biggerTileSize * layoutRows * biggerTileSize)(i)
+    runONNX("/org/openeo/geotrellis/onnx/test_model_float.onnx",
+      new ArrayMultibandTile(Array(biggerTileFloat(1))),
+      Seq(biggerResultArray(2)), FloatConstantNoDataCellType
+    )
 
   }
 
@@ -1109,7 +1135,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val layoutRows = 1
     val tileSize = 256
 
-    val datacubeOneBand = (tile:Tile) => TileLayerRDDBuilders
+    val datacubeOneBand = (tile:Tile, tileSize: Int) => TileLayerRDDBuilders
       .createSpaceTimeTileLayerRDD(Seq((tile, date)), TileLayout(layoutCols, layoutRows, tileSize, tileSize),
         tile.cellType)(OpenEOProcessesSpec.sc)
       .withContext(_.mapValues(MultibandTile(_)))
@@ -1138,22 +1164,22 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // test where the ONNX model doubles the values
     val tileFloat = (i:Float) => FloatArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     runONNX("/org/openeo/geotrellis/onnx/test_model_float.onnx",
-      datacubeOneBand(tileFloat(1)),
+      datacubeOneBand(tileFloat(1), tileSize),
       Seq(resultArray(2)), FloatConstantNoDataCellType
     )
     val tileDouble = (i:Double) =>  DoubleArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     runONNX("/org/openeo/geotrellis/onnx/test_model_double.onnx",
-      datacubeOneBand(tileDouble(2)),
+      datacubeOneBand(tileDouble(2), tileSize),
       Seq(resultArray(4)), DoubleConstantNoDataCellType
     )
     val tileInt = (i:Int) => IntArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     runONNX("/org/openeo/geotrellis/onnx/test_model_int.onnx",
-      datacubeOneBand(tileInt(5)),
+      datacubeOneBand(tileInt(5), tileSize),
       Seq(resultArray(10)), IntConstantNoDataCellType
     )
     val tileShort = (i:Short) => ShortArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     runONNX("/org/openeo/geotrellis/onnx/test_model_short.onnx",
-      datacubeOneBand(tileShort(4)),
+      datacubeOneBand(tileShort(4), tileSize),
       Seq(resultArray(8)), ShortConstantNoDataCellType
     )
     // test where the ONNX model sums the values of the bands
@@ -1192,8 +1218,15 @@ class OpenEOProcessesSpec extends RasterMatchers {
     )
     // test download model
     runONNX("https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx",
-      datacubeOneBand(tileFloat(4)),
+      datacubeOneBand(tileFloat(4), tileSize),
       Seq(resultArray(0)), FloatConstantNoDataCellType
+    )
+    val biggerTileSize = 512
+    val biggerTileFloat = (i: Float) => FloatArrayTile.fill(i, layoutCols * biggerTileSize, layoutRows * biggerTileSize)
+    val biggerResultArray = (i: Int) => Array.fill(layoutCols * biggerTileSize * layoutRows * biggerTileSize)(i)
+    runONNX("/org/openeo/geotrellis/onnx/test_model_float.onnx",
+      datacubeOneBand(biggerTileFloat(1), biggerTileSize),
+      Seq(biggerResultArray(2)), FloatConstantNoDataCellType
     )
   }
 

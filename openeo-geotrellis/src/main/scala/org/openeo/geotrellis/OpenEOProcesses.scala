@@ -1151,16 +1151,22 @@ class OpenEOProcesses extends Serializable {
     }
 
   def corsaCompressGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K]): MultibandTileLayerRDD[K] = {
-    val newTileLayout = datacube.metadata.tileLayout.copy(tileCols = 60, tileRows = 60)
-    val newBounds = datacube.metadata.getComponent[Bounds[K]].flatMap { keyBounds =>
-      keyBounds.rekey(datacube.metadata.layout, datacube.metadata.layout.copy(tileLayout = newTileLayout))
+    val expectedTileSize = 120
+
+    val retiled =
+      if (datacube.metadata.tileCols == expectedTileSize && datacube.metadata.tileRows == expectedTileSize) datacube
+      else retileGeneric(datacube, sizeX = expectedTileSize, sizeY = expectedTileSize, overlapX = 0, overlapY = 0)
+
+    val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = 60, tileRows = 60)
+    val newBounds = retiled.metadata.getComponent[Bounds[K]].flatMap { keyBounds =>
+      keyBounds.rekey(retiled.metadata.layout, retiled.metadata.layout.copy(tileLayout = newTileLayout))
     }
 
     val modelDir = corsa.modelDir
 
     ContextRDD(
-      datacube.mapValues(tile => corsa.compress(modelDir, tile)),
-      datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+      retiled.mapValues(tile => corsa.compress(modelDir, tile)),
+      retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
     )
   }
 
@@ -1171,16 +1177,22 @@ class OpenEOProcesses extends Serializable {
     }
 
   def corsaDecompressGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K]): MultibandTileLayerRDD[K] = {
-    val newTileLayout = datacube.metadata.tileLayout.copy(tileCols = 120, tileRows = 120)
-    val newBounds = datacube.metadata.bounds.flatMap { keyBounds =>
-      keyBounds.rekey(datacube.metadata.layout, datacube.metadata.layout.copy(tileLayout = newTileLayout))
+    val expectedTileSize = 60
+
+    val retiled =
+      if (datacube.metadata.tileCols == expectedTileSize && datacube.metadata.tileRows == expectedTileSize) datacube
+      else retileGeneric(datacube, sizeX = expectedTileSize, sizeY = expectedTileSize, overlapX = 0, overlapY = 0)
+
+    val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = 120, tileRows = 120)
+    val newBounds = retiled.metadata.bounds.flatMap { keyBounds =>
+      keyBounds.rekey(retiled.metadata.layout, retiled.metadata.layout.copy(tileLayout = newTileLayout))
     }
 
     val modelDir = corsa.modelDir
 
     ContextRDD(
-      datacube.mapValues(tile => corsa.decompress(modelDir, tile)),
-      datacube.metadata.copy(layout = datacube.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+      retiled.mapValues(tile => corsa.decompress(modelDir, tile)),
+      retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
     )
   }
 
@@ -1458,6 +1470,34 @@ class OpenEOProcesses extends Serializable {
 
   }
 
+  def relabel_temporal(datacube: Object, sourceLabels: util.ArrayList[String], targetLabels: util.ArrayList[String]): Object = {
+    datacube match {
+      case rdd if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
+        relabel_temporal_generic(rdd.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], sourceLabels.asScala.toList, targetLabels.asScala.toList)
+      case _ => throw new IllegalArgumentException("Unsupported rdd type to relabel along time dimension: ${rdd}")
+    }
+  }
+
+  def relabel_temporal_generic(datacube: MultibandTileLayerRDD[SpaceTimeKey], sourceLabels: List[String], targetLabels: List[String]): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val sourceInstants = sourceLabels.map(l => ZonedDateTime.parse(l).toInstant.toEpochMilli)
+    val targetInstants = targetLabels.map(l => ZonedDateTime.parse(l).toInstant.toEpochMilli)
+
+    val resultRDD = datacube.map { case (k,v) => {
+      val i = sourceInstants.indexOf(k.instant)
+      if (i < 0) {
+        (k, v)
+      } else {
+        (SpaceTimeKey(k.spatialKey, TemporalKey(targetInstants(i))), v)
+      }
+    }}
+    val timestamps = resultRDD.keys.map(k => k.temporalKey.instant).collect()
+
+    val minKey: SpaceTimeKey = SpaceTimeKey(datacube.metadata.bounds.get.minKey.spatialKey, TemporalKey(timestamps.min))
+    val maxKey: SpaceTimeKey = SpaceTimeKey(datacube.metadata.bounds.get.maxKey.spatialKey, TemporalKey(timestamps.max))
+    val newMetadata = datacube.metadata.copy(bounds = Bounds[SpaceTimeKey](minKey, maxKey))
+    ContextRDD(resultRDD, newMetadata)
+  }
+
   def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
     val filter = new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
     // Buffer each input tile so that the dilation is consistent across tile boundaries.
@@ -1531,11 +1571,42 @@ class OpenEOProcesses extends Serializable {
     }
     val env = OrtEnvironment.getEnvironment()
     val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
+    val inputNames = session.getInputNames
+    val outputNames = session.getOutputNames
+
+    if (inputNames.size() > 1)
+      // TODO support the case for multiple inputs
+      throw new IllegalArgumentException(
+        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
+    if (outputNames.size() > 1)
+      // TODO support the case for multiple outputs
+      throw new IllegalArgumentException(
+        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
+
+
+    val inputName = inputNames.toArray()(0).asInstanceOf[String]
+    val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+    val outputName = outputNames.toArray()(0).asInstanceOf[String]
+    val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
+
+    val inputType = inputInfo.`type`
+    val outputType = outputInfo.`type`
+    if (inputType != outputType)
+      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
+
+    val inputShape = inputInfo.getShape
+    val tileCols = datacube.metadata.tileLayout.tileCols
+    val tileRows = datacube.metadata.tileLayout.tileRows
+    val retiled = if (tileCols != inputShape(inputShape.length-1) || tileRows != inputShape(inputShape.length-2)) {
+      logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(inputShape.length-1)},${inputShape(inputShape.length-2)})")
+      retileGeneric(datacube,inputShape(inputShape.length-2).toInt,inputShape(inputShape.length-1).toInt,0,0)
+    } else datacube
+    if (isTemp) Files.delete(modelFile)
     logger.info("created session")
     val broadcastSession = sc.broadcast(session)
     ContextRDD(
-      datacube.mapValues(x => onnx.predictOnnx(x,broadcastSession.value)),
-      datacube.metadata
+      retiled.mapValues(x => onnx.predictOnnx(x,broadcastSession.value)),
+      retiled.metadata
     )
   }
 

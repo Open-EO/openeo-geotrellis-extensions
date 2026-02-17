@@ -5,7 +5,7 @@ import geotrellis.raster.{FloatConstantNoDataCellType, GridBounds, MultibandTile
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{MultibandGeoTiff, SinglebandGeoTiff}
 import geotrellis.raster.testkit.RasterMatchers
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
@@ -17,6 +17,7 @@ import scala.jdk.StreamConverters._
 object CorsaTest {
   private val TileSize = 120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
+  private val n: Double = Double.NaN
 }
 
 @EnabledIfEnvironmentVariable(named = "CORSA_MODEL_DIR", matches=".+")
@@ -99,7 +100,17 @@ class CorsaTest extends RasterMatchers {
     assertEquals(TileSize, sentinel2Tile.cols)
     assertEquals(TileSize, sentinel2Tile.rows)
 
-    MultibandGeoTiff(sentinel2Tile, level0Tiff.extent, level0Tiff.crs).write("/tmp/reconstructed.tif")
-    // TODO: compare with reference file of decoded
+    assertRastersEqual(
+      actual = Raster(sentinel2Tile, level0Tiff.extent),
+      expected = MultibandGeoTiff(testResourcePath("reconstructed_2021-09-07Z_ref.tif")).raster
+    )
+  }
+
+  @Test
+  def interpolateNaN(): Unit = {
+    val row = Array(n, n, n, 4, n, 6, n, n, n, 10, n)
+    corsa.interpolateNaN(row, limit = 2)
+
+    assertArrayEquals(Array(n, n, n, 4, 5, 6, 7, 8, n, 10, n), row, 0.0)
   }
 }
