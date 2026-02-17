@@ -124,9 +124,11 @@ package object onnx {
     val env = OrtEnvironment.getEnvironment()
     logger.info("create environment")
     val inputNames = session.getInputNames
+    logger.info("got input names")
     val outputNames = session.getOutputNames
 
     val inputName = inputNames.toArray()(0).asInstanceOf[String]
+    logger.info("got first input name")
     val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
     val outputName = outputNames.toArray()(0).asInstanceOf[String]
     val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
