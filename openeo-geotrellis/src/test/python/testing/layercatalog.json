@@ -1,5 +1,252 @@
 [
   {
+    "id": "SENTINEL2_L2A_STAC",
+    "description": "[EXPERIMENTAL]",
+    "experimental": true,
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a",
+        "load_stac_feature_flags": {
+          "asset_id_to_bands_map": {
+            "AOT_10m": ["AOT"],
+            "AOT_20m": ["AOT"],
+            "AOT_60m": ["AOT"],
+            "SCL_20m": ["SCL"],
+            "SCL_60m": ["SCL"],
+            "WVP_10m": ["WVP"],
+            "WVP_20m": ["WVP"],
+            "WVP_60m": ["WVP"],
+            "CLD_20m": ["CLD"],
+            "CLD_60m": ["CLD"],
+            "SNW_20m": ["SNW"],
+            "SNW_60m": ["SNW"]
+          },
+          "granule_metadata_band_map": {
+            "sunAzimuthAngles": "granule_metadata##0",
+            "sunZenithAngles": "granule_metadata##1",
+            "viewAzimuthMean": "granule_metadata##2",
+            "viewZenithMean": "granule_metadata##3"
+          },
+          "property_filter_adaptations": {
+            "productType": "drop",
+            "tileId": {
+              "rename": "grid:code",
+              "value_mapping": "add-MGRS-prefix"
+            }
+          },
+          "apply_sentinel2_reflectance_offset": true
+        }
+      }
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "y": {"type": "spatial", "axis": "y", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "B01",
+          "B02",
+          "B03",
+          "B04",
+          "B05",
+          "B06",
+          "B07",
+          "B08",
+          "B8A",
+          "B09",
+          "B11",
+          "B12",
+          "WVP",
+          "AOT",
+          "SCL",
+          "sunAzimuthAngles",
+          "sunZenithAngles",
+          "viewAzimuthMean",
+          "viewZenithMean",
+          "CLD",
+          "SNW"
+        ]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "B01",
+          "common_name": "coastal",
+          "center_wavelength": 0.4427,
+          "full_width_half_max": 0.021,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B02",
+          "common_name": "blue",
+          "center_wavelength": 0.4924,
+          "full_width_half_max": 0.066,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B03",
+          "common_name": "green",
+          "center_wavelength": 0.5598,
+          "full_width_half_max": 0.036,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B04",
+          "common_name": "red",
+          "center_wavelength": 0.6646,
+          "full_width_half_max": 0.031,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B05",
+          "center_wavelength": 0.7041,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B06",
+          "center_wavelength": 0.7405,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B07",
+          "center_wavelength": 0.7828,
+          "full_width_half_max": 0.02,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B08",
+          "common_name": "nir",
+          "center_wavelength": 0.8328,
+          "full_width_half_max": 0.106,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B8A",
+          "common_name": "nir08",
+          "center_wavelength": 0.8647,
+          "full_width_half_max": 0.021,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B09",
+          "common_name": "nir09",
+          "center_wavelength": 0.9451,
+          "full_width_half_max": 0.02,
+          "gsd": 60,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B11",
+          "common_name": "swir16",
+          "center_wavelength": 1.6137,
+          "full_width_half_max": 0.091,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B12",
+          "common_name": "swir22",
+          "center_wavelength": 2.2024,
+          "full_width_half_max": 0.175,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "WVP",
+          "gsd": 10
+        },
+        {
+          "name": "AOT",
+          "gsd": 10
+        },
+        {
+          "name": "SCL",
+          "gsd": 20
+        },
+        {
+          "name": "sunAzimuthAngles",
+          "aliases":["SAA"],
+          "unit":"deg"
+        },
+        {
+          "name": "sunZenithAngles",
+          "aliases":["SZA"],
+          "unit":"deg"
+        },
+        {
+          "name": "viewAzimuthMean",
+          "aliases":["VAA", "approximateViewAzimuth"],
+          "unit":"deg"
+        },
+        {
+          "name": "viewZenithMean",
+          "aliases":["VZA", "approximateViewZenith"],
+          "unit":"deg"
+        },
+        {
+          "name": "CLD",
+          "gsd": 20
+        },
+        {
+          "name": "SNW",
+          "gsd": 20
+        }
+      ]
+    }
+  },
+  {
     "id": "SENTINEL2_L1C_STAC",
     "description": "[EXPERIMENTAL]",
     "experimental": true,
