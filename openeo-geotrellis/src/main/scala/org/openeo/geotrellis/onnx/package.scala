@@ -127,10 +127,10 @@ package object onnx {
     logger.info("got input names")
     val outputNames = session.getOutputNames
 
-    val inputName = inputNames.toArray()(0).asInstanceOf[String]
+    val inputName = inputNames.iterator().next()
     logger.info("got first input name")
     val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
-    val outputName = outputNames.toArray()(0).asInstanceOf[String]
+    val outputName = outputNames.iterator().next()
     val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
 
     val inputType = inputInfo.`type`

@@ -1584,9 +1584,9 @@ class OpenEOProcesses extends Serializable {
         s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
 
 
-    val inputName = inputNames.toArray()(0).asInstanceOf[String]
+    val inputName = inputNames.iterator().next()
     val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
-    val outputName = outputNames.toArray()(0).asInstanceOf[String]
+    val outputName = outputNames.iterator().next()
     val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
 
     val inputType = inputInfo.`type`
