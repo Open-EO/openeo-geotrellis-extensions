@@ -1595,6 +1595,7 @@ class OpenEOProcesses extends Serializable {
       throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
 
     val inputShape = inputInfo.getShape
+    val outputShape = outputInfo.getShape
     val tileCols = datacube.metadata.tileLayout.tileCols
     val tileRows = datacube.metadata.tileLayout.tileRows
     val retiled = if (tileCols != inputShape(inputShape.length-1) || tileRows != inputShape(inputShape.length-2)) {
@@ -1605,7 +1606,7 @@ class OpenEOProcesses extends Serializable {
     logger.info("created session")
     val broadcastSession = sc.broadcast(session)
     ContextRDD(
-      retiled.mapValues(x => onnx.predictOnnx(x,broadcastSession.value)),
+      retiled.mapValues(x => onnx.predictOnnx(x,broadcastSession.value, inputType, inputShape, inputName, outputType, outputShape)),
       retiled.metadata
     )
   }

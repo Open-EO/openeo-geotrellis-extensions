@@ -118,39 +118,17 @@ package object onnx {
     inputArray
   }
 
-  def predictOnnx(tile: MultibandTile, session: OrtSession): MultibandTile = {
+  def predictOnnx(tile: MultibandTile, session: OrtSession, inputType:OnnxJavaType, inputShape:Array[Long], inputName:String, outputType:OnnxJavaType, outputShape:Array[Long]): MultibandTile = {
     val bandCount = tile.bandCount
     logger.info("predict onnx for each tile")
     val env = OrtEnvironment.getEnvironment()
-    logger.info("create environment")
-    val inputNames = session.getInputNames
-    logger.info("got input names")
-    val outputNames = session.getOutputNames
-
-    val inputName = inputNames.iterator().next()
-    logger.info("got first input name")
-    val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
-    logger.info("got input info")
-    val outputName = outputNames.iterator().next()
-    val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
-
-    logger.info("get input type")
-    val inputType = inputInfo.`type`
-    logger.info("got input type")
-    val outputType = outputInfo.`type`
-    logger.info("gathered information about session")
-    if (inputType != outputType)
-      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
-
-    val inputShape = inputInfo.getShape
-    val outputShape = outputInfo.getShape
-
     val errorMessageInput = checkShape(inputShape, tile.cols, tile.rows, Some(bandCount))
     if (errorMessageInput.nonEmpty)
       throw new IllegalArgumentException(s"ONNX: unsupported input shape: $errorMessageInput.")
     val errorMessageOutput = checkShape(outputShape, tile.cols, tile.rows)
     if (errorMessageOutput.nonEmpty)
       throw new IllegalArgumentException(s"ONNX: unsupported output shape: $errorMessageOutput.")
+    logger.info("before reshape input")
     val inputArray = reshape(inputType, tile, inputShape)
     val tensor = OnnxTensor.createTensor(env, inputArray)
     val inputs = java.util.Map.of(inputName, tensor)
