@@ -130,10 +130,13 @@ package object onnx {
     val inputName = inputNames.iterator().next()
     logger.info("got first input name")
     val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+    logger.info("got input info")
     val outputName = outputNames.iterator().next()
     val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
 
+    logger.info("get input type")
     val inputType = inputInfo.`type`
+    logger.info("got input type")
     val outputType = outputInfo.`type`
     logger.info("gathered information about session")
     if (inputType != outputType)
