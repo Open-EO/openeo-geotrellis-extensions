@@ -357,7 +357,7 @@ object LayerFixtures {
     - mount /eodata
     - change openeo-opensearch-client to use fs instead of s3
     - run this Python script, and copy the printed paths here:
-root = Path("/tmp/EODATA/")
+root = Path("/tmp/eodata/")
 l = set(filter(lambda p: p.is_file(), root.rglob("*.*")))
 l = {f for f in l if os.stat(f).st_size > 0}
 l = set(map(lambda p: os.path.relpath(p, root), l))

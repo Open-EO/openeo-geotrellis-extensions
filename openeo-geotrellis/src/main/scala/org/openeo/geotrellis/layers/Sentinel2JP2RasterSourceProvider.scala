@@ -80,7 +80,7 @@ class Sentinel2JP2RasterSourceProvider extends ItemRasterSourceProvider {
           GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
         } else {
           predefinedExtent = featureExtentInLayout
-          GDALRasterSource(GDALPath(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
+          GDALRasterSource(GDALPath(dataPath.replace("/vsis3/EODATA/", "/vsis3/eodata/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
         }
       } else if (dataPath.endsWith("MTD_TL.xml")) {
         val targetProjectedExtent = featureExtentInLayout match {
