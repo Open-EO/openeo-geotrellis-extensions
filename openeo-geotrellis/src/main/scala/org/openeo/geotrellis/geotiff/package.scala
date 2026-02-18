@@ -234,7 +234,7 @@ package object geotiff {
 
   private def defaultOverviewReductions(options: GTiffOptions, totalCols: Int, totalRows: Int, tileCols: Int, tileRows: Int): List[Int] = {
     options.overviews.toUpperCase() match {
-      case "AUTO" | "ALL" => {
+      case "AUTO" =>
         val overviewLevels: Int = {
           val pixels = math.max(totalCols, totalRows).toDouble
           val blocks = pixels / 1024
@@ -248,7 +248,20 @@ package object geotiff {
         (start until overviewLevels).map { l => math.pow(2, l + 1).toInt }.toList.filter(
           r => (tileCols / r) > 16 && (tileRows / r) > 16
         )
-      }
+      case "ALL" =>
+        val overviewLevels: Int = {
+          val pixels = math.max(totalCols, totalRows).toDouble
+          val blocks = pixels / 128
+          math.ceil(math.log(blocks) / math.log(2)).toInt
+        }
+
+        val start = options.overviews.toUpperCase() match {
+          case "AUTO" => 1
+          case "ALL" => 0
+        }
+        (start until overviewLevels).map { l => math.pow(2, l + 1).toInt }.toList.filter(
+          r => (tileCols / r) > 16 && (tileRows / r) > 16
+        )
       case _ => List.empty
     }
   }
