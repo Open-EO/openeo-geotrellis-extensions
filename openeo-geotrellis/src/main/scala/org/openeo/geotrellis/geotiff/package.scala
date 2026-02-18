@@ -251,7 +251,7 @@ package object geotiff {
       case "ALL" =>
         val overviewLevels: Int = {
           val pixels = math.max(totalCols, totalRows).toDouble
-          val blocks = pixels / 128
+          val blocks = pixels / 256
           math.ceil(math.log(blocks) / math.log(2)).toInt
         }
 
