@@ -12,7 +12,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.condition.EnabledIf
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 
 import java.nio.file.{Files, Paths}
 import java.time.format.DateTimeFormatter
@@ -36,6 +36,7 @@ object ProbaVPyramidFactoryTest {
   def tearDownSpark(): Unit = sc.stop()
 }
 
+@Disabled("deprecated opensearch")
 class ProbaVPyramidFactoryTest extends RasterMatchers {
   private val openSearchEndpoint = "https://services.terrascope.be/catalogue"
   private val allTocBands: util.List[String] = util.Arrays.asList("NDVI", "RED", "NIR", "BLUE", "SWIR", "SZA", "SAA", "SWIRVAA", "SWIRVZA", "VNIRVAA", "VNIRVZA", "SM")
