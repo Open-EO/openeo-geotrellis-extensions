@@ -201,7 +201,30 @@ object LayerFixtures {
     catalogDataCube("urn:ogc:def:EOP:VITO:PROBAV_S10-TOC_333M_V001",from_date,to_date,bbox,CellSize(333, 333), NonEmptyList.of("NDVI", "SM").toList)
 
 
-  def sentinel1Sigma0LayerProviderUTM =
+  def sentinel1Sigma0LayerProviderUTM = {
+    val client = new FixedFeaturesOpenSearchClient
+    FeatureCollection.parse(
+      """{
+        |    "features": [
+        |        {
+        |            "type": "Feature",
+        |            "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110",
+        |            "geometry": {"coordinates":[[[5.470964,51.002892],[5.967735,52.495502],[2.110356,52.909264],[1.739041,51.414223],[5.470964,51.002892]]],"type":"Polygon"},
+        |            "bbox": [1.739041,51.002892,5.967735,52.909264],
+        |            "properties":
+        |            	{"date":"2022-09-13T05:58:45.622Z","identifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110","available":"2022-09-13T11:23:10Z","parentIdentifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1","productInformation":{"processingCenter":"VITO","productVersion":"V110","timeliness":"NRT-3h","processingDate":"2022-09-13T11:23:08.049Z","productType":"SIGMA0","availabilityTime":"2022-09-13T11:23:10Z","referenceSystemIdentifier":"EPSG:32631"},"links":{"related":[],"data":[{"length":75688563,"href":"file:///data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2022/09/13/S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110/S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110_angle.tif","conformsTo":"https://www.opengis.net/def/crs/EPSG/0/32631","type":"image/tiff","title":"angle","bandNames":["angle"]},{"length":1626191427,"href":"file:///data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2022/09/13/S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110/S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110_VH.tif","conformsTo":"https://www.opengis.net/def/crs/EPSG/0/32631","type":"image/tiff","title":"VH","bandNames":["VH"]},{"length":1639934755,"href":"file:///data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2022/09/13/S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110/S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110_VV.tif","conformsTo":"https://www.opengis.net/def/crs/EPSG/0/32631","type":"image/tiff","title":"VV","bandNames":["VV"]}],"previews":[{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S1_GRD_SIGMA0&TIME=2022-09-13&BBOX=193589.15858862526,6621805.30000011,664325.2213891965,6966231.82056091&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","conformsTo":"https://www.opengis.net/def/crs/EPSG/0/32631","type":"image/png","title":"WMS","bandNames":["WMS"],"category":"QUICKLOOK"}],"alternates":[{"length":38273,"href":"file:///data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2022/09/13/S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110/S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110.xml","type":"application/vnd.iso.19139+xml","title":"Inspire metadata"}]},"published":"2022-09-13T11:23:10Z","title":"S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110","updated":"2022-09-13T11:23:08.049Z","acquisitionInformation":[{"acquisitionParameters":{"operationalMode":"IW","polarisationMode":"D","acquisitionType":"NOMINAL","relativeOrbitNumber":110,"polarisationChannels":"VV, VH","beginningDateTime":"2022-09-13T05:58:45.622Z","orbitDirection":"DESCENDING","endingDateTime":"2022-09-13T05:59:10.62Z","orbitNumber":44982},"platform":{"platformShortName":"Sentinel-1","platformSerialIdentifier":"S1A"}}],"status":"ARCHIVED"}
+        |         }
+        |        ,{
+        |            "type": "Feature",
+        |            "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110",
+        |            "geometry": {"coordinates":[[[4.992859,49.50906],[5.470935,51.0028],[1.740583,51.413986],[1.377835,49.9184],[4.992859,49.50906]]],"type":"Polygon"},
+        |            "bbox": [1.377835,49.50906,5.470935,51.413986],
+        |            "properties":
+        |            	{"date":"2022-09-13T05:59:10.622Z","identifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110","available":"2022-09-13T11:10:42Z","parentIdentifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1","productInformation":{"processingCenter":"VITO","productVersion":"V110","timeliness":"NRT-3h","processingDate":"2022-09-13T11:10:41.693Z","productType":"SIGMA0","availabilityTime":"2022-09-13T11:10:42Z","referenceSystemIdentifier":"EPSG:32631"},"links":{"related":[],"data":[{"length":105758827,"href":"file:///data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2022/09/13/S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110/S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110_angle.tif","conformsTo":"https://www.opengis.net/def/crs/EPSG/0/32631","type":"image/tiff","title":"angle","bandNames":["angle"]},{"length":1649481383,"href":"file:///data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2022/09/13/S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110/S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110_VH.tif","conformsTo":"https://www.opengis.net/def/crs/EPSG/0/32631","type":"image/tiff","title":"VH","bandNames":["VH"]},{"length":1639884275,"href":"file:///data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2022/09/13/S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110/S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110_VV.tif","conformsTo":"https://www.opengis.net/def/crs/EPSG/0/32631","type":"image/tiff","title":"VV","bandNames":["VV"]}],"previews":[{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S1_GRD_SIGMA0&TIME=2022-09-13&BBOX=153379.89059715008,6361683.825834345,609021.6983630981,6694852.353558086&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","conformsTo":"https://www.opengis.net/def/crs/EPSG/0/32631","type":"image/png","title":"WMS","bandNames":["WMS"],"category":"QUICKLOOK"}],"alternates":[{"length":38267,"href":"file:///data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2022/09/13/S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110/S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110.xml","type":"application/vnd.iso.19139+xml","title":"Inspire metadata"}]},"published":"2022-09-13T11:10:42Z","title":"S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110","updated":"2022-09-13T11:10:41.693Z","acquisitionInformation":[{"acquisitionParameters":{"operationalMode":"IW","polarisationMode":"D","acquisitionType":"NOMINAL","relativeOrbitNumber":110,"polarisationChannels":"VV, VH","beginningDateTime":"2022-09-13T05:59:10.622Z","orbitDirection":"DESCENDING","endingDateTime":"2022-09-13T05:59:35.621Z","orbitNumber":44982},"platform":{"platformShortName":"Sentinel-1","platformSerialIdentifier":"S1A"}}],"status":"ARCHIVED"}
+        |         }
+        |    ]
+        |  }""".stripMargin).features.foreach(feature => client.addFeature(feature))
+
     new FileLayerProvider(
       client,
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
@@ -214,6 +237,7 @@ object LayerFixtures {
     ){
       override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = FloatConstantNoDataCellType
     }
+  }
 
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z", polygons:Seq[Polygon],crs:String) = {
     val parameters = new DataCubeParameters
@@ -268,7 +292,25 @@ object LayerFixtures {
       experimental = false
     )
 
-  def sentinel2TocLayerProviderUTM20M =
+  def sentinel2TocLayerProviderUTM20M = {
+    val client: OpenSearchClient = {
+      val client = new FixedFeaturesOpenSearchClient
+      FeatureCollection.parse(
+        """{
+          |    "features": [
+          |        {
+          |            "type": "Feature",
+          |            "id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_31UGS_TOC_V210",
+          |            "geometry": {"coordinates":[[[7.3576219,50.3821223],[7.4505897,51.366602],[5.8757173,51.4158977],[5.8155101,50.4297266],[7.3576219,50.3821223]]],"type":"Polygon"},
+          |            "bbox": [5.8155101,50.3821223,7.4505897,51.4158977],
+          |            "properties":
+          |            	{"date":"2022-07-01T10:36:29.024Z","identifier":"urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_31UGS_TOC_V210","available":"2022-07-01T23:17:58Z","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S2_TOC_V2","productInformation":{"processingCenter":"VITO","productVersion":"V210","processingDate":"2022-07-01T23:17:56.351Z","cloudCover":57.769,"productType":"TOC","availabilityTime":"2022-07-01T23:17:58Z"},"links":{"related":[{"length":288356,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_AOT_60M_V210.tif","type":"image/tiff","title":"AOT_60M","bandNames":["AOT_60M"],"category":"QUALITY"},{"length":1919500,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_RAA_60M_V210.tif","type":"image/tiff","title":"RAA_60M","bandNames":["RAA_60M"],"category":"QUALITY"},{"length":3733979,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_SCENECLASSIFICATION_20M_V210.tif","type":"image/tiff","title":"SCENECLASSIFICATION_20M","bandNames":["SCENECLASSIFICATION_20M"],"category":"QUALITY"},{"length":100464,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_SZA_60M_V210.tif","type":"image/tiff","title":"SZA_60M","bandNames":["SZA_60M"],"category":"QUALITY"},{"length":298197,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_VZA_60M_V210.tif","type":"image/tiff","title":"VZA_60M","bandNames":["VZA_60M"],"category":"QUALITY"},{"length":2384084,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_WVP_60M_V210.tif","type":"image/tiff","title":"WVP_60M","bandNames":["WVP_60M"],"category":"QUALITY"}],"data":[{"length":4553644,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B01_60M_V210.tif","type":"image/tiff","title":"TOC-B01_60M","bandNames":["TOC-B01_60M"]},{"length":143795453,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B02_10M_V210.tif","type":"image/tiff","title":"TOC-B02_10M","bandNames":["TOC-B02_10M"]},{"length":144650054,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B03_10M_V210.tif","type":"image/tiff","title":"TOC-B03_10M","bandNames":["TOC-B03_10M"]},{"length":146193161,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B04_10M_V210.tif","type":"image/tiff","title":"TOC-B04_10M","bandNames":["TOC-B04_10M"]},{"length":40444968,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B05_20M_V210.tif","type":"image/tiff","title":"TOC-B05_20M","bandNames":["TOC-B05_20M"]},{"length":41546720,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B06_20M_V210.tif","type":"image/tiff","title":"TOC-B06_20M","bandNames":["TOC-B06_20M"]},{"length":41945062,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B07_20M_V210.tif","type":"image/tiff","title":"TOC-B07_20M","bandNames":["TOC-B07_20M"]},{"length":151992869,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B08_10M_V210.tif","type":"image/tiff","title":"TOC-B08_10M","bandNames":["TOC-B08_10M"]},{"length":40383019,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B11_20M_V210.tif","type":"image/tiff","title":"TOC-B11_20M","bandNames":["TOC-B11_20M"]},{"length":39859136,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B12_20M_V210.tif","type":"image/tiff","title":"TOC-B12_20M","bandNames":["TOC-B12_20M"]},{"length":41979880,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC-B8A_20M_V210.tif","type":"image/tiff","title":"TOC-B8A_20M","bandNames":["TOC-B8A_20M"]}],"previews":[{"length":883416,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC_QUICKLOOK_V210.tif","type":"image/tiff","category":"QUICKLOOK"},{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S2_RADIOMETRY&TIME=2022-07-01&BBOX=647379.6230351395,6512717.581266398,829395.8515136089,6695193.571674648&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","bandNames":["WMS"],"category":"QUICKLOOK"}],"alternates":[{"length":39913,"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/07/01/S2B_20220701T103629_31UGS_TOC_V210/S2B_20220701T103629_31UGS_TOC_V210.xml","type":"application/vnd.iso.19139+xml","title":"Inspire metadata"}]},"published":"2022-07-01T23:17:58Z","title":"S2B_20220701T103629_31UGS_TOC_V210","updated":"2022-07-01T23:17:56.351Z","acquisitionInformation":[{"acquisitionParameters":{"acquisitionType":"NOMINAL","tileId":"31UGS","relativeOrbitNumber":8,"beginningDateTime":"2022-07-01T10:36:29.024Z","orbitDirection":"ASCENDING","endingDateTime":"2022-07-01T10:36:29.024Z","orbitNumber":27776},"platform":{"platformShortName":"Sentinel-2","platformSerialIdentifier":"S2B"}}],"status":"ARCHIVED"}
+          |         }
+          |    ]
+          |  }""".stripMargin).features.foreach(feature => client.addFeature(feature))
+      client
+    }
+
     FileLayerProvider(
       client,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
@@ -279,6 +321,7 @@ object LayerFixtures {
       layoutScheme = FloatingLayoutScheme(256),
       experimental = false
     )
+  }
 
   lazy val b04RasterSource =GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/S2_B04_timeseries.tiff")
 
@@ -519,7 +562,8 @@ for p in l:
     cube.head._2
   }
 
-  def rgbLayerProvider =
+  def rgbLayerProvider = {
+
     FileLayerProvider(
       openSearch = client,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
@@ -528,6 +572,7 @@ for p in l:
       maxSpatialResolution = CellSize(10, 10),
       pathDateExtractor = SplitYearMonthDayPathDateExtractor
     )
+  }
 
   def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent , crs:CRS = LatLng) = {
 
