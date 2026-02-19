@@ -17,7 +17,6 @@ import org.junit.runners.Parameterized.Parameters
 import org.openeo.geotrellis.AggregateSpatialTest.parseCSV
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.TimeSeriesServiceResponses._
-import org.openeo.opensearch.OpenSearchResponses.FeatureCollection
 
 import java.nio.file.Files
 import java.time.{LocalDate, ZoneOffset, ZonedDateTime}

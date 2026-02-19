@@ -144,18 +144,6 @@ object FileRDDFactory {
   // Ignore trailing $'s in the class names for Scala objects
   private implicit val logger = LoggerFactory.getLogger(this.getClass.getName.stripSuffix("$"))
 
-  @Deprecated
-  def oscars(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
-    val openSearch: OpenSearchClient = new OscarsClient(new URL("https://services.terrascope.be/catalogue"))
-    new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
-  }
-
-  @Deprecated
-  def creo(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
-    val openSearch: OpenSearchClient = CreodiasClient()
-    new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
-  }
-
   /*
    * Poor man's JSON serialization
    * TODO: can we reuse some more standard/general JSON-serialization functionality?
