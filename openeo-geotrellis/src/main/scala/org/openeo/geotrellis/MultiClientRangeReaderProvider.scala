@@ -3,6 +3,7 @@ package org.openeo.geotrellis
 import geotrellis.store.s3.AmazonS3URI
 import geotrellis.store.s3.util.{S3RangeReader, S3RangeReaderProvider}
 import org.openeo.geotrellis.creo.CreoS3Utils
+import org.slf4j.LoggerFactory
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 
@@ -17,8 +18,12 @@ import java.net.URI
  *
  * We start out with a naive hard coded implementation.
  */
+object MultiClientRangeReaderProvider {
+  private val logger = LoggerFactory.getLogger(classOf[MultiClientRangeReaderProvider])
 
+}
 class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
+  import MultiClientRangeReaderProvider._
   @transient lazy val swiftEndpoint = new URI(sys.env.getOrElse("SWIFT_URL", "https://s3.waw3-1.cloudferro.com"))
   @transient lazy val s3Endpoint = sys.env.getOrElse("AWS_S3_ENDPOINT", null)
   @transient lazy val s3Https = sys.env.getOrElse("AWS_HTTPS","NO").toUpperCase.equals("YES")
@@ -31,6 +36,11 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
     val theClient: S3Client =
       if (isCloudFerro)
         if (s3Uri.getBucket.toLowerCase().equals("eodata") || s3Uri.getBucket.toLowerCase().equals("hrvpp")) {
+          // if the bucket is EODATA, rename it to eodata
+          if (s3Uri.getBucket == "EODATA") {
+            logger.warn("Bucket is EODATA, but should be eodata.")
+          }
+
           var uri = new URI(s3Endpoint)
           if(uri.getScheme == null) {
             if(s3Https) {
