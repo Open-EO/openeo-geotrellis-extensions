@@ -1016,7 +1016,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     requiredSpacetimeKeys = applySpaceTimeMask(datacubeParams, requiredSpacetimeKeys,metadata)
 
-    if (isUTM && !fromLoadStac) {
+    if (isUTM && datacubeParams.forall(_.resolveTileOverlap)) {
       //only for utm is just a safeguard to limit to Sentinel-1/2 for now
       //try to resolve overlap before actually reading the data
       requiredSpacetimeKeys = requiredSpacetimeKeys
