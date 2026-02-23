@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.netcdf
 
+import cats.data.NonEmptyList
 import com.azavea.gdal.GDALWarp
 import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.proj4.{CRS, LatLng}
@@ -85,7 +86,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     dcParams.layoutScheme = "FloatingLayoutScheme"
     dcParams.tileSize = 64
 
-    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date.plusDays(20), bbox, polygonsUTM31.polygons, utm31, 14, sc = sc, Some(dcParams))
+    val layer = LayerFixtures.testLayerProvider(NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), "org/openeo/geotrellis/testWriteSamples_features.json").readMultibandTileLayer(from = date, to = date.plusDays(20), bbox, polygonsUTM31.polygons, utm31, 14, sc = sc, Some(dcParams))
     val partitioner = layer.partitioner.get
     assert(partitioner.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
     val index: PartitionerIndex[SpaceTimeKey] = partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
@@ -244,7 +245,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     dcParams.setPartitionerTemporalResolution("ByDay")
     dcParams.setGlobalExtent(-0.6, 60.0, -0.597, 62.003, "EPSG:4326")
     val zoom = 0
-    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = startDate, to = endDate, bbox, polygons.polygons, utm30, zoom, sc = sc, Some(dcParams))
+    val layer = LayerFixtures.testLayerProvider(NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), "org/openeo/geotrellis/testWriteSamplesWithGlobalBoundsBuffer_features.json").readMultibandTileLayer(from = startDate, to = endDate, bbox, polygons.polygons, utm30, zoom, sc = sc, Some(dcParams))
 
     val sampleNames = polygons.polygons.indices.map(_.toString)
     val sampleNameList = new util.ArrayList[String]()
