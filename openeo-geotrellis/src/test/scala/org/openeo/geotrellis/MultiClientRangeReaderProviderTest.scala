@@ -9,7 +9,7 @@ import java.net.URI
 
 class MultiClientRangeReaderProviderCapturer extends MultiClientRangeReaderProvider {
   var capturedUri: Option[URI] = None
-  override lazy val s3Endpoint: String = "https://s3.waw3-1.cloudferro.com"
+  override lazy val s3Endpoint: String = "https://s3.example.cloudferro.com"
 
   override def rangeReader(uri: URI, client: S3Client): S3RangeReader = {
     assert(capturedUri.isEmpty)

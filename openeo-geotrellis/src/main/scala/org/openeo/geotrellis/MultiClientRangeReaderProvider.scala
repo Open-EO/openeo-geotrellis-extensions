@@ -44,7 +44,6 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
         }
 
         if (s3Uri.getBucket.toLowerCase().equals("eodata") || s3Uri.getBucket.toLowerCase().equals("hrvpp")) {
-          // if the bucket is EODATA, rename it to eodata
           if (s3Uri.getBucket == "EODATA") {
             logger.warn("Bucket is EODATA, but should be lower-case: eodata.")
             effectiveUri = URI.create(effectiveUri.toString.replaceFirst("EODATA", "eodata"))
