@@ -35,18 +35,20 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
       (s3Endpoint.toLowerCase.contains("cloudferro") || s3Endpoint.toLowerCase.endsWith(".dataspace.copernicus.eu"))
 
     val theClient: S3Client =
-      if (isCloudFerro)
+      if (isCloudFerro) {
+
+        val deprecatedBuckets = List("EOCLOUD", "eocloud", "DIAS", "dias")
+        if (deprecatedBuckets.contains(s3Uri.getBucket)) {
+          // https://dataspace.copernicus.eu/news/2025-12-11-upcoming-changes-earth-observation-data-eodata-repository-bucket-names
+          logger.warn(s"Bucket ${s3Uri.getBucket} is deprecated, it probably needs to be eodata (lower-case).")
+        }
+
         if (s3Uri.getBucket.toLowerCase().equals("eodata") || s3Uri.getBucket.toLowerCase().equals("hrvpp")) {
           // if the bucket is EODATA, rename it to eodata
           if (s3Uri.getBucket == "EODATA") {
             logger.warn("Bucket is EODATA, but should be lower-case: eodata.")
-            effectiveUri = URI.create(effectiveUri.toString.replace("EODATA", "eodata"))
+            effectiveUri = URI.create(effectiveUri.toString.replaceFirst("EODATA", "eodata"))
             s3Uri = new AmazonS3URI(effectiveUri)
-          }
-          val deprecatedBuckets = List("EOCLOUD", "eocloud", "DIAS", "dias")
-          if (deprecatedBuckets.contains(s3Uri.getBucket)) {
-            // https://dataspace.copernicus.eu/news/2025-12-11-upcoming-changes-earth-observation-data-eodata-repository-bucket-names
-            logger.warn(s"Bucket ${s3Uri.getBucket} is deprecated, it probably needs to be eodata (lower-case).")
           }
 
           var uri = new URI(s3Endpoint)
@@ -70,7 +72,7 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
         }
         else s3Client(Region.of("RegionOne"), swiftEndpoint)
-      else s3Client(bucketRegion(s3Uri.getBucket))
+      } else s3Client(bucketRegion(s3Uri.getBucket))
 
     rangeReader(effectiveUri, theClient)
   }
