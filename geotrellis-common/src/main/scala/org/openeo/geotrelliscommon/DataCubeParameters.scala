@@ -42,6 +42,12 @@ class DataCubeParameters extends Serializable {
   var retainNoDataTiles: Boolean = false
 
   /**
+   * Whether to resolve overlapping tiles before reading data, by selecting the best source
+   * based on distance to footprint and CRS matching.
+   */
+  var resolveTileOverlap: Boolean = true
+
+  /**
    * Configuration to override asset loading with synthetic data
    */
   var syntheticDataOverride: Option[SyntheticDataOverride] = None
@@ -112,6 +118,10 @@ class DataCubeParameters extends Serializable {
 
   def setRetainNoDataTiles(retain:Boolean):Unit = {
     retainNoDataTiles = retain
+  }
+
+  def setResolveTileOverlap(resolve: Boolean): Unit = {
+    resolveTileOverlap = resolve
   }
 
   def setSyntheticDataOverride(syntheticData: SyntheticDataOverride): Unit = {
