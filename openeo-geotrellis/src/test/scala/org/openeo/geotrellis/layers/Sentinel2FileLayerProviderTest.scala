@@ -261,11 +261,20 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   }
 
+  @Disabled("Can't query Terrascope with OscarsOpenSearchClient anymore")
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Timeout(2000)
   @Test
   def loadMetadata(): Unit = {
-    val Some((extent, dates)) = faparLayerProvider().loadMetadata(sc)
+    val fileLayerProvider = FileLayerProvider(
+      openSearchEndpoint,
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
+      openSearchLinkTitles = NonEmptyList.of("FAPAR_10M"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2",
+      maxSpatialResolution,
+      pathDateExtractor)
+
+    val Some((extent, dates)) = fileLayerProvider.loadMetadata(sc)
 
     assertEquals(WebMercator, extent.crs)
 
