@@ -51,7 +51,7 @@ import java.util
 import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
-import scala.io.Source
+import scala.io.{BufferedSource, Source}
 import scala.jdk.CollectionConverters._
 import scala.reflect.io.Directory
 
@@ -151,15 +151,24 @@ class FileLayerProviderTest extends RasterMatchers{
 
     client
   }
-  private def sentinel5PFileLayerProvider = FileLayerProvider(
-    openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
-    openSearchCollectionId = sentinel5PCollectionId,
-    NonEmptyList.one("NO2"),
-    rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1",
-    maxSpatialResolution = sentinel5PMaxSpatialResolution,
-    new Sentinel5PPathDateExtractor(maxDepth = 3),
-    layoutScheme = sentinel5PLayoutScheme
-  )
+
+  private def sentinel5PFileLayerProvider = {
+    val client = new FixedFeaturesOpenSearchClient
+    val source: BufferedSource = Source.fromResource("org/openeo/geotrellis/sentinel5PFileLayerProvider_features.json")
+    FeatureCollection.parse(
+      source.getLines().mkString("")
+    ).features.foreach(feature => client.addFeature(feature))
+
+    FileLayerProvider(
+      openSearch = client,
+      openSearchCollectionId = sentinel5PCollectionId,
+      NonEmptyList.one("NO2"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1",
+      maxSpatialResolution = sentinel5PMaxSpatialResolution,
+      new Sentinel5PPathDateExtractor(maxDepth = 3),
+      layoutScheme = sentinel5PLayoutScheme
+    )
+  }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test

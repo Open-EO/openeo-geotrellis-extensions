@@ -187,9 +187,34 @@ class Sentinel2PyramidFactoryTest {
         val correlation_id = ""
 
         val openSearchEndpoint = "https://services.terrascope.be/catalogue"
+
+        val client = new FixedFeaturesOpenSearchClient
+        FeatureCollection.parse(
+        """{
+          |    "features": [
+          |        {
+          |            "type": "Feature",
+          |            "id": "urn:eop:VITO:COP_DEM_GLO_30M_COG:Copernicus_DSM_COG_10_N50_00_E004_00_DEM",
+          |            "geometry": {"coordinates":[[[4.0,50.0],[5.0,50.0],[5.0,51.0],[4.0,51.0],[4.0,50.0]]],"type":"Polygon"},
+          |            "bbox": [4.0,50.0,5.0,51.0],
+          |            "properties":
+          |            	{"date":"2013-05-22T17:26:43Z","identifier":"urn:eop:VITO:COP_DEM_GLO_30M_COG:Copernicus_DSM_COG_10_N50_00_E004_00_DEM","available":"2021-04-15T14:11:00Z","parentIdentifier":"urn:eop:VITO:COP_DEM_GLO_30M_COG","productInformation":{"processingCenter":"VITO","referenceSystemIdentifier":"https://www.opengis.net/def/crs/EPSG/0/4326","processingDate":"2021-04-21T16:30:48Z","productType":"DEM_GLO_30M","availabilityTime":"2021-04-15T14:11:00Z"},"links":{"related":[],"data":[{"length":31721015,"href":"file:///data/MTDA/DEM/COPERNICUS-DEM-30/Copernicus_DSM_COG_10_N50_00_E004_00_DEM/Copernicus_DSM_COG_10_N50_00_E004_00_DEM.tif","conformsTo":"https://www.opengis.net/def/crs/EPSG/0/4326","type":"image/tiff","title":"DEM","bandNames":["DEM"]}],"previews":[],"alternates":[]},"published":"2021-04-15T14:11:00Z","title":"Copernicus_DSM_COG_10_N50_00_E004_00_DEM","updated":"2019-10-27T00:00:00Z","acquisitionInformation":[{"acquisitionParameters":{"acquisitionType":"NOMINAL","tileId":"N50E004","beginningDateTime":"2011-03-27T17:33:08Z","endingDateTime":"2013-05-22T17:26:43Z"}}],"status":"ARCHIVED","additionalAttributes":{"verticalReferenceSystemIdentifier":"https://www.opengis.net/def/crs/EPSG/0/3855","resolution":30.0}}
+          |         }
+          |        ,{
+          |            "type": "Feature",
+          |            "id": "urn:eop:VITO:COP_DEM_GLO_30M_COG:Copernicus_DSM_COG_10_N51_00_E004_00_DEM",
+          |            "geometry": {"coordinates":[[[4.0,51.0],[5.0,51.0],[5.0,52.0],[4.0,52.0],[4.0,51.0]]],"type":"Polygon"},
+          |            "bbox": [4.0,51.0,5.0,52.0],
+          |            "properties":
+          |            	{"date":"2013-01-10T17:27:20Z","identifier":"urn:eop:VITO:COP_DEM_GLO_30M_COG:Copernicus_DSM_COG_10_N51_00_E004_00_DEM","available":"2021-04-15T14:11:01Z","parentIdentifier":"urn:eop:VITO:COP_DEM_GLO_30M_COG","productInformation":{"processingCenter":"VITO","referenceSystemIdentifier":"https://www.opengis.net/def/crs/EPSG/0/4326","processingDate":"2021-04-21T16:30:49Z","productType":"DEM_GLO_30M","availabilityTime":"2021-04-15T14:11:01Z"},"links":{"related":[],"data":[{"length":34273012,"href":"file:///data/MTDA/DEM/COPERNICUS-DEM-30/Copernicus_DSM_COG_10_N51_00_E004_00_DEM/Copernicus_DSM_COG_10_N51_00_E004_00_DEM.tif","conformsTo":"https://www.opengis.net/def/crs/EPSG/0/4326","type":"image/tiff","title":"DEM","bandNames":["DEM"]}],"previews":[],"alternates":[]},"published":"2021-04-15T14:11:01Z","title":"Copernicus_DSM_COG_10_N51_00_E004_00_DEM","updated":"2019-10-27T00:00:00Z","acquisitionInformation":[{"acquisitionParameters":{"acquisitionType":"NOMINAL","tileId":"N51E004","beginningDateTime":"2011-03-22T17:26:27Z","endingDateTime":"2013-01-10T17:27:20Z"}}],"status":"ARCHIVED","additionalAttributes":{"verticalReferenceSystemIdentifier":"https://www.opengis.net/def/crs/EPSG/0/3855","resolution":30.0}}
+          |         }
+          |    ]
+          |  }""".stripMargin
+        ).features.foreach(feature => client.addFeature(feature))
+
         val openSearchClient = OpenSearchClient(new URL(openSearchEndpoint), isUTM = false)
         val factory = new PyramidFactory(
-            openSearchClient,
+            client,
             openSearchCollectionId = "urn:eop:VITO:COP_DEM_GLO_30M_COG",
             openSearchLinkTitles = singletonList("DEM"),
             rootPath = "/data/MTDA/DEM/COP_DEM_30M_COG",
