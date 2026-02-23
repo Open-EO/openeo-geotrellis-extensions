@@ -35,7 +35,7 @@ import java.util.Collections
 import java.util.Collections.singletonList
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
-import scala.io.Source
+import scala.io.{BufferedSource, Source}
 import scala.reflect.ClassTag
 
 object LayerFixtures {
@@ -300,16 +300,17 @@ object LayerFixtures {
         |         }
         |    ]
         |  }""".stripMargin).features.foreach(feature => client.addFeature(feature))
-
-
     new file.PyramidFactory(OpenSearchClient.apply(new URL(opensearchEndpoint), false, "oscars"), "urn:eop:VITO:TERRASCOPE_S2_TOC_V2", NonEmptyList.of("SCENECLASSIFICATION_20M").toList.asJava, null, CellSize(10, 10))
       .datacube_seq(ProjectedPolygons(polygons, crs), from_date, to_date, util.Collections.emptyMap[String, Any](), "", parameters).head._2
   }
 
+  def sentinel2TocLayerProviderUTM = {
+    val client = new FixedFeaturesOpenSearchClient
+    val source: BufferedSource = Source.fromResource("org/openeo/geotrellis/sentinel2TocLayerProviderUTM_features.json")
+    FeatureCollection.parse(
+      source.getLines().mkString("")
+      ).features.foreach(feature => client.addFeature(feature))
 
-
-
-  def sentinel2TocLayerProviderUTM =
     FileLayerProvider(
       client,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
@@ -320,8 +321,24 @@ object LayerFixtures {
       layoutScheme = FloatingLayoutScheme(256),
       experimental = false
     )
+  }
 
-  def sentinel2TocLayerProviderUTMMultiResolution =
+  def sentinel2TocLayerProviderUTMMultiResolution = {
+    val client = new FixedFeaturesOpenSearchClient
+    FeatureCollection.parse(
+    """{
+      |    "features": [
+      |        {
+      |            "type": "Feature",
+      |            "id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20190307T105021_31UFS_TOC_V210",
+      |            "geometry": {"type":"Polygon","coordinates":[[[5.9661361,50.6178099],[6.017025,51.4123427],[4.4388768,51.4423523],[4.4087151,50.4552722],[5.8706478,50.4278544],[5.9209417,50.5282026],[5.9661361,50.6178099]]]},
+      |            "bbox": [4.4087151,50.4278544,6.017025,51.4423523],
+      |            "properties":
+      |            	{"date":"2019-03-07T10:50:21.024Z","updated":"2024-08-29T20:56:18.311Z","available":"2024-08-29T20:56:19Z","published":"2024-08-29T20:56:19Z","status":"ARCHIVED","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S2_TOC_V2","title":"S2A_20190307T105021_31UFS_TOC_V210","identifier":"urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20190307T105021_31UFS_TOC_V210","acquisitionInformation":[{"platform":{"platformShortName":"Sentinel-2","platformSerialIdentifier":"S2A"},"acquisitionParameters":{"acquisitionType":"NOMINAL","orbitNumber":19353,"relativeOrbitNumber":51,"beginningDateTime":"2019-03-07T10:50:21.024Z","endingDateTime":"2019-03-07T10:50:21.024Z","tileId":"31UFS"}}],"productInformation":{"cloudCover":65.155,"productType":"TOC","availabilityTime":"2024-08-29T20:56:19Z","productVersion":"V210","processingCenter":"VITO","processingDate":"2024-08-29T20:56:18.311Z"},"links":{"previews":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC_QUICKLOOK_V210.tif","type":"image/tiff","length":690840,"category":"QUICKLOOK"},{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S2_RADIOMETRY&TIME=2019-03-07&BBOX=490775.91998461616,6520705.059840585,669812.159090397,6699916.902160429&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","bandNames":["WMS"],"category":"QUICKLOOK"}],"alternates":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC_V210.xml","type":"application/vnd.iso.19139+xml","length":39919,"title":"Inspire metadata"}],"related":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_AOT_60M_V210.tif","type":"image/tiff","length":264436,"title":"AOT_60M","bandNames":["AOT_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_RAA_60M_V210.tif","type":"image/tiff","length":697729,"title":"RAA_60M","bandNames":["RAA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_SCENECLASSIFICATION_20M_V210.tif","type":"image/tiff","length":3564702,"title":"SCENECLASSIFICATION_20M","bandNames":["SCENECLASSIFICATION_20M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_SZA_60M_V210.tif","type":"image/tiff","length":104208,"title":"SZA_60M","bandNames":["SZA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_VZA_60M_V210.tif","type":"image/tiff","length":249921,"title":"VZA_60M","bandNames":["VZA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_WVP_60M_V210.tif","type":"image/tiff","length":1264428,"title":"WVP_60M","bandNames":["WVP_60M"],"category":"QUALITY"}],"data":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B01_60M_V210.tif","type":"image/tiff","length":5194210,"title":"TOC-B01_60M","bandNames":["TOC-B01_60M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B02_10M_V210.tif","type":"image/tiff","length":153420639,"title":"TOC-B02_10M","bandNames":["TOC-B02_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B03_10M_V210.tif","type":"image/tiff","length":153176609,"title":"TOC-B03_10M","bandNames":["TOC-B03_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B04_10M_V210.tif","type":"image/tiff","length":153745636,"title":"TOC-B04_10M","bandNames":["TOC-B04_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B05_20M_V210.tif","type":"image/tiff","length":44348382,"title":"TOC-B05_20M","bandNames":["TOC-B05_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B06_20M_V210.tif","type":"image/tiff","length":45026998,"title":"TOC-B06_20M","bandNames":["TOC-B06_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B07_20M_V210.tif","type":"image/tiff","length":45100810,"title":"TOC-B07_20M","bandNames":["TOC-B07_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B08_10M_V210.tif","type":"image/tiff","length":154204434,"title":"TOC-B08_10M","bandNames":["TOC-B08_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B11_20M_V210.tif","type":"image/tiff","length":43110909,"title":"TOC-B11_20M","bandNames":["TOC-B11_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B12_20M_V210.tif","type":"image/tiff","length":42636808,"title":"TOC-B12_20M","bandNames":["TOC-B12_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V210/S2A_20190307T105021_31UFS_TOC-B8A_20M_V210.tif","type":"image/tiff","length":45116369,"title":"TOC-B8A_20M","bandNames":["TOC-B8A_20M"]}]}}
+      |         }
+      |    ]
+      |  }""".stripMargin).features.foreach(feature => client.addFeature(feature))
+
     FileLayerProvider(
       client,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
@@ -332,6 +349,7 @@ object LayerFixtures {
       layoutScheme = FloatingLayoutScheme(256),
       experimental = false
     )
+  }
 
   def sentinel2TocLayerProviderUTM20M = {
     val client: OpenSearchClient = {
