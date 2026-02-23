@@ -28,8 +28,9 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
   @transient lazy val s3Endpoint = sys.env.getOrElse("AWS_S3_ENDPOINT", null)
   @transient lazy val s3Https = sys.env.getOrElse("AWS_HTTPS","NO").toUpperCase.equals("YES")
 
-  override def rangeReader(uri: URI): S3RangeReader = {
-    val s3Uri = new AmazonS3URI(uri)
+  override def rangeReader(uriArgument: URI): S3RangeReader = {
+    var effectiveUri = uriArgument // Can't make an method parameter 'var'
+    var s3Uri = new AmazonS3URI(effectiveUri)
     val isCloudFerro = s3Endpoint != null &&
       (s3Endpoint.toLowerCase.contains("cloudferro") || s3Endpoint.toLowerCase.endsWith(".dataspace.copernicus.eu"))
 
@@ -38,7 +39,14 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
         if (s3Uri.getBucket.toLowerCase().equals("eodata") || s3Uri.getBucket.toLowerCase().equals("hrvpp")) {
           // if the bucket is EODATA, rename it to eodata
           if (s3Uri.getBucket == "EODATA") {
-            logger.warn("Bucket is EODATA, but should be eodata.")
+            logger.warn("Bucket is EODATA, but should be lower-case: eodata.")
+            effectiveUri = URI.create(effectiveUri.toString.replace("EODATA", "eodata"))
+            s3Uri = new AmazonS3URI(effectiveUri)
+          }
+          val deprecatedBuckets = List("EOCLOUD", "eocloud", "DIAS", "dias")
+          if (deprecatedBuckets.contains(s3Uri.getBucket)) {
+            // https://dataspace.copernicus.eu/news/2025-12-11-upcoming-changes-earth-observation-data-eodata-repository-bucket-names
+            logger.warn(s"Bucket ${s3Uri.getBucket} is deprecated, it probably needs to be eodata (lower-case).")
           }
 
           var uri = new URI(s3Endpoint)
@@ -64,6 +72,6 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
         else s3Client(Region.of("RegionOne"), swiftEndpoint)
       else s3Client(bucketRegion(s3Uri.getBucket))
 
-    rangeReader(uri, theClient)
+    rangeReader(effectiveUri, theClient)
   }
 }
