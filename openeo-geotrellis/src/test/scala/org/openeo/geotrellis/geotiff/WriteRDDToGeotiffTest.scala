@@ -367,7 +367,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     assertEquals(3, paths.size())
 
     val tiff = GeoTiff.readMultiband(outDir.resolve("openEO_B01.tif").toString)
-    assertEquals(1, tiff.overviews.length)
+    assertEquals(3, tiff.overviews.length)
     tiff.raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_B02.tif").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_B03.tif").toString).raster.tile
@@ -423,12 +423,18 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     for (path <- expectedPaths){
       val tile = GeoTiff.readMultiband(path)
-      assertEquals(1,tile.overviews.size)
-      assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
+      assertEquals(3,tile.overviews.size)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
+      assertEquals(Tiled(128,128),tile.overviews(0).options.storageMethod)
       assertEquals(math.ceil(colSize.toDouble/2).toInt,tile.overviews(0).tile.cols)
       assertEquals(math.ceil(rowSize.toDouble/2).toInt,tile.overviews(0).tile.rows)
+      assertEquals(Tiled(128,128),tile.overviews(1).options.storageMethod)
+      assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(1).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(1).tile.rows)
+      assertEquals(Tiled(128,128),tile.overviews(2).options.storageMethod)
+      assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(2).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(2).tile.rows)
     }
 
     GeoTiff.readMultiband(outDir.resolve("testA/B01.tiff").toString).raster.tile
