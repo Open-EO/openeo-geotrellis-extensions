@@ -311,6 +311,18 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     m
   }
 
+  //   def datacubeParams: Stream[Arguments] = Arrays.stream(Array(
+  //    arguments(new DataCubeParameters(),10.asInstanceOf[Integer]),
+  //    arguments({
+  //      val p = new DataCubeParameters()
+  //      p.resampleMethod = Average
+  //      p.loadPerProduct = true
+  //      p
+  //    },11.asInstanceOf[Integer]
+  //      )
+  //  ))
+
+
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @ParameterizedTest
   @MethodSource(Array("datacubeParams"))
@@ -321,7 +333,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val date = ZonedDateTime.of(LocalDate.of(2024, 4, 22), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
 
-    var mask = sceneclassificationLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    var mask = layerProvider("org/openeo/geotrellis/multibandWithSpacetimeMask_features.json", NonEmptyList.of("SCENECLASSIFICATION_20M"), scheme = ZoomedLayoutScheme(WebMercator, 256)).readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
     val builder: OpenEOProcessScriptBuilder = new OpenEOProcessScriptBuilder
     val args: util.Map[String, AnyRef] = dummyMap("x", "y")
@@ -335,7 +347,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     mask = p.mapBands(mask, builder)
     mask.toSpatial(date).writeGeoTiff(tempDir.resolve(f"Sentinel2FileLayerProvider_multiband_mask_${parameters.hashCode()}.tif"), bbox)
 
-    var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 13,datacubeParams = Option.empty)
+    var layer = layerProvider("org/openeo/geotrellis/multibandWithSpacetimeMask_features2.json", NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), scheme = ZoomedLayoutScheme(WebMercator, 256)).readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 13,datacubeParams = Option.empty)
 
     val originalCount = layer.count()
     parameters.maskingCube = Some(mask)
@@ -343,7 +355,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val listener = new GetInfoSparkListener()
     SparkContext.getOrCreate().addSparkListener(listener)
 
-    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 13,datacubeParams = Some(parameters))
+    layer = layerProvider("org/openeo/geotrellis/multibandWithSpacetimeMask_features3.json", NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), scheme = ZoomedLayoutScheme(WebMercator, 256)).readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 13,datacubeParams = Some(parameters))
     print(layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index)
     assertTrue(layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[ConfigurableSpaceTimePartitioner])
     val maskedCount = layer.count()
@@ -369,6 +381,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     }
 
   }
+
+
 
 
   /**
