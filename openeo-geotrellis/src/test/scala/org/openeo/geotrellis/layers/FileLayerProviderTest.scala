@@ -170,6 +170,7 @@ class FileLayerProviderTest extends RasterMatchers{
     )
   }
 
+  @Disabled("Can't test against Terrascope OscarsOpenSearchClient")
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def cache(): Unit = {

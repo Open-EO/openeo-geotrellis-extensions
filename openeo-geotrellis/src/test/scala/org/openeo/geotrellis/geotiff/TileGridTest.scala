@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.geotiff
 
+import cats.data.NonEmptyList
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
@@ -226,7 +227,7 @@ class TileGridTest {
     val utm31 = CRS.fromEpsgCode(32631)
     val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
 
-    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    val layer = LayerFixtures.testLayerProvider(NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), "org/openeo/geotrellis/testSaveStitchWithTileGridsTemporal_features.json").readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
     val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
     val expectedTiles = Set(
@@ -252,7 +253,7 @@ class TileGridTest {
     val utm31 = CRS.fromEpsgCode(32631)
     val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
 
-    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    val layer = LayerFixtures.testLayerProvider(NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), "org/openeo/geotrellis/testSaveStitchWithTileGridsTemporalWithOptions_features.json").readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
     val gtiffOptions = new GTiffOptions
     gtiffOptions.setOverview("ALL")
     gtiffOptions.setTileSize(128)
@@ -289,7 +290,7 @@ class TileGridTest {
     val utm31 = CRS.fromEpsgCode(32631)
     val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
 
-    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    val layer = LayerFixtures.testLayerProvider(NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), "org/openeo/geotrellis/testSaveStitchWithTileGridsTemporalPrefix_features.json").readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
     val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6), filenamePrefix = Some("testPrefix"))
     val expectedTiles = Set(

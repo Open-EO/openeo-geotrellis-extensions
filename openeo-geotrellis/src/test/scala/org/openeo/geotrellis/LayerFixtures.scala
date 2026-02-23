@@ -304,6 +304,25 @@ object LayerFixtures {
       .datacube_seq(ProjectedPolygons(polygons, crs), from_date, to_date, util.Collections.emptyMap[String, Any](), "", parameters).head._2
   }
 
+  def testLayerProvider(bandNames: NonEmptyList[String], featuresJsonResourcePath: String): FileLayerProvider = {
+    val client = new FixedFeaturesOpenSearchClient
+    val source: BufferedSource = Source.fromResource(featuresJsonResourcePath)
+    FeatureCollection.parse(
+      source.getLines().mkString("")
+    ).features.foreach(feature => client.addFeature(feature))
+
+    FileLayerProvider(
+      client,
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = bandNames,
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      maxSpatialResolution,
+      pathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256)
+    )
+
+  }
+
   def sentinel2TocLayerProviderUTM = {
     val client = new FixedFeaturesOpenSearchClient
     val source: BufferedSource = Source.fromResource("org/openeo/geotrellis/sentinel2TocLayerProviderUTM_features.json")
