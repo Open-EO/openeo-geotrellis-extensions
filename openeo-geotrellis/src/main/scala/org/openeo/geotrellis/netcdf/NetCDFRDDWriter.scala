@@ -956,11 +956,9 @@ object NetCDFRDDWriter {
       val histogramsAndSizes = rasters.map(raster => {
         (raster.tile.band(bandId).histogramDouble(),raster.tile.size)
       })
-      val (result,size )= histogramsAndSizes.foldLeft((StreamingHistogram(),0)) {
-        case ((accHistogram, accSize), (histogram, size)) => {
-          (accHistogram.merge(histogram), accSize + size)
-        }
-      }
+      val (result,size )= histogramsAndSizes.reduce{ (accHistogramSize, histogramSize) => {
+        (accHistogramSize._1.merge(histogramSize._1), accHistogramSize._2 + histogramSize._2)
+      }}
       val statistics = result.statistics()
       val rasterBands = new java.util.HashMap[String,Any]()
       val bandStats = statistics.fold(new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0)))(statistics => {
