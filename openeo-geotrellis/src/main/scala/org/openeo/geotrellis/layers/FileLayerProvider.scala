@@ -1588,7 +1588,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
-      if (bandIndices.isEmpty) {
+      if (bandIndices.isEmpty && byLinkTitle) {
         val actualNumberOfBands = rasterSources.size
 
         if (actualNumberOfBands != expectedNumberOfBands) {

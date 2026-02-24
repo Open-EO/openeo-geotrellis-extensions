@@ -52,8 +52,6 @@ class DataCubeParameters extends Serializable {
    */
   var syntheticDataOverride: Option[SyntheticDataOverride] = None
 
-  var kak: Boolean = true
-
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
 
   def setPartitionerIndexReduction(reduction:Int): Unit = {
