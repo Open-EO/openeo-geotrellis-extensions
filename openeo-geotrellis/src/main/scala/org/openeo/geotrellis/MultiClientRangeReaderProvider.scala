@@ -3,6 +3,7 @@ package org.openeo.geotrellis
 import geotrellis.store.s3.AmazonS3URI
 import geotrellis.store.s3.util.{S3RangeReader, S3RangeReaderProvider}
 import org.openeo.geotrellis.creo.CreoS3Utils
+import org.slf4j.LoggerFactory
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 
@@ -17,20 +18,38 @@ import java.net.URI
  *
  * We start out with a naive hard coded implementation.
  */
+object MultiClientRangeReaderProvider {
+  private val logger = LoggerFactory.getLogger(classOf[MultiClientRangeReaderProvider])
 
+}
 class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
+  import MultiClientRangeReaderProvider._
   @transient lazy val swiftEndpoint = new URI(sys.env.getOrElse("SWIFT_URL", "https://s3.waw3-1.cloudferro.com"))
   @transient lazy val s3Endpoint = sys.env.getOrElse("AWS_S3_ENDPOINT", null)
   @transient lazy val s3Https = sys.env.getOrElse("AWS_HTTPS","NO").toUpperCase.equals("YES")
 
-  override def rangeReader(uri: URI): S3RangeReader = {
-    val s3Uri = new AmazonS3URI(uri)
+  override def rangeReader(uriArgument: URI): S3RangeReader = {
+    var effectiveUri = uriArgument // Can't make an method parameter 'var'
+    var s3Uri = new AmazonS3URI(effectiveUri)
     val isCloudFerro = s3Endpoint != null &&
       (s3Endpoint.toLowerCase.contains("cloudferro") || s3Endpoint.toLowerCase.endsWith(".dataspace.copernicus.eu"))
 
     val theClient: S3Client =
-      if (isCloudFerro)
+      if (isCloudFerro) {
+
+        val deprecatedBuckets = List("EOCLOUD", "eocloud", "DIAS", "dias")
+        if (deprecatedBuckets.contains(s3Uri.getBucket)) {
+          // https://dataspace.copernicus.eu/news/2025-12-11-upcoming-changes-earth-observation-data-eodata-repository-bucket-names
+          logger.warn(s"Bucket ${s3Uri.getBucket} is deprecated, it probably needs to be eodata (lower-case).")
+        }
+
         if (s3Uri.getBucket.toLowerCase().equals("eodata") || s3Uri.getBucket.toLowerCase().equals("hrvpp")) {
+          if (s3Uri.getBucket == "EODATA") {
+            logger.warn("Bucket is EODATA, but should be lower-case: eodata.")
+            effectiveUri = URI.create(effectiveUri.toString.replaceFirst("EODATA", "eodata"))
+            s3Uri = new AmazonS3URI(effectiveUri)
+          }
+
           var uri = new URI(s3Endpoint)
           if(uri.getScheme == null) {
             if(s3Https) {
@@ -52,8 +71,8 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
         }
         else s3Client(Region.of("RegionOne"), swiftEndpoint)
-      else s3Client(bucketRegion(s3Uri.getBucket))
+      } else s3Client(bucketRegion(s3Uri.getBucket))
 
-    rangeReader(uri, theClient)
+    rangeReader(effectiveUri, theClient)
   }
 }
