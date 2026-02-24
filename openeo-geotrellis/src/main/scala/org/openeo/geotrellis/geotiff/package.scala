@@ -234,7 +234,7 @@ package object geotiff {
 
   private def defaultOverviewReductions(options: GTiffOptions, totalCols: Int, totalRows: Int, tileCols: Int, tileRows: Int): List[Int] = {
     options.overviews.toUpperCase() match {
-      case "AUTO" | "ALL" => {
+      case "AUTO" =>
         val overviewLevels: Int = {
           val pixels = math.max(totalCols, totalRows).toDouble
           val blocks = pixels / 1024
@@ -248,7 +248,20 @@ package object geotiff {
         (start until overviewLevels).map { l => math.pow(2, l + 1).toInt }.toList.filter(
           r => (tileCols / r) > 16 && (tileRows / r) > 16
         )
-      }
+      case "ALL" =>
+        val overviewLevels: Int = {
+          val pixels = math.max(totalCols, totalRows).toDouble
+          val blocks = pixels / 256
+          math.ceil(math.log(blocks) / math.log(2)).toInt
+        }
+
+        val start = options.overviews.toUpperCase() match {
+          case "AUTO" => 1
+          case "ALL" => 0
+        }
+        (start until overviewLevels).map { l => math.pow(2, l + 1).toInt }.toList.filter(
+          r => (tileCols / r) > 16 && (tileRows / r) > 16
+        )
       case _ => List.empty
     }
   }
@@ -664,6 +677,7 @@ package object geotiff {
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3.persist(StorageLevel.MEMORY_AND_DISK)
+    logger.info(f"saveRDDGeneric with cropBounds:$cropBounds, layout: ${preprocessedRdd.metadata.tileLayout}, filenamePrefix: ${formatOptions.filenamePrefix} ")
 
     try {
       val compression = determineCompression(formatOptions)
@@ -1150,6 +1164,7 @@ package object geotiff {
       resampled
     }
 
+    logger.info(f"stitchAndWriteToTiff with layout: $layout, croppedExtent: $croppedExtent, geometry: $geometry, cols & rows: ${adjusted.cols} & ${adjusted.rows} ")
     val fo = formatOptions match {
       case Some(fo) => fo
       case None =>

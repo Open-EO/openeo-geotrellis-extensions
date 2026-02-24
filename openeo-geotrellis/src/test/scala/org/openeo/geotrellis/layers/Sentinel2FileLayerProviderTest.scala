@@ -400,7 +400,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val parameters = new DataCubeParameters
     parameters.maskingStrategyParameters = new java.util.HashMap()
     parameters.maskingStrategyParameters.put("method","mask_scl_dilation")
-    val layer = tocLayerProviderUTM.readMultibandTileLayer(from = start, to = end,bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs,zoom = 1, sc = sc, datacubeParams = Some(parameters))
+    val layer = layerProvider("org/openeo/geotrellis/testPatchExtract_features.json", NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")).readMultibandTileLayer(from = start, to = end,bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs,zoom = 1, sc = sc, datacubeParams = Some(parameters))
 
     val localData = layer.collect()
     println(SizeEstimator.estimate(localData))
