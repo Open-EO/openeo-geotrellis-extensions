@@ -1434,6 +1434,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
           te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs), ovr = warpOptionsOvr
         )
+        logger.debug(s"cloudpath: $cloudPath, warp options: $warpOptions")
         if (cloudPath.isDefined) {
           GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
         } else {
