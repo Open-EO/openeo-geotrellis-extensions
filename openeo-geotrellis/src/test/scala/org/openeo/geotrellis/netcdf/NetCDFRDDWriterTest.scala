@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.netcdf
 
 import com.azavea.gdal.GDALWarp
-import geotrellis.layer.{SpaceTimeKey, SpatialKey}
+import geotrellis.layer.{KeyBounds, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.geotiff.GeoTiffRasterSource
@@ -204,15 +204,83 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     )
     val arrayDim = 512
     val arrayTile0 = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
-    testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0))) // , "stddev", 14.142135623730951
+    testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0, "stddev", 14.142135623730951)))
     val arrayTile1 = IntArrayTile(Array.fill(arrayDim * arrayDim)(256), arrayDim, arrayDim, noDataValue = 256)
     val imageTile1 = arrayTile1.convert(DoubleUserDefinedNoDataCellType(256)).mutable
     testStatistics(arrayTile = imageTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)))
     val arrayTile2 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
-    testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0))) // , "stddev", 10
+    testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0 , "stddev", 10)))
     testStatistics(arrayTile = arrayTile0, addStatistics = false)
-    testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 0.0, "maximum", 30.0, "mean", 15.0)), polygon = polygon1, expectedShape = Array(86, 52)) // , "stddev", 15.0
+    testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 0.0, "maximum", 30.0, "mean", 15.0, "stddev", 15.0)), polygon = polygon1, expectedShape = Array(86, 52))
     testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)), polygon = polygon1, expectedShape = Array(86, 52))
+  }
+
+  @Test
+  def testTimeStatistics():Unit = {
+    val polygon = MultiPolygon(
+      Polygon(
+        (-180.0, -90.0),
+        (-180.0, 90.0),
+        (180.0, 90.0),
+        (180.0, -90.0),
+        (-180.0, -90.0),
+      ),
+    )
+    val layoutCols = 1
+    val layoutRows = 1
+    val arrayDim = 512
+    val arrayTile = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
+    val filtered: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD (SparkContext.getOrCreate, MultibandTile (arrayTile, arrayTile, arrayTile), TileLayout (layoutCols, layoutRows, arrayTile.cols / layoutCols, arrayTile.rows / layoutRows), LatLng)
+    val startDate = ZonedDateTime.parse ("2017-01-01T00:00:00Z")
+    val temporal = filtered.flatMap (tuple => {
+    (1 to 3).map (index => (SpaceTimeKey (tuple._1, TemporalKey (startDate.plusDays (index) ) ), tuple._2.map((band,value) => if (isData(value)) value*index else value)) )
+  }).repartition (layoutCols * layoutRows)
+    val spatialM = filtered.metadata
+    val newBounds = KeyBounds[SpaceTimeKey] (SpaceTimeKey (spatialM.bounds.get._1, TemporalKey (0L) ), SpaceTimeKey (spatialM.bounds.get._2, TemporalKey (0L) ) )
+    val temporalMetadata = new TileLayerMetadata[SpaceTimeKey] (
+    spatialM.cellType,
+    spatialM.layout,
+    spatialM.extent,
+    spatialM.crs,
+    newBounds,
+    )
+    val layer = ContextRDD (temporal, temporalMetadata)
+    val polygons = ProjectedPolygons(polygon, CRS.fromEpsgCode(4326))
+    val sampleNames = polygons.polygons.indices.map(_.toString)
+
+    val samples = NetCDFRDDWriter.saveSamples(
+      layer,
+      "/tmp",
+      polygons = polygons,
+      sampleNames = new util.ArrayList(sampleNames.asJava),
+      bandNames = new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")),
+      dimensionNames = null,
+      attributes = null,
+      bandsMetadata = null,
+      addBandsStatistics = true,
+      filenamePrefix = Some("prefixTest"),
+    )
+
+    assertEquals(1, samples.size())
+    val sample = samples.get(0)
+    val assets = sample.assets
+    assertEquals(1, assets.size())
+    val metadata = assets.get("openEO").metadata
+    assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
+    assertArrayEquals(Array(arrayDim, arrayDim), metadata.get("proj:shape").asInstanceOf[Array[Int]])
+    val bbox = polygon.extent match {
+      case Extent(-18.0, 30.0, 18.0, 60) => Array(-18.281254492187486, 29.8828091796875, 18.28124449218752, 60.1171808203125)
+      case extent => Array(extent.xmin, extent.ymin, extent.xmax, extent.ymax)
+    }
+    assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.01)
+    val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
+    assertEquals(3, bands.size())
+    bands.forEach(band => {
+      assertTrue(band.containsKey("name"))
+      assertTrue(band.containsKey("statistics"))
+      val statistics = band.getOrDefault("statistics", null).asInstanceOf[util.HashMap[String, Number]]
+      assertEquals(new util.HashMap[String, Any](util.Map.of("valid_percent",75.0, "mean",40.0, "maximum",90.0, "minimum",0.0)), statistics)
+    })
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
@@ -401,17 +469,17 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     val arrayDim = 512
     val arrayTile0 = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim)
     val imageTile0 = arrayTile0.convert(UShortUserDefinedNoDataCellType(256)).mutable
-    testStatistics(imageTile = imageTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0))) // , "stddev", 14.142135623730951
+    testStatistics(imageTile = imageTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0, "stddev", 14.142135623730951)))
     val arrayTile1 = IntArrayTile(Array.fill(arrayDim * arrayDim)(256), arrayDim, arrayDim)
     val imageTile1 = arrayTile1.convert(DoubleUserDefinedNoDataCellType(256)).mutable
     testStatistics(imageTile = imageTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)))
     val arrayTile2 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim)
     val imageTile2 = arrayTile2.convert(UShortUserDefinedNoDataCellType(256)).mutable
-    testStatistics(imageTile = imageTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0))) // , "stddev", 10
+    testStatistics(imageTile = imageTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0, "stddev", 10)))
     val imageTile3 = arrayTile2.convert(UShortCellType).mutable
-    testStatistics(imageTile = imageTile3, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 10, "maximum", 256, "mean", 197.0))) // , "stddev", 102.3132444994293
+    testStatistics(imageTile = imageTile3, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 10, "maximum", 256, "mean", 197.0, "stddev", 102.3132444994293)))
     testStatistics(imageTile = imageTile0, addStatistics = false)
-    testStatistics(imageTile = imageTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 0.0, "maximum", 30.0, "mean", 15.0)), polygon = polygon1, expectedShape = Array(86, 52)) // , "stddev", 15.0
+    testStatistics(imageTile = imageTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 0.0, "maximum", 30.0, "mean", 15.0, "stddev", 15.0)), polygon = polygon1, expectedShape = Array(86, 52))
     val imageTile4 = arrayTile2.convert(UShortUserDefinedNoDataCellType(256)).mutable
     testStatistics(imageTile = imageTile4, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)), polygon = polygon1, expectedShape = Array(86, 52))
   }
@@ -622,20 +690,20 @@ class NetCDFRDDWriterTest extends RasterMatchers {
 
     val arrayDim = 512
     val arrayTile0 = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim)
-    val imageTile0 = arrayTile0.convert(UShortUserDefinedNoDataCellType(256)).mutable
-    testStatistics(imageTile = imageTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0))) // , "stddev", 14.142135623730951
+    val imageTile0 = arrayTile0.convert(DoubleUserDefinedNoDataCellType(256)).mutable
+    testStatistics(imageTile = imageTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0, "stddev", 14.142135623730951)))
     val arrayTile1 = IntArrayTile(Array.fill(arrayDim * arrayDim)(256), arrayDim, arrayDim)
     val imageTile1 = arrayTile1.convert(DoubleUserDefinedNoDataCellType(256)).mutable
     testStatistics(imageTile = imageTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)))
     val arrayTile2 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim)
     val imageTile2 = arrayTile2.convert(UShortUserDefinedNoDataCellType(256)).mutable
-    testStatistics(imageTile = imageTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0))) // , "stddev", 10
+    testStatistics(imageTile = imageTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0, "stddev", 10)))
     val arrayTile3 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim)
-    testStatistics(imageTile = arrayTile3, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 10, "maximum", 256, "mean", 197.0))) //  , "stddev", 102.3132444994293
+    testStatistics(imageTile = arrayTile3, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 10, "maximum", 256, "mean", 197.0, "stddev", 102.3132444994293)))
     val imageTile3 = arrayTile3.convert(UShortCellType).mutable
-    testStatistics(imageTile = imageTile3, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 10, "maximum", 256, "mean", 197.0))) //  , "stddev", 102.3132444994293
+    testStatistics(imageTile = imageTile3, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 10, "maximum", 256, "mean", 197.0, "stddev", 102.3132444994293)))
     testStatistics(imageTile = imageTile0, addStatistics = false)
-    testStatistics(imageTile = imageTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 0.0, "maximum", 30.0, "mean", 15.0)), cropBounds = Some(Extent(-18.0, 30.0, 18.0, 60)), expectedShape = Array(86, 52)) // , "stddev", 15.0
+    testStatistics(imageTile = imageTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 0.0, "maximum", 30.0, "mean", 15.0, "stddev", 15.0)), cropBounds = Some(Extent(-18.0, 30.0, 18.0, 60)), expectedShape = Array(86, 52))
     val imageTile4 = arrayTile2.convert(UShortUserDefinedNoDataCellType(256)).mutable
     testStatistics(imageTile = imageTile4, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)), cropBounds = Some(Extent(-18.0, 30.0, 18.0, 60)), expectedShape = Array(86, 52))
   }
