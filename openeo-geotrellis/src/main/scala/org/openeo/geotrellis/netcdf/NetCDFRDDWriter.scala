@@ -943,6 +943,7 @@ object NetCDFRDDWriter {
   }
 
   private def bandsStatistics(tile:Tile, bandHistograms:collection.mutable.Map[String,(Histogram[Double],Int)], bandName:String): Unit = {
+    logger.info(s"tile $bandName min&max = ${tile.findMinMaxDouble}")
     val result = if (bandHistograms.contains(bandName)) {
       val (histogram,size) = bandHistograms(bandName)
       (histogram.merge(tile.histogramDouble()),size+tile.size)
@@ -953,6 +954,11 @@ object NetCDFRDDWriter {
   private def bandsStatistics(rasters:Seq[Raster[MultibandTile]], bandNames: ArrayList[String]): java.util.ArrayList[java.util.HashMap[String,Any]] = {
     val stats = new java.util.ArrayList[java.util.HashMap[String,Any]]()
     for (bandId <- 0 until bandNames.size()){
+      val minmax = rasters.foldLeft((Double.MaxValue,Double.MinValue)){case ((min,max),raster) =>
+        val (minTemp,maxTemp) = raster.tile.band(bandId).findMinMaxDouble
+        (Math.min(minTemp,min),Math.max(maxTemp,max))
+      }
+      logger.info(s"raster ${bandNames.get(bandId)} min&max = $minmax")
       val histogramsAndSizes = rasters.map(raster => {
         (raster.tile.band(bandId).histogramDouble(),raster.tile.size)
       })
