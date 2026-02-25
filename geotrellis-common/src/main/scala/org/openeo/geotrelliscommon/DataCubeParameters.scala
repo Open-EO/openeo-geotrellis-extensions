@@ -29,6 +29,11 @@ class DataCubeParameters extends Serializable {
   var loadPerProduct: Boolean = false
   var rasterSource: Option[String] = Option.empty
   /**
+   * Whether to look up band assets by matching link title (one file per band) and use BandCompositeRasterSource,
+   * or by band info/index and use MultibandCompositeRasterSource.
+   */
+  var bandsByLinkTitle: Boolean = true
+  /**
    * A maximum size in megabytes that output partitions should have. Not all code paths support this yet.
    * If set, automatic tuning of other parameters such as index reduction should be applied.
    * If not set, we fall back to using fixed index reduction.
@@ -74,6 +79,7 @@ class DataCubeParameters extends Serializable {
   }
 
   def setLoadPerProduct(loadPerProduct:Boolean): Unit = this.loadPerProduct = loadPerProduct
+  def setBandsByLinkTitle(v: Boolean): Unit = bandsByLinkTitle = v
 
   def setMaskingCube(aMaskingCube: Object): Unit = {
     maskingCube = Some(aMaskingCube)
