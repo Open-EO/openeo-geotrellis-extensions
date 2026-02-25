@@ -1434,6 +1434,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
           te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs), ovr = warpOptionsOvr
         )
+        logger.debug(s"cloudpath: $cloudPath, warp options: $warpOptions")
         if (cloudPath.isDefined) {
           GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
         } else {
@@ -1528,8 +1529,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
     } yield linkWithTitle.map(convertNetcdfLinksToGDALFormat(_,title,bandIndex).get)
 
-    // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
-    val byLinkTitle = !fromLoadStac
+    val byLinkTitle = datacubeParams.map(_.bandsByLinkTitle).getOrElse(true)
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 

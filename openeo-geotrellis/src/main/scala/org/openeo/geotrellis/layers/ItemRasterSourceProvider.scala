@@ -25,6 +25,7 @@ trait ItemRasterSourceProvider {
     )
 
   def computeItemExtentInTargetLayout(item: Feature, re: RasterExtent, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters]) = {
+    logger.debug(s"computeItemExtentInTargetLayout() -> item: $item, rasterExtent: $re, targetExtent: $targetExtent, datacubeParams: $datacubeParams")
     if (item.rasterExtent.isDefined && item.crs.isDefined) {
       val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(item.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
       val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) || !useNewFeatureExtentIntersectionPossible) {
