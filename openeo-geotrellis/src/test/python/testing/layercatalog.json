@@ -1,5 +1,397 @@
 [
   {
+    "id": "_SENTINEL2_L2A_OPENSEARCH",
+    "name": "SENTINEL2_L2A",
+    "title": "Sentinel-2 L2A",
+    "description": "SENTINEL-2 is a wide-swath, high-resolution, multi-spectral imaging mission, supporting Copernicus Land Monitoring studies, including the monitoring of vegetation, soil and water cover, as well as observation of inland waterways and coastal areas. The SENTINEL-2 Multispectral Instrument (MSI) samples 13 spectral bands: four bands at 10 metres, six bands at 20 metres and three bands at 60 metres spatial resolution.\n The level 2A data is atmospherically corrected using Sen2Cor.",
+    "mission": "Sentinel-2",
+    "license": "proprietary",
+    "keywords": [
+      "COPERNICUS",
+      "ESA",
+      "Orthoimagery",
+      "Sentinel-2",
+      "MSI",
+      "Level-2A",
+      "Radiometry",
+      "Plant Resource",
+      "TOC"
+    ],
+    "providers": [{
+      "name": "ESA",
+      "roles": [
+        "producer"
+      ],
+      "url": "https://esa.int/"
+    },
+      {
+        "name": "CDSE",
+        "roles": [
+          "processor",
+          "host"
+        ],
+        "url": "https://dataspace.copernicus.eu/"
+      }],
+    "links": [
+      {
+        "rel": "license",
+        "href": "https://sentinels.copernicus.eu/documents/247904/690755/Sentinel_Data_Legal_Notice",
+        "type": "application/pdf"
+      },
+      {
+        "rel": "alternate",
+        "href": "https://documentation.dataspace.copernicus.eu/Data/SentinelMissions/Sentinel2.html#sentinel-2-level-2a-top-of-canopy-toc",
+        "type": "application/html"
+      },
+      {
+        "href": "https://dataspace.copernicus.eu/browser/?zoom=11&lat=45.36638&lng=12.49832&themeId=DEFAULT-THEME&visualizationUrl=https%3A%2F%2Fsh.dataspace.copernicus.eu%2Fogc%2Fwms%2F28b654e7-8912-4e59-9e58-85b58d768b3a&datasetId=S2_L2A_CDAS&fromTime=2023-02-07T00%3A00%3A00.000Z&toTime=2023-02-07T23%3A59%3A59.999Z&layerId=1_TRUE_COLOR&demSource3D=%22MAPZEN%22&cloudCoverage=10",
+        "title": "CDSE Data-Browser",
+        "rel": "browser"
+      },
+      {
+        "href": "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?cloudCover=[0,10]&productType=S2MSI2A&startDate=2022-06-11&completionDate=2022-06-22&maxRecords=10",
+        "rel": "opensearch",
+        "title": "Opensearch product query"
+      },
+      {
+        "href": "https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-2-msi/product-types/level-2a",
+        "title": "User guide",
+        "rel": "about"
+      },
+      {
+        "href": "https://services.sentinel-hub.com/ogc/wmts/7d34803f-511c-4caf-9438-6d72f32c8174",
+        "rel": "wmts",
+        "title":"Web Map Tile Service",
+        "wmts:dimensions": {
+          "warnings": true
+        },
+        "wmts:layer": "TRUE-COLOR"
+      }
+    ],
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -56,
+            180,
+            83
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2015-07-04",
+            null
+          ]
+        ]
+      }
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}, "step": 10},
+      "y": {"type": "spatial", "axis": "y", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}, "step": 10},
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "B01",
+          "B02",
+          "B03",
+          "B04",
+          "B05",
+          "B06",
+          "B07",
+          "B08",
+          "B8A",
+          "B09",
+          "B11",
+          "B12",
+          "WVP",
+          "AOT",
+          "SCL",
+          "sunAzimuthAngles",
+          "sunZenithAngles",
+          "viewAzimuthMean",
+          "viewZenithMean",
+          "CLD",
+          "SNW"
+        ]
+      }
+    },
+    "summaries": {
+      "platform": [
+        "sentinel-2a",
+        "sentinel-2b"
+      ],
+      "instrument": [
+        "msi"
+      ],
+      "constellation": [
+        "sentinel-2"
+      ],
+      "gsd": [
+        10
+      ],
+      "eo:cloud_cover": {
+        "minimum": 0,
+        "maximum": 100
+      },
+      "productIdentifier": {},
+      "tileId": {},
+      "processingBaseline": {},
+      "eo:bands": [
+        {
+          "name": "B01",
+          "aliases": ["IMG_DATA_Band_B01_60m_Tile1_Data"],
+          "common_name": "coastal",
+          "center_wavelength": 0.4427,
+          "full_width_half_max": 0.021,
+          "gsd": 60,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B02",
+          "aliases": ["IMG_DATA_Band_B02_10m_Tile1_Data"],
+          "common_name": "blue",
+          "center_wavelength": 0.4924,
+          "full_width_half_max": 0.066,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B03",
+          "aliases": ["IMG_DATA_Band_B03_10m_Tile1_Data"],
+          "common_name": "green",
+          "center_wavelength": 0.5598,
+          "full_width_half_max": 0.036,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B04",
+          "aliases": ["IMG_DATA_Band_B04_10m_Tile1_Data"],
+          "common_name": "red",
+          "center_wavelength": 0.6646,
+          "full_width_half_max": 0.031,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B05",
+          "aliases": ["IMG_DATA_Band_B05_20m_Tile1_Data"],
+          "center_wavelength": 0.7041,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B06",
+          "aliases": ["IMG_DATA_Band_B06_20m_Tile1_Data"],
+          "center_wavelength": 0.7405,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B07",
+          "aliases": ["IMG_DATA_Band_B07_20m_Tile1_Data"],
+          "center_wavelength": 0.7828,
+          "full_width_half_max": 0.02,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B08",
+          "aliases": ["IMG_DATA_Band_B08_10m_Tile1_Data"],
+          "common_name": "nir",
+          "center_wavelength": 0.8328,
+          "full_width_half_max": 0.106,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B8A",
+          "aliases": ["IMG_DATA_Band_B8A_20m_Tile1_Data"],
+          "common_name": "nir08",
+          "center_wavelength": 0.8647,
+          "full_width_half_max": 0.021,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B09",
+          "aliases": ["IMG_DATA_Band_B09_60m_Tile1_Data"],
+          "common_name": "nir09",
+          "center_wavelength": 0.9451,
+          "full_width_half_max": 0.02,
+          "gsd": 60,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B11",
+          "aliases": ["IMG_DATA_Band_B11_20m_Tile1_Data"],
+          "common_name": "swir16",
+          "center_wavelength": 1.6137,
+          "full_width_half_max": 0.091,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B12",
+          "aliases": ["IMG_DATA_Band_B12_20m_Tile1_Data"],
+          "common_name": "swir22",
+          "center_wavelength": 2.2024,
+          "full_width_half_max": 0.175,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "WVP",
+          "aliases": ["IMG_DATA_Band_WVP_10m_Tile1_Data"]
+        },
+        {
+          "name": "AOT",
+          "aliases": ["IMG_DATA_Band_AOT_20m_Tile1_Data"]
+        },
+
+        {
+          "name": "SCL",
+          "aliases": ["IMG_DATA_Band_SCL_20m_Tile1_Data"],
+          "gsd": 20
+        },
+
+        {
+          "name": "sunAzimuthAngles",
+          "aliases":["S2_Level-2A_Tile1_Metadata##0", "SAA"],
+          "unit":"deg"
+        },
+        {
+          "name": "sunZenithAngles",
+          "aliases":["S2_Level-2A_Tile1_Metadata##1", "SZA"],
+          "unit":"deg"
+        },
+        {
+          "name": "viewAzimuthMean",
+          "aliases":["S2_Level-2A_Tile1_Metadata##2", "VAA", "approximateViewAzimuth"],
+          "unit":"deg"
+        },
+        {
+          "name": "viewZenithMean",
+          "aliases":["S2_Level-2A_Tile1_Metadata##3", "VZA", "approximateViewZenith"],
+          "unit":"deg"
+        },
+        {
+          "name": "CLD",
+          "aliases":["CloudPrbMask_Tile1_Data"],
+          "gsd": 20,
+          "type": "uint8",
+          "unit": "1",
+          "statistics": {
+            "minimum": [
+              0
+            ],
+            "maximum": [
+              100
+            ]
+          }
+        },
+        {
+          "name": "SNW",
+          "aliases":["SnowPrbMask_Tile1_Data"],
+          "gsd": 20,
+          "type": "uint8",
+          "unit": "1",
+          "statistics": {
+            "minimum": [
+              0
+            ],
+            "maximum": [
+              100
+            ]
+          }
+        }
+      ]
+    },
+    "assets": {
+      "thumbnail": {
+        "href": "https://www.esa.int/var/esa/storage/images/esa_multimedia/images/2022/07/tallinn_estonia/24383281-1-eng-GB/Tallinn_Estonia_pillars.jpg",
+        "type": "image/png",
+        "roles": [
+          "thumbnail"
+        ],
+        "title": "Sentinel 2 L2A"
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s2",
+        "opensearch_collection_id": "Sentinel2",
+        "opensearch_endpoint": "https://catalogue.dataspace.copernicus.eu/resto",
+        "opensearch_variant": "disabled",
+        "root_path": "/eodata",
+        "provider:backend": "creodias",
+        "parallel_query": true,
+        "select_one_orbit_per_day": true,
+        "is_utm": true
+      },
+      "properties": {
+        "productType": {
+          "process_graph": {
+            "asc": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "value"
+                },
+                "y": "L2A"
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    }
+  },
+  {
     "id": "SENTINEL2_L2A_STAC",
     "description": "[EXPERIMENTAL]",
     "experimental": true,
