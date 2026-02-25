@@ -1529,7 +1529,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
     } yield linkWithTitle.map(convertNetcdfLinksToGDALFormat(_,title,bandIndex).get)
 
-    val byLinkTitle = datacubeParams.map(_.bandsByLinkTitle).getOrElse(true)
+    val byLinkTitle = !fromLoadStac
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
@@ -1588,16 +1588,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
-      if (bandIndices.isEmpty && byLinkTitle) {
-        val actualNumberOfBands = rasterSources.size
-
-        if (actualNumberOfBands != expectedNumberOfBands) {
-          logger.warn(s"Did not find expected number of bands $expectedNumberOfBands (actual: $actualNumberOfBands) for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
-          return None
-        }
-
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
-      } else Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct)), feature))
+      if (byLinkTitle && bandIndices.isEmpty && rasterSources.size != expectedNumberOfBands) {
+        logger.warn(s"Did not find expected number of bands $expectedNumberOfBands (actual: ${rasterSources.size}) for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
+        None
+      } else {
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors, readFullTile = datacubeParams.exists(_.loadPerProduct)), feature))
+      }
     }
   }
 
