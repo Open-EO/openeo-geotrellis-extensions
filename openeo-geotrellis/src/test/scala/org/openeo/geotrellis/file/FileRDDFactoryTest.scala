@@ -13,7 +13,7 @@ import io.circe.parser.{decode => circeDecode}
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.api.java.JavaRDD
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, ProjectedPolygons}
@@ -39,6 +39,7 @@ object FileRDDFactoryTest {
 
 class FileRDDFactoryTest extends RasterMatchers {
 
+  @Disabled("deprecated opensearch")
   @Test
   def loadSpatialFeatureJsonRDDTest(): Unit = {
     val client = OpenSearchClient(new URL("https://catalogue.dataspace.copernicus.eu/resto"))
@@ -85,6 +86,7 @@ class FileRDDFactoryTest extends RasterMatchers {
     }}// only selected date should be here
   }
 
+  @Disabled("deprecated opensearch")
   @ParameterizedTest
   @ValueSource(strings = Array("2022-06-18T00:00:00+00:00", "2022-06-19T00:00:00+00:00"))
   def testUpperTemporalBound(until_datetime: String): Unit = {

@@ -75,7 +75,7 @@ object NetCDFRDDWriter {
   def writeRasters(rdd:Object,path:String,options:NetCDFOptions): java.util.List[Item] = {
 
     rdd match {
-      case rdd1 if rdd.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+      case rdd1 if rdd.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
         saveSingleNetCDFGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], path, options)
       case rdd2 if rdd.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
         saveSingleNetCDFGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], path, options)
@@ -252,6 +252,9 @@ object NetCDFRDDWriter {
             val variable = actualBandNames.get(bandIndex)
 
             var tile = multibandTile.band(bandIndex)
+            if (tile.cellType != cellType) {
+              tile = tile.convert(cellType)
+            }
 
             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
               tile = tile.crop(rasterExtent.cols-gridExtent.colMin,rasterExtent.rows-gridExtent.rowMin,raster.CropOptions(force=true))

@@ -149,7 +149,7 @@ object ProcessGraphRunner {
         None
       }
     }
-    dataFolder.map(f => f"-v ${f.getAbsolutePath}:/eodata").getOrElse("")
+    dataFolder.map(f => f"--mount type=bind,src=${f.getAbsolutePath},dst=/eodata,readonly,bind-propagation=rslave").getOrElse("")
   }
 
 

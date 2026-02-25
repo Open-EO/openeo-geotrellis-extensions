@@ -17,6 +17,7 @@ import java.time.ZonedDateTime
 import java.util
 import scala.jdk.CollectionConverters._
 
+@Deprecated
 object ProbaVPyramidFactory {
   // Mapping from band name to (geotiff file id, band index).
   // E.g. PROBAV_S10_TOC_X35Y12_20190801_333M_GEOMETRY_V201.TIFF contains the SWIRVZA band at index 3.
@@ -36,6 +37,7 @@ object ProbaVPyramidFactory {
   )
 }
 
+@Deprecated
 class ProbaVPyramidFactory(openSearchEndpoint: String,
                            openSearchCollectionId: String,
                            bandNames: util.List[String],
