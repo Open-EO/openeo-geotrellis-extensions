@@ -17,7 +17,7 @@ import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
 import geotrellis.vector.io.json.GeoJson
 import org.apache.spark.{SparkConf, SparkContext, SparkEnv}
-import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNull, assertTrue}
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
@@ -985,6 +985,114 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
   }
+
+  @Test
+  def testSaveSamplesSpatialWithOptions(@TempDir outDir: Path): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (_, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
+
+    val tileLayerRDD = filtered
+
+    val geometriesPath = getClass.getResource("/org/openeo/geotrellis/geotiff/non_overlapping_polygons.geojson").getPath
+
+    // its extent differs substantially from its shape
+    val tiltedRectangle = ProjectedPolygons.fromVectorFile(geometriesPath)
+
+    val sampleNames = tiltedRectangle.polygons.indices
+      .map(_.toString + "-testName")
+      .asJava
+
+    val gtiffOptions = new GTiffOptions
+    gtiffOptions.setOverview("ALL")
+    gtiffOptions.setTileSize(128)
+
+    val tiles = saveSamplesSpatial(tileLayerRDD, outDir + "/", tiltedRectangle, sampleNames,
+      DeflateCompression(BEST_COMPRESSION),gtiffOptions)
+
+    val expectedPaths = List(
+      outDir + "/openEO_0-testName.tif",
+      outDir + "/openEO_1-testName.tif"
+
+    )
+    val paths = tiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet
+
+    for (path <- paths){
+      assertTrue(expectedPaths.contains(path))
+    }
+    assertEquals(expectedPaths.size, paths.size)
+
+    for (path <- expectedPaths) {
+      val tile = GeoTiff.readMultiband(path)
+      assertEquals(0,tile.overviews.size) // too small for overviews
+    }
+    assertNull(tiles.get(0).datetime)
+
+    assertEquals(Extent(108.8684210526, -17.0178704513, 114.7815789474, -11.9889230829), tiles.get(0).bbox)
+    assertEquals(Extent(108.8684210526, -15.0178704513, 114.7815789474, -9.9889230829), tiles.get(1).bbox)
+  }
+
+  @Test
+  def testSaveSamplesSpatialOnlyConsidersPixelsWithinGeometry(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+
+    val intImage = LayerFixtures.createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+
+
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(MultibandTile(Seq(imageTile)), TileLayout(layoutCols, layoutRows, 256, 256))(WriteRDDToGeotiffTest.sc)
+
+    val geometriesPath = getClass.getResource("/org/openeo/geotrellis/geotiff/ll_ur_polygon.geojson").getPath
+
+    // its extent differs substantially from its shape
+    val tiltedRectangle = ProjectedPolygons.fromVectorFile(geometriesPath)
+
+    val sampleNames = tiltedRectangle.polygons.indices
+      .map(_.toString + "-testName")
+      .asJava
+
+    val outDir = Paths.get("tmp/geotiffSample/")
+    new Directory(outDir.toFile).deleteRecursively()
+    Files.createDirectories(outDir)
+
+    saveSamplesSpatial(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
+      DeflateCompression(BEST_COMPRESSION))
+
+    val paths = Files.list(outDir).iterator().asScala.toArray // 1 date, 1 polygon
+    val geoTiffPath = paths.find(_.toString.endsWith(".tif")).get
+    val raster = GeoTiff.readMultiband(geoTiffPath.toString).raster.mapTile(_.band(0))
+
+    val geometry = {
+      val in = Source.fromFile(geometriesPath)
+      try GeoJson.parse[GeometryCollection](in.mkString).getGeometryN(0)
+      finally in.close()
+    }
+
+    // raster extent should be the same as the extent of the input geometry
+    assertTrue(raster.extent.equalsExact(geometry.extent, 1.0))
+
+    def rasterValueAt(point: Point): Int = {
+      val (col, row) = raster.rasterExtent.mapToGrid(point)
+      raster.tile.get(col, row)
+    }
+
+    // pixels within input geometry should carry data
+    val pointWithinGeometry = geometry.getCentroid
+    assertTrue(isData(rasterValueAt(pointWithinGeometry)))
+
+    // pixels outside of geometry should not carry data
+    val pointOutsideOfGeometry = {
+      val point = LineString(geometry.getCentroid, geometry.extent.southEast).getCentroid
+      // sanity checks
+      assertTrue(geometry.extent contains point)
+      assertFalse(geometry.union() contains point)
+      point
+    }
+
+    assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
+  }
+
 
   @Test
   def testAvoidCroppingAwayNoData(): Unit = {
