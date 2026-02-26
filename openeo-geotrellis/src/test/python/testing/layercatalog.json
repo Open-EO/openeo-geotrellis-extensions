@@ -1,5 +1,314 @@
 [
   {
+    "id": "_PROBAV_L3_S1_TOC_100M_OPENSEARCH",
+    "description": "PROBA-V S1-TOC – daily global composites, Top-Of-Canopy, 100m resolution (Collection 2)",
+    "license": "proprietary",
+    "providers": [
+      {
+        "name": "VITO, on behalf of the Belgian Science Policy Office (BELSPO).",
+        "roles": [
+          "producer",
+          "licensor"
+        ],
+        "url": "http://proba-v.vgt.vito.be"
+      }
+    ],
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "extent": [
+          -179.999,
+          179.999
+        ],
+        "step": 0.000992063492063,
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "extent": [
+          -56,
+          75
+        ],
+        "step": 0.000992063492063,
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "NDVI",
+          "RED",
+          "NIR",
+          "BLUE",
+          "SWIR",
+          "SZA",
+          "SAA",
+          "SWIRVAA",
+          "SWIRVZA",
+          "VNIRVAA",
+          "VNIRVZA",
+          "SM"
+        ]
+      }
+    },
+    "summaries": {
+      "constellation": [
+        "PROBA-V"
+      ],
+      "platform": [
+        "PROBA-V"
+      ],
+      "instruments": [
+        "PROBA-V"
+      ],
+      "eo:gsd": [
+        100
+      ],
+      "raster:bands": [
+        {
+          "name": "NDVI",
+          "scale": 0.004,
+          "offset": -0.08,
+          "unit": "1"
+        },
+        {
+          "name": "RED",
+          "scale": 0.0005,
+          "offset": 0.0,
+          "unit": "1"
+        },
+        {
+          "name": "NIR",
+          "scale": 0.0005,
+          "offset": 0.0,
+          "unit": "1"
+        },
+        {
+          "name": "BLUE",
+          "scale": 0.0005,
+          "offset": 0.0,
+          "unit": "1"
+        },
+        {
+          "name": "SWIR",
+          "scale": 0.0005,
+          "offset": 0.0,
+          "unit": "1"
+        },
+        {
+          "name": "SZA",
+          "scale": 0.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "SAA",
+          "scale": 1.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "SWIRVAA",
+          "scale": 1.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "SWIRVZA",
+          "scale": 0.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "VNIRVAA",
+          "scale": 1.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "VNIRVZA",
+          "scale": 0.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "SM",
+          "scale": 1.0,
+          "offset": 0.0,
+          "unit": "1"
+        }
+      ],
+      "eo:bands": [
+        {
+          "name": "NDVI",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "RED",
+          "gsd": 100,
+          "type": "int16"
+        },
+        {
+          "name": "NIR",
+          "gsd": 100,
+          "type": "int16"
+        },
+        {
+          "name": "BLUE",
+          "gsd": 100,
+          "type": "int16"
+        },
+        {
+          "name": "SWIR",
+          "gsd": 100,
+          "type": "int16"
+        },
+        {
+          "name": "SZA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "SAA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "SWIRVAA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "SWIRVZA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "VNIRVAA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "VNIRVZA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "SM",
+          "gsd": 100,
+          "type": "int8"
+        }
+      ]
+    },
+    "links": [
+      {
+        "href": "https://services.terrascope.be/wmts/v2",
+        "rel": "wmts",
+        "wmts:layer": "PROBAV_S1_TOC_100M_COG_V2"
+      }
+    ],
+    "_vito": {
+      "data_source": {
+        "type": "file-probav",
+        "opensearch_collection_id": "urn:eop:VITO:PROBAV_S1_TOC_100M_COG_V2",
+        "root_path": "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S1_TOC_100M",
+        "realign": true
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -179.999,
+            -56,
+            179.999,
+            75
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2014-03-12",
+            "2021-10-31"
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "PROBAV_L3_S1_TOC_100M",
+    "description": "PROBA-V S1-TOC – daily global composites, Top-Of-Canopy, 100m resolution (Collection 2)",
+    "license": "proprietary",
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "extent": [
+          -179.999,
+          179.999
+        ],
+        "step": 0.000992063492063,
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "extent": [
+          -56,
+          75
+        ],
+        "step": 0.000992063492063,
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "NDVI",
+          "RED",
+          "NIR",
+          "BLUE",
+          "SWIR",
+          "SZA",
+          "SAA",
+          "SWIRVAA",
+          "SWIRVZA",
+          "VNIRVAA",
+          "VNIRVZA",
+          "SM"
+        ]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.terrascope.be/collections/terrascope-probav-s1-toc-100m-cog-v2",
+        "load_stac_feature_flags": {
+          "granule_metadata_band_map": {
+            "SZA": "GEOMETRY##0",
+            "SAA": "GEOMETRY##1",
+            "SWIRVAA": "GEOMETRY##2",
+            "SWIRVZA": "GEOMETRY##3",
+            "VNIRVAA": "GEOMETRY##4",
+            "VNIRVZA": "GEOMETRY##5"
+          },
+          "cellsize_override": [
+            0.000992063492063,
+            0.000992063492063
+          ]
+        }
+      }
+    }
+  },
+  {
     "id": "_SENTINEL2_L2A_OPENSEARCH",
     "name": "SENTINEL2_L2A",
     "title": "Sentinel-2 L2A",
