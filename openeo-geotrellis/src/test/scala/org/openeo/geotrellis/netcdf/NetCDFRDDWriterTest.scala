@@ -2,12 +2,12 @@ package org.openeo.geotrellis.netcdf
 
 import cats.data.NonEmptyList
 import com.azavea.gdal.GDALWarp
-import geotrellis.layer.{SpaceTimeKey, SpatialKey}
+import geotrellis.layer.{KeyBounds, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellType, FloatConstantNoDataCellType, IntArrayTile, IntUserDefinedNoDataCellType, MultibandTile, Raster, RasterExtent, Tile, TileLayout, UByteUserDefinedNoDataCellType, UShortCellType, UShortUserDefinedNoDataCellType, isData}
+import geotrellis.raster.{ArrayTile, CellType, DoubleUserDefinedNoDataCellType, FloatConstantNoDataCellType, IntArrayTile, IntUserDefinedNoDataCellType, MultibandTile, Raster, RasterExtent, Tile, TileLayout, UByteUserDefinedNoDataCellType, UShortCellType, UShortUserDefinedNoDataCellType, isData}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
@@ -154,7 +154,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       ),
     )
 
-    def testStatistics(arrayTile: IntArrayTile, expectedStatistics: util.HashMap[String, Any] = null, polygon: Geometry = polygon0, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
+    def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, polygon: Geometry = polygon0, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
       val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 1, 1, nbDates = 5)
       val polygons = ProjectedPolygons(polygon, CRS.fromEpsgCode(4326))
       val sampleNames = polygons.polygons.indices.map(_.toString)
@@ -207,9 +207,10 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     val arrayTile0 = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
     testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0, "stddev", 14.142135623730951)))
     val arrayTile1 = IntArrayTile(Array.fill(arrayDim * arrayDim)(256), arrayDim, arrayDim, noDataValue = 256)
-    testStatistics(arrayTile = arrayTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)))
+    val imageTile1 = arrayTile1.convert(DoubleUserDefinedNoDataCellType(256)).mutable
+    testStatistics(arrayTile = imageTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)))
     val arrayTile2 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
-    testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0, "stddev", 10)))
+    testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0 , "stddev", 10)))
     testStatistics(arrayTile = arrayTile0, addStatistics = false)
     testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 0.0, "maximum", 30.0, "mean", 15.0, "stddev", 15.0)), polygon = polygon1, expectedShape = Array(86, 52))
     testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)), polygon = polygon1, expectedShape = Array(86, 52))
@@ -403,7 +404,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     val imageTile0 = arrayTile0.convert(UShortUserDefinedNoDataCellType(256)).mutable
     testStatistics(imageTile = imageTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0, "stddev", 14.142135623730951)))
     val arrayTile1 = IntArrayTile(Array.fill(arrayDim * arrayDim)(256), arrayDim, arrayDim)
-    val imageTile1 = arrayTile1.convert(UShortUserDefinedNoDataCellType(256)).mutable
+    val imageTile1 = arrayTile1.convert(DoubleUserDefinedNoDataCellType(256)).mutable
     testStatistics(imageTile = imageTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)))
     val arrayTile2 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim)
     val imageTile2 = arrayTile2.convert(UShortUserDefinedNoDataCellType(256)).mutable
@@ -622,10 +623,10 @@ class NetCDFRDDWriterTest extends RasterMatchers {
 
     val arrayDim = 512
     val arrayTile0 = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim)
-    val imageTile0 = arrayTile0.convert(UShortUserDefinedNoDataCellType(256)).mutable
+    val imageTile0 = arrayTile0.convert(DoubleUserDefinedNoDataCellType(256)).mutable
     testStatistics(imageTile = imageTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0, "stddev", 14.142135623730951)))
     val arrayTile1 = IntArrayTile(Array.fill(arrayDim * arrayDim)(256), arrayDim, arrayDim)
-    val imageTile1 = arrayTile1.convert(UShortUserDefinedNoDataCellType(256)).mutable
+    val imageTile1 = arrayTile1.convert(DoubleUserDefinedNoDataCellType(256)).mutable
     testStatistics(imageTile = imageTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)))
     val arrayTile2 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim)
     val imageTile2 = arrayTile2.convert(UShortUserDefinedNoDataCellType(256)).mutable
