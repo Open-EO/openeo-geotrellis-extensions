@@ -20,8 +20,9 @@ import java.net.URI
  */
 object MultiClientRangeReaderProvider {
   private val logger = LoggerFactory.getLogger(classOf[MultiClientRangeReaderProvider])
-
+  private var didAlreadyWarn = false // TODO: Find better way to throttle/de-burst logs
 }
+
 class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
   import MultiClientRangeReaderProvider._
   @transient lazy val swiftEndpoint = new URI(sys.env.getOrElse("SWIFT_URL", "https://s3.waw3-1.cloudferro.com"))
@@ -40,12 +41,18 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
         val deprecatedBuckets = List("EOCLOUD", "eocloud", "DIAS", "dias")
         if (deprecatedBuckets.contains(s3Uri.getBucket)) {
           // https://dataspace.copernicus.eu/news/2025-12-11-upcoming-changes-earth-observation-data-eodata-repository-bucket-names
-          logger.warn(s"Bucket ${s3Uri.getBucket} is deprecated, it probably needs to be eodata (lower-case).")
+          if (!didAlreadyWarn) {
+            logger.warn(s"Bucket ${s3Uri.getBucket} is deprecated, it probably needs to be eodata (lower-case).")
+            didAlreadyWarn = true
+          }
         }
 
         if (s3Uri.getBucket.toLowerCase().equals("eodata") || s3Uri.getBucket.toLowerCase().equals("hrvpp")) {
           if (s3Uri.getBucket == "EODATA") {
-            logger.warn("Bucket is EODATA, but should be lower-case: eodata.")
+            if (!didAlreadyWarn) {
+              logger.warn("Bucket is EODATA, but should be lower-case: eodata.")
+              didAlreadyWarn = true
+            }
             effectiveUri = URI.create(effectiveUri.toString.replaceFirst("EODATA", "eodata"))
             s3Uri = new AmazonS3URI(effectiveUri)
           }
