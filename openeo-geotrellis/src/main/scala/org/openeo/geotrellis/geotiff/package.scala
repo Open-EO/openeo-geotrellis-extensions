@@ -35,6 +35,7 @@ import spire.syntax.cfor.cfor
 import java.nio.file.{Files, Path, Paths}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
+import java.util
 import java.util.stream.Collectors
 import java.util.{ArrayList, Collections, Map, UUID, List => JList}
 import scala.jdk.CollectionConverters._
@@ -1234,6 +1235,36 @@ package object geotiff {
     groupByFeatureAndWriteToTiff(rdd, cropBounds = None, features, path, cropDimensions = None, compression, formatOptions)
   }
 
+  def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
+                  path: String,
+                  polygons: ProjectedPolygons,
+                  sampleNames: JList[String],
+                  compression: Compression,
+                  formatOptions: GTiffOptions,
+                 ): JList[Item] =
+    saveSamplesSpatial(rdd, path, polygons, sampleNames, compression, Some(formatOptions))
+
+  def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
+                  path: String,
+                  polygons: ProjectedPolygons,
+                  sampleNames: JList[String],
+                  compression: Compression,
+                 ): JList[Item] =
+    saveSamplesSpatial(rdd, path, polygons, sampleNames, compression, None)
+
+  def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
+                  path: String,
+                  polygons: ProjectedPolygons,
+                  sampleNames: JList[String],
+                  compression: Compression,
+                  formatOptions: Option[GTiffOptions],
+                 ): JList[Item] = {
+    val reprojected = ProjectedPolygons.reproject(polygons, rdd.metadata.crs)
+    val features = sampleNames.asScala.toSeq.zip(reprojected.polygons)
+    groupByFeatureAndWriteToTiffSpatial(rdd, cropBounds = None, features, path, cropDimensions = None, compression, formatOptions)
+  }
+
+
   def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                                    path: String,
                                    tileGrid: String,
@@ -1314,6 +1345,47 @@ package object geotiff {
     val items = for {
       (path, timestamp, extent, name) <- ret
     } yield Item(id = f"${UUID.randomUUID()}_${timestamp}_$name", datetime = timestamp, bbox = extent,
+      assets = Collections.singletonMap("openEO", Asset(path)))
+
+    items.toList.asJava
+  }
+
+  private def groupByFeatureAndWriteToTiffSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
+                                                  cropBounds: Option[java.util.Map[String, Double]],
+                                                  features: Seq[(String, Geometry)],
+                                                  path: String,
+                                                  cropDimensions: Option[util.ArrayList[Int]],
+                                                  compression: Compression,
+                                                  formatOptions: Option[GTiffOptions] = None,
+                                          ): JList[Item] = {
+    val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
+
+    val croppedExtent = cropBounds.map(toExtent)
+
+    val layout = rdd.metadata.layout
+    val crs = rdd.metadata.crs
+
+    val filenamePrefix = formatOptions match {
+      case Some(fo) => fo.filenamePrefix
+      case None => new GTiffOptions().filenamePrefix
+    }
+    val ret = rdd
+      .flatMap { case (key, tile) => featuresBC.value
+        .filter { case (_, geometry) => layout.mapTransform.keysForGeometry(geometry) contains key }
+        .map { case (name, geometry) => ((name, geometry), (key, tile)) }
+      }
+      .groupByKey()
+      .map { case ((name, geometry), tiles) =>
+        val filename = s"${filenamePrefix}_$name.tif"
+        val filePath = Paths.get(path).resolve(filename).toString
+        (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression, formatOptions).correctPath,
+          geometry.extent)
+      }
+      .collect()
+
+    val items = for {
+      (path, extent) <- ret
+    } yield Item(id = f"${UUID.randomUUID()}", datetime = null, bbox = extent,
       assets = Collections.singletonMap("openEO", Asset(path)))
 
     items.toList.asJava
