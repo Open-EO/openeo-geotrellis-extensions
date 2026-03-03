@@ -727,7 +727,9 @@ object FileLayerProvider {
 
               productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtentPolygon.getFlatMultiPolygon)
             } else {
-              productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+              val polygon = cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01)
+              val productGeometryProjected = ProjectedPolygons(productGeometry, LatLng).safeReproject(productCRSOrDefault, refine = true)
+              polygon.intersection(productGeometryProjected.getFlatMultiPolygon)
             }
 
             if (intersection.isValid && intersection.getArea > 0.0)
@@ -907,7 +909,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     // Handle maskingStrategyParameters.
     var maskStrategy: Option[CloudFilterStrategy] = None
-    if (datacubeParams.isDefined && datacubeParams.get.maskingStrategyParameters != null) {
+    if (datacubeParams.isDefined && datacubeParams.get.maskingStrategyParameters != null && !datacubeParams.get.maskingStrategyParameters.isEmpty) {
       val maskParams = datacubeParams.get.maskingStrategyParameters
       val maskMethod = maskParams.getOrDefault("method", "").toString
       if (maskMethod == "mask_scl_dilation") {
@@ -1016,7 +1018,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     requiredSpacetimeKeys = applySpaceTimeMask(datacubeParams, requiredSpacetimeKeys,metadata)
 
-    if (isUTM && datacubeParams.forall(_.resolveTileOverlap)) {
+    if (isUTM && datacubeParams.forall(_ => true)) {
       //only for utm is just a safeguard to limit to Sentinel-1/2 for now
       //try to resolve overlap before actually reading the data
       requiredSpacetimeKeys = requiredSpacetimeKeys
