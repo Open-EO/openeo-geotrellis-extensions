@@ -130,7 +130,7 @@
             <dependencies>
                 <dependency>
                     <groupId>org.openeo</groupId>
-                    <artifactId>openeo-opensearch-client</artifactId>
+                    <artifactId>openeo-opensearch-client_2.13</artifactId>
                     <version>${openeo-opensearch-client.version}</version>
                 </dependency>
             </dependencies>
