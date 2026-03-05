@@ -16,7 +16,7 @@
         <geotrellis.version>3.8.0+15-ec9f3348-SNAPSHOT</geotrellis.version>
         <gdal-bindings.version>3.8.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
-        <openeo-opensearch-client.version>2.0.1_2.14-SNAPSHOT</openeo-opensearch-client.version>
+        <openeo-opensearch-client.version>2.0.1-SNAPSHOT</openeo-opensearch-client.version>
         <catboost-spark.version>1.2.8</catboost-spark.version>
         <awssdk.version>2.23.19</awssdk.version>
         <jaxb.api.version>2.3.0</jaxb.api.version>
