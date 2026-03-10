@@ -414,7 +414,7 @@ package object geotiff {
       .map { case (timestamp, geotiffs) =>
         val assets = geotiffs
           .map { case (path, _, _, bandIndices) =>
-            val assetKey = if (formatOptions.separateAssetPerBand) f"openEO_${bandLabels(bandIndices.get(0))}" else "openEO"
+            val assetKey = if (formatOptions.separateAssetPerBand) f"${bandLabels(bandIndices.get(0))}" else "openEO"
             assetKey -> Asset(path, bandIndices)
           }
           .toMap
@@ -559,7 +559,7 @@ package object geotiff {
 
       val assets = res.map { case (path, _, bandIndices) =>
         val bandNames = bandIndices.asScala.map(bandLabels.apply)
-        s"openEO_${bandNames mkString "_"}" -> Asset(path, bandIndices)
+        s"${bandNames mkString "_"}" -> Asset(path, bandIndices)
       }.toMap.asJava
 
       Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent, assets))
