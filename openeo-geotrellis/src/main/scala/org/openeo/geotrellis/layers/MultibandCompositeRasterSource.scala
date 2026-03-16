@@ -3,7 +3,7 @@ package org.openeo.geotrellis.layers
 import cats.data.NonEmptyList
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{GridBounds, GridExtent, MultibandTile, Raster, RasterSource, ResampleMethod, ResampleTarget, TargetCellType}
+import geotrellis.raster.{ConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterSource, ResampleMethod, ResampleTarget, TargetCellType, Tile}
 import geotrellis.vector.Extent
 
 // TODO: is this class necessary? Looks like a more general case of BandCompositeRasterSource so maybe the inheritance
@@ -35,7 +35,12 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
       .map { s => BandCompositeRasterSource.readBounds(s._1, bounds, false, s._2) }
       .collect { case Some(raster) => raster }
 
-    if (rasters.size == sources.size) Some(Raster(MultibandTile(rasters.flatMap(_.tile.bands.map(_.toArrayTile().convert(cellType)))), rasters.head.extent))
+    if (rasters.size == sources.size) {
+      Some(Raster(MultibandTile(rasters.flatMap(_.tile.bands.map{
+        case constantTile: ConstantTile => constantTile.convert(cellType)
+        case tile: Tile => tile.toArrayTile().convert(cellType)}
+      )), rasters.head.extent))
+    }
     else None
   }
 
