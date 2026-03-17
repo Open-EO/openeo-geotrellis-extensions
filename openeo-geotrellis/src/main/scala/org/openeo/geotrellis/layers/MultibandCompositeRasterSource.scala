@@ -37,7 +37,13 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
     if (rasters.size == sources.size) {
       Some(Raster(MultibandTile(rasters.flatMap(_.tile.bands.map{
-        case constantTile: ConstantTile => constantTile.convert(cellType)
+        case constantTile: ConstantTile => {
+          if (constantTile.isNoDataTile) {
+            ConstantTile.empty(cellType, constantTile.cols, constantTile.rows)
+          } else {
+            constantTile.convert(cellType)
+          }
+        }
         case tile: Tile => tile.toArrayTile().convert(cellType)}
       )), rasters.head.extent))
     }
