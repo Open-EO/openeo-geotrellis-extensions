@@ -199,9 +199,9 @@ object NetCDFRDDWriter {
       }
     val bandStatistics = collection.mutable.Map[String,(Double,Double,Double,Double,Int,Int)]() // min, max, sum, sum of the power, valid data count, total data count
     var netcdfFile: NetcdfFileWriter = null
+    val cellType = preProcessedRdd.metadata.cellType
     for(tuple <- cachedRDD.toLocalIterator){
 
-      val cellType = tuple._2.cellType
       val timeDimIndex =
         if(dates.nonEmpty){
           val duration = Duration.between(fixedTimeOffset, tuple._1.asInstanceOf[SpaceTimeKey].time)
