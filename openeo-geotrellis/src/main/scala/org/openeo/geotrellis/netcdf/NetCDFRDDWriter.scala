@@ -355,6 +355,7 @@ object NetCDFRDDWriter {
         case t: DoubleArrayTile => ucar.ma2.Array.factory(DataType.DOUBLE, shape, t.array)
       }
 
+    logger.info(s"variable: $variable, origin: ${origin.mkString("Array(", ", ", ")")}, type of bandArray: ${bandArray.getDataType}, and shape: ${shape.mkString("Array(", ", ", ")")}")
     netcdfFile.write(variable, origin, bandArray)
   }
 
