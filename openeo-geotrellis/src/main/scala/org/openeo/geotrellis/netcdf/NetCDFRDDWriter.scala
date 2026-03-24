@@ -253,7 +253,9 @@ object NetCDFRDDWriter {
 
             var tile = multibandTile.band(bandIndex)
             if (tile.cellType != cellType) {
+              logger.info(s"before conversion: band $variable: original cellType of tile: ${tile.cellType}, needs to be converted to $cellType")
               tile = tile.convert(cellType)
+              logger.info(s"after conversion: band $variable: the tile has celltype ${tile.cellType} and arrayTile has now celltype ${tile.toArrayTile().cellType}")
             }
 
             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
