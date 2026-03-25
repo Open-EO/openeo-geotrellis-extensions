@@ -252,9 +252,7 @@ object NetCDFRDDWriter {
             val variable = actualBandNames.get(bandIndex)
 
             var tile = multibandTile.band(bandIndex)
-            if (tile.cellType != cellType) {
-              tile = tile.convert(cellType)
-            }
+            assert(tile.cellType == cellType, s"${tile.cellType} != $cellType")
 
             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
               tile = tile.crop(rasterExtent.cols-gridExtent.colMin,rasterExtent.rows-gridExtent.rowMin,raster.CropOptions(force=true))
