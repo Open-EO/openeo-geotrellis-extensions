@@ -1699,7 +1699,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           case None => f
           case Some(geom) =>
             var pp = ProjectedPolygons(geom, LatLng)
-            if (openSearchCollectionId == "GLOBAL-MOSAICS" && f.id.length > 7) {
+            if (f.id.length >= 9) {
               val tileIdGuess = f.id.substring(f.id.length - 9, f.id.length - 7)
               val crs = CRS.fromName("EPSG:326" + tileIdGuess)
 
