@@ -16,7 +16,7 @@ import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod}
+import geotrellis.raster.resample.{AggregateResampleMethod, NearestNeighbor, ResampleMethod}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
@@ -486,7 +486,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def aggregateTemporal(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]) :MultibandTileLayerRDD[SpaceTimeKey] = {
-    return aggregateTemporal(datacube, intervals, labels, scriptBuilder, context,true)
+    return aggregateTemporal(datacube, intervals, labels, scriptBuilder, context, true)
   }
   def aggregateTemporal(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any], reduce:Boolean ) :MultibandTileLayerRDD[SpaceTimeKey] = {
     val incomingIndex: Option[PartitionerIndex[SpaceTimeKey]] = maybePartitionerIndex(datacube)
@@ -549,6 +549,7 @@ class OpenEOProcesses extends Serializable {
     val minKey = allKeys.reduce((a,b)=>SpaceTimeKey.Boundable.minBound(a,b))
     val maxKey = allKeys.reduce((a,b)=>SpaceTimeKey.Boundable.maxBound(a,b))
     val newBounds : Bounds[SpaceTimeKey] = new KeyBounds(minKey,maxKey)
+    logger.debug(s"New bounds: $newBounds")
     logger.info(s"aggregate_temporal on ${incomingIndex} results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index} with bounds ${newBounds}" )
     val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly,implicitly, index)
 
@@ -620,7 +621,11 @@ class OpenEOProcesses extends Serializable {
     val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = {
       if(reduce) {
         val bandCount = RDDBandCount(datacube)
-        tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols, rows, cellType, bandCount)))
+        tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(
+          {
+            logger.debug(s"Adding EmptyMultibandTile")
+            new EmptyMultibandTile(cols, rows, cellType, bandCount)}
+        ))
       }else{
         tilesByInterval
       }
@@ -655,7 +660,13 @@ class OpenEOProcesses extends Serializable {
   }
 
   def filterEmptyTile[K:ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
-    return datacube.withContext(_.filter(!_._2.isInstanceOf[EmptyMultibandTile]))
+    datacube.withContext(_.filter(t => {
+      val emptyTile = t._2.isInstanceOf[EmptyMultibandTile]
+      if (emptyTile) {
+        logger.debug("Filtering out empty tile")
+      }
+      !emptyTile
+    }))
   }
 
   /**
@@ -1082,6 +1093,43 @@ class OpenEOProcesses extends Serializable {
         }
 
       }), leftCube.metadata)
+    }
+  }
+
+  def aggregateSpatialWindow[K: SpatialComponent: ClassTag](dataCube: MultibandTileLayerRDD[K], window: (Int, Int), reducer: AggregateResampleMethod, pad: Boolean = true): MultibandTileLayerRDD[K] = {
+    val layout = dataCube.metadata.layout
+
+    val sourceCube: MultibandTileLayerRDD[K] = {
+      if (layout.tileLayout.tileCols > window._1 && layout.tileLayout.tileCols % window._1 == 0
+        && layout.tileLayout.tileRows > window._2 && layout.tileLayout.tileRows % window._2 == 0) {
+        logger.debug(s"The spatial window (${window._1}, ${window._2}) fits into the tile (${layout.tileLayout.tileCols}, ${layout.tileLayout.tileRows})")
+        dataCube
+      } else {
+        logger.debug(s"The spatial window (${window._1}, ${window._2}) does not fit into the tile (${layout.tileLayout.tileCols}, ${layout.tileLayout.tileRows})")
+        // don't use tiles bigger than 1GB
+        val maxFactor: Int = 1024*1024*1024 / (math.max(window._1, window._2) * dataCube.metadata.cellType.bytes * RDDBandCount(dataCube))
+
+        var factor: Int = math.min(maxFactor, math.max(layout.cols / window._1, layout.rows / window._2)).toInt
+        factor = 1
+        logger.debug(s"Retiling to a tile size of $factor times the window size")
+        retileGeneric(dataCube, window._1*factor, window._2*factor, 0, 0)
+      }
+    }
+    val sourceLayout = sourceCube.metadata.layout
+    val xFactor: Int = sourceLayout.tileCols / window._1
+    val yFactor: Int = sourceLayout.tileRows / window._2
+    val destinationLayout = sourceLayout.copy(tileLayout = TileLayout(sourceLayout.tileLayout.layoutCols, sourceLayout.tileLayout.layoutRows, xFactor, yFactor))
+    val result: MultibandTileLayerRDD[K] = sourceCube match {
+      case spaceTimeCube: MultibandTileLayerRDD[SpaceTimeKey] => resampleCubeSpatial_spacetime(spaceTimeCube, spaceTimeCube.metadata.crs, destinationLayout, reducer, null)._2.asInstanceOf[MultibandTileLayerRDD[K]]
+      case spatialCube: MultibandTileLayerRDD[SpatialKey] => resampleCubeSpatial_spatial(spatialCube, spatialCube.metadata.crs, destinationLayout, reducer, null)._2.asInstanceOf[MultibandTileLayerRDD[K]]
+    }
+    if (!pad) {
+      result match {
+        case spaceTimeCube: MultibandTileLayerRDD[SpaceTimeKey] => crop_spacetime(spaceTimeCube, layout.extent).asInstanceOf[MultibandTileLayerRDD[K]]
+        case spatialCube: MultibandTileLayerRDD[SpatialKey] => crop_spatial(spatialCube, layout.extent).asInstanceOf[MultibandTileLayerRDD[K]]
+      }
+    } else {
+      result
     }
   }
 
