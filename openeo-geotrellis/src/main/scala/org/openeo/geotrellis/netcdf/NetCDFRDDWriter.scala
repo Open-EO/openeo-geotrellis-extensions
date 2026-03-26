@@ -199,7 +199,16 @@ object NetCDFRDDWriter {
       }
     val bandStatistics = collection.mutable.Map[String,(Double,Double,Double,Double,Int,Int)]() // min, max, sum, sum of the power, valid data count, total data count
     var netcdfFile: NetcdfFileWriter = null
-    val cellType = cachedRDD.map(x => x._2.cellType).fold(BitCellType)((x,y)=>x.union(y))
+    val cellType = cachedRDD.map(x => x._2.cellType).fold(BitCellType)((x,y)=> {
+      // check https://github.com/locationtech/geotrellis/issues/3597 for fixed geotrellis union
+      if (x.equalDataType(y)) x
+      else if (x.bits < y.bits) y
+      else if (x.bits > y.bits) x
+      else if (x.isFloatingPoint && !y.isFloatingPoint) x
+      else if (!x.isFloatingPoint && y.isFloatingPoint) y
+      else if (x.bits== 8) ShortCellType // ByteCells and UByteCells
+      else IntCellType // ShortCellType and UShortCellType
+    })
     for(tuple <- cachedRDD.toLocalIterator){
 
       val timeDimIndex =
