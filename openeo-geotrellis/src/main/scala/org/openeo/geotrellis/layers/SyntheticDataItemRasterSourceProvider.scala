@@ -13,7 +13,7 @@ class SyntheticDataItemRasterSourceProvider extends ItemRasterSourceProvider {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[SyntheticDataItemRasterSourceProvider])
 
   override def canProcess(item: OpenSearchResponses.Feature, datacubeParams: Option[DataCubeParameters] = Option.empty): Boolean = {
-    datacubeParams.map(d => d.syntheticDataOverride).get.isDefined
+    datacubeParams.isDefined && datacubeParams.get.syntheticDataOverride.isDefined
   }
 
   override def getRasterSource(item: OpenSearchResponses.Feature, targetExtent: RasterExtent, targetCRS: CRS, linkTitleToBandIndex: Seq[(String, Int)], datacubeParams: Option[DataCubeParameters], resolver: BandAssetLinkResolver): Option[RasterSource] = {
