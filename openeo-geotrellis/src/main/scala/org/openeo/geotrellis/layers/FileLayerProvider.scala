@@ -1378,12 +1378,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
    * @return
    */
   private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(RasterSource, Feature)] = {
-    if (datacubeParams.exists(_.useRasterSourceProviders)) {
-      val resolver = new BandAssetLinkResolver(openSearch, openSearchLinkTitles, rootPath, maxSpatialResolution, bandIndices, experimental, maxSoftErrorsRatio)
-      deriveRasterSourcesUsingItemRasterSourceProviders(feature, targetExtent, datacubeParams, targetResolution, resolver)
-    } else {
-      deriveRasterSourcesLegacy(feature, targetExtent, datacubeParams, targetResolution)
-    }
+    val resolver = BandAssetLinkResolver(openSearch, openSearchLinkTitles, rootPath, maxSpatialResolution, bandIndices, experimental, maxSoftErrorsRatio)
+    deriveRasterSourcesUsingItemRasterSourceProviders(feature, targetExtent, datacubeParams, targetResolution, resolver)
   }
 
   private def deriveRasterSourcesLegacy(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(BandCompositeRasterSource, Feature)] = {
