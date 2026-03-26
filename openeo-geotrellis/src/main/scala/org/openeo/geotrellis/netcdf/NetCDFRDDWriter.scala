@@ -262,7 +262,6 @@ object NetCDFRDDWriter {
 
             var tile = multibandTile.band(bandIndex)
             if (tile.cellType != cellType) {
-              logger.info(s"before conversion: band $variable: original cellType of tile: ${tile.cellType}, needs to be converted to $cellType")
               tile = tile.convert(cellType)
             }
 
@@ -365,7 +364,6 @@ object NetCDFRDDWriter {
         case t: DoubleArrayTile => ucar.ma2.Array.factory(DataType.DOUBLE, shape, t.array)
       }
 
-    logger.info(s"variable: $variable, origin: ${origin.mkString("Array(", ", ", ")")}, type of bandArray: ${bandArray.getDataType}, and shape: ${shape.mkString("Array(", ", ", ")")}")
     netcdfFile.write(variable, origin, bandArray)
   }
 
