@@ -10,11 +10,11 @@ import org.slf4j.{Logger, LoggerFactory}
 
 trait ItemRasterSourceProvider {
 
-  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[ItemRasterSourceProvider])
+  implicit val _logger: Logger = LoggerFactory.getLogger(classOf[ItemRasterSourceProvider])
 
   def canProcess(item: Feature, datacubeParams: Option[DataCubeParameters] = Option.empty): Boolean
 
-  def getRasterSource(item: Feature, targetExtent: RasterExtent, targetCRS: CRS, linkTitleToBandIndex: Seq[(String, Int)], datacubeParams: Option[DataCubeParameters] = Option.empty): Option[RasterSource]
+  def getRasterSource(item: Feature, targetExtent: RasterExtent, targetCRS: CRS, linkTitleToBandIndex: Seq[(String, Int)], datacubeParams: Option[DataCubeParameters] = Option.empty, resolver: BandAssetLinkResolver): Option[RasterSource]
 
   def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
     Extent(
@@ -25,7 +25,7 @@ trait ItemRasterSourceProvider {
     )
 
   def computeItemExtentInTargetLayout(item: Feature, re: RasterExtent, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters]) = {
-    logger.debug(s"computeItemExtentInTargetLayout() -> item: $item, rasterExtent: $re, targetExtent: $targetExtent, datacubeParams: $datacubeParams")
+    _logger.debug(s"computeItemExtentInTargetLayout() -> item: $item, rasterExtent: $re, targetExtent: $targetExtent, datacubeParams: $datacubeParams")
     if (item.rasterExtent.isDefined && item.crs.isDefined) {
       val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(item.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
       val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) || !useNewFeatureExtentIntersectionPossible) {
@@ -60,7 +60,7 @@ trait ItemRasterSourceProvider {
         val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
         else if (isExtentValidInCrs(targetExtent, item.crs.get)) item.crs.get
         else {
-          logger.warn(s"Feature/Item and target extent are not valid within each others range. Using LatLng as fallback.")
+          _logger.warn(s"Feature/Item and target extent are not valid within each others range. Using LatLng as fallback.")
           LatLng
         }
 
@@ -72,7 +72,7 @@ trait ItemRasterSourceProvider {
         val intersectionTargetCrs = intersection match {
           case None =>
             // Item, Asset and Feature mean the same thing in this context.
-            logger.warn(s"Item extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect. (${item.id})")
+            _logger.warn(s"Item extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect. (${item.id})")
             // return None // Discard the feature
             // TODO: feature.rasterExtent is not accurate when going over the antimeridian.
             // TODO: Fall back to feature.geometry? Now the fallback is to load the whole tile (Just like old intersection code)

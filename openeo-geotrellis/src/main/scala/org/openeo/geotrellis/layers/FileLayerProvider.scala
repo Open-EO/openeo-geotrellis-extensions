@@ -811,7 +811,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
   private val fromLoadStac = openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
   private val softErrors = maxSoftErrorsRatio > 0.0
-  private val itemRasterSourceProviderChain = List(SyntheticDataItemRasterSourceProvider, Sentinel2JP2RasterSourceProvider, DefaultItemRasterSourceProvider(openSearch, openSearchLinkTitles, rootPath, maxSpatialResolution, bandIndices, experimental, maxSoftErrorsRatio))
+  private val itemRasterSourceProviderChain: Seq[ItemRasterSourceProvider] = List(SyntheticDataItemRasterSourceProvider, SentinelJp2RasterSourceProvider, SentinelXmlRasterSourceProvider, ZarrRasterSourceProvider, DefaultItemRasterSourceProvider)
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     if (bandIndices.nonEmpty) {
@@ -1359,12 +1359,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
    * @param targetResolution Target resolution to read.
    * @return
    */
-  private def deriveRasterSourcesUsingItemRasterSourceProviders(feature: Feature, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(RasterSource, Feature)] = {
+  private def deriveRasterSourcesUsingItemRasterSourceProviders(feature: Feature, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty, resolver: BandAssetLinkResolver): Option[(RasterSource, Feature)] = {
     val rasterExtent = RasterExtent(targetExtent.extent, targetResolution.getOrElse(maxSpatialResolution))
     itemRasterSourceProviderChain
       .find(_.canProcess(feature, datacubeParams))
       .flatMap(
-        _.getRasterSource(feature, targetExtent = rasterExtent, targetExtent.crs, openSearchLinkTitlesWithBandId, datacubeParams)
+        _.getRasterSource(feature, targetExtent = rasterExtent, targetExtent.crs, openSearchLinkTitlesWithBandId, datacubeParams, resolver)
       ).map((_, feature))
   }
 
@@ -1379,7 +1379,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
    */
   private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(RasterSource, Feature)] = {
     if (datacubeParams.exists(_.useRasterSourceProviders)) {
-      deriveRasterSourcesUsingItemRasterSourceProviders(feature, targetExtent, datacubeParams, targetResolution)
+      val resolver = new BandAssetLinkResolver(openSearch, openSearchLinkTitles, rootPath, maxSpatialResolution, bandIndices, experimental, maxSoftErrorsRatio)
+      deriveRasterSourcesUsingItemRasterSourceProviders(feature, targetExtent, datacubeParams, targetResolution, resolver)
     } else {
       deriveRasterSourcesLegacy(feature, targetExtent, datacubeParams, targetResolution)
     }
