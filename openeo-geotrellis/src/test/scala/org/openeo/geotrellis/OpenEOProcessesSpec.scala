@@ -326,35 +326,33 @@ class OpenEOProcessesSpec extends RasterMatchers {
   }
 
   @Test
-  def aspect_latlng_270_degrees(): Unit = {
-    val tile = DoubleArrayTile.fill(1.0,1280, 1280).mapDouble((c: Int, r: Int, v: Double) => c)
-    val tileSize = 256
+  def aspectNorth(): Unit = {
+    val tile = DoubleArrayTile.fill(1.0,128, 256).mapDouble((c: Int, r: Int, v: Double) => -c)
+    val tileSize = 128
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize))
 
     val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
     val aspectTile = time{ resultCube.stitch().tile.band(0) }
-    assertEquals(270, aspectTile.get(5, 5))
+    assertEquals(0, aspectTile.getDouble(5, 5))
   }
 
   @Test
-  def aspect_latlng_180_degrees(): Unit = {
-    val tile = DoubleArrayTile.fill(1.0,1280, 1280).mapDouble((c: Int, r: Int, v: Double) => -r)
-    val tileSize = 256
+  def aspectEast(): Unit = {
+    val tile = DoubleArrayTile.fill(1.0,128, 256).mapDouble((c: Int, r: Int, v: Double) => -r)
+    val tileSize = 128
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize))
 
     val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
     val aspectTile = time{ resultCube.stitch().tile.band(0) }
-    assertEquals(180, aspectTile.get(1, 0)) // border case ()
-    assertEquals(180, aspectTile.get(1, 1))
-    assertEquals(180, aspectTile.get(1, 255))
-    assertEquals(180, aspectTile.get(1, 256))
-    assertEquals(180, aspectTile.get(1, 1279)) // border case ()
+    assertEquals(3*Math.PI/2, aspectTile.getDouble(1, 0)) // border case ()
+    assertEquals(3*Math.PI/2, aspectTile.getDouble(1, 1))
+    assertEquals(3*Math.PI/2, aspectTile.getDouble(1, 255)) // border case ()
   }
 
   @Test
-  def aspect_270_degrees(): Unit = {
-    val tile = DoubleArrayTile.fill(1.0,1280, 1280).mapDouble((c: Int, r: Int, v: Double) => c)
-    val tileSize = 256
+  def aspectSouth(): Unit = {
+    val tile = DoubleArrayTile.fill(1.0,128, 256).mapDouble((c: Int, r: Int, v: Double) => c)
+    val tileSize = 128
     val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
     val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
@@ -362,17 +360,15 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
     val aspectTile = time{ resultCube.stitch().tile.band(0) }
-    assertEquals(270, aspectTile.get(1, 0)) // border case ()
-    assertEquals(270, aspectTile.get(1, 1))
-    assertEquals(270, aspectTile.get(1, 255))
-    assertEquals(270, aspectTile.get(1, 256))
-    assertEquals(270, aspectTile.get(1, 1279)) // border case ()
+    assertEquals(Math.PI, aspectTile.getDouble(1, 0)) // border case ()
+    assertEquals(Math.PI, aspectTile.getDouble(1, 1))
+    assertEquals(Math.PI, aspectTile.getDouble(1, 255)) // border case ()
   }
 
   @Test
-  def aspect_flat(): Unit = {
-    val tile = DoubleArrayTile.fill(1.0,1280, 1280)
-    val tileSize = 256
+  def aspectFlat(): Unit = {
+    val tile = DoubleArrayTile.fill(1.0,128, 256)
+    val tileSize = 128
     val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
     val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
@@ -380,18 +376,16 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
     val aspectTile = time{ resultCube.stitch().tile.band(0) }
-    assertEquals(-1, aspectTile.get(1, 0)) // border case ()
-    assertEquals(-1, aspectTile.get(1, 1))
-    assertEquals(-1, aspectTile.get(1, 255))
-    assertEquals(-1, aspectTile.get(1, 256))
-    assertEquals(-1, aspectTile.get(1, 1279)) // border case ()
+    assertEquals(Double.NaN, aspectTile.getDouble(1, 0)) // border case ()
+    assertEquals(Double.NaN, aspectTile.getDouble(1, 1))
+    assertEquals(Double.NaN, aspectTile.getDouble(1, 255)) // border case ()
   }
 
 
   @Test
-  def aspect_45_degrees(): Unit = {
-    val tile = DoubleArrayTile.fill(1.0,1280, 1280).mapDouble((c: Int, r: Int, v: Double) => r-c)
-    val tileSize = 256
+  def aspectNorthWest(): Unit = {
+    val tile = DoubleArrayTile.fill(1.0,128, 128).mapDouble((c: Int, r: Int, v: Double) => r-c)
+    val tileSize = 128
     val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
     val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
@@ -399,17 +393,13 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     val resultCube = new OpenEOProcesses().aspectGeneric(datacube)
     val aspectTile = time{ resultCube.stitch().tile.band(0) }
-    assertEquals(56, aspectTile.get(1, 0)) // border case ()
-    assertEquals(45, aspectTile.get(1, 1))
-    assertEquals(45, aspectTile.get(1, 255))
-    assertEquals(45, aspectTile.get(1, 256))
-    assertEquals(56, aspectTile.get(1, 1279)) // border case ()
+    assertEquals(Math.PI/4, aspectTile.getDouble(10, 10))
   }
 
   @Test
-  def slope_flat(): Unit = {
-    val tile = IntArrayTile.fill(1,1280, 1280)
-    val tileSize = 256
+  def slopeFlat(): Unit = {
+    val tile = IntArrayTile.fill(1,256, 256)
+    val tileSize = 128
     val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
     val crs = geotrellis.proj4.CRS.fromEpsgCode(32631)
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
@@ -417,15 +407,13 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
 
     val slopeTile = time{ resultCube.stitch().tile.band(0) }
-    assertEquals(0, slopeTile.get(1, 0)) // border case ()
-    assertEquals(0, slopeTile.get(1, 1))
-    assertEquals(0, slopeTile.get(1, 255))
-    assertEquals(0, slopeTile.get(1, 256))
-    assertEquals(0, slopeTile.get(1, 1279)) // border case ()
+    assertEquals(0, slopeTile.getDouble(1, 0)) // border case ()
+    assertEquals(0, slopeTile.getDouble(1, 1))
+    assertEquals(0, slopeTile.getDouble(1, 255)) // border case ()
   }
 
   @Test
-  def slope_45_degrees(): Unit = {
+  def slope45degrees(): Unit = {
     val tile = IntArrayTile.fill(1,1280, 1280).map((c: Int, r: Int, v: Int) => c)
     val tileSize = 256
     val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
@@ -435,15 +423,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
 
     val slopeTile = time{ resultCube.stitch().tile.band(0) }
-    assertEquals(36, slopeTile.get(1, 0)) // border case ()
-    assertEquals(45, slopeTile.get(1, 1))
-    assertEquals(45, slopeTile.get(1, 255))
-    assertEquals(45, slopeTile.get(1, 256))
-    assertEquals(36, slopeTile.get(1, 1279)) // border case ()
+    assertEquals(Math.PI/4, slopeTile.getDouble(1, 1))
+    assertEquals(Math.PI/4, slopeTile.getDouble(1, 255)) // border case ()
   }
 
   @Test
-  def slope_63_degrees(): Unit = {
+  def slope63degrees(): Unit = {
     val tile = IntArrayTile.fill(1,1280, 1280).map((c: Int, r: Int, v: Int) => 2*r)
     val tileSize = 256
     val extent = new Extent(655360,5676040,655360+1280,5676040+1280)
@@ -453,15 +438,15 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val resultCube = new OpenEOProcesses().slopeGeneric(datacube)
 
     val slopeTile = time{ resultCube.stitch().tile.band(0) }
-    assertEquals(45, slopeTile.get(1, 0)) // border case ()
-    assertEquals(63, slopeTile.get(1, 1))
-    assertEquals(63, slopeTile.get(1, 255))
-    assertEquals(63, slopeTile.get(1, 256))
-    assertEquals(45, slopeTile.get(1, 1279)) // border case ()
+    assertEquals(0.7853981633974483, slopeTile.getDouble(1, 0)) // border case ()
+    assertEquals(1.1071487177940904, slopeTile.getDouble(1, 1))
+    assertEquals(1.1071487177940904, slopeTile.getDouble(1, 255))
+    assertEquals(1.1071487177940904, slopeTile.getDouble(1, 256))
+    assertEquals(0.7853981633974483, slopeTile.getDouble(1, 1279)) // border case ()
   }
 
   @Test
-  def slope_latlng(): Unit = {
+  def slopeLatLng(): Unit = {
     val tile = IntArrayTile.fill(0,1280, 1280).map((c: Int, r: Int, v: Int) => c)
     val tileSize = 256
     val extent = new Extent(50,2,50.01,2.01)
@@ -472,11 +457,10 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     val slopeTile = time{ resultCube.stitch().tile.band(0) }
 
-    assertEquals(40, slopeTile.get(1, 0)) // border case ()
-    assertEquals(49, slopeTile.get(1, 1))
-    assertEquals(49, slopeTile.get(1, 255))
-    assertEquals(49, slopeTile.get(1, 256))
-    assertEquals(40, slopeTile.get(1, 1279)) // border case ()
+    assertEquals(0.7119409025726563, slopeTile.getDouble(1, 0)) // border case ()
+    assertEquals(0.8552875527916195, slopeTile.getDouble(1, 1))
+    assertEquals(0.8552875527916195, slopeTile.getDouble(1, 255))
+    assertEquals(0.7119384848725089, slopeTile.getDouble(1, 1279)) // border case ()
   }
 
   @Test
@@ -1229,5 +1213,23 @@ class OpenEOProcessesSpec extends RasterMatchers {
       Seq(biggerResultArray(2)), FloatConstantNoDataCellType
     )
   }
+
+  @Test
+  def testApplyKernel():Unit = {
+    val tile: Tile = DoubleArrayTile.apply(Array.fill(1280*1280){math.random},1280, 1280)
+    val tileSize = 256
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize))
+    val s: Int = 19
+    var array = Array.fill(s*s){math.random}
+    val kernel = DoubleArrayTile.apply(array,s,s)
+
+
+    val resultCube = new OpenEOProcesses().apply_kernel_spatial(datacube, kernel)
+
+    val theResultTile = time{ resultCube.stitch().tile.band(0) }
+    val expectedConvolution = time{Convolve.apply(tile, new Kernel(kernel), Option.empty, TargetCell.All)}
+    assertEqual(expectedConvolution,theResultTile)
+  }
+
 
 }

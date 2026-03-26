@@ -8,7 +8,7 @@ import geotrellis.raster.mapalgebra.focal.hillshade.{SurfacePoint, SurfacePointC
 import geotrellis.vector.Extent
 import squants.space.Meters
 
-object SlopeLatLng {
+object SlopeRadiansLatLng {
 
   def apply(layoutDefinition: LayoutDefinition, key: SpatialKey, r: Tile, n: Neighborhood, bounds: Option[GridBounds[Int]], cs: CellSize, target: TargetCell = TargetCell.All): Tile = {
     new SurfacePointCalculation[Tile](r, n, bounds, cs, target)
@@ -18,7 +18,7 @@ object SlopeLatLng {
       val zFactor = ZFactor.forLatLng(Meters).fromExtent(extent)
 
       def setValue(x: Int, y: Int, s: SurfacePoint): Unit = {
-        resultTile.setDouble(x, y, degrees(s.slope(zFactor)))
+        resultTile.setDouble(x, y, s.slope(zFactor))
       }
     }
   }.execute()
