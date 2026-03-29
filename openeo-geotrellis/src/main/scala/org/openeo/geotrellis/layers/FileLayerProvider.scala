@@ -1366,7 +1366,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
     val featureExtentInLayout: Option[GridExtent[Long]] = computeItemExtentInTargetLayout(feature, re, targetExtent, datacubeParams)
-    var predefinedExtent: Option[GridExtent[Long]] = None
+    var predefinedExtent: Option[GridExtent[Long]] = featureExtentInLayout
     val bandNames = openSearchLinkTitles.toList
 
     def getBandAssetsByBandInfo: Seq[Option[(Link, Int)]] = { // [Some((href, bandIndex))]
