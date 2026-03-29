@@ -7,4 +7,6 @@ trait RasterSourceProvider {
   def canProcess(rasterSourceDefinition: RasterSourceDefinition): Boolean
 
   def rasterSource(rasterSourceDefinition: RasterSourceDefinition): RasterSource
+
+  def usePredefinedExtent(rasterSourceDefinition: RasterSourceDefinition): Boolean = false
 }

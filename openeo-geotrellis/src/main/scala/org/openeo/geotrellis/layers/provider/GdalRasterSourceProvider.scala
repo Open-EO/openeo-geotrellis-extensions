@@ -39,6 +39,10 @@ class GdalRasterSourceProvider extends RasterSourceProvider {
     }
   }
 
+  override def usePredefinedExtent(definition: RasterSourceDefinition): Boolean = {
+    definition.cloudPath.isEmpty
+  }
+
   private def vsisToHttpsCreo(path: String): String = {
     if (path.startsWith("/vsicurl/")) path.replaceFirst("/vsicurl/", "")
     else if (path.startsWith("/vsis3/eodata/"))

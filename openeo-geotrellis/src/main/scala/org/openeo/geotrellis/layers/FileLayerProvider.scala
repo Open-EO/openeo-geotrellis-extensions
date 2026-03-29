@@ -1366,7 +1366,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
     val featureExtentInLayout: Option[GridExtent[Long]] = computeItemExtentInTargetLayout(feature, re, targetExtent, datacubeParams)
-    var predefinedExtent: Option[GridExtent[Long]] = featureExtentInLayout
+    var predefinedExtent: Option[GridExtent[Long]] = None
     val bandNames = openSearchLinkTitles.toList
 
     def getBandAssetsByBandInfo: Seq[Option[(Link, Int)]] = { // [Some((href, bandIndex))]
@@ -1429,7 +1429,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental)
           val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
               _.canProcess(definition)
-            ).map(_.rasterSource(definition))
+            ).map(
+              p => {
+                if (p.usePredefinedExtent(definition)) {
+                  predefinedExtent = featureExtentInLayout
+                }
+                p.rasterSource(definition)
+              }
+            )
             .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
           if (maybeSource.isDefined) {
             Some((maybeSource.get, bandIndex))
