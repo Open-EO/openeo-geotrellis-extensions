@@ -156,7 +156,7 @@ object DatacubeSupport {
     val bytesPerCell = metadata.cellType.bytes
     val bytesPerKey = bandCount * bytesPerCell * rows * cols
 
-    logger.debug(f"Memory needed per key: ${bytesPerKey}B ($cols*$rows*$bytesPerCell)")
+    logger.debug(f"Memory needed per key: ${bytesPerKey}B ($bandCount*$cols*$rows*$bytesPerCell)")
     val maxPartitionBytes: Long = 1024L*1024L* datacubeParams.map(_.maxPartitionSize).getOrElse(Option.empty).getOrElse(512)
     logger.debug(f"Memory available for data: ${maxPartitionBytes}B")
     val reduction = math.max((math.log(maxPartitionBytes) - math.log(bytesPerKey))/math.log(2), 0).floor.toInt
