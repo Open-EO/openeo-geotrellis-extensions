@@ -1811,7 +1811,7 @@ class FileLayerProviderTest extends RasterMatchers{
     println(index)
 
     assertTrue(index.isInstanceOf[ConfigurableSpaceTimePartitioner])
-    assertEquals(7,index.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction)
+    assertEquals(2,index.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction)
 
   }
 
