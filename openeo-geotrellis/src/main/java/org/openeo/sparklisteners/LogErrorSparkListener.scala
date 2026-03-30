@@ -63,7 +63,7 @@ class LogErrorSparkListener extends SparkListener {
 
     if (LogErrorSparkListener.listener.isDefined) {
       // Not sure if the spark context sometimes get stopped and started in the same JVM, but just in case...
-      println("Removing LogErrorSparkListener, if a SparkContext will be re-made in this JVM, a listener needs to be re-attached")
+      if (debug) println("Removing LogErrorSparkListener, if a SparkContext will be re-made in this JVM, a listener needs to be re-attached")
       LogErrorSparkListener.removeListener()
     }
   }
