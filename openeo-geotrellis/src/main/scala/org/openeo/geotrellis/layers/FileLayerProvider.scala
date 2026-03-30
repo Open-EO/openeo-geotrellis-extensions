@@ -7,11 +7,8 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
-import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
-import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -27,7 +24,7 @@ import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.layers.provider.{DefaultRasterSourceProvider, GdalRasterSourceProvider, RasterSourceDefinition, RasterSourceProvider, SentinelXmlMetadataRasterSourceProvider, SyntheticDataRasterSourceProvider, ZarrRasterSourceProvider}
+import org.openeo.geotrellis.layers.provider._
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
@@ -1369,42 +1366,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     var predefinedExtent: Option[GridExtent[Long]] = None
     val bandNames = openSearchLinkTitles.toList
 
-    def getBandAssetsByBandInfo: Seq[Option[(Link, Int)]] = { // [Some((href, bandIndex))]
-      def getBandAsset(bandName: String): Option[(Link, Int)] = { // (href, bandIndex)
-        feature.links
-          .flatMap(link => link.bandNames match {
-            case Some(assetBandNames) =>
-              val bandIndex = assetBandNames.indexWhere(_ == bandName)
-              if (bandIndex >= 0) {
-                convertNetcdfLinksToGDALFormat(link, bandName, bandIndex)
-              } else None
-            case _ => None
-          })
-          .headOption
-          .orElse {
-            logger.warn(s"asset with band name $bandName not found in feature ${feature.id}; inserting NODATA band instead")
-            None
-          }
-      }
-
-      bandNames
-        .map(getBandAsset)
-    }
-
-    def getBandAssetsByLinkTitle : Seq[Option[(Link, Int)]] = for {
-      (title, bandIndex) <- openSearchLinkTitlesWithBandId.toList
-      linkWithTitle = feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase).orElse {
-        logger.warn(s"asset with ID/title $title not found in feature ${feature.id}; inserting NODATA band instead")
-        None
-      }
-    } yield linkWithTitle.map(convertNetcdfLinksToGDALFormat(_,title,bandIndex).get)
-
     val byLinkTitle = !fromLoadStac
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
     val rasterSources: Seq[Option[(RasterSource, Int)]] =
-      (if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo).map {
+      resolver.getBandAssets(feature).map {
         case Some((link, bandIndex)) =>
           val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
