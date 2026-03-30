@@ -1811,8 +1811,7 @@ class FileLayerProviderTest extends RasterMatchers{
     println(index)
 
     assertTrue(index.isInstanceOf[ConfigurableSpaceTimePartitioner])
-    assertEquals(2,index.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction)
-
+    assertEquals(7, index.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction)
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")

@@ -155,12 +155,11 @@ object DatacubeSupport {
     val rows = metadata.layout.tileLayout.tileRows
     val bytesPerCell = metadata.cellType.bytes
     val bytesPerKey = bandCount * bytesPerCell * rows * cols
-    val maxKeys = Math.max(1, metadata.layout.tileLayout.layoutCols * metadata.layout.tileLayout.layoutRows)
 
-    logger.debug(f"Memory needed per key: ${bytesPerKey}B")
-    val maxPartitionBytes: Long = 1024L*1024L* datacubeParams.map(_.maxPartitionSize).getOrElse(Option.empty).getOrElse(1024)
+    logger.debug(f"Memory needed per key: ${bytesPerKey}B ($cols*$rows*$bytesPerCell)")
+    val maxPartitionBytes: Long = 1024L*1024L* datacubeParams.map(_.maxPartitionSize).getOrElse(Option.empty).getOrElse(512)
     logger.debug(f"Memory available for data: ${maxPartitionBytes}B")
-    val reduction = math.max((math.log(bytesPerKey) + math.log(maxKeys) - math.log(maxPartitionBytes))/math.log(2), 0).floor.toInt
+    val reduction = math.max((math.log(maxPartitionBytes) - math.log(bytesPerKey))/math.log(2), 0).floor.toInt
     logger.debug(f"Proposed reduction: $reduction")
     reduction
   }
