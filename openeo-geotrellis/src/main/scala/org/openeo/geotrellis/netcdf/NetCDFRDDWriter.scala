@@ -14,6 +14,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkContext, TaskContext}
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.cellTypeUnion
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.geotiff.preProcess
 import org.openeo.geotrellis.stac.{Asset, Item}
@@ -199,15 +200,9 @@ object NetCDFRDDWriter {
       }
     val bandStatistics = collection.mutable.Map[String,(Double,Double,Double,Double,Int,Int)]() // min, max, sum, sum of the power, valid data count, total data count
     var netcdfFile: NetcdfFileWriter = null
-    val cellType = cachedRDD.map(x => x._2.cellType).fold(BitCellType)((x,y)=> {
+    val cellType = cachedRDD.map(_._2.cellType).fold(BitCellType)((x,y)=> {
       // check https://github.com/locationtech/geotrellis/issues/3597 for fixed geotrellis union
-      if (x.equalDataType(y)) x
-      else if (x.bits < y.bits) y
-      else if (x.bits > y.bits) x
-      else if (x.isFloatingPoint && !y.isFloatingPoint) x
-      else if (!x.isFloatingPoint && y.isFloatingPoint) y
-      else if (x.bits== 8) ShortCellType // ByteCells and UByteCells
-      else IntCellType // ShortCellType and UShortCellType
+      cellTypeUnion(x,y)
     })
     for(tuple <- cachedRDD.toLocalIterator){
 
