@@ -806,14 +806,16 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       assertTrue(raster.cellType.equalDataType(expectedCellType))
     }
 
-    checkCellTypes(Array(IntCellType, ShortCellType, UShortCellType, FloatCellType), FloatCellType,"testCellType01.nc")
-    checkCellTypes(Array(ShortCellType, UShortCellType), IntCellType,"testCellType02.nc")
-    checkCellTypes(Array(UShortCellType, UShortCellType), UShortCellType,"testCellType03.nc")
-    checkCellTypes(Array(UShortCellType, ShortCellType), IntCellType,"testCellType04.nc")
-    checkCellTypes(Array(ByteCellType, UByteCellType), ShortCellType,"testCellType05.nc")
-    checkCellTypes(Array(UByteCellType, UByteCellType), UByteCellType,"testCellType06.nc")
-    checkCellTypes(Array(UByteCellType, ByteCellType), ShortCellType,"testCellType07.nc")
-    checkCellTypes(Array(IntCellType, DoubleCellType, FloatCellType), DoubleCellType,"testCellType08.nc")
-    checkCellTypes(Array(IntCellType, DoubleCellType, FloatCellType), DoubleCellType,"testCellType09.nc")
+    checkCellTypes(Array(IntCellType, ShortCellType, UShortCellType, FloatCellType), FloatCellType, "testCellType01.nc")
+    checkCellTypes(Array(ShortCellType, UShortCellType), IntCellType, "testCellType02.nc")
+    checkCellTypes(Array(UShortCellType, UShortCellType), UShortCellType, "testCellType03.nc")
+    checkCellTypes(Array(UShortCellType, ShortCellType), IntCellType, "testCellType04.nc")
+    checkCellTypes(Array(ByteCellType, UByteCellType), ShortCellType, "testCellType05.nc")
+    checkCellTypes(Array(UByteCellType, UByteCellType), UByteCellType, "testCellType06.nc")
+    checkCellTypes(Array(UByteCellType, ByteCellType), ShortCellType, "testCellType07.nc")
+    checkCellTypes(Array(IntCellType, DoubleCellType, FloatCellType), DoubleCellType, "testCellType08.nc")
+    checkCellTypes(Array(IntCellType, ShortCellType, ByteCellType), IntCellType, "testCellType09.nc")
+    checkCellTypes(Array(IntCellType, FloatCellType), FloatCellType, "testCellType10.nc")
+    checkCellTypes(Array(FloatCellType, IntCellType), FloatCellType, "testCellType11.nc")
   }
 }
