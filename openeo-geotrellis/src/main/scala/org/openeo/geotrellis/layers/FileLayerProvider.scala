@@ -895,7 +895,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     //Certain STAC items can have large number of links!
     overlappingRasterSources = overlappingRasterSources.map(source_feature => (source_feature._1,source_feature._2.copy(links = Array.empty, generalProperties = null)))
 
-    var commonCellType: CellType = determineCelltype(overlappingRasterSources)
+    val commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
     val spatialBounds = metadata.bounds.get.toSpatial
@@ -1278,8 +1278,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
     val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
     if (!datacubeParams.exists(_.loadPerProduct) || theMaskStrategy != NoCloudFilterStrategy) {
+      logger.debug("Load per product: false")
       rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
     } else {
+      logger.debug("Load per product: true")
       rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size, sources, softErrors)
     }
   }
