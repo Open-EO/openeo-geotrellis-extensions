@@ -1277,12 +1277,19 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
     val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
+    val size = openSearchLinkTitles.size * metadata.layout.size
+    logger.debug(s"Size: $size")
     if (!datacubeParams.exists(_.loadPerProduct) || theMaskStrategy != NoCloudFilterStrategy) {
       logger.debug("Load per product: false")
       rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
     } else {
       logger.debug("Load per product: true")
-      rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size, sources, softErrors)
+      if (size > 200_000_000) {
+        logger.warn("Extent is too big to load using load_per_product strategy.  Falling back to default strategy.")
+        rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size, sources, softErrors)
+      } else {
+        rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size, sources, softErrors)
+      }
     }
   }
 
