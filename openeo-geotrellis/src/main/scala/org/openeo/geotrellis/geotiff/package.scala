@@ -885,6 +885,7 @@ package object geotiff {
     assetMetadata.put("proj:bbox",Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
     crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
     assetMetadata.put("proj:shape", shape)
+    logger.info(s"setupAssetMetadata:  bbox = ${bbox.toString()}, shape = ${shape.mkString("Array(", ", ", ")")}")
     assetMetadata
   }
 
