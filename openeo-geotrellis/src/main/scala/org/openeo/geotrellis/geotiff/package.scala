@@ -401,21 +401,22 @@ package object geotiff {
       val geoTiffResultObject = writeTiff(thePath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs,
         tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo, overviewTiles
       )
-      (geoTiffResultObject, timestamp, croppedExtent, bandIndices)
+      val assetMetadata = setupAssetMetadata(bandLabels, preProcessResult._2, preprocessedRdd.metadata.crs, Array(gridBounds.height, gridBounds.width))
+      (geoTiffResultObject, timestamp, croppedExtent, bandIndices, assetMetadata)
     }.collect()
     val res = geotiffResults.map {
-      case (geoTiffResultObject, timestamp, croppedExtent, bandIndices) =>
+      case (geoTiffResultObject, timestamp, croppedExtent, bandIndices, assetMetadata) =>
         val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path), geoTiffResultObject)
-        (destinationPath, timestamp, croppedExtent, bandIndices)
+        (destinationPath, timestamp, croppedExtent, bandIndices, assetMetadata)
     }
 
     val items = res
-      .groupBy { case (_, timestamp, _, _) => timestamp }
+      .groupBy { case (_, timestamp, _, _, _) => timestamp }
       .map { case (timestamp, geotiffs) =>
         val assets = geotiffs
-          .map { case (path, _, _, bandIndices) =>
+          .map { case (path, _, _, bandIndices, assetMetadata) =>
             val assetKey = if (formatOptions.separateAssetPerBand) f"${bandLabels(bandIndices.get(0))}" else "openEO"
-            assetKey -> Asset(path, bandIndices)
+            assetKey -> Asset(path, bandIndices, metadata= assetMetadata)
           }
           .toMap
 
@@ -537,18 +538,19 @@ package object geotiff {
             formatOptions.filepathPerBand.get.get(bandIndex)
           ))))
         }
+        val assetMetadata = setupAssetMetadata(List(name),extent,crs,Array(layout.rows.toInt,layout.cols.toInt))
 
         (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, Some(extent), None, compression, Some(fo)),
-          Collections.singletonList(bandIndex))
+          Collections.singletonList(bandIndex),assetMetadata)
       }.collect()
       val res = geotiffResults.map {
-        case (geoTiffResultObject, bandIndices) =>
+        case (geoTiffResultObject, bandIndices, assetMetadata) =>
           if (path.endsWith("out")) {
             val beforeOut = path.substring(0, path.length - "out".length)
             val destinationPath = moveFromExecutorAttemptDirectory(Path.of(beforeOut), geoTiffResultObject)
-            (destinationPath, extent, bandIndices)
+            (destinationPath, extent, bandIndices, assetMetadata)
           } else {
-            (geoTiffResultObject.correctPath, extent, bandIndices)
+            (geoTiffResultObject.correctPath, extent, bandIndices, assetMetadata)
           }
       }
 
@@ -557,16 +559,16 @@ package object geotiff {
         cleanupTemporaryResults(geotiffResults.map(_._1), beforeOut)
       }
 
-      val assets = res.map { case (path, _, bandIndices) =>
+      val assets = res.map { case (path, _, bandIndices, assetMetadata) =>
         val bandNames = bandIndices.asScala.map(bandLabels.apply)
-        s"${bandNames mkString "_"}" -> Asset(path, bandIndices)
+        s"${bandNames mkString "_"}" -> Asset(path, bandIndices, assetMetadata)
       }.toMap.asJava
 
       Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent, assets))
       // TODO: restore asset ordering?
     } else {
-      val (tiffPath, extent) = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
-      val assets = Collections.singletonMap("openEO", Asset(tiffPath, (0 until bandCount).asJava))
+      val (tiffPath, extent, assetMetadata) = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
+      val assets = Collections.singletonMap("openEO", Asset(tiffPath, (0 until bandCount).asJava, metadata = assetMetadata))
 
       Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent, assets))
     }
@@ -673,13 +675,13 @@ package object geotiff {
     def levelFor(extent: Extent, cellSize: CellSize): LayoutLevel = ???
   }
 
-  private def saveRDDGeneric[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): (String, Extent) = {
+  private def saveRDDGeneric[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): (String, Extent, util.Map[String, Any]) = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3.persist(StorageLevel.MEMORY_AND_DISK)
     logger.info(f"saveRDDGeneric with cropBounds:$cropBounds, layout: ${preprocessedRdd.metadata.tileLayout}, filenamePrefix: ${formatOptions.filenamePrefix} ")
-
+    val assetMetadata = setupAssetMetadata(List(), croppedExtent, preprocessedRdd.metadata.crs, Array(gridBounds.height, gridBounds.width))
     try {
       val compression = determineCompression(formatOptions)
       val (tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
@@ -739,7 +741,7 @@ package object geotiff {
         case None => // do nothing
       }
 
-      (geoTiffResultObject.correctPath, croppedExtent)
+      (geoTiffResultObject.correctPath, croppedExtent, assetMetadata)
     } finally {
       preprocessedRdd.unpersist()
     }
@@ -865,6 +867,22 @@ package object geotiff {
     val detectedBandCount = if (totalBandCount.avg > 0) totalBandCount.avg else 1
     val segmentCount = (bandSegmentCount * detectedBandCount).toInt
     (tiffs, cellType, detectedBandCount, segmentCount)
+  }
+
+
+  private def setupAssetMetadata(bandNames: List[String], bbox:Extent, crs:CRS, shape: Array[Int]): util.Map[String, Any] = {
+    val assetMetadata = new util.HashMap[String,Any]()
+    val bands = new util.ArrayList[java.util.HashMap[String,Any]]()
+    bandNames.foreach(name => {
+      val rasterBands = new java.util.HashMap[String,Any]()
+      rasterBands.put("name", name)
+      bands.add(rasterBands)
+    })
+    if (!bands.isEmpty) assetMetadata.put("bands", bands)
+    assetMetadata.put("proj:bbox",Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
+    crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
+    assetMetadata.put("proj:shape", shape)
+    assetMetadata
   }
 
   // This implementation does not properly work, output tiffs are not properly aligned and colors are also incorrect
@@ -1052,9 +1070,10 @@ package object geotiff {
       .withCompression(formatOptions.getOrElse(new GTiffOptions))
 
     writeGeoTiff(geoTiff, path, gtiffOptions = formatOptions)
+    val assetMetadata = setupAssetMetadata(List(), adjusted.extent, contextRDD.metadata.crs, Array(adjusted.rows,adjusted.cols))
 
     Item(id = UUID.randomUUID().toString, datetime = null, bbox = adjusted.extent,
-      Collections.singletonMap("openEO", Asset(path)))
+      Collections.singletonMap("openEO", Asset(path, metadata = assetMetadata)))
   }
 
   def saveStitchedTileGrid(
@@ -1113,8 +1132,9 @@ package object geotiff {
     }
 
     val items = res.map { case (path, tileId, extent) =>
+      val assetMetadata = setupAssetMetadata(List(), extent, crs, Array(layout.rows.toInt,layout.cols.toInt))
       Item(id = s"${UUID.randomUUID()}_$tileId", datetime = null, bbox = extent,
-        assets = Collections.singletonMap("openEO", Asset(path)))
+        assets = Collections.singletonMap("openEO", Asset(path, metadata= assetMetadata)))
     }
 
     cleanupTemporaryResults(geotiffResults.map(_._1), Path.of(path).getParent.toString)
@@ -1337,15 +1357,16 @@ package object geotiff {
         val filename = s"${filenamePrefix}_${DateTimeFormatter.ISO_DATE.format(time)}_$name.tif"
         val filePath = Paths.get(path).resolve(filename).toString
         val timestamp = time format DateTimeFormatter.ISO_ZONED_DATE_TIME
+        val assetMetadata = setupAssetMetadata(List(), croppedExtent.getOrElse(geometry.extent), crs, Array(layout.rows.toInt,layout.cols.toInt))
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression, formatOptions).correctPath,
-          timestamp, geometry.extent, name)
+          timestamp, geometry.extent, name, assetMetadata)
       }
       .collect()
 
     val items = for {
-      (path, timestamp, extent, name) <- ret
+      (path, timestamp, extent, name, assetMetadata) <- ret
     } yield Item(id = f"${UUID.randomUUID()}_${timestamp}_$name", datetime = timestamp, bbox = extent,
-      assets = Collections.singletonMap("openEO", Asset(path)))
+      assets = Collections.singletonMap("openEO", Asset(path, metadata = assetMetadata)))
 
     items.toList.asJava
   }
@@ -1378,15 +1399,16 @@ package object geotiff {
       .map { case ((name, geometry), tiles) =>
         val filename = s"${filenamePrefix}_$name.tif"
         val filePath = Paths.get(path).resolve(filename).toString
+        val assetMetadata = setupAssetMetadata(List(), croppedExtent.getOrElse(geometry.extent), crs, Array(layout.rows.toInt,layout.cols.toInt))
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression, formatOptions).correctPath,
-          geometry.extent)
+          geometry.extent, assetMetadata)
       }
       .collect()
 
     val items = for {
-      (path, extent) <- ret
+      (path, extent, assetMetadata) <- ret
     } yield Item(id = f"${UUID.randomUUID()}", datetime = null, bbox = extent,
-      assets = Collections.singletonMap("openEO", Asset(path)))
+      assets = Collections.singletonMap("openEO", Asset(path, metadata= assetMetadata)))
 
     items.toList.asJava
   }
