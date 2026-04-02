@@ -415,7 +415,6 @@ package object geotiff {
       .map { case (timestamp, geotiffs) =>
         val assets = geotiffs
           .map { case (path, _, _, bandIndices, assetMetadata) =>
-            logger.info(s"saveRDDTemporalAllowAssetPerBandInternal: assetMetadata = $assetMetadata")
             val assetKey = if (formatOptions.separateAssetPerBand) f"${bandLabels(bandIndices.get(0))}" else "openEO"
             assetKey -> Asset(path, bandIndices, metadata= assetMetadata)
           }
@@ -561,7 +560,6 @@ package object geotiff {
       }
 
       val assets = res.map { case (path, _, bandIndices, assetMetadata) =>
-        logger.info(s"saveRDDTemporalAllowAssetPerBand1: assetMetadata = $assetMetadata")
         val bandNames = bandIndices.asScala.map(bandLabels.apply)
         s"${bandNames mkString "_"}" -> Asset(path, bandIndices, assetMetadata)
       }.toMap.asJava
@@ -570,7 +568,6 @@ package object geotiff {
       // TODO: restore asset ordering?
     } else {
       val (tiffPath, extent, assetMetadata) = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
-      logger.info(s"saveRDDTemporalAllowAssetPerBand2: assetMetadata = $assetMetadata")
       val assets = Collections.singletonMap("openEO", Asset(tiffPath, (0 until bandCount).asJava, metadata = assetMetadata))
 
       Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent, assets))
@@ -885,7 +882,6 @@ package object geotiff {
     assetMetadata.put("proj:bbox",Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
     crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
     assetMetadata.put("proj:shape", shape)
-    logger.info(s"setupAssetMetadata:  bbox = ${bbox.toString()}, shape = ${shape.mkString("Array(", ", ", ")")}")
     assetMetadata
   }
 
@@ -1075,7 +1071,6 @@ package object geotiff {
 
     writeGeoTiff(geoTiff, path, gtiffOptions = formatOptions)
     val assetMetadata = setupAssetMetadata(List(), adjusted.extent, contextRDD.metadata.crs, Array(adjusted.rows,adjusted.cols))
-    logger.info(s"saveStitched: assetMetadata = $assetMetadata")
 
     Item(id = UUID.randomUUID().toString, datetime = null, bbox = adjusted.extent,
       Collections.singletonMap("openEO", Asset(path, metadata = assetMetadata)))
@@ -1138,7 +1133,6 @@ package object geotiff {
 
     val items = res.map { case (path, tileId, extent) =>
       val assetMetadata = setupAssetMetadata(List(), extent, crs, Array(layout.rows.toInt,layout.cols.toInt))
-      logger.info(s"saveStitchedTileGrid: assetMetadata = $assetMetadata")
       Item(id = s"${UUID.randomUUID()}_$tileId", datetime = null, bbox = extent,
         assets = Collections.singletonMap("openEO", Asset(path, metadata= assetMetadata)))
     }
@@ -1364,7 +1358,6 @@ package object geotiff {
         val filePath = Paths.get(path).resolve(filename).toString
         val timestamp = time format DateTimeFormatter.ISO_ZONED_DATE_TIME
         val assetMetadata = setupAssetMetadata(List(), croppedExtent.getOrElse(geometry.extent), crs, Array(layout.rows.toInt,layout.cols.toInt))
-        logger.info(s"groupByFeatureAndWriteToTiff: assetMetadata = $assetMetadata")
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression, formatOptions).correctPath,
           timestamp, geometry.extent, name, assetMetadata)
       }
@@ -1407,7 +1400,6 @@ package object geotiff {
         val filename = s"${filenamePrefix}_$name.tif"
         val filePath = Paths.get(path).resolve(filename).toString
         val assetMetadata = setupAssetMetadata(List(), croppedExtent.getOrElse(geometry.extent), crs, Array(layout.rows.toInt,layout.cols.toInt))
-        logger.info(s"groupByFeatureAndWriteToTiffSpatial: assetMetadata = $assetMetadata")
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression, formatOptions).correctPath,
           geometry.extent, assetMetadata)
       }
