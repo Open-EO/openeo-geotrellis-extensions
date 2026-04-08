@@ -717,15 +717,13 @@ object FileLayerProvider {
         val productCRSOrDefault = feature.crs.getOrElse(targetCRS)
         val intersection =
           try {
-            val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
+            val intersection = {
               val productGeometryProjected = ProjectedPolygons(productGeometry, LatLng).safeReproject(productCRSOrDefault, refine = true)
 
               val cubeExtentCrs = ProjectedExtent(cubeExtent, targetCRS)
               val cubeExtentPolygon = safeReprojectToPolygon(cubeExtentCrs, productCRSOrDefault)
 
               productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtentPolygon.getFlatMultiPolygon)
-            } else {
-              productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             }
 
             if (intersection.isValid && intersection.getArea > 0.0)
