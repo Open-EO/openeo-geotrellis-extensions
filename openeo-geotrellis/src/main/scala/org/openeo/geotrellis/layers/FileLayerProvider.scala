@@ -1475,7 +1475,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private def computeItemExtentInTargetLayout(item: Feature, re: RasterExtent, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters]) = {
     if (item.rasterExtent.isDefined && item.crs.isDefined) {
       val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(item.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
-      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) || !useNewFeatureExtentIntersectionPossible) {
+      val alignedToTargetExtent = if (!useNewFeatureExtentIntersectionPossible) {
         // logger.info("Using old intersection method between Feature/Item and target extent.")
         // TODO: Remove this after it has been deployed for a while
         /**
