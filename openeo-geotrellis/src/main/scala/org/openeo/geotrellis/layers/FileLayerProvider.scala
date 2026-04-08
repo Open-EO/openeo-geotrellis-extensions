@@ -1558,34 +1558,32 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       overlappingFeatures=overlappingFeatures.filter(f=>condition.inputFunction.asInstanceOf[AnyProcess].apply(Map("value"->f.nominalDate)).apply(f.nominalDate).asInstanceOf[Boolean])
     }
 
-    if (datacubeParams.getOrElse(new DataCubeParameters()).useNewFeatureExtentIntersection2) {
-      overlappingFeatures = overlappingFeatures.map(f => {
-        f.geometry match {
-          case None => f
-          case Some(geom) =>
-            var pp = ProjectedPolygons(geom, LatLng)
-            if (f.id.length >= 9) {
-              val tileIdGuess = f.id.substring(f.id.length - 9, f.id.length - 7)
-              val crs = CRS.fromName("EPSG:326" + tileIdGuess)
+    overlappingFeatures = overlappingFeatures.map(f => {
+      f.geometry match {
+        case None => f
+        case Some(geom) =>
+          var pp = ProjectedPolygons(geom, LatLng)
+          if (f.id.length >= 9) {
+            val tileIdGuess = f.id.substring(f.id.length - 9, f.id.length - 7)
+            val crs = CRS.fromName("EPSG:326" + tileIdGuess)
 
-              // The geom in the catalog does not take into account curvature.
-              // Doing a basic projection and a refined projection back fixes this.
-              pp = pp
-                .safeReproject(crs, refine = false)
-                .safeReproject(LatLng, refine = true)
-                .splitPolygonsOnWrapPoint()
+            // The geom in the catalog does not take into account curvature.
+            // Doing a basic projection and a refined projection back fixes this.
+            pp = pp
+              .safeReproject(crs, refine = false)
+              .safeReproject(LatLng, refine = true)
+              .splitPolygonsOnWrapPoint()
 
-              var ps = pp.getFlatMultiPolygon.polygons
-              // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
-              // Remove the polygons that cross the line to mitigate this
-              if (tileIdGuess == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
-              if (tileIdGuess == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
-              pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
-            }
-            f.copy(geometry = Some(pp.getFlatMultiPolygon))
-        }
-      })
-    }
+            var ps = pp.getFlatMultiPolygon.polygons
+            // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
+            // Remove the polygons that cross the line to mitigate this
+            if (tileIdGuess == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
+            if (tileIdGuess == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
+            pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
+          }
+          f.copy(geometry = Some(pp.getFlatMultiPolygon))
+      }
+    })
 
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
     val overlappingRasterSources = (for {
