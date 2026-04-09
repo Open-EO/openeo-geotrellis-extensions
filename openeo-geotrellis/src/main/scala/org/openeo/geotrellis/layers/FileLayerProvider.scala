@@ -1563,7 +1563,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         case None => f
         case Some(geom) =>
           var pp = ProjectedPolygons(geom, LatLng)
-          val fileIdPattern: Regex = "^.*[\\d]{8}T[\\d]{6}_(\\d\\d)[^\\d]+_.*$".r
+          val fileIdPattern: Regex = "^.*_(\\d\\d)[^\\d]+_[^_]+_[^_]+$".r
           f.id match {
             case fileIdPattern(zone) => {
               val crs = CRS.fromName("EPSG:326" + zone)
