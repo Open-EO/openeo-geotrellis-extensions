@@ -1107,7 +1107,6 @@ class FileLayerProviderTest extends RasterMatchers {
     assertEquals(0, minKey.row)
     assertEquals(LatLng, result._2.crs)
     assertEquals(8, all.length)
-    // TODO dsamaey is this correct ?
   }
 
   @Test
@@ -1768,6 +1767,7 @@ class FileLayerProviderTest extends RasterMatchers {
     val (datacubeParams, result) = keysForLargeArea(true)
 
     val allTiles = result._1.collect()
+
     sc.removeSparkListener(listener)
     print(allTiles)
     val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
