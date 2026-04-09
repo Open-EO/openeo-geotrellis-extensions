@@ -4,15 +4,12 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.ResampleMethod
 import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.slf4j.{Logger, LoggerFactory}
 
 import java.util
 import java.util.Collections
 
 //noinspection ScalaUnusedSymbol
 class DataCubeParameters extends Serializable {
-  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DataCubeParameters])
-
   var tileSize: Int = 256
   var maskingStrategyParameters: util.Map[String, Object] = Collections.emptyMap()
   var layoutScheme: String = "ZoomedLayoutScheme"
@@ -24,6 +21,8 @@ class DataCubeParameters extends Serializable {
   var pixelBufferX:Double = 0.0
   var pixelBufferY:Double = 0.0
   var noResampleOnRead: Boolean = false
+  var useNewFeatureExtentIntersection: Boolean = true
+  var useNewFeatureExtentIntersection2: Boolean = true
   var timeDimensionFilter: Option[java.io.Serializable] = Option.empty
   var allowEmptyCube: Boolean = false
   var useRasterSourceProviders: Boolean = false
@@ -99,11 +98,11 @@ class DataCubeParameters extends Serializable {
   }
 
   def setUseNewFeatureExtentIntersection(v: Boolean): Unit = {
-    logger.warn("Feature flag UseNewFeatureExtentIntersection has been removed")
+    useNewFeatureExtentIntersection = v
   }
 
   def setUseNewFeatureExtentIntersection2(v: Boolean): Unit = {
-    logger.warn("Feature flag UseNewFeatureExtentIntersection2 has been removed")
+    useNewFeatureExtentIntersection2 = v
   }
 
   def setTimeDimensionFilter(conditionProcessScriptBuilder:java.io.Serializable):Unit = {

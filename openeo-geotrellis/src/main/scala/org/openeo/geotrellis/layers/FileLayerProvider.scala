@@ -717,13 +717,15 @@ object FileLayerProvider {
         val productCRSOrDefault = feature.crs.getOrElse(targetCRS)
         val intersection =
           try {
-            val intersection = {
+            val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
               val productGeometryProjected = ProjectedPolygons(productGeometry, LatLng).safeReproject(productCRSOrDefault, refine = true)
 
               val cubeExtentCrs = ProjectedExtent(cubeExtent, targetCRS)
               val cubeExtentPolygon = safeReprojectToPolygon(cubeExtentCrs, productCRSOrDefault)
 
               productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtentPolygon.getFlatMultiPolygon)
+            } else {
+              productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             }
 
             if (intersection.isValid && intersection.getArea > 0.0)
@@ -1473,7 +1475,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private def computeItemExtentInTargetLayout(item: Feature, re: RasterExtent, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters]) = {
     if (item.rasterExtent.isDefined && item.crs.isDefined) {
       val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(item.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
-      val alignedToTargetExtent = if (!useNewFeatureExtentIntersectionPossible) {
+      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) || !useNewFeatureExtentIntersectionPossible) {
         // logger.info("Using old intersection method between Feature/Item and target extent.")
         // TODO: Remove this after it has been deployed for a while
         /**
@@ -1558,35 +1560,37 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       overlappingFeatures=overlappingFeatures.filter(f=>condition.inputFunction.asInstanceOf[AnyProcess].apply(Map("value"->f.nominalDate)).apply(f.nominalDate).asInstanceOf[Boolean])
     }
 
-    overlappingFeatures = overlappingFeatures.map(f => {
-      f.geometry match {
-        case None => f
-        case Some(geom) =>
-          var pp = ProjectedPolygons(geom, LatLng)
-          val fileIdPattern: Regex = "^.*_(\\d\\d)[^\\d]+_[^_]+_[^_]+$".r
-          f.id match {
-            case fileIdPattern(zone) => {
-              val crs = CRS.fromName("EPSG:326" + zone)
+    if (datacubeParams.getOrElse(new DataCubeParameters()).useNewFeatureExtentIntersection2) {
+      overlappingFeatures = overlappingFeatures.map(f => {
+        f.geometry match {
+          case None => f
+          case Some(geom) =>
+            var pp = ProjectedPolygons(geom, LatLng)
+            val fileIdPattern: Regex = "^.*_(\\d\\d)[^\\d]+_[^_]+_[^_]+$".r
+            f.id match {
+              case fileIdPattern(zone) => {
+                val crs = CRS.fromName("EPSG:326" + zone)
 
-              // The geom in the catalog does not take into account curvature.
-              // Doing a basic projection and a refined projection back fixes this.
-              pp = pp
-                .safeReproject(crs, refine = false)
-                .safeReproject(LatLng, refine = true)
-                .splitPolygonsOnWrapPoint()
+                // The geom in the catalog does not take into account curvature.
+                // Doing a basic projection and a refined projection back fixes this.
+                pp = pp
+                  .safeReproject(crs, refine = false)
+                  .safeReproject(LatLng, refine = true)
+                  .splitPolygonsOnWrapPoint()
 
-              var ps = pp.getFlatMultiPolygon.polygons
-              // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
-              // Remove the polygons that cross the line to mitigate this
-              if (zone == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
-              if (zone == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
-              pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
+                var ps = pp.getFlatMultiPolygon.polygons
+                // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
+                // Remove the polygons that cross the line to mitigate this
+                if (zone == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
+                if (zone == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
+                pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
+              }
+              case _ => logger.debug(s"${f.id} does not match UTM zone regex")
             }
-            case _ => logger.debug(s"${f.id} does not match UTM zone regex")
-          }
-          f.copy(geometry = Some(pp.getFlatMultiPolygon))
-      }
-    })
+            f.copy(geometry = Some(pp.getFlatMultiPolygon))
+        }
+      })
+    }
 
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
     val overlappingRasterSources = (for {
