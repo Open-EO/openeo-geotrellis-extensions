@@ -1563,9 +1563,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         case None => f
         case Some(geom) =>
           var pp = ProjectedPolygons(geom, LatLng)
-          if (f.id.length >= 9) {
-            val tileIdGuess = f.id.substring(f.id.length - 9, f.id.length - 7)
-            val crs = CRS.fromName("EPSG:326" + tileIdGuess)
+          val fileIdZonePattern: Regex = "^.*[\\d]{8}T[\\d]{6}_(\\d\\d)[^\\d]+_.*$".r
+          f.id match {
+            case fileIdZonePattern(zone) => { val crs = CRS.fromName("EPSG:326" + zone)
 
             // The geom in the catalog does not take into account curvature.
             // Doing a basic projection and a refined projection back fixes this.
@@ -1577,11 +1577,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             var ps = pp.getFlatMultiPolygon.polygons
             // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
             // Remove the polygons that cross the line to mitigate this
-            if (tileIdGuess == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
-            if (tileIdGuess == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
+            if (zone == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
+            if (zone == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
             pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
           }
           f.copy(geometry = Some(pp.getFlatMultiPolygon))
+          }
       }
     })
 
