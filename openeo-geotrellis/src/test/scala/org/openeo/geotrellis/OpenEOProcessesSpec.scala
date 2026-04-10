@@ -1027,6 +1027,31 @@ class OpenEOProcessesSpec extends RasterMatchers {
   }
 
   @Test
+  def testResampleCubeSpatial(): Unit = {
+    implicit val sc = OpenEOProcessesSpec.sc
+
+    val (_, lowResData) = LayerFixtures.STACCOGCollection()
+      .datacube_seq(
+        ProjectedPolygons.fromExtent(Extent(-162.2501, 70.1839, -161.2879, 70.3401), "EPSG:4326"),
+        from_date = "1970-01-01T00:00:00Z", to_date = "2070-01-01T00:00:00Z",
+        metadata_properties = util.Collections.emptyMap()
+      ).head
+
+    val highResCellSize = CellSize(30, 30)
+    val highResGridExtent = GridExtent[Long](lowResData.metadata.extent.reproject(lowResData.metadata.crs, WebMercator), highResCellSize)
+    val layoutDefinition = LayoutDefinition(highResGridExtent, tileSize = 64)
+    // val gridBounds = layoutDefinition.gridBoundsFor(layoutDefinition.extent).toGridType[Int]
+    val keyBounds = KeyBounds(SpaceTimeKey(0, 0, instant = 0L), SpaceTimeKey(layoutDefinition.tileLayout.layoutCols - 1, layoutDefinition.tileLayout.layoutRows - 1, instant = 0L))
+
+    val highResMetadata = TileLayerMetadata[SpaceTimeKey](lowResData.metadata.cellType, layoutDefinition, layoutDefinition.extent, WebMercator, keyBounds)
+    val highResTarget = ContextRDD(sc.emptyRDD[(SpaceTimeKey, MultibandTile)], highResMetadata)
+
+    val (_, resampled) = new OpenEOProcesses().resampleCubeSpatial(lowResData, highResTarget, method = NearestNeighbor)
+
+    saveRDDTemporal(resampled, "/tmp/testResampleCubeSpatial.tif")
+  }
+
+  @Test
   def testPredictONNXSpatial(): Unit = {
     val layoutCols = 2
     val layoutRows = 1
