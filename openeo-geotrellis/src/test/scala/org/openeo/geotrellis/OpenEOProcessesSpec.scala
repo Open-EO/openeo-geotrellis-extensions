@@ -996,29 +996,33 @@ class OpenEOProcessesSpec extends RasterMatchers {
   }
 
   @Test
-  def testResampleCubeSpatial_spacetime(): Unit = {
-
+  def testResampleCubeSpatial_spacetime(@TempDir tempDir: Path): Unit = {
     val factory = LayerFixtures.STACCOGCollection()
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
     val latlon = CRS.fromName("EPSG:4326")
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
 
+    val dataCubeParameters = FileLayerProviderTest.datacubeParams(projected_polygons_native_crs, resampleMethod = null)
 
-    val dataCubeParameters: DataCubeParameters = FileLayerProviderTest.datacubeParams(projected_polygons_native_crs, null)
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
+      projected_polygons_native_crs, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "",
+      dataCubeParameters
+    )
 
-    val bands: util.ArrayList[String] = new util.ArrayList[String]()
-    bands.add("temperature-mean")
-    bands.add("precipitation-flux")
+    val (_, datacube) = cube.head
+    assertEquals(0.1, datacube.metadata.cellwidth, 1e-6)
+    assertEquals(0.1, datacube.metadata.cellheight, 1e-6)
+    assertEquals(LatLng, datacube.metadata.crs)
 
-    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(projected_polygons_native_crs, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+    val (targetCrs, targetCellSize) = (WebMercator, CellSize(30.0, 30.0))
+    val targetLayout: LayoutDefinition = LayoutDefinition(
+      GridExtent[Int](datacube.metadata.extent.reproject(datacube.metadata.crs, targetCrs), targetCellSize),
+      tileSize = 64
+    )
 
-    val datacube = cube.head._2
-
-    val targetLayout: LayoutDefinition = LayoutDefinition(GridExtent[Int](datacube.metadata.extent.reproject(LatLng,WebMercator),CellSize(30.0,30.0)),64)
-
-    val resampled = new OpenEOProcesses().resampleCubeSpatial_spacetime(datacube, WebMercator, targetLayout, NearestNeighbor, null)._2
-    saveRDDTemporal(resampled,"./resampleCubeTest")
+    val (_, resampled) = new OpenEOProcesses().resampleCubeSpatial_spacetime(datacube, targetCrs, targetLayout, NearestNeighbor, partitioner = null)
+    saveRDDTemporal(resampled, tempDir.toString) // otherwise eventually throws java.lang.OutOfMemoryError: Java heap space
     assertEquals(16, resampled.partitions.length)
   }
 
