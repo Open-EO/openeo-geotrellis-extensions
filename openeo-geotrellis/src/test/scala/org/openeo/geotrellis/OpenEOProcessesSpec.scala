@@ -997,25 +997,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   @Test
   def testResampleCubeSpatial_spacetime(@TempDir tempDir: Path): Unit = {
-    val factory = LayerFixtures.STACCOGCollection()
-
-    val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
-    val latlon = CRS.fromName("EPSG:4326")
-    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
-
-    val dataCubeParameters = FileLayerProviderTest.datacubeParams(projected_polygons_native_crs, resampleMethod = null)
-
-    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
-      projected_polygons_native_crs, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "",
-      dataCubeParameters
-    )
-
-    val (_, datacube) = cube.head
+    val datacube = lowResCube
     assertEquals(0.1, datacube.metadata.cellwidth, 1e-6)
     assertEquals(0.1, datacube.metadata.cellheight, 1e-6)
     assertEquals(LatLng, datacube.metadata.crs)
 
-    val highResMetadata = resampleSpatially(datacube.metadata)
+    val highResMetadata = upsampleSpatially(datacube.metadata)
 
     val (_, resampled) = new OpenEOProcesses().resampleCubeSpatial_spacetime(datacube, highResMetadata.crs, highResMetadata.layout, NearestNeighbor, partitioner = null)
     saveRDDTemporal(resampled, tempDir.toString) // otherwise eventually throws java.lang.OutOfMemoryError: Java heap space
@@ -1026,14 +1013,9 @@ class OpenEOProcessesSpec extends RasterMatchers {
   def testResampleCubeSpatial(): Unit = {
     implicit val sc = OpenEOProcessesSpec.sc
 
-    val (_, lowResData) = LayerFixtures.STACCOGCollection()
-      .datacube_seq(
-        ProjectedPolygons.fromExtent(Extent(-162.2501, 70.1839, -161.2879, 70.3401), "EPSG:4326"),
-        from_date = "1970-01-01T00:00:00Z", to_date = "2070-01-01T00:00:00Z",
-        metadata_properties = util.Collections.emptyMap()
-      ).head
+    val lowResData = lowResCube
 
-    val highResMetadata = resampleSpatially(lowResData.metadata)
+    val highResMetadata = upsampleSpatially(lowResData.metadata)
     val highResTarget = ContextRDD(sc.emptyRDD[(SpaceTimeKey, MultibandTile)], highResMetadata)
 
     val (_, resampled) = new OpenEOProcesses().resampleCubeSpatial(lowResData, highResTarget, method = NearestNeighbor)
@@ -1042,20 +1024,32 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   @Test
   def testResampleCubeSpatial_spatial(): Unit = {
-    val (_, lowResData) = LayerFixtures.STACCOGCollection()
-      .datacube_seq(
-        ProjectedPolygons.fromExtent(Extent(-162.2501, 70.1839, -161.2879, 70.3401), "EPSG:4326"),
-        from_date = "1970-01-01T00:00:00Z", to_date = "2070-01-01T00:00:00Z",
-        metadata_properties = util.Collections.emptyMap()
-      ).head
+    val lowResData = lowResCube
 
-    val highResMetadata = resampleSpatially(lowResData.metadata)
+    val highResMetadata = upsampleSpatially(lowResData.metadata)
 
     val (_, resampled) = new OpenEOProcesses().resampleCubeSpatial_spatial(lowResData.toSpatial(), highResMetadata.crs, highResMetadata.layout, method = NearestNeighbor, partitioner = null)
     resampled foreach { _ => }
   }
 
-  private def resampleSpatially[K: SpatialComponent](lowResMetadata: TileLayerMetadata[K]): TileLayerMetadata[K] = {
+  private def lowResCube: MultibandTileLayerRDD[SpaceTimeKey] = {
+    val factory = LayerFixtures.STACCOGCollection()
+
+    val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
+    val latlon = CRS.fromName("EPSG:4326")
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
+
+    val dataCubeParameters = FileLayerProviderTest.datacubeParams(projected_polygons_native_crs, resampleMethod = null)
+
+    val (_, cube) = factory.datacube_seq(
+      projected_polygons_native_crs, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "",
+      dataCubeParameters
+    ).head
+
+    cube
+  }
+
+  private def upsampleSpatially[K: SpatialComponent](lowResMetadata: TileLayerMetadata[K]): TileLayerMetadata[K] = {
     val highResCellSize = CellSize(30, 30)
     val highResCrs = WebMercator
     val tileSize = 64
