@@ -1047,8 +1047,26 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val highResTarget = ContextRDD(sc.emptyRDD[(SpaceTimeKey, MultibandTile)], highResMetadata)
 
     val (_, resampled) = new OpenEOProcesses().resampleCubeSpatial(lowResData, highResTarget, method = NearestNeighbor)
+    resampled foreach { _ => } // otherwise eventually throws java.lang.OutOfMemoryError: Java heap space
+  }
 
-    saveRDDTemporal(resampled, "/tmp/testResampleCubeSpatial.tif")
+  @Test
+  def testResampleCubeSpatial_spatial(): Unit = {
+    val (_, lowResData) = LayerFixtures.STACCOGCollection()
+      .datacube_seq(
+        ProjectedPolygons.fromExtent(Extent(-162.2501, 70.1839, -161.2879, 70.3401), "EPSG:4326"),
+        from_date = "1970-01-01T00:00:00Z", to_date = "2070-01-01T00:00:00Z",
+        metadata_properties = util.Collections.emptyMap()
+      ).head
+
+    val (targetCrs, targetCellSize) = (WebMercator, CellSize(30.0, 30.0))
+    val targetLayout: LayoutDefinition = LayoutDefinition(
+      GridExtent[Int](lowResData.metadata.extent.reproject(lowResData.metadata.crs, targetCrs), targetCellSize),
+      tileSize = 64
+    )
+
+    val (_, resampled) = new OpenEOProcesses().resampleCubeSpatial_spatial(lowResData.toSpatial(), targetCrs, targetLayout, method = NearestNeighbor, partitioner = null)
+    resampled foreach { _ => }
   }
 
   @Test
