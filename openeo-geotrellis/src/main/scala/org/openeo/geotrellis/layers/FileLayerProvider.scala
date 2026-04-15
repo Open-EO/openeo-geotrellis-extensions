@@ -1245,7 +1245,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             )
             .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
           if (maybeSource.isDefined) {
-            Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
+            if (bandIndex > 0) {
+              Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
+            } else {
+              Some(maybeSource.get, 0)
+            }
           } else {
             None
           }
