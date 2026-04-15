@@ -226,5 +226,8 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       _.reproject(targetCRS, resampleTarget, method, strategy)
     },
       crs, parallelRead = parallelRead, softErrors = softErrors)
+
+  override def toString: String = s"BandCompositeRasterSource(${sources.toList}, $crs, $gridExtent, $name)"
+
 }
 

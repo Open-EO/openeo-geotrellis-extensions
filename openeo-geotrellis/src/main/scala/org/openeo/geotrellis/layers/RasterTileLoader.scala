@@ -10,6 +10,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withGeometryClipToGridMethods}
 import geotrellis.vector.{MultiPolygon, Polygon, ReprojectMutliPolygon}
 import org.apache.spark.SparkContext
+import org.apache.spark.metrics.source
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
@@ -18,6 +19,7 @@ import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy}
 import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.{Logger, LoggerFactory}
+import spire.implicits.coordinateSpaceOps
 
 import java.io.IOException
 import scala.collection.immutable
@@ -218,7 +220,14 @@ case class RasterTileLoader() {
 
           case bandCompositeRasterSource: BandCompositeRasterSource =>
             //decompose into individual bands
-            bandCompositeRasterSource.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s), bandCompositeRasterSource.crs, bandCompositeRasterSource.attributes, bandCompositeRasterSource.predefinedExtent, parallelRead = parallelRead, softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key, t._1._2))).toList.toSeq
+            implicit def order[A <: SourceName]: cats.Order[A] = new cats.Order[A] {
+              override def compare(x: A, y: A): Int = {
+                x.toString.compareTo(y.toString)
+              }
+            }
+            val map: Map[SourceName, NonEmptyList[RasterSource]] = bandCompositeRasterSource.sources.groupBy(_.name)
+            map.map(t => (t._1, GridBoundsRasterRegion(new BandCompositeRasterSource(t._2, bandCompositeRasterSource.crs, bandCompositeRasterSource.attributes, bandCompositeRasterSource.predefinedExtent, parallelRead = parallelRead, softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key, t._1._2))).toList.toSeq
+            //bandCompositeRasterSource.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s), bandCompositeRasterSource.crs, bandCompositeRasterSource.attributes, bandCompositeRasterSource.predefinedExtent, parallelRead = parallelRead, softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key, t._1._2))).toList.toSeq
 
           case otherSource =>
             Seq((otherSource.name, (Seq(0), key, gridBoundsRasterRegion)))
@@ -238,7 +247,7 @@ case class RasterTileLoader() {
           //decompose into individual bands
           //TODO do something like line below, but make sure that band order is maintained! For now we just return the composite source.
           //source1.sourcesListWithBandIds.map(s => (s._1.name, (s._2,key_region_sourcename._1,GridBoundsRasterRegion(s._1, bounds))))
-          multibandCompositeRasterSource.sources.map(s => s.name).toList
+          Seq(t._1.name)
         case bandCompositeRasterSource: BandCompositeRasterSource =>
           //decompose into individual bands
           bandCompositeRasterSource.sources.map(s => s.name).toList
@@ -334,6 +343,7 @@ case class RasterTileLoader() {
                       val compositeRasterSource = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource]
                       val cloudRasterSource = (compositeRasterSource.sources.head match {
                         case rsOffset: ValueOffsetRasterSource => rsOffset.rasterSource
+                        case indexedRasterSource: IndexedRasterSource => indexedRasterSource.rasterSource
                         case rs => rs
                       }).asInstanceOf[GDALCloudRasterSource]
 
@@ -437,7 +447,7 @@ case class RasterTileLoader() {
           }).toSeq
         } catch {
           case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
-        }
+      }
 
       val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
       val paddedRasters = allRasters.zipWithIndex.flatMap { case (raster, index) => {
