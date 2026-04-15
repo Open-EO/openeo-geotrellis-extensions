@@ -462,6 +462,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val reprojectedBoundingBox = boundingBox.reproject(crs)
     val parameters = new DataCubeParameters
     parameters.noResampleOnRead = true
+    parameters.loadPerProduct = true
 
     val layer = LayerFixtures.sentinel2TocLayerProviderUTMMultiResolution.readMultibandTileLayer(
       from = date,

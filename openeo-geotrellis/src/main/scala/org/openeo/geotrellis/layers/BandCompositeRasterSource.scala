@@ -132,7 +132,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
         val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
         Raster(MultibandTile(sortedRasters.map(_.tile.band(0).convert(cellType))), sortedRasters.head.extent)
-      }).toIterator
+      }).iterator
     }
 
   }
