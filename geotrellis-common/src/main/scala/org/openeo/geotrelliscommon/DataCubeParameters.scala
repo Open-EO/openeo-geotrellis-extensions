@@ -53,7 +53,7 @@ class DataCubeParameters extends Serializable {
    */
   var syntheticDataOverride: Option[SyntheticDataOverride] = None
 
-  override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
+  override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY, $noResampleOnRead, $useNewFeatureExtentIntersection, $useNewFeatureExtentIntersection2)"
 
   def setPartitionerIndexReduction(reduction:Int): Unit = {
     if (reduction < 0) {
@@ -97,12 +97,12 @@ class DataCubeParameters extends Serializable {
     noResampleOnRead = noResample
   }
 
-  def setUseNewFeatureExtentIntersection(v: Boolean): Unit = {
-    useNewFeatureExtentIntersection = v
+  def setUseNewFeatureExtentIntersection(newFeatureExtentIntersection: Boolean): Unit = {
+    useNewFeatureExtentIntersection = newFeatureExtentIntersection
   }
 
-  def setUseNewFeatureExtentIntersection2(v: Boolean): Unit = {
-    useNewFeatureExtentIntersection2 = v
+  def setUseNewFeatureExtentIntersection2(newFeatureExtentIntersection2: Boolean): Unit = {
+    useNewFeatureExtentIntersection2 = newFeatureExtentIntersection2
   }
 
   def setTimeDimensionFilter(conditionProcessScriptBuilder:java.io.Serializable):Unit = {
