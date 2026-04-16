@@ -311,18 +311,6 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     m
   }
 
-  //   def datacubeParams: Stream[Arguments] = Arrays.stream(Array(
-  //    arguments(new DataCubeParameters(),10.asInstanceOf[Integer]),
-  //    arguments({
-  //      val p = new DataCubeParameters()
-  //      p.resampleMethod = Average
-  //      p.loadPerProduct = true
-  //      p
-  //    },11.asInstanceOf[Integer]
-  //      )
-  //  ))
-
-
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @ParameterizedTest
   @MethodSource(Array("datacubeParams"))

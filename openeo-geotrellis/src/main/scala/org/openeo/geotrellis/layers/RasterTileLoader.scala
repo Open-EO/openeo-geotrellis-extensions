@@ -200,43 +200,6 @@ case class RasterTileLoader() {
     val crs = metadata.crs
     val layout = metadata.layout
 
-    rasterRegionRDD.sparkContext.setCallSite("load_collection: group by input product")
-    val parallelRead = datacubeParams.forall(!_.loadPerProduct)
-    val byBandSource: RDD[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] = rasterRegionRDD.flatMap(key_region_sourcename => {
-      val key: SpaceTimeKey = key_region_sourcename._1
-      val region_sourcename: (RasterRegion, SourceName) = key_region_sourcename._2
-      val gridBoundsRasterRegion = region_sourcename._1.asInstanceOf[GridBoundsRasterRegion]
-      val source = gridBoundsRasterRegion.source
-      val bounds = gridBoundsRasterRegion.bounds
-      val result: Seq[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] =
-        source match {
-          case multibandCompositeRasterSource: MultibandCompositeRasterSource =>
-            //decompose into individual bands
-            //TODO do something like line below, but make sure that band order is maintained! For now we just return the composite source.
-            //source1.sourcesListWithBandIds.map(s => (s._1.name, (s._2,key_region_sourcename._1,GridBoundsRasterRegion(s._1, bounds))))
-            logger.warn(s"MultibandCompositeRasterSource: ${multibandCompositeRasterSource.sourcesListWithBandIds}")
-
-            Seq((multibandCompositeRasterSource.name, (Seq(0), key, gridBoundsRasterRegion)))
-
-          case bandCompositeRasterSource: BandCompositeRasterSource =>
-            //decompose into individual bands
-            implicit def order[A <: SourceName]: cats.Order[A] = new cats.Order[A] {
-              override def compare(x: A, y: A): Int = {
-                x.toString.compareTo(y.toString)
-              }
-            }
-            val map: Map[SourceName, NonEmptyList[RasterSource]] = bandCompositeRasterSource.sources.groupBy(_.name)
-            map.map(t => (t._1, GridBoundsRasterRegion(new BandCompositeRasterSource(t._2, bandCompositeRasterSource.crs, bandCompositeRasterSource.attributes, bandCompositeRasterSource.predefinedExtent, parallelRead = parallelRead, softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key, t._1._2))).toList.toSeq
-            //bandCompositeRasterSource.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s), bandCompositeRasterSource.crs, bandCompositeRasterSource.attributes, bandCompositeRasterSource.predefinedExtent, parallelRead = parallelRead, softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key, t._1._2))).toList.toSeq
-
-          case otherSource =>
-            Seq((otherSource.name, (Seq(0), key, gridBoundsRasterRegion)))
-
-        }
-
-      result
-    })
-
     /**
      * Determine unique sources, to be used for partitioning.
      * Avoid the use of the rdd to simply compute source names, because this triggers a lot of computation which is then repeated later on, even touching the rasters in some cases.
@@ -255,6 +218,36 @@ case class RasterTileLoader() {
           Seq(rasterSource.name)
       }
     }).distinct.toArray
+
+    rasterRegionRDD.sparkContext.setCallSite("load_collection: group by input product")
+    val parallelRead = datacubeParams.forall(!_.loadPerProduct)
+    val byBandSource: RDD[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] = rasterRegionRDD.flatMap(key_region_sourcename => {
+      val key: SpaceTimeKey = key_region_sourcename._1
+      val region_sourcename: (RasterRegion, SourceName) = key_region_sourcename._2
+      val gridBoundsRasterRegion = region_sourcename._1.asInstanceOf[GridBoundsRasterRegion]
+      val source = gridBoundsRasterRegion.source
+      val bounds = gridBoundsRasterRegion.bounds
+      val result: Seq[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] =
+        source match {
+          case multibandCompositeRasterSource: MultibandCompositeRasterSource =>
+            Seq((multibandCompositeRasterSource.name, (Seq(0), key, gridBoundsRasterRegion)))
+
+          case bandCompositeRasterSource: BandCompositeRasterSource =>
+            implicit def order[A <: SourceName]: cats.Order[A] = new cats.Order[A] {
+              override def compare(x: A, y: A): Int = {
+                // use the same order as allSources
+                allSources.indexOf(x) - allSources.indexOf(y)
+              }
+            }
+            val map: Map[SourceName, NonEmptyList[RasterSource]] = bandCompositeRasterSource.sources.groupBy(_.name)
+            map.map(t => (t._1, GridBoundsRasterRegion(new BandCompositeRasterSource(t._2, bandCompositeRasterSource.crs, bandCompositeRasterSource.attributes, bandCompositeRasterSource.predefinedExtent, parallelRead = parallelRead, softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key, t._1._2))).toList.toSeq
+
+          case otherSource =>
+            Seq((otherSource.name, (Seq(0), key, gridBoundsRasterRegion)))
+        }
+      result
+    })
+
 
     val theCellType = metadata.cellType
     rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
