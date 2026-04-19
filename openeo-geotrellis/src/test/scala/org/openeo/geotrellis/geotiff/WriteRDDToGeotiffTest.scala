@@ -237,7 +237,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
 
   @Test
-  def testWriteBitCellTypeRDD(@TempDir tempDir: Path): Unit = {
+  def testBitCellTypeConvertedToUByteInGeoTiff(@TempDir tempDir: Path): Unit = {
     val layoutCols = 4
     val layoutRows = 2
 
