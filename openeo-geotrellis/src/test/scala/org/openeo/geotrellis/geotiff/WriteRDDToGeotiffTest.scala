@@ -11,7 +11,7 @@ import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
 import geotrellis.raster.resample.Min
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, ColorMaps, IntArrayTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, isData}
+import geotrellis.raster.{BitCellType, ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, ColorMaps, IntArrayTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, UByteCellType, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
@@ -237,7 +237,39 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
 
   @Test
-  def testWriteCroppedRDD(@TempDir tempDir: Path): Unit ={
+  def testWriteBitCellTypeRDD(@TempDir tempDir: Path): Unit = {
+    val layoutCols = 4
+    val layoutRows = 2
+
+    // Create a binary (bit) tile with a simple pattern: alternating 0 and 1 rows
+    val totalCols = layoutCols * 256
+    val totalRows = layoutRows * 256
+    val data = Array.tabulate(totalCols * totalRows) { i =>
+      val row = i / totalCols
+      if (row % 2 == 0) 1.toByte else 0.toByte
+    }
+    // Convert from UByte to BitCellType
+    val bitTile = UByteArrayTile(data, totalCols, totalRows).convert(BitCellType)
+    assertEquals(BitCellType, bitTile.cellType)
+
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(
+      WriteRDDToGeotiffTest.sc, MultibandTile(bitTile), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
+    val filename = (tempDir / "out_bit.tif").toString()
+
+    saveRDD(tileLayerRDD.withContext { _.repartition(layoutCols * layoutRows) }, 1, filename)
+
+    val tiff = GeoTiff.readSingleband(filename)
+    // BitCellType should have been converted to UByteCellType
+    assertEquals(UByteCellType, tiff.cellType, s"Expected UByteCellType but got ${tiff.cellType}")
+    // Values should be preserved: 1s and 0s
+    val output = tiff.raster.tile
+    assertArrayEquals(bitTile.toArray(), output.toArray())
+  }
+
+
+
+  @Test
+  def testWriteCroppedRDD(@TempDir tempDir: Path): Unit = {
     val layoutCols = 8
     val layoutRows = 4
 

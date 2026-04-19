@@ -11,7 +11,7 @@ import geotrellis.raster.io.geotiff.compression.{Compression, Compressor, Deflat
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
-import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterExtent, Tile, TileLayout, UByteConstantTile, ubyteNODATA}
+import geotrellis.raster.{ArrayTile, BitCellType, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterExtent, Tile, TileLayout, UByteConstantTile, UByteCellType, ubyteNODATA}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.util._
@@ -334,8 +334,10 @@ package object geotiff {
           val layoutRow = key.getComponent[SpatialKey]._2
           val bandSegmentOffset = bandSegmentCount * (if (formatOptions.separateAssetPerBand) 0 else bandIndex)
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
+          // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
+          val tileToWrite = if (tile.cellType == BitCellType) tile.convert(UByteCellType) else tile
           //tiff format seems to require that we provide 'full' tiles
-          val bytes = raster.CroppedTile(tile, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
+          val bytes = raster.CroppedTile(tileToWrite, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
           val compressedBytes = theCompressor.compress(bytes, 0)
 
           val isDays = Duration.between(fixedTimeOffset, key.time).getSeconds % secondsPerDay == 0
@@ -345,7 +347,7 @@ package object geotiff {
             // ':' is not valid in a Windows filename
             DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
           }
-          val overviews = generateOverviews(formatOptions, croppedExtent, tileLayout, tile, theCompressor, overviewReductionsFunction(formatOptions, gridBounds.width, gridBounds.height, tileLayout.tileCols, tileLayout.tileRows))
+          val overviews = generateOverviews(formatOptions, croppedExtent, tileLayout, tileToWrite, theCompressor, overviewReductionsFunction(formatOptions, gridBounds.width, gridBounds.height, tileLayout.tileCols, tileLayout.tileRows))
 
           val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
           val filename = formatOptions.filepathPerBand match {
@@ -354,7 +356,7 @@ package object geotiff {
           }
           val timestamp = DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time)
           val tiffBands = if (formatOptions.separateAssetPerBand) 1 else multibandTile.bandCount
-          ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes, overviews), bandIndex))
+          ((filename, timestamp, tiffBands), (index, (tileToWrite.cellType, compressedBytes, overviews), bandIndex))
       }
     }.persist()
 
@@ -837,12 +839,15 @@ package object geotiff {
           val bandSegmentOffset = bandSegmentCount * bandIndex
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
 
+          // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
+          val tileToWrite = if (tile.cellType == BitCellType) tile.convert(UByteCellType) else tile
+
           val bytes =
-            if (cols != tile.cols || rows != tile.rows) {
-              logger.error(s"Incorrect tile size in geotiff: ${tile.cols}x${tile.rows} ")
-              tile.crop(cols, rows, Options(clamp = false, force = true)).toBytes()
+            if (cols != tileToWrite.cols || rows != tileToWrite.rows) {
+              logger.error(s"Incorrect tile size in geotiff: ${tileToWrite.cols}x${tileToWrite.rows} ")
+              tileToWrite.crop(cols, rows, Options(clamp = false, force = true)).toBytes()
             } else {
-              tile.toBytes()
+              tileToWrite.toBytes()
             }
           //tiff format seems to require that we provide 'full' tiles
           val compressedBytes = theCompressor.compress(bytes, 0)
@@ -857,11 +862,13 @@ package object geotiff {
     preprocessedRdd.sparkContext.clearJobGroup()
 
     val cellType = {
-      if (typeAccumulator.value.isEmpty) {
+      val rawCellType = if (typeAccumulator.value.isEmpty) {
         preprocessedRdd.metadata.cellType
       } else {
         typeAccumulator.value.head
       }
+      // BitCellType is not reliably supported in GeoTIFF; use UByte instead
+      if (rawCellType == BitCellType) UByteCellType else rawCellType
     }
     println("Saving geotiff with Celltype: " + cellType)
     val detectedBandCount = if (totalBandCount.avg > 0) totalBandCount.avg else 1
@@ -929,7 +936,8 @@ package object geotiff {
         val bandSegmentCount = totalCols * totalRows
         val someTile = tiles.head._2
         val detectedBandCount = someTile.bandCount
-        val cellType = someTile.cellType
+        // BitCellType is not reliably supported in GeoTIFF; use UByte instead
+        val cellType = if (someTile.cellType == BitCellType) UByteCellType else someTile.cellType
 
         val tiffs = tiles.flatMap { case (key: K, multibandTile: MultibandTile) => {
           var bandIndex = -1
@@ -945,8 +953,10 @@ package object geotiff {
               val layoutRow = key.getComponent[SpatialKey]._2 - minKey._2
               val bandSegmentOffset = bandSegmentCount * bandIndex
               val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
+              // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
+              val tileToWrite = if (tile.cellType == BitCellType) tile.convert(UByteCellType) else tile
               //tiff format seems to require that we provide 'full' tiles
-              val bytes = raster.CroppedTile(tile, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
+              val bytes = raster.CroppedTile(tileToWrite, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
               val compressedBytes = theCompressor.compress(bytes, 0)
               (index, compressedBytes)
             }
@@ -1065,7 +1075,9 @@ package object geotiff {
     }
     fo.assertNoConflicts()
 
-    val geoTiff = MultibandGeoTiff(adjusted, contextRDD.metadata.crs, GeoTiffOptions(compression))
+    // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
+    val adjustedToWrite = if (adjusted.tile.cellType == BitCellType) adjusted.mapTile(_.convert(UByteCellType)) else adjusted
+    val geoTiff = MultibandGeoTiff(adjustedToWrite, contextRDD.metadata.crs, GeoTiffOptions(compression))
       .withOverviews(getOverviewResampleMethod(fo), blockSize = fo.tileSize)
       .withCompression(formatOptions.getOrElse(new GTiffOptions))
 
@@ -1195,7 +1207,9 @@ package object geotiff {
         fo
     }
     fo.assertNoConflicts()
-    var geotiff = MultibandGeoTiff(adjusted.tile, adjusted.extent, crs,
+    // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
+    val tileToWrite = if (adjusted.tile.cellType == BitCellType) adjusted.tile.convert(UByteCellType) else adjusted.tile
+    var geotiff = MultibandGeoTiff(tileToWrite, adjusted.extent, crs,
       fo.tags, GeoTiffOptions(compression)).withCompression(formatOptions.getOrElse(new GTiffOptions))
     val gridBounds = adjusted.extent
     if (fo.overviews.toUpperCase == "ALL" ||
