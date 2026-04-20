@@ -43,6 +43,7 @@ import java.time.format.DateTimeFormatter
 import java.util
 import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
+import scala.jdk.StreamConverters._
 
 object OpenEOProcessesSpec {
   // Methods with attributes get called in a non-intuitive order:
@@ -1007,6 +1008,16 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val (_, resampled) = new OpenEOProcesses().resampleCubeSpatial_spacetime(datacube, highResMetadata.crs, highResMetadata.layout, NearestNeighbor, partitioner = null)
     saveRDDTemporal(resampled, tempDir.toString) // otherwise eventually throws java.lang.OutOfMemoryError: Java heap space
     assertEquals(16, resampled.partitions.length)
+
+    val outputFiles = Files.list(tempDir).toScala(Vector)
+    val tiffFiles = outputFiles.filter(_.getFileName.toString endsWith ".tif")
+    assertTrue(tiffFiles.nonEmpty, s"no .tif files found between $outputFiles")
+
+    for (tiffFile <- tiffFiles) {
+      val geoTiff = MultibandGeoTiff(tiffFile.toString)
+      assertEquals(CellSize(30, 30), geoTiff.cellSize)
+      assertTrue(geoTiff.projectedExtent.reproject(LatLng).equalsExact(lowResCube.metadata.extent, 1e-3))
+    }
   }
 
   @Test
