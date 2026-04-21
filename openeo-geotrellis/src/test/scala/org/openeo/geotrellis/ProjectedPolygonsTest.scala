@@ -90,6 +90,20 @@ class ProjectedPolygonsTest {
     assertEquals(expectedArea, pp.areaInSquareMeters, delta)
   }
 
+  @Test
+  def areaInSquareMetersWithOnlyPoints(): Unit = {
+    // Points don't have an area, so the result should be 0.0
+    val pp = ProjectedPolygons(Array[Geometry](Point(4.0, 51.0), Point(5.0, 52.0), Point(3.5, 50.5)), CRS.fromEpsgCode(4326))
+    assertEquals(0.0, pp.areaInSquareMeters, 0.0)
+  }
+
+  @Test
+  def areaInSquareMetersFromVectorFileWithOnlyPoints(): Unit = {
+    // Loading a GeoJSON with only points should not throw a ProjectionException and should return 0.0
+    val pp = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/geojson/pointsOnly.geojson").getPath)
+    assertEquals(0.0, pp.areaInSquareMeters, 0.0)
+  }
+
   def outlineEquals(a: MultiPolygon, b: MultiPolygon, threshold: Double): Boolean = {
     if (a.getNumGeometries != b.getNumGeometries) {
       return false
