@@ -212,6 +212,25 @@ class TemporalRasterLayer(val rdd: RDD[(TemporalProjectedExtent, MultibandTile)]
 
     TemporalRasterLayer(filteredRDD)
   }
+
+  def relabelTemporal(
+                     sources: java.util.ArrayList[String],
+                     target: java.util.ArrayList[String],
+                   ): TemporalRasterLayer = {
+    val fromInstants = sources.asScala.map(s => ZonedDateTime.parse(s).toInstant).toList
+    val toInstants = target.asScala.map(s => ZonedDateTime.parse(s).toInstant).toList
+    val relabeledRDD = rdd.map {
+      case (key: TemporalProjectedExtent, value) => {
+        val i = sources.indexOf(key.time.toInstant)
+        if (i < 0) {
+          (key, value)
+        } else {
+          (new TemporalProjectedExtent(key.extent, key.crs, toInstants(i).toEpochMilli), value)
+        }
+      }
+    }
+    TemporalRasterLayer(relabeledRDD)
+  }
 }
 
 
