@@ -15,7 +15,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.layers.{FileLayerProvider, MultibandCompositeRasterSource}
+import org.openeo.geotrellis.layers.{FileLayerProvider, MultibandCompositeRasterSource, RasterTileLoader}
 import org.openeo.geotrellis.{ProjectedPolygons, bucketRegion, s3Client}
 import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, OpenEORasterCube, OpenEORasterCubeMetadata}
 import org.slf4j.LoggerFactory
@@ -224,7 +224,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     val filteredSources: RDD[LayoutTileSource[SpaceTimeKey]] = sourceRDD.filter({ tiledLayoutSource =>
       tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
     })
-    FileLayerProvider.readMultibandTileLayer(filteredSources, layerMetadata,
+    RasterTileLoader.readMultibandTileLayer(filteredSources, layerMetadata,
       Array(MultiPolygon(toPolygon(theBoundingBox.extent))), theBoundingBox.crs, sc,
       datacubeParams = Some(params))
 

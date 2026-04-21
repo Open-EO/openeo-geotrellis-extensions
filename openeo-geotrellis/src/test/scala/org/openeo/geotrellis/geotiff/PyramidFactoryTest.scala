@@ -76,7 +76,7 @@ class PyramidFactoryTest {
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def singleBandGeoTiffFromDiskForSingleFixedDate(): Unit = {
-    val singlePath = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2023/01/03/S2B_20230103T110349_31UES_FAPAR_V210/20M/S2B_20230103T110349_31UES_FAPAR_20M_V210.tif"
+    val singlePath = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2023/01/03/S2B_20230103T110349_31UES_FAPAR_V220/20M/S2B_20230103T110349_31UES_FAPAR_20M_V220.tif"
     val singleDate = LocalDate.of(2023, 1, 3).atStartOfDay(UTC)
 
     val pyramidFactory = PyramidFactory.from_disk(

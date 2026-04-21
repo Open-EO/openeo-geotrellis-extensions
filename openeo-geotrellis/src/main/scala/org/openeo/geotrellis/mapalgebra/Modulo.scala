@@ -1,22 +1,20 @@
 package org.openeo.geotrellis.mapalgebra
 
-import geotrellis.raster.isNoData
+import geotrellis.raster.{NODATA, doubleNODATA, isNoData}
 import geotrellis.raster.mapalgebra.local.LocalTileBinaryOp
 
 /**
- * Operation to add values.
+ * Operation to compute modulus (remainder) of two values.
  *
- * @note          Nodata will be ignored.
+ * @note          If either argument is NoData, the result will be NoData.
  */
 object Modulo extends LocalTileBinaryOp {
   def combine(z1:Int,z2:Int) =
-    if (isNoData(z1)) z2
-    else if ( isNoData(z2)) z1
+    if (isNoData(z1) || isNoData(z2)) NODATA
     else z1 % z2
 
   def combine(z1:Double,z2:Double) =
-    if (isNoData(z1)) z2
-    else if ( isNoData(z2)) z1
+    if (isNoData(z1) || isNoData(z2)) doubleNODATA
     else z1 % z2
 }
 
