@@ -283,7 +283,7 @@ case class RasterTileLoader() {
               bandsWithIndex.map(t => (t._2, Some(MultibandTile(t._1))))
             }
           } else {
-            Seq[(Int, Option[MultibandTile])]((mapping(index), multiband))
+            Seq[(Int, Option[MultibandTile])]((index, multiband))
           }
         }
         }.toMap
@@ -294,8 +294,7 @@ case class RasterTileLoader() {
           mergedBands = mergedBands + (x -> Some(someTile.prototype(someTile.cols, someTile.rows)))
         }
       }
-      MultibandTile(mergedBands.toSeq.sortBy(_._1).flatMap(_._2.get.bands))
-
+      MultibandTile(mergedBands.toSeq.sortBy(m => mapping(m._1)).flatMap(_._2.get.bands))
     })
     val withEmptyTiles = tiledRDD.mapValues {
       case tile if retainNoDataTiles && tile.bands.forall(_.isNoDataTile) =>
