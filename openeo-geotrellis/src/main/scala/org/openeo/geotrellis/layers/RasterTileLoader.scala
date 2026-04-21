@@ -269,6 +269,8 @@ case class RasterTileLoader() {
       loadedPartitions
 
     }, preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
+      val mapping = tiles
+        .zipWithIndex.map(t => (t._1._1, t._2)).toMap
       var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1)
         .map(t => (t._1, t._2.toList.sortBy(x => sortableSourceName(x._3))))
         .view.mapValues(x => x.map(_._2).reduceOption(_ merge _))
@@ -281,7 +283,7 @@ case class RasterTileLoader() {
               bandsWithIndex.map(t => (t._2, Some(MultibandTile(t._1))))
             }
           } else {
-            Seq[(Int, Option[MultibandTile])]((index, multiband))
+            Seq[(Int, Option[MultibandTile])]((mapping(index), multiband))
           }
         }
         }.toMap
