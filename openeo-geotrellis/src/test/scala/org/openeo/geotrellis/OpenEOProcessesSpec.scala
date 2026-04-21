@@ -1070,9 +1070,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     val keyBounds: Bounds[K] = lowResMetadata.bounds.flatMap(keyBounds => keyBounds.rekey(lowResMetadata.layout, layoutDefinition))
 
-    val highResMetadata = TileLayerMetadata[K](lowResMetadata.cellType, layoutDefinition, layoutDefinition.extent, highResCrs, keyBounds)
-    println(highResMetadata)
-    highResMetadata
+    TileLayerMetadata[K](lowResMetadata.cellType, layoutDefinition, layoutDefinition.extent, highResCrs, keyBounds)
   }
 
   @Test
