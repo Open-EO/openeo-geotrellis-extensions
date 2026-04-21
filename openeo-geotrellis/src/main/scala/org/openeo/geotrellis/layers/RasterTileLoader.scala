@@ -294,7 +294,7 @@ case class RasterTileLoader() {
           mergedBands = mergedBands + (x -> Some(someTile.prototype(someTile.cols, someTile.rows)))
         }
       }
-      MultibandTile(mergedBands.toSeq.sortBy(m => mapping(m._1)).flatMap(_._2.get.bands))
+      MultibandTile(mergedBands.toSeq.sortBy(m => mapping.getOrElse(m._1, m._1)).flatMap(_._2.get.bands))
     })
     val withEmptyTiles = tiledRDD.mapValues {
       case tile if retainNoDataTiles && tile.bands.forall(_.isNoDataTile) =>
