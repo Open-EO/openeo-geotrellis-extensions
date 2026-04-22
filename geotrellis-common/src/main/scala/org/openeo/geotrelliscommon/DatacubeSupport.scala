@@ -349,7 +349,7 @@ object DatacubeSupport {
         indexReduction += 1
         val (newIndices, newMaxCount) = computeIndices(sparseKeys, indexReduction)
 
-        if (newMaxCount < maxRecordsPerPartition) {
+        if (indices == null || newMaxCount < maxRecordsPerPartition) {
           indices = newIndices
           maxCount = newMaxCount
         } else {
