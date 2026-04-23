@@ -59,8 +59,8 @@ pipeline {
           }
         }
         success {
-          print("Triggering openeo-integrationtests-python311")
-          build(job: 'openEO/openeo-integrationtests-python311', wait: false, parameters: ['mail_address': env.MAIL_ADDRESS])
+          print("Triggering trigger-python311-build")
+          build(job: 'openEO/trigger-python311-build', wait: false, parameters: ['mail_address': env.MAIL_ADDRESS])
         }
         failure {
           script {
