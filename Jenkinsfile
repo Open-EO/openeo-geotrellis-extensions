@@ -62,19 +62,24 @@ pipeline {
                 }
             }
         }
-
-        stage("Trigger python 311 build") {
-//             when {
-//                 expression {
-//                     ["master", "develop"].contains(env.BRANCH_NAME)
-//                 }
-//             }
-            steps {
-                print("Triggering trigger-python311-build")
-                build(job: 'openEO/trigger-python311-build/master', propagate: true, wait: true, parameters: ['mail_address': env.MAIL_ADDRESS])
+        stage('Trigger openeo-integrationtests-python311') {
+          steps {
+            script {
+              utils.triggerJob('openEO/openeo-integrationtests-python311', [
+                'mail_address': 'dummy@vito.be',
+                'openeo_env': 'integrationtests',
+                'python_version': '3.11',
+                'openeo_image': 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:1.0.18',
+                'geotrellis_extensions_url': 'https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.6.1_2.13-SNAPSHOT/geotrellis-extensions-2.6.1_2.13-SNAPSHOT.jar',
+                'geotrellis_logging_url': 'https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.6.1_2.13-SNAPSHOT/openeo-logging-2.6.1_2.13-SNAPSHOT.jar',
+                'skip_assets': 'false',
+                'skip_tests': 'false',
+                'py38_image_tag': 'auto',
+                'py311_image_tag': 'auto',
+              ])
             }
+          }
         }
-
         stage('Input') {
             when {
                 expression {
