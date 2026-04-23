@@ -44,12 +44,12 @@ pipeline {
         stage("trigger integrationtests") {
             steps {
                 script {
-                    if (Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests-python311/master")) {
+                    if (Jenkins.instance.getItemByFullName("openEO/job/openeo-integrationtests-python311")) {
                         print("It exists")
-                        utils.triggerJob("openEO/openeo-integrationtests-python311", ['mail_address': env.MAIL_ADDRESS])
+                        utils.triggerJob("openEO/job/openeo-integrationtests-python311", ['mail_address': env.MAIL_ADDRESS])
                     } else {
                         print("It does not exist")
-                        utils.triggerJob("openEO/openeo-integrationtests-python311", ['mail_address': env.MAIL_ADDRESS])
+                        utils.triggerJob("openEO/job/openeo-integrationtests-python311", ['mail_address': env.MAIL_ADDRESS])
                     }
                 }
             }
