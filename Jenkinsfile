@@ -71,7 +71,7 @@ pipeline {
 //             }
             steps {
                 print("Triggering trigger-python311-build")
-                build(job: 'openEO/trigger-python311-build', wait: false, parameters: ['mail_address': env.MAIL_ADDRESS])
+                build(job: 'openEO/trigger-python311-build/master', propagate: true, wait: true, parameters: ['mail_address': env.MAIL_ADDRESS])
             }
         }
 
