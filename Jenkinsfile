@@ -42,11 +42,6 @@ pipeline {
     }
     stages {
         stage("trigger integrationtests") {
-            when {
-                expression {
-                    ["master", "develop", "709-trigger-integration-tests-after-develop-branch-is-built"].contains(env.BRANCH_NAME)
-                }
-            }
             steps {
                 script {
                     if (Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests/master")) {
