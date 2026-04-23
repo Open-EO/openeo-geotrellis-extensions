@@ -46,11 +46,8 @@ pipeline {
                 script {
                     print(env.JOB_NAME)
                     if (Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests-python311")) {
-                        print("It exists")
-                        utils.triggerJob("openEO/openeo-integrationtests-python311", ['mail_address': env.MAIL_ADDRESS])
-                    } else {
-                        print("It does not exist")
-                        utils.triggerJob("openEO/openeo-integrationtests-python311", ['mail_address': env.MAIL_ADDRESS])
+                        print("Triggering openeo-integrationtests-python311")
+                        utils.triggerDownstream("master", "openEO/openeo-integrationtests-python311", false)
                     }
                 }
             }
@@ -58,7 +55,8 @@ pipeline {
         }
         stage("trigger IT") {
             steps {
-                build job: "openEO/openeo-integrationtests-python311", wait:false
+                print("Nu efkes nie")
+//                 build(job: "openEO/openeo-integrationtests-python311", wait: false, parameters: ['mail_address': env.MAIL_ADDRESS])
             }
 
         }
