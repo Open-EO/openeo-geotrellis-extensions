@@ -41,12 +41,93 @@ pipeline {
       booleanParam(name: 'skip_sentinelhub_tests', defaultValue: false, description: 'Check this if you want to skip running Sentinel Hub tests.')
     }
     stages {
-        stage("Do nothing") {
+        stage('Checkout') {
             steps {
-                print("Doing nothing ...")
+                script {
+                    git.checkoutDefault(wipeout_workspace)
+                    env.GIT_COMMIT = git.getCommit()
+                    env.GROUP_ID = java.getGroupId()
+                    env.PACKAGE_VERSION = "${java.getRevision()}-${utils.getDate()}-${BUILD_NUMBER}"
+                    env.MAIL_ADDRESS = utils.getMailAddress()
+                    env.IMAGE_NAME_TAG = "${DOCKER_REGISTRY_DEV}/${PACKAGE_NAME}:${PACKAGE_VERSION}"
+                }
+            }
+        }
+        stage('Build and Test') {
+            steps {
+                script {
+                    rel_version = getMavenVersion()
+                    build(skipTests = params.skip_tests, skipSentinelHubTests = params.skip_sentinelhub_tests)
+                    utils.setWorkspacePermissions()
+                }
+            }
+        }
+
+        stage("Trigger python 311 build") {
+//             when {
+//                 expression {
+//                     ["master", "develop"].contains(env.BRANCH_NAME)
+//                 }
+//             }
+            steps {
+                print("Triggering trigger-python311-build")
+                build(job: 'openEO/trigger-python311-build', wait: false, parameters: ['mail_address': env.MAIL_ADDRESS])
+            }
+        }
+
+        stage('Input') {
+            when {
+                expression {
+                    deployable_branches.contains(env.BRANCH_NAME)
+                }
+            }
+            steps {
+                script {
+                    milestone()
+                    input "Release build ${rel_version}?"
+                    milestone()
+                }
             }
 
         }
+
+
+        stage('Releasing') {
+            when {
+                expression {
+                    deployable_branches.contains(env.BRANCH_NAME)
+                }
+            }
+            steps {
+                script {
+                    checkout scm
+                    rel_version = getReleaseVersion()
+                    withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
+                        sh "mvn versions:use-releases -DgenerateBackupPoms=false -DfailIfNotReplaced=true"
+                        echo "Removing SNAPSHOT from version for release"
+                        sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
+                    }
+                    echo "releasing version ${rel_version}"
+                    build(skipTests = true)
+
+                    withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
+                        withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'BobDeBouwer', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
+                            //sh "git commit -a -m 'Set version v${rel_version} in pom for release'"
+                            //sh "git tag -a v${rel_version} -m 'version ${rel_version}'"
+                            //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git v${rel_version}"
+                            sh "git checkout ${env.BRANCH_NAME}"
+                            new_version = updateMavenVersion()
+                            sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${new_version}"
+                            //sh "git commit -a -m 'Raise version in pom to ${new_version}'"
+                            //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git ${env.BRANCH_NAME}"
+        }
+    }
+
+                    milestone()
+                }
+            }
+        }
+
     }
     post {
         always {
@@ -57,10 +138,6 @@ pipeline {
               """
             }
           }
-        }
-        success {
-          print("Triggering trigger-python311-build")
-          build(job: 'openEO/trigger-python311-build', wait: false, parameters: ['mail_address': env.MAIL_ADDRESS])
         }
         failure {
           script {
