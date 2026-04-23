@@ -44,6 +44,7 @@ pipeline {
         stage("trigger integrationtests") {
             steps {
                 script {
+                    print(env.JOB_NAME)
                     if (Jenkins.instance.getItemByFullName("openEO/job/openeo-integrationtests-python311")) {
                         print("It exists")
                         utils.triggerJob("openEO/job/openeo-integrationtests-python311", ['mail_address': env.MAIL_ADDRESS])
