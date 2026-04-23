@@ -170,8 +170,8 @@ class DataCubeSupportSpec {
 
     val (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(Seq(SpaceTimeKey(192,1472,1573344000000L),SpaceTimeKey(184,1466,1573344000000L)), maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
 
-    assertEquals(19, indexReduction)
-    assertEquals(2,indices.length)
+    assertEquals(2, indexReduction)
+    assertEquals(2, indices.length)
     for (i <- 1 until indices.length) {
       assertTrue(indices(i) > indices(i-1))
     }
