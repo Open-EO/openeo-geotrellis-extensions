@@ -239,8 +239,12 @@ case class RasterTileLoader() {
                 allSources.indexOf(x) - allSources.indexOf(y)
               }
             }
+
             val map: Map[SourceName, NonEmptyList[RasterSource]] = bandCompositeRasterSource.sources.groupBy(_.name)
-            map.map(t => (t._1, GridBoundsRasterRegion(new BandCompositeRasterSource(t._2, bandCompositeRasterSource.crs, bandCompositeRasterSource.attributes, bandCompositeRasterSource.predefinedExtent, parallelRead = parallelRead, softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key, t._1._2))).toList.toSeq
+            val nameToRegion: Map[SourceName, GridBoundsRasterRegion] = map.map(t => (t._1, GridBoundsRasterRegion(new BandCompositeRasterSource(t._2, bandCompositeRasterSource.crs, bandCompositeRasterSource.attributes, bandCompositeRasterSource.predefinedExtent, parallelRead = parallelRead, softErrors = softErrors, readFullTile = true), bounds)))
+            nameToRegion.toList.sortWith {
+              case (a: (SourceName, GridBoundsRasterRegion), b: (SourceName, GridBoundsRasterRegion)) => allSources.indexOf(a._1) < allSources.indexOf(b._1)
+            }.zipWithIndex.map(t => (t._1._1, (Seq(t._2), key, t._1._2))).toList.toSeq
 
           case otherSource =>
             Seq((otherSource.name, (Seq(0), key, gridBoundsRasterRegion)))
@@ -269,8 +273,6 @@ case class RasterTileLoader() {
       loadedPartitions
 
     }, preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
-      val mapping = tiles
-        .zipWithIndex.map(t => (t._1._1, t._2)).toMap
       var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1)
         .map(t => (t._1, t._2.toList.sortBy(x => sortableSourceName(x._3))))
         .view.mapValues(x => x.map(_._2).reduceOption(_ merge _))
@@ -294,7 +296,7 @@ case class RasterTileLoader() {
           mergedBands = mergedBands + (x -> Some(someTile.prototype(someTile.cols, someTile.rows)))
         }
       }
-      MultibandTile(mergedBands.toSeq.sortBy(m => mapping.getOrElse(m._1, m._1)).flatMap(_._2.get.bands))
+      MultibandTile(mergedBands.toSeq.sortBy(_._1).flatMap(_._2.get.bands))
     })
     val withEmptyTiles = tiledRDD.mapValues {
       case tile if retainNoDataTiles && tile.bands.forall(_.isNoDataTile) =>
