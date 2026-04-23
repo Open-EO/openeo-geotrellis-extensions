@@ -41,22 +41,10 @@ pipeline {
       booleanParam(name: 'skip_sentinelhub_tests', defaultValue: false, description: 'Check this if you want to skip running Sentinel Hub tests.')
     }
     stages {
-        stage("trigger integrationtests") {
+        stage("Trigger integration tests") {
             steps {
-                script {
-                    print(env.JOB_NAME)
-                    if (Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests-python311")) {
-                        print("Triggering openeo-integrationtests-python311")
-                        utils.triggerDownstream("master", "openEO/openeo-integrationtests-python311", false)
-                    }
-                }
-            }
-
-        }
-        stage("trigger IT") {
-            steps {
-                print("Nu efkes nie")
-//                 build(job: "openEO/openeo-integrationtests-python311", wait: false, parameters: ['mail_address': env.MAIL_ADDRESS])
+                print("Triggering openeo-integrationtests-python311")
+                build(job: 'openEO/openeo-integrationtests-python311', wait: false, parameters: ['mail_address': env.MAIL_ADDRESS])
             }
 
         }
