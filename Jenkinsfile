@@ -62,26 +62,24 @@ pipeline {
                 }
             }
         }
-
-        stage("trigger integrationtests") {
-            when {
-                expression {
-                    ["master", "develop"].contains(env.BRANCH_NAME)
-                }
+        stage('Trigger openeo-integrationtests-python311') {
+          steps {
+            script {
+              utils.triggerJob('openEO/openeo-integrationtests-python311', [
+                'mail_address': 'dummy@vito.be',
+                'openeo_env': 'integrationtests',
+                'python_version': '3.11',
+                'openeo_image': 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:1.0.18',
+                'geotrellis_extensions_url': 'https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.6.1_2.13-SNAPSHOT/geotrellis-extensions-2.6.1_2.13-SNAPSHOT.jar',
+                'geotrellis_logging_url': 'https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.6.1_2.13-SNAPSHOT/openeo-logging-2.6.1_2.13-SNAPSHOT.jar',
+                'skip_assets': 'false',
+                'skip_tests': 'false',
+                'py38_image_tag': 'auto',
+                'py311_image_tag': 'auto',
+              ])
             }
-            steps {
-                script {
-                    if (Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests/master")) {
-                        utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
-                    } else {
-                        utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
-                    }
-                }
-            }
-
+          }
         }
-
-
         stage('Input') {
             when {
                 expression {
@@ -127,8 +125,8 @@ pipeline {
                             sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${new_version}"
                             //sh "git commit -a -m 'Raise version in pom to ${new_version}'"
                             //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git ${env.BRANCH_NAME}"
-                        }
-                    }
+        }
+    }
 
                     milestone()
                 }
