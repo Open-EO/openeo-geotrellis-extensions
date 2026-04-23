@@ -56,6 +56,12 @@ pipeline {
             }
 
         }
+        stage("trigger IT") {
+            steps {
+                build job: "openEO/openeo-integrationtests-python311", wait:false
+            }
+
+        }
     }
     post {
         always {
