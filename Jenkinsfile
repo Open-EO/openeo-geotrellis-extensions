@@ -41,10 +41,9 @@ pipeline {
       booleanParam(name: 'skip_sentinelhub_tests', defaultValue: false, description: 'Check this if you want to skip running Sentinel Hub tests.')
     }
     stages {
-        stage("Trigger integration tests") {
+        stage("Do nothing") {
             steps {
-                print("Triggering openeo-integrationtests-python311")
-                build(job: 'openEO/openeo-integrationtests-python311', wait: false, parameters: ['mail_address': env.MAIL_ADDRESS])
+                print("Doing nothing ...")
             }
 
         }
@@ -58,6 +57,10 @@ pipeline {
               """
             }
           }
+        }
+        success {
+          print("Triggering openeo-integrationtests-python311")
+          build(job: 'openEO/openeo-integrationtests-python311', wait: false, parameters: ['mail_address': env.MAIL_ADDRESS])
         }
         failure {
           script {
