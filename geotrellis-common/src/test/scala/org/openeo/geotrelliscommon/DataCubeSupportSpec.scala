@@ -159,4 +159,23 @@ class DataCubeSupportSpec {
     }
 
   }
+
+  @Test
+  def optimizeReductionBigTiles(): Unit = {
+
+    val nrBands = 200
+    val tileSize = 1024
+    val cellTypeBits = 64
+    val maxPartitionSizeInMb = 1
+
+    val (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(Seq(SpaceTimeKey(192,1472,1573344000000L),SpaceTimeKey(184,1466,1573344000000L)), maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
+
+    assertEquals(2, indexReduction)
+    assertEquals(2, indices.length)
+    for (i <- 1 until indices.length) {
+      assertTrue(indices(i) > indices(i-1))
+    }
+
+  }
+
 }
