@@ -745,6 +745,12 @@ public class TestOpenEOProcessScriptBuilder {
         testMathXY("divide", 3.0f, 2.0f, 1.f, 0.f, 0.f, 0.f);
     }
 
+    @DisplayName("Test math 'mod(x,y)'")
+    @Test
+    public void testModXY() {
+        testMathXY("mod", 0, 0, 1, 6, 7, 8);
+    }
+
     @DisplayName("Test math 'normalized_difference(x,y)'")
     @Test
     public void testNormalizedDifferenceXY() {

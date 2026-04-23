@@ -1,9 +1,9 @@
 package org.openeo.geotrellis
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import geotrellis.raster.{BitArrayTile, ByteArrayFiller, ByteArrayTile, ByteConstantNoDataCellType, DoubleArrayTile, IntArrayTile, ShortArrayTile, ShortConstantNoDataCellType, Tile}
+import geotrellis.raster.{BitArrayTile, ByteArrayFiller, ByteArrayTile, ByteConstantNoDataCellType, DoubleArrayTile, IntArrayTile, ShortArrayTile, ShortConstantNoDataCellType, Tile, isNoData}
 import org.apache.commons.io.IOUtils
-import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertNotNull}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertNotNull, assertTrue}
 import org.junit.jupiter.api.Test
 
 import java.nio.charset.Charset
@@ -150,6 +150,15 @@ class OpenEOProcessGraphBuilderTest {
 
     val resultDouble: Seq[Tile] = transformation.apply(Seq(tile2))
     assertTileEquals(DoubleArrayTile.fill(1.5, 4, 4), resultDouble.head)
+
+    // NoData propagation: input tiles filled entirely with NoData should yield NoData output
+    val noDataIntTile = ByteArrayTile.empty(4, 4) // cells are ByteConstantNoDataCellType NoData
+    val resultNoDataInt: Seq[Tile] = transformation.apply(Seq(noDataIntTile))
+    assertTrue(resultNoDataInt.head.toArray.forall(isNoData(_)), "Expected all int cells to be NoData")
+
+    val noDataDoubleTile = DoubleArrayTile.empty(4, 4) // cells are Double NaN (NoData)
+    val resultNoDataDouble: Seq[Tile] = transformation.apply(Seq(noDataDoubleTile))
+    assertTrue(resultNoDataDouble.head.toArrayDouble().forall(isNoData(_)), "Expected all double cells to be NoData")
   }
 
 }
