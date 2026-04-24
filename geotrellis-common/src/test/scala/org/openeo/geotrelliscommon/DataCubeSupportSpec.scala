@@ -4,7 +4,7 @@ import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, Spac
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, TileLayout, UByteConstantNoDataCellType}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.{Disabled, Test}
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
@@ -57,6 +57,39 @@ class DataCubeSupportSpec {
     assertEquals(0,newMetadata.bounds.get.minKey.col)
 
   }
+
+  @Test
+  def optimizeChunkSizeUntil16():Unit ={
+    val metadata256 = TileLayerMetadata(UByteConstantNoDataCellType,LayoutDefinition(Extent(646660.0, 5678790.0, 649220.0, 5681350.0),TileLayout(1,1,256,256)),Extent(646668.7622376741, 5681108.99671377, 646917.3273239338, 5681335.60711388),CRS.fromEpsgCode(32631),KeyBounds(SpaceTimeKey(0,0,1588809600000L),SpaceTimeKey(0,0,1588809600000L)))
+    val parameters = new DataCubeParameters
+    parameters.setLayoutScheme("FloatingLayoutScheme")
+    val metadata128 = DatacubeSupport.optimizeChunkSize(metadata256, Array(MultiPolygon()), Some(parameters), 1).get
+    assertEquals(128,metadata128.tileCols)
+    assertEquals(0,metadata128.bounds.get.maxKey.col)
+    assertEquals(0,metadata128.bounds.get.maxKey.row)
+    assertEquals(0,metadata128.bounds.get.minKey.row)
+    assertEquals(0,metadata128.bounds.get.minKey.col)
+    val metadata64 = DatacubeSupport.optimizeChunkSize(metadata128, Array(MultiPolygon()), Some(parameters), 4).get
+    assertEquals(64,metadata64.tileCols)
+    assertEquals(0,metadata64.bounds.get.maxKey.col)
+    assertEquals(0,metadata64.bounds.get.maxKey.row)
+    assertEquals(0,metadata64.bounds.get.minKey.row)
+    assertEquals(0,metadata64.bounds.get.minKey.col)
+    val metadata32 = DatacubeSupport.optimizeChunkSize(metadata64, Array(MultiPolygon()), Some(parameters), 16).get
+    assertEquals(32,metadata32.tileCols)
+    assertEquals(0,metadata32.bounds.get.maxKey.col)
+    assertEquals(0,metadata32.bounds.get.maxKey.row)
+    assertEquals(0,metadata32.bounds.get.minKey.row)
+    assertEquals(0,metadata32.bounds.get.minKey.col)
+    val metadata16 = DatacubeSupport.optimizeChunkSize(metadata32, Array(MultiPolygon()), Some(parameters), 64).get
+    assertEquals(16,metadata16.tileCols)
+    assertEquals(1,metadata16.bounds.get.maxKey.col)
+    assertEquals(1,metadata16.bounds.get.maxKey.row)
+    assertEquals(0,metadata16.bounds.get.minKey.row)
+    assertEquals(0,metadata16.bounds.get.minKey.col)
+    assertTrue(DatacubeSupport.optimizeChunkSize(metadata16, Array(MultiPolygon()), Some(parameters), 256).isEmpty)
+  }
+
 
   @Test
   def optimizeReduction(): Unit = {

@@ -128,18 +128,18 @@ object DatacubeSupport {
   }
 
   def optimizeChunkSize(metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], datacubeParams: Option[DataCubeParameters], spatialKeyCount: Long) = {
-
     val criterium = {
-      if(polygons.length>1) {
+      if (polygons.length > 1) {
         spatialKeyCount <= 1.1 * polygons.length
-      }else{
+      } else {
         metadata.extent.width < metadata.layout.extent.width / 2.0 || metadata.extent.height < metadata.layout.extent.height / 2.0
       }
     }
-    if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && criterium && metadata.tileRows == 256) {
+    if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && criterium && metadata.tileRows > 16) {
       //it seems that polygons fit entirely within chunks, so chunks are too large
-      logger.info(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to 128.")
-      val newLayout = LayoutDefinition(metadata, 128)
+      val newTileSize = metadata.tileRows / 2
+      logger.info(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to $newTileSize.")
+      val newLayout = LayoutDefinition(metadata, newTileSize)
 
       //spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
       val gridBounds = newLayout.mapTransform.extentToBounds(metadata.extent)
