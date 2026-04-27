@@ -71,14 +71,9 @@ pipeline {
             }
             steps {
                 script {
-                    if (Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests/master")) {
-                        utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
-                    } else {
-                        utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
-                    }
+                    build(job: "openEO/openeo-integrationtests", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
                 }
             }
-
         }
 
 
