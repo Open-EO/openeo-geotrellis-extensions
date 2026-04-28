@@ -828,17 +828,20 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }
 
         var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = clipped.groupByKey(metadataCubePartitioner)
+        var retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = Some(metadata)
 
-
-        val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
-        metadata = retiledMetadata.getOrElse(metadata)
-
-        if (retiledMetadata.isDefined) {
-          requiredSpatialKeysLocal = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get).groupByKey(metadataCubePartitioner)
+        do {
+          val round = requiredSpatialKeysLocal.countApprox(50, 0.1).getFinalValue().high.round
+          retiledMetadata = DatacubeSupport.optimizeChunkSize(retiledMetadata.get, bufferedPolygons, datacubeParams, round)
+          if (retiledMetadata.isDefined) {
+            metadata = retiledMetadata.get
+            requiredSpatialKeysLocal = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get).groupByKey(metadataCubePartitioner)
+          }
         }
+        while (retiledMetadata.isDefined)
+
         requiredSpatialKeysLocal
       }
-
 
     overlappingRasterSources.map(_._2).foreach(f => {
       val extent = f.geometry.getOrElse(f.bbox.toPolygon()).extent
