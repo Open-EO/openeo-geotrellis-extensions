@@ -236,11 +236,10 @@ package object corsa {
 
   private def reshape(cubeArrayNormalized: MultibandTile): Array[Array[Array[Array[Float]]]] = {
     require(cubeArrayNormalized.bandCount == Bands.size)
-    require(cubeArrayNormalized.dimensions.cols == TileSize)
-    require(cubeArrayNormalized.dimensions.rows == TileSize)
+    require(cubeArrayNormalized.cols == cubeArrayNormalized.rows)
 
     def unflattenRaster(floats: Array[Float]): Array[Array[Float]] =
-      floats.sliding(size = TileSize, step = TileSize).toArray // 1D -> 2D
+      floats.sliding(size = cubeArrayNormalized.cols, step = cubeArrayNormalized.rows).toArray // 1D -> 2D
 
     val bands = for {
       bandTile <- cubeArrayNormalized.bands.toArray
@@ -321,4 +320,39 @@ package object corsa {
         lambda
       )
     }
+
+  def compressImproved(tile: MultibandTile): MultibandTile = {
+    require(tile.cols == tile.rows)
+
+    val tileSize = tile.cols
+
+    val modelPath =
+      Paths.get(s"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA improvements #702/onnx/corsa_mtc_160k_64b_${tileSize}p/encoder.onnx")
+
+    require(Files.exists(modelPath))
+
+    val session = Env.createSession(modelPath.toString, sessionOptions)
+
+    // session.getInputInfo.forEach { (key, value) => println(s"$key: $value")} // x: NodeInfo(name=x,info=TensorInfo(javaType=FLOAT,onnxType=ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,shape=[1, 10, 256, 256]))
+    session.getOutputInfo.forEach { (key, value) => println(s"$key: $value")}
+
+    val normalizedTile = tile.mapBands { case (_, bandTile) => replaceNaNsWith0(bandTile) }
+    val data = reshape(normalizedTile)
+
+    val tensor = OnnxTensor.createTensor(Env, data)
+    val ortInputs = Map("x" -> tensor).asJava
+
+    val result = session.run(ortInputs)
+
+    val ortL0Ids = OrtUtil.reshape(result.get(2).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, tileSize / 2, tileSize / 2)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
+    val ortL1Ids = OrtUtil.reshape(result.get(3).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, tileSize / 4, tileSize / 4)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
+
+    val level0 = UShortArrayTile(ortL0Ids.flatten.flatten.flatten.map(_.toShort), cols = tileSize / 2, rows = tileSize / 2, noDataValue = None)
+    val level1 = UShortArrayTile(ortL1Ids.flatten.flatten.flatten.map(_.toShort), cols = tileSize / 4, rows = tileSize / 4, noDataValue = None)
+
+    MultibandTile(
+      level0,
+      ResampledTile(level1, sourceCols = level1.cols, sourceRows = level1.rows, targetCols = level0.cols, targetRows = level0.rows)
+    )
+  }
 }

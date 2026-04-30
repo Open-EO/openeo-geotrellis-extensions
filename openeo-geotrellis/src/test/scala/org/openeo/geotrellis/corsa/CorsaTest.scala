@@ -29,7 +29,7 @@ class CorsaTest extends RasterMatchers {
 
   @Test
   def encode(@TempDir tempDir: Path): Unit = {
-    val (Raster(cubeArray, extent), crs) = sentinel2Tile
+    val (Raster(cubeArray, extent), crs) = sentinel2Tile()
     cubeArray foreach { (_, value) => require(isData(value)) } // sanity check
 
     val cubeArrayFile = tempDir.resolve("cubeArray.tif")
@@ -54,7 +54,7 @@ class CorsaTest extends RasterMatchers {
     )
   }
 
-  private def sentinel2Tile: (Raster[MultibandTile], CRS) = {
+  private def sentinel2Tile(tileSize: Int = TileSize): (Raster[MultibandTile], CRS) = {
     val files = Files.list(Paths.get("/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2021/09/07/S2B_20210907T104619_31UFS_TOC_V210")).toScala(Seq)
 
     val bandRasterSources = for {
@@ -69,7 +69,7 @@ class CorsaTest extends RasterMatchers {
     val rasters = for {
       rs <- bandRasterSources
       resampledRs = rs.resample(targetCols = cols, targetRows = rows)
-      Some(raster) = resampledRs.read(GridBounds(cols / 2, rows / 2, cols / 2 + TileSize - 1, rows / 2 + TileSize - 1)) // center of tile (arbitrary)
+      Some(raster) = resampledRs.read(GridBounds(cols / 2, rows / 2, cols / 2 + tileSize - 1, rows / 2 + tileSize - 1)) // center of tile (arbitrary)
     } yield raster
 
     val extent = rasters.head.extent
@@ -112,5 +112,18 @@ class CorsaTest extends RasterMatchers {
     corsa.interpolateNaN(row, limit = 2)
 
     assertArrayEquals(Array(n, n, n, 4, 5, 6, 7, 8, n, 10, n), row, 0.0)
+  }
+
+  @Test
+  def compressImproved(): Unit = {
+    val tempDir = Paths.get("/tmp/compressImproved") // TODO: remove
+
+    val tileSize = 256
+
+    val (Raster(original, extent), crs) = sentinel2Tile(tileSize)
+    MultibandGeoTiff(original, extent, crs).write(tempDir.resolve("original.tif").toString)
+
+    val compressed = corsa.compressImproved(original)
+    MultibandGeoTiff(compressed, extent, crs).write(tempDir.resolve("compressed.tif").toString)
   }
 }
