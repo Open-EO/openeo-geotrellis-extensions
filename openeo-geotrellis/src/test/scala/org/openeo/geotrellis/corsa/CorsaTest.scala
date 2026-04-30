@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.corsa
 
 import java.nio.file.{Files, Path, Paths}
@@ -114,20 +116,19 @@ class CorsaTest extends RasterMatchers {
     assertArrayEquals(Array(n, n, n, 4, 5, 6, 7, 8, n, 10, n), row, 0.0)
   }
 
-  @Test
-  def compressImproved(): Unit = {
+  @ParameterizedTest
+  @ValueSource(ints = Array(256, 512, 1024))
+  def compressImproved(tileSize: Int): Unit = {
     val tempDir = Paths.get("/tmp/compressImproved") // TODO: remove
 
-    val tileSize = 256
-
     val (Raster(original, extent), crs) = sentinel2Tile(tileSize)
-    MultibandGeoTiff(original, extent, crs).write(tempDir.resolve("original.tif").toString)
+    MultibandGeoTiff(original, extent, crs).write(tempDir.resolve(s"original_$tileSize.tif").toString)
 
     val compressed = corsa.compressImproved(original)
-    val compressedFile = tempDir resolve "compressed.tif"
+    val compressedFile = tempDir resolve s"compressed_$tileSize.tif"
     MultibandGeoTiff(compressed, extent, crs).write(compressedFile.toString)
 
     val reconstructed = corsa.decompressImproved(compressed)
-    MultibandGeoTiff(reconstructed, extent, crs).write(tempDir.resolve("reconstructed.tif").toString)
+    MultibandGeoTiff(reconstructed, extent, crs).write(tempDir.resolve(s"reconstructed_$tileSize.tif").toString)
   }
 }
