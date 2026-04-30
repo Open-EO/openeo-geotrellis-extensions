@@ -254,8 +254,6 @@ package object corsa {
     require(tile.dimensions.cols == 60, tile.dimensions.cols.toString)
     require(tile.dimensions.rows == 60, tile.dimensions.rows.toString)
 
-    def nanTo0(value: Int): Int = if (isData(value)) value else 0
-
     val level0 = tile.band(0).map(nanTo0 _)
     val level1 = ResampledTile(tile.band(1).map(nanTo0 _), sourceCols = 60, sourceRows = 60, targetCols = 30, targetRows = 30)
 
@@ -293,6 +291,8 @@ package object corsa {
     unscale(scaledTile)
   }
 
+  private def nanTo0(value: Int): Int = if (isData(value)) value else 0
+
   private def inverseYeoJohnsonTransform(tile: Tile, λ: Double): Tile =
     tile.mapDouble { x =>
       if (x >= 0) {
@@ -322,7 +322,8 @@ package object corsa {
     }
 
   def compressImproved(tile: MultibandTile): MultibandTile = {
-    require(tile.cols == tile.rows)
+    require(tile.bandCount == Bands.size, s"expected bands: ${Bands mkString ", "}")
+    require(tile.cols == tile.rows, s"${tile.cols}x${tile.rows}")
 
     val tileSize = tile.cols
 
@@ -332,9 +333,6 @@ package object corsa {
     require(Files.exists(modelPath))
 
     val session = Env.createSession(modelPath.toString, sessionOptions)
-
-    // session.getInputInfo.forEach { (key, value) => println(s"$key: $value")} // x: NodeInfo(name=x,info=TensorInfo(javaType=FLOAT,onnxType=ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,shape=[1, 10, 256, 256]))
-    session.getOutputInfo.forEach { (key, value) => println(s"$key: $value")}
 
     val normalizedTile = tile.mapBands { case (_, bandTile) => replaceNaNsWith0(bandTile) }
     val data = reshape(normalizedTile)
@@ -354,5 +352,42 @@ package object corsa {
       level0,
       ResampledTile(level1, sourceCols = level1.cols, sourceRows = level1.rows, targetCols = level0.cols, targetRows = level0.rows)
     )
+  }
+
+  def decompressImproved(tile: MultibandTile): MultibandTile = {
+    require(tile.bandCount == 2, tile.bandCount.toString)
+    require(tile.cols == tile.rows, s"${tile.cols}x${tile.rows}")
+
+    val tileSize = tile.cols * 2
+
+    val modelPath =
+      Paths.get(s"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA improvements #702/onnx/corsa_mtc_160k_64b_${tileSize}p/decoder.onnx")
+
+    require(Files.exists(modelPath), modelPath.toString)
+
+    val session = Env.createSession(modelPath.toString, sessionOptions)
+
+    val level0 = tile.band(0).map(nanTo0 _)
+    val level1 = ResampledTile(tile.band(1).map(nanTo0 _), sourceCols = tileSize / 2, sourceRows = tileSize / 2, targetCols = tileSize / 4, targetRows = tileSize / 4)
+
+    val patchLevel0Data = OnnxTensor.createTensor(Env,
+      OrtUtil.reshape(Array[Long](level0.toArray().map(_.toLong): _*), Array(1, tileSize / 2, tileSize / 2)))
+    val patchLevel1Data = OnnxTensor.createTensor(Env,
+      OrtUtil.reshape(Array[Long](level1.toArray().map(_.toLong): _*), Array(1, tileSize / 4, tileSize / 4)))
+
+    val ortInputs = Map(
+      "embed_id.1" -> patchLevel0Data,
+      "embed_id" -> patchLevel1Data,
+    ).asJava
+
+    val result = session.run(ortInputs)
+
+    val recon = result.get(0).getValue.asInstanceOf[Array[Array[Array[Array[Float]]]]](0)
+
+    val bandTiles = for {
+      band <- recon
+    } yield FloatArrayTile(band.flatten, cols = tileSize, rows = tileSize)
+
+    MultibandTile(bandTiles)
   }
 }

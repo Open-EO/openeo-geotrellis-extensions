@@ -124,6 +124,10 @@ class CorsaTest extends RasterMatchers {
     MultibandGeoTiff(original, extent, crs).write(tempDir.resolve("original.tif").toString)
 
     val compressed = corsa.compressImproved(original)
-    MultibandGeoTiff(compressed, extent, crs).write(tempDir.resolve("compressed.tif").toString)
+    val compressedFile = tempDir resolve "compressed.tif"
+    MultibandGeoTiff(compressed, extent, crs).write(compressedFile.toString)
+
+    val reconstructed = corsa.decompressImproved(compressed)
+    MultibandGeoTiff(reconstructed, extent, crs).write(tempDir.resolve("reconstructed.tif").toString)
   }
 }
