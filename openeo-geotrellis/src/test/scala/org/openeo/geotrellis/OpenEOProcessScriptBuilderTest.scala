@@ -7,7 +7,7 @@ import org.apache.spark.ml.linalg.{SQLDataTypes, Vectors}
 import org.apache.spark.sql.types.{IntegerType, StructField, StructType}
 import org.apache.spark.sql.{Row, SparkSession}
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.{Disabled, Test}
+import org.junit.jupiter.api.Test
 
 import java.util
 import java.util.Random
@@ -63,7 +63,6 @@ class OpenEOProcessScriptBuilderTest {
     result
   }
 
-  @Disabled("Spark 4 issue - To be fixed")
   @Test
   def testPredictCatBoost(): Unit = {
     val random = new Random(42)
@@ -87,7 +86,6 @@ class OpenEOProcessScriptBuilderTest {
     assertEquals(2, result.head.get(3, 3))
   }
 
-  @Disabled("Spark 4 issue - To be fixed")
   @Test
   def testPredictCatBoostProbabilities(): Unit = {
     val random = new Random(42)
