@@ -31,7 +31,7 @@ import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -1319,6 +1319,46 @@ class OpenEOProcesses extends Serializable {
   }
 
 
+  private def computeRegridPartitioner[K: SpatialComponent: ClassTag](
+      datacube: MultibandTileLayerRDD[K], targetCols: Int, targetRows: Int): Option[Partitioner] = {
+    val bandCount = DatacubeSupport.maybeBandLabels(datacube).map(_.size).getOrElse(DEFAULT_BAND_COUNT)
+    val indexReduction = DatacubeSupport.computeReductionForTileSize(
+      targetCols, targetRows, datacube.metadata.cellType.bits, bandCount)
+
+    val md = datacube.metadata
+    val ld = md.getComponent[LayoutDefinition]
+    val oldW = ld.tileLayout.tileCols
+    val oldH = ld.tileLayout.tileRows
+
+    md.bounds match {
+      case KeyBounds(minKey, maxKey) =>
+        val ulSK = minKey.getComponent[SpatialKey]
+        val lrSK = maxKey.getComponent[SpatialKey]
+        val pxXmin = ulSK._1.toLong * oldW
+        val pxYmin = ulSK._2.toLong * oldH
+        val pxXmax = (lrSK._1.toLong + 1) * oldW - 1
+        val pxYmax = (lrSK._2.toLong + 1) * oldH - 1
+        val newMinSK = SpatialKey((pxXmin / targetCols).toInt, (pxYmin / targetRows).toInt)
+        val newMaxSK = SpatialKey((pxXmax / targetCols).toInt, (pxYmax / targetRows).toInt)
+        val newMinKey = minKey.setComponent[SpatialKey](newMinSK)
+        val newMaxKey = maxKey.setComponent[SpatialKey](newMaxSK)
+
+        implicitly[ClassTag[K]].runtimeClass match {
+          case c if c == classOf[SpaceTimeKey] =>
+            val stBounds = KeyBounds(newMinKey.asInstanceOf[SpaceTimeKey], newMaxKey.asInstanceOf[SpaceTimeKey])
+            val index = new ConfigurableSpaceTimePartitioner(indexReduction)
+            logger.debug(f"RegridFixed: using SpaceTimeKey partitioner with indexReduction=$indexReduction")
+            Some(SpacePartitioner[SpaceTimeKey](stBounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), index))
+          case _ =>
+            val spatialBounds = KeyBounds(newMinKey.asInstanceOf[SpatialKey], newMaxKey.asInstanceOf[SpatialKey])
+            val index = new ConfigurableSpatialPartitioner(indexReduction)
+            logger.debug(f"RegridFixed: using SpatialKey partitioner with indexReduction=$indexReduction")
+            Some(SpacePartitioner[SpatialKey](spatialBounds)(implicitly, implicitly, index))
+        }
+      case EmptyBounds => None
+    }
+  }
+
   def retile(datacube: Object, sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): Object = {
 
     datacube match {
@@ -1333,7 +1373,9 @@ class OpenEOProcesses extends Serializable {
   ](datacube: MultibandTileLayerRDD[K], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[K] = {
     val regridded =
     if(sizeX >0 && sizeY > 0){
-      RegridFixed(filterNegativeSpatialKeys(datacube),sizeX,sizeY)
+      val filteredCube = filterNegativeSpatialKeys(datacube)
+      val partitioner = computeRegridPartitioner(filteredCube, sizeX, sizeY)
+      RegridFixed(filteredCube, sizeX, sizeY, partitioner)
     }else{
       datacube
     }

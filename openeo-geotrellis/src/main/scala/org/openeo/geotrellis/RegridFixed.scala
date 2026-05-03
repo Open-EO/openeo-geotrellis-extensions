@@ -8,6 +8,7 @@ import geotrellis.raster.stitch._
 import geotrellis.spark._
 import geotrellis.util._
 import geotrellis.vector._
+import org.apache.spark.Partitioner
 import org.apache.spark.rdd.RDD
 
 import scala.reflect._
@@ -39,7 +40,7 @@ object RegridFixed {
     K: SpatialComponent: ClassTag,
     V: ClassTag: Stitcher: * => CropMethods[V],
     M: Component[*, LayoutDefinition]: Component[*, Bounds[K]]
-  ](layer: RDD[(K, V)] with Metadata[M], tileCols: Int, tileRows: Int): RDD[(K, V)] with Metadata[M] = {
+  ](layer: RDD[(K, V)] with Metadata[M], tileCols: Int, tileRows: Int, partitioner: Option[Partitioner] = None): RDD[(K, V)] with Metadata[M] = {
     val md = layer.metadata
     val ld = md.getComponent[LayoutDefinition]
 
@@ -123,7 +124,7 @@ object RegridFixed {
                 )
             }
           }}
-          .groupByKey
+          .groupByKey(partitioner.getOrElse(new org.apache.spark.HashPartitioner(layer.getNumPartitions)))
           .mapValues { tiles => implicitly[Stitcher[V]].stitch(tiles, tileCols, tileRows) }
 
       ContextRDD(tiled, newMd)
@@ -134,6 +135,6 @@ object RegridFixed {
     K: SpatialComponent: ClassTag,
     V: ClassTag: Stitcher: * => CropMethods[V],
     M: Component[*, LayoutDefinition]: Component[*, Bounds[K]]
-  ](layer: RDD[(K, V)] with Metadata[M], tileSize: Int): RDD[(K, V)] with Metadata[M] = apply(layer, tileSize, tileSize)
+  ](layer: RDD[(K, V)] with Metadata[M], tileSize: Int): RDD[(K, V)] with Metadata[M] = apply(layer, tileSize, tileSize, None)
 
 }
