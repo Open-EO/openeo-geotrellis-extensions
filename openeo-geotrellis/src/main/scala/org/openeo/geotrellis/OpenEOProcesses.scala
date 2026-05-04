@@ -1320,29 +1320,24 @@ class OpenEOProcesses extends Serializable {
 
 
   private def computeRegridPartitioner[K: SpatialComponent: ClassTag](
-      datacube: MultibandTileLayerRDD[K], targetCols: Int, targetRows: Int): Option[Partitioner] = {
+      datacube: MultibandTileLayerRDD[K], targetCols: Int, targetRows: Int,
+      overlapX: Int = 0, overlapY: Int = 0): Option[Partitioner] = {
     val bandCount = DatacubeSupport.maybeBandLabels(datacube).map(_.size).getOrElse(DEFAULT_BAND_COUNT)
+    // Use the full buffered tile size (including overlap) for memory estimation
+    val effectiveCols = targetCols + 2 * overlapX
+    val effectiveRows = targetRows + 2 * overlapY
     val indexReduction = DatacubeSupport.computeReductionForTileSize(
-      targetCols, targetRows, datacube.metadata.cellType.bits, bandCount)
+      effectiveCols, effectiveRows, datacube.metadata.cellType.bits, bandCount)
 
     val md = datacube.metadata
     val ld = md.getComponent[LayoutDefinition]
     val oldW = ld.tileLayout.tileCols
     val oldH = ld.tileLayout.tileRows
 
-    md.bounds match {
-      case KeyBounds(minKey, maxKey) =>
-        val ulSK = minKey.getComponent[SpatialKey]
-        val lrSK = maxKey.getComponent[SpatialKey]
-        val pxXmin = ulSK._1.toLong * oldW
-        val pxYmin = ulSK._2.toLong * oldH
-        val pxXmax = (lrSK._1.toLong + 1) * oldW - 1
-        val pxYmax = (lrSK._2.toLong + 1) * oldH - 1
-        val newMinSK = SpatialKey((pxXmin / targetCols).toInt, (pxYmin / targetRows).toInt)
-        val newMaxSK = SpatialKey((pxXmax / targetCols).toInt, (pxYmax / targetRows).toInt)
-        val newMinKey = minKey.setComponent[SpatialKey](newMinSK)
-        val newMaxKey = maxKey.setComponent[SpatialKey](newMaxSK)
+    val newBounds = RegridFixed.computeNewBounds(md.bounds, oldW, oldH, targetCols, targetRows)
 
+    newBounds match {
+      case KeyBounds(newMinKey, newMaxKey) =>
         implicitly[ClassTag[K]].runtimeClass match {
           case c if c == classOf[SpaceTimeKey] =>
             val stBounds = KeyBounds(newMinKey.asInstanceOf[SpaceTimeKey], newMaxKey.asInstanceOf[SpaceTimeKey])
@@ -1374,7 +1369,7 @@ class OpenEOProcesses extends Serializable {
     val regridded =
     if(sizeX >0 && sizeY > 0){
       val filteredCube = filterNegativeSpatialKeys(datacube)
-      val partitioner = computeRegridPartitioner(filteredCube, sizeX, sizeY)
+      val partitioner = computeRegridPartitioner(filteredCube, sizeX, sizeY, overlapX, overlapY)
       RegridFixed(filteredCube, sizeX, sizeY, partitioner)
     }else{
       datacube

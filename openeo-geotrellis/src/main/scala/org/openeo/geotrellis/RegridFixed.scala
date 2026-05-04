@@ -36,6 +36,29 @@ object RegridFixed {
     }
   }
 
+  /**
+   * Compute the new key bounds after regridding from (oldW x oldH) tiles to (tileCols x tileRows) tiles.
+   * This is a pure function on the bounds and tile dimensions, useful for computing a target partitioner
+   * without duplicating the bounds logic inside `apply`.
+   */
+  def computeNewBounds[K: SpatialComponent: ClassTag](
+      bounds: Bounds[K], oldW: Int, oldH: Int, tileCols: Int, tileRows: Int): Bounds[K] = {
+    bounds match {
+      case KeyBounds(minKey, maxKey) =>
+        val ulSK = minKey.getComponent[SpatialKey]
+        val lrSK = maxKey.getComponent[SpatialKey]
+        val pxXrange = Interval(ulSK._1 * oldW.toLong, (lrSK._1 + 1) * oldW.toLong - 1)
+        val pxYrange = Interval(ulSK._2 * oldH.toLong, (lrSK._2 + 1) * oldH.toLong - 1)
+
+        val newMinKey = SpatialKey((pxXrange.start / tileCols).toInt, (pxYrange.start / tileRows).toInt)
+        val newMaxKey = SpatialKey((pxXrange.end / tileCols).toInt, (pxYrange.end / tileRows).toInt)
+
+        KeyBounds(minKey.setComponent[SpatialKey](newMinKey), maxKey.setComponent[SpatialKey](newMaxKey))
+      case EmptyBounds =>
+        EmptyBounds
+    }
+  }
+
   def apply[
     K: SpatialComponent: ClassTag,
     V: ClassTag: Stitcher: * => CropMethods[V],
@@ -68,21 +91,7 @@ object RegridFixed {
           oldEx.ymax),
         ntl)
 
-      val bounds =
-        md.getComponent[Bounds[K]] match {
-          case KeyBounds(minKey, maxKey) =>
-            val ulSK = minKey.getComponent[SpatialKey]
-            val lrSK = maxKey.getComponent[SpatialKey]
-            val pxXrange = Interval(ulSK._1 * oldW.toLong, (lrSK._1 + 1) * oldW.toLong - 1)
-            val pxYrange = Interval(ulSK._2 * oldH.toLong, (lrSK._2 + 1) * oldH.toLong - 1)
-
-            val newMinKey = SpatialKey((pxXrange.start / tileCols).toInt, (pxYrange.start / tileRows).toInt)
-            val newMaxKey = SpatialKey((pxXrange.end / tileCols).toInt, (pxYrange.end / tileRows).toInt)
-
-            KeyBounds(minKey.setComponent[SpatialKey](newMinKey), maxKey.setComponent[SpatialKey](newMaxKey))
-          case EmptyBounds =>
-            EmptyBounds
-        }
+      val bounds = computeNewBounds(md.getComponent[Bounds[K]], oldW, oldH, tileCols, tileRows)
 
       val newMd =
         md.setComponent[LayoutDefinition](nld)

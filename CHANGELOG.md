@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgrade Spark to 3.5.5
 - Upgrade scala to 2.13
 - `save_result` : add metadata for NetCDF assets ([#406](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/406))
+- `regrid`/`apply_neighborhood`: optimize target partitioner based on target tile size, reducing executor memory pressure for large tiles ([#626](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/626))
 
 ### Removed
 
