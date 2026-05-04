@@ -1244,6 +1244,23 @@ class OpenEOProcesses extends Serializable {
     )
   }
 
+  // TODO: support SpatialKey
+  def corsaCompressImproved(datacube: MultibandTileLayerRDD[SpaceTimeKey], modelTileSize: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val retiled =
+      if (datacube.metadata.tileCols == modelTileSize && datacube.metadata.tileRows == modelTileSize) datacube
+      else retileGeneric(datacube, sizeX = modelTileSize, sizeY = modelTileSize, overlapX = 0, overlapY = 0)
+
+    val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = modelTileSize / 2, tileRows = modelTileSize / 2)
+    val newBounds = retiled.metadata.getComponent[Bounds[SpaceTimeKey]].flatMap { keyBounds =>
+      keyBounds.rekey(retiled.metadata.layout, retiled.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    ContextRDD(
+      retiled.mapValues(corsa.compressImproved),
+      retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
   def convertDataType(datacube: Object, dataType: String): Object = {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
