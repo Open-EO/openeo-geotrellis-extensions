@@ -1244,14 +1244,19 @@ class OpenEOProcesses extends Serializable {
     )
   }
 
-  // TODO: support SpatialKey
-  def corsaCompressImproved(datacube: MultibandTileLayerRDD[SpaceTimeKey], modelTileSize: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def corsaCompressImproved(datacube: MultibandTileLayerRDD[_], modelTileSize: Int): AnyRef =
+    datacube.metadata.bounds.get.maxKey match {
+      case _: SpatialKey => corsaCompressImprovedGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], modelTileSize)
+      case _: SpaceTimeKey => corsaCompressImprovedGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], modelTileSize)
+    }
+
+  def corsaCompressImprovedGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
     val retiled =
       if (datacube.metadata.tileCols == modelTileSize && datacube.metadata.tileRows == modelTileSize) datacube
       else retileGeneric(datacube, sizeX = modelTileSize, sizeY = modelTileSize, overlapX = 0, overlapY = 0)
 
     val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = modelTileSize / 2, tileRows = modelTileSize / 2)
-    val newBounds = retiled.metadata.getComponent[Bounds[SpaceTimeKey]].flatMap { keyBounds =>
+    val newBounds = retiled.metadata.getComponent[Bounds[K]].flatMap { keyBounds =>
       keyBounds.rekey(retiled.metadata.layout, retiled.metadata.layout.copy(tileLayout = newTileLayout))
     }
 

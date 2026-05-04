@@ -116,6 +116,8 @@ class CorsaTest extends RasterMatchers {
     assertArrayEquals(Array(n, n, n, 4, 5, 6, 7, 8, n, 10, n), row, 0.0)
   }
 
+  @EnabledIfEnvironmentVariable(named = "USER", matches="bossie",
+    disabledReason = "models are not yet available on the cluster")
   @ParameterizedTest
   @ValueSource(ints = Array(256, 512, 1024))
   def compressImproved(tileSize: Int): Unit = {
