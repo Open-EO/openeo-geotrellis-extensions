@@ -1251,17 +1251,43 @@ class OpenEOProcesses extends Serializable {
     }
 
   def corsaCompressImprovedGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
-    val retiled =
-      if (datacube.metadata.tileCols == modelTileSize && datacube.metadata.tileRows == modelTileSize) datacube
-      else retileGeneric(datacube, sizeX = modelTileSize, sizeY = modelTileSize, overlapX = 0, overlapY = 0)
+    val expectedTileSize = modelTileSize
 
-    val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = modelTileSize / 2, tileRows = modelTileSize / 2)
+    val retiled =
+      if (datacube.metadata.tileCols == expectedTileSize && datacube.metadata.tileRows == expectedTileSize) datacube
+      else retileGeneric(datacube, sizeX = expectedTileSize, sizeY = expectedTileSize, overlapX = 0, overlapY = 0)
+
+    val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = expectedTileSize / 2, tileRows = expectedTileSize / 2)
     val newBounds = retiled.metadata.getComponent[Bounds[K]].flatMap { keyBounds =>
       keyBounds.rekey(retiled.metadata.layout, retiled.metadata.layout.copy(tileLayout = newTileLayout))
     }
 
     ContextRDD(
       retiled.mapValues(corsa.compressImproved),
+      retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
+  def corsaDecompressImproved(datacube: MultibandTileLayerRDD[_], modelTileSize: Int): AnyRef =
+    datacube.metadata.bounds.get.maxKey match {
+      case _: SpatialKey => corsaDecompressImprovedGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], modelTileSize)
+      case _: SpaceTimeKey => corsaDecompressImprovedGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], modelTileSize)
+    }
+
+  def corsaDecompressImprovedGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
+    val expectedTileSize = modelTileSize / 2
+
+    val retiled =
+      if (datacube.metadata.tileCols == expectedTileSize && datacube.metadata.tileRows == expectedTileSize) datacube
+      else retileGeneric(datacube, sizeX = expectedTileSize, sizeY = expectedTileSize, overlapX = 0, overlapY = 0)
+
+    val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = modelTileSize, tileRows = modelTileSize)
+    val newBounds = retiled.metadata.bounds.flatMap { keyBounds =>
+      keyBounds.rekey(retiled.metadata.layout, retiled.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    ContextRDD(
+      retiled.mapValues(corsa.decompressImproved),
       retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
     )
   }
