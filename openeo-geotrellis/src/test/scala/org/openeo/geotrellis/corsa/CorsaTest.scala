@@ -22,13 +22,13 @@ object CorsaTest {
   private val n: Double = Double.NaN
 }
 
-@EnabledIfEnvironmentVariable(named = "CORSA_MODEL_DIR", matches=".+")
 class CorsaTest extends RasterMatchers {
   import CorsaTest._
 
   private def testResourcePath(filename: String): String =
     getClass.getResource(s"/org/openeo/geotrellis/corsa/$filename").getPath
 
+  @EnabledIfEnvironmentVariable(named = "CORSA_MODEL_DIR", matches=".+")
   @Test
   def encode(@TempDir tempDir: Path): Unit = {
     val (Raster(cubeArray, extent), crs) = sentinel2Tile()
@@ -80,6 +80,7 @@ class CorsaTest extends RasterMatchers {
     (Raster(multibandTile, extent), crs)
   }
 
+  @EnabledIfEnvironmentVariable(named = "CORSA_MODEL_DIR", matches=".+")
   @Test
   def decode(): Unit = {
     val level0Tiff = SinglebandGeoTiff(testResourcePath("level0_20m_2021-09-07Z_ref.tif"))
@@ -120,17 +121,75 @@ class CorsaTest extends RasterMatchers {
     disabledReason = "models are not yet available on the cluster")
   @ParameterizedTest
   @ValueSource(ints = Array(256, 512, 1024))
-  def compressImproved(tileSize: Int): Unit = {
+  def compressV2(patchSize: Int): Unit = {
     val tempDir = Paths.get("/tmp/compressImproved") // TODO: remove
 
-    val (Raster(original, extent), crs) = sentinel2Tile(tileSize)
-    MultibandGeoTiff(original, extent, crs).write(tempDir.resolve(s"original_$tileSize.tif").toString)
+    val (Raster(original, extent), crs) = sentinel2Tile(patchSize)
+    MultibandGeoTiff(original, extent, crs).write(tempDir.resolve(s"original_$patchSize.tif").toString)
 
     val compressed = corsa.compressImproved(original)
-    val compressedFile = tempDir resolve s"compressed_$tileSize.tif"
-    MultibandGeoTiff(compressed, extent, crs).write(compressedFile.toString)
+    assertEquals(2, compressed.bandCount)
+    assertEquals(patchSize / 2, compressed.cols)
+    assertEquals(patchSize / 2, compressed.rows)
+
+    MultibandGeoTiff(compressed, extent, crs).write(tempDir.resolve(s"compressed_$patchSize.tif").toString)
 
     val reconstructed = corsa.decompressImproved(compressed)
-    MultibandGeoTiff(reconstructed, extent, crs).write(tempDir.resolve(s"reconstructed_$tileSize.tif").toString)
+    assertEquals(original.bandCount, reconstructed.bandCount)
+    assertEquals(patchSize, reconstructed.cols)
+    assertEquals(patchSize, reconstructed.rows)
+
+    MultibandGeoTiff(reconstructed, extent, crs).write(tempDir.resolve(s"reconstructed_$patchSize.tif").toString)
+  }
+
+  @EnabledIfEnvironmentVariable(named = "USER", matches="bossie",
+    disabledReason = "models are not yet available on the cluster")
+  @Test
+  def compressV2(): Unit = {
+    val patchSize = 256
+
+    val (Raster(original, extent), _) = sentinel2Tile(patchSize)
+
+    val (level0, level1) = {
+      val Vector(level0, level1) = corsa.compressImproved(original).bands
+      (level0, level1.resample(extent, targetCols = patchSize / 4, targetRows = patchSize / 4))
+    }
+
+    assertRastersEqual(
+      actual = Raster(level0, extent),
+      expected = MultibandGeoTiff(testResourcePath("level0_20m_2021-09-07Z_p256_v2_ref.tif")).raster
+    )
+
+    assertRastersEqual(
+      actual = Raster(level1, extent),
+      expected = MultibandGeoTiff(testResourcePath("level1_40m_2021-09-07Z_p256_v2_ref.tif")).raster
+    )
+  }
+
+  @EnabledIfEnvironmentVariable(named = "USER", matches="bossie",
+    disabledReason = "models are not yet available on the cluster")
+  @Test
+  def decompressV2(): Unit = {
+    val patchSize = 256
+
+    val level0 = SinglebandGeoTiff(testResourcePath("level0_20m_2021-09-07Z_p256_v2_ref.tif"))
+    val level1 = SinglebandGeoTiff(testResourcePath("level1_40m_2021-09-07Z_p256_v2_ref.tif"))
+
+    assertEquals(patchSize / 2, level0.cols)
+    assertEquals(patchSize / 2, level0.rows)
+    assertEquals(patchSize / 4, level1.cols)
+    assertEquals(patchSize / 4, level1.rows)
+
+    val compressed = MultibandTile(
+      level0.tile,
+      level1.tile.resample(targetCols = level0.cols, targetRows = level0.rows)
+    )
+
+    val decompressed = corsa.decompressImproved(compressed)
+
+    assertRastersEqual(
+      actual = Raster(decompressed, level0.extent),
+      expected = MultibandGeoTiff(testResourcePath("reconstructed_2021-09-07Z_p256_v2_ref.tif")).raster
+    )
   }
 }
