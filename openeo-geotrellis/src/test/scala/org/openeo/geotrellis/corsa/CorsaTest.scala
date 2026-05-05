@@ -122,19 +122,19 @@ class CorsaTest extends RasterMatchers {
   @ParameterizedTest
   @ValueSource(ints = Array(256, 512, 1024))
   def compressV2(patchSize: Int): Unit = {
-    val tempDir = Paths.get("/tmp/compressImproved") // TODO: remove
+    val tempDir = Paths.get("/tmp/compressV2") // TODO: remove
 
     val (Raster(original, extent), crs) = sentinel2Tile(patchSize)
     MultibandGeoTiff(original, extent, crs).write(tempDir.resolve(s"original_$patchSize.tif").toString)
 
-    val compressed = corsa.compressImproved(original)
+    val compressed = corsa.compressV2(original)
     assertEquals(2, compressed.bandCount)
     assertEquals(patchSize / 2, compressed.cols)
     assertEquals(patchSize / 2, compressed.rows)
 
     MultibandGeoTiff(compressed, extent, crs).write(tempDir.resolve(s"compressed_$patchSize.tif").toString)
 
-    val reconstructed = corsa.decompressImproved(compressed)
+    val reconstructed = corsa.decompressV2(compressed)
     assertEquals(original.bandCount, reconstructed.bandCount)
     assertEquals(patchSize, reconstructed.cols)
     assertEquals(patchSize, reconstructed.rows)
@@ -151,7 +151,7 @@ class CorsaTest extends RasterMatchers {
     val (Raster(original, extent), _) = sentinel2Tile(patchSize)
 
     val (level0, level1) = {
-      val Vector(level0, level1) = corsa.compressImproved(original).bands
+      val Vector(level0, level1) = corsa.compressV2(original).bands
       (level0, level1.resample(extent, targetCols = patchSize / 4, targetRows = patchSize / 4))
     }
 
@@ -185,7 +185,7 @@ class CorsaTest extends RasterMatchers {
       level1.tile.resample(targetCols = level0.cols, targetRows = level0.rows)
     )
 
-    val decompressed = corsa.decompressImproved(compressed)
+    val decompressed = corsa.decompressV2(compressed)
 
     assertRastersEqual(
       actual = Raster(decompressed, level0.extent),

@@ -1244,13 +1244,14 @@ class OpenEOProcesses extends Serializable {
     )
   }
 
-  def corsaCompressImproved(datacube: MultibandTileLayerRDD[_], modelTileSize: Int): AnyRef =
+  //noinspection ScalaUnusedSymbol
+  def corsaCompressV2(datacube: MultibandTileLayerRDD[_], modelTileSize: Int): AnyRef =
     datacube.metadata.bounds.get.maxKey match {
-      case _: SpatialKey => corsaCompressImprovedGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], modelTileSize)
-      case _: SpaceTimeKey => corsaCompressImprovedGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], modelTileSize)
+      case _: SpatialKey => corsaCompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], modelTileSize)
+      case _: SpaceTimeKey => corsaCompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], modelTileSize)
     }
 
-  def corsaCompressImprovedGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
+  def corsaCompressV2Generic[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
     val expectedTileSize = modelTileSize
 
     val retiled =
@@ -1263,18 +1264,19 @@ class OpenEOProcesses extends Serializable {
     }
 
     ContextRDD(
-      retiled.mapValues(corsa.compressImproved),
+      retiled.mapValues(corsa.compressV2),
       retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
     )
   }
 
-  def corsaDecompressImproved(datacube: MultibandTileLayerRDD[_], modelTileSize: Int): AnyRef =
+  //noinspection ScalaUnusedSymbol
+  def corsaDecompressV2(datacube: MultibandTileLayerRDD[_], modelTileSize: Int): AnyRef =
     datacube.metadata.bounds.get.maxKey match {
-      case _: SpatialKey => corsaDecompressImprovedGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], modelTileSize)
-      case _: SpaceTimeKey => corsaDecompressImprovedGeneric(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], modelTileSize)
+      case _: SpatialKey => corsaDecompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], modelTileSize)
+      case _: SpaceTimeKey => corsaDecompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], modelTileSize)
     }
 
-  def corsaDecompressImprovedGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
+  def corsaDecompressV2Generic[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
     val expectedTileSize = modelTileSize / 2
 
     val retiled =
@@ -1287,7 +1289,7 @@ class OpenEOProcesses extends Serializable {
     }
 
     ContextRDD(
-      retiled.mapValues(corsa.decompressImproved),
+      retiled.mapValues(corsa.decompressV2),
       retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
     )
   }
