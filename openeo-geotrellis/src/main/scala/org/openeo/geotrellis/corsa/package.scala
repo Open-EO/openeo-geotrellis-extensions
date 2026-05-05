@@ -36,7 +36,7 @@ package object corsa {
 
   private lazy val Env = OrtEnvironment.getEnvironment
 
-  private val TileSize = 120
+  private final val OgPatchSize = 120 // the original model only supports a single patch size of 120x120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
   private val BandPowerTransformerParams = Bands.map { band =>
     val configClasspathResource =  s"org/openeo/geotrellis/corsa/scalers/scaler2024_power_${band}_info.json"
@@ -73,9 +73,9 @@ package object corsa {
   }
 
   def compress(modelDir: String, tile: MultibandTile): MultibandTile = {
-    // assumes tiled to 120x120 (e.g. with featureflags: tilesize: 120) with the expected 10 bands
-    require(tile.cols == TileSize, tile.cols.toString)
-    require(tile.rows == TileSize, tile.rows.toString)
+    // assumes tiled to 120x120 with the expected 10 bands
+    require(tile.cols == OgPatchSize, tile.cols.toString)
+    require(tile.rows == OgPatchSize, tile.rows.toString)
     require(tile.bandCount == Bands.size, s"expected bands: ${Bands mkString ", "}")
 
     val normalizedTile = tile.mapBands { case (_, bandTile) => replaceNaNsWith0(bandTile) }
@@ -84,10 +84,10 @@ package object corsa {
       preprocessDataCubeInScala(normalizedTile), Paths.get(modelDir).resolve("encoder.onnx")
     )
 
-    assert(level0.cols == 60)
-    assert(level0.rows == 60)
-    assert(level1.cols == 30)
-    assert(level1.rows == 30)
+    assert(level0.cols == OgPatchSize / 2)
+    assert(level0.rows == OgPatchSize / 2)
+    assert(level1.cols == OgPatchSize / 4)
+    assert(level1.rows == OgPatchSize / 4)
 
     MultibandTile(
       level0,
@@ -203,8 +203,8 @@ package object corsa {
     val data = reshape(cubeArrayNormalized)
     require(data.length == 1)
     require(data.head.length == Bands.size)
-    require(data.head.head.length == 120)
-    require(data.head.head.head.length == 120)
+    require(data.head.head.length == OgPatchSize)
+    require(data.head.head.head.length == OgPatchSize)
 
     val EncodeSessionDetails(encodeSession, encodeInputName) = encodeSessions.computeIfAbsent(modelPath, path => {
       val session = Env.createSession(path.toString, sessionOptions)
@@ -214,7 +214,7 @@ package object corsa {
 
       val inputInfo: TensorInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
       require(inputInfo.`type` == OnnxJavaType.FLOAT)
-      require(util.Arrays.equals(inputInfo.getShape, Array(1L, Bands.size, TileSize, TileSize))) // [???, bands, y, x]
+      require(util.Arrays.equals(inputInfo.getShape, Array(1L, Bands.size, OgPatchSize, OgPatchSize))) // [???, bands, y, x]
 
       EncodeSessionDetails(session, inputName)
     })
@@ -224,12 +224,12 @@ package object corsa {
 
     val result = encodeSession.run(ortInputs)
 
-    val ortL0Ids = OrtUtil.reshape(result.get(2).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, 60, 60)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
-    val ortL1Ids = OrtUtil.reshape(result.get(3).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, 30, 30)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
+    val ortL0Ids = OrtUtil.reshape(result.get(2).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, OgPatchSize / 2, OgPatchSize / 2)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
+    val ortL1Ids = OrtUtil.reshape(result.get(3).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, OgPatchSize / 4, OgPatchSize / 4)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
 
     // resample by means of "repeat" in the UDF's process_window_onnx() is undone by the resample_spatial in the UDP
-    val level0 = UShortArrayTile(ortL0Ids.flatten.flatten.flatten.map(_.toShort), cols = 60, rows = 60, noDataValue = None)
-    val level1 = UShortArrayTile(ortL1Ids.flatten.flatten.flatten.map(_.toShort), cols = 30, rows = 30, noDataValue = None)
+    val level0 = UShortArrayTile(ortL0Ids.flatten.flatten.flatten.map(_.toShort), cols = OgPatchSize / 2, rows = OgPatchSize / 2, noDataValue = None)
+    val level1 = UShortArrayTile(ortL1Ids.flatten.flatten.flatten.map(_.toShort), cols = OgPatchSize / 4, rows = OgPatchSize / 4, noDataValue = None)
 
     (level0, level1)
   }
@@ -251,16 +251,16 @@ package object corsa {
 
   def decompress(modelDir: String, tile: MultibandTile): MultibandTile = {
     require(tile.bandCount == 2, tile.bandCount.toString)
-    require(tile.dimensions.cols == 60, tile.dimensions.cols.toString)
-    require(tile.dimensions.rows == 60, tile.dimensions.rows.toString)
+    require(tile.cols == OgPatchSize / 2, tile.cols.toString)
+    require(tile.rows == OgPatchSize / 2, tile.rows.toString)
 
     val level0 = tile.band(0).map(nanTo0 _)
-    val level1 = ResampledTile(tile.band(1).map(nanTo0 _), sourceCols = 60, sourceRows = 60, targetCols = 30, targetRows = 30)
+    val level1 = ResampledTile(tile.band(1).map(nanTo0 _), sourceCols = tile.cols, sourceRows = tile.rows, targetCols = tile.cols / 2, targetRows = tile.rows / 2)
 
     val patchLevel0Data = OnnxTensor.createTensor(Env,
-      OrtUtil.reshape(Array[Long](level0.toArray().map(_.toLong): _*), Array(1, 60, 60)))
+      OrtUtil.reshape(Array[Long](level0.toArray().map(_.toLong): _*), Array(1, level0.rows, level0.cols)))
     val patchLevel1Data = OnnxTensor.createTensor(Env,
-      OrtUtil.reshape(Array[Long](level1.toArray().map(_.toLong): _*), Array(1, 30, 30)))
+      OrtUtil.reshape(Array[Long](level1.toArray().map(_.toLong): _*), Array(1, level1.rows, level1.cols)))
 
     val DecodeSessionDetails(decodeSession, decodeLevel0InputName, decodeLevel1InputName) =
       decodeSessions.computeIfAbsent(Paths.get(modelDir).resolve("decoder.onnx"), path => {
@@ -285,7 +285,7 @@ package object corsa {
 
     val bandTiles = for {
       band <- recon
-    } yield FloatArrayTile(band.flatten, cols = TileSize, rows = TileSize)
+    } yield FloatArrayTile(band.flatten, cols = OgPatchSize, rows = OgPatchSize)
 
     val scaledTile = MultibandTile(bandTiles)
     unscale(scaledTile)
@@ -368,12 +368,12 @@ package object corsa {
     val session = Env.createSession(modelPath.toString, sessionOptions)
 
     val level0 = tile.band(0).map(nanTo0 _)
-    val level1 = ResampledTile(tile.band(1).map(nanTo0 _), sourceCols = tileSize / 2, sourceRows = tileSize / 2, targetCols = tileSize / 4, targetRows = tileSize / 4)
+    val level1 = ResampledTile(tile.band(1).map(nanTo0 _), sourceCols = level0.cols, sourceRows = level0.rows, targetCols = level0.cols / 2, targetRows = level0.rows / 2)
 
     val patchLevel0Data = OnnxTensor.createTensor(Env,
-      OrtUtil.reshape(Array[Long](level0.toArray().map(_.toLong): _*), Array(1, tileSize / 2, tileSize / 2)))
+      OrtUtil.reshape(Array[Long](level0.toArray().map(_.toLong): _*), Array(1, level0.rows, level0.cols)))
     val patchLevel1Data = OnnxTensor.createTensor(Env,
-      OrtUtil.reshape(Array[Long](level1.toArray().map(_.toLong): _*), Array(1, tileSize / 4, tileSize / 4)))
+      OrtUtil.reshape(Array[Long](level1.toArray().map(_.toLong): _*), Array(1, level1.rows, level1.cols)))
 
     val ortInputs = Map(
       "embed_id.1" -> patchLevel0Data,

@@ -17,7 +17,7 @@ import java.nio.file.{Files, Path, Paths}
 import scala.jdk.StreamConverters._
 
 object CorsaTest {
-  private val TileSize = 120
+  private val OgPatchSize = 120
   private val Bands = Seq("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12")
   private val n: Double = Double.NaN
 }
@@ -39,7 +39,7 @@ class CorsaTest extends RasterMatchers {
 
     val (level0, level1) = {
       val Vector(level0, level1) = corsa.compress(modelDir, tile = cubeArray).bands
-      (level0, level1.resample(extent, targetCols = 30, targetRows = 30))
+      (level0, level1.resample(extent, targetCols = level0.cols / 2, targetRows = level0.rows / 2))
     }
 
     SinglebandGeoTiff(level0, extent, crs).write(f"/tmp/level0_20m.tif")
@@ -56,7 +56,7 @@ class CorsaTest extends RasterMatchers {
     )
   }
 
-  private def sentinel2Tile(tileSize: Int = TileSize): (Raster[MultibandTile], CRS) = {
+  private def sentinel2Tile(tileSize: Int = OgPatchSize): (Raster[MultibandTile], CRS) = {
     val files = Files.list(Paths.get("/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2021/09/07/S2B_20210907T104619_31UFS_TOC_V210")).toScala(Seq)
 
     val bandRasterSources = for {
@@ -100,8 +100,8 @@ class CorsaTest extends RasterMatchers {
     ))
 
     assertEquals(Bands.size, sentinel2Tile.bandCount)
-    assertEquals(TileSize, sentinel2Tile.cols)
-    assertEquals(TileSize, sentinel2Tile.rows)
+    assertEquals(OgPatchSize, sentinel2Tile.cols)
+    assertEquals(OgPatchSize, sentinel2Tile.rows)
 
     assertRastersEqual(
       actual = Raster(sentinel2Tile, level0Tiff.extent),
