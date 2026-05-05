@@ -206,18 +206,7 @@ package object corsa {
     require(data.head.head.length == V1PatchSize)
     require(data.head.head.head.length == V1PatchSize)
 
-    val EncodeSessionDetails(encodeSession, encodeInputName) = encodeSessions.computeIfAbsent(modelPath, path => {
-      val session = Env.createSession(path.toString, sessionOptions)
-
-      require(session.getNumInputs == 1)
-      val inputName = session.getInputNames.iterator().next()
-
-      val inputInfo: TensorInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
-      require(inputInfo.`type` == OnnxJavaType.FLOAT)
-      require(util.Arrays.equals(inputInfo.getShape, Array(1L, Bands.size, V1PatchSize, V1PatchSize))) // [???, bands, y, x]
-
-      EncodeSessionDetails(session, inputName)
-    })
+    val EncodeSessionDetails(encodeSession, encodeInputName) = encodeSessionDetails(modelPath, V1PatchSize)
 
     val tensor = OnnxTensor.createTensor(Env, data)
     val ortInputs = Map(encodeInputName -> tensor).asJava
@@ -232,6 +221,21 @@ package object corsa {
     val level1 = UShortArrayTile(ortL1Ids.flatten.flatten.flatten.map(_.toShort), cols = V1PatchSize / 4, rows = V1PatchSize / 4, noDataValue = None)
 
     (level0, level1)
+  }
+
+  private def encodeSessionDetails(modelPath: Path, patchSize: Int): EncodeSessionDetails = {
+    encodeSessions.computeIfAbsent(modelPath, path => {
+      val session = Env.createSession(path.toString, sessionOptions)
+
+      require(session.getNumInputs == 1)
+      val inputName = session.getInputNames.iterator().next()
+
+      val inputInfo: TensorInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+      require(inputInfo.`type` == OnnxJavaType.FLOAT)
+      require(util.Arrays.equals(inputInfo.getShape, Array(1L, Bands.size, patchSize, patchSize))) // [???, bands, y, x]
+
+      EncodeSessionDetails(session, inputName)
+    })
   }
 
   private def reshape(cubeArrayNormalized: MultibandTile): Array[Array[Array[Array[Float]]]] = {
@@ -262,17 +266,10 @@ package object corsa {
     val patchLevel1Data = OnnxTensor.createTensor(Env,
       OrtUtil.reshape(Array[Long](level1.toArray().map(_.toLong): _*), Array(1, level1.rows, level1.cols)))
 
+    val modelPath = Paths.get(modelDir).resolve("decoder.onnx")
+
     val DecodeSessionDetails(decodeSession, decodeLevel0InputName, decodeLevel1InputName) =
-      decodeSessions.computeIfAbsent(Paths.get(modelDir).resolve("decoder.onnx"), path => {
-        val decodeSession = Env.createSession(path.toString, sessionOptions)
-
-        // inputs are sorted
-        val inputNames = decodeSession.getInputInfo.keySet().iterator()
-        val level0InputName = inputNames.next()
-        val level1InputName = inputNames.next()
-
-        DecodeSessionDetails(decodeSession, level0InputName, level1InputName)
-      })
+      decodeSessionDetails(modelPath)
 
     val ortInputs = Map(
       decodeLevel0InputName -> patchLevel0Data,
@@ -289,6 +286,19 @@ package object corsa {
 
     val scaledTile = MultibandTile(bandTiles)
     unscale(scaledTile)
+  }
+
+  private def decodeSessionDetails(modelPath: Path): DecodeSessionDetails = {
+    decodeSessions.computeIfAbsent(modelPath, path => {
+      val decodeSession = Env.createSession(path.toString, sessionOptions)
+
+      // inputs are sorted
+      val inputNames = decodeSession.getInputInfo.keySet().iterator()
+      val level0InputName = inputNames.next()
+      val level1InputName = inputNames.next()
+
+      DecodeSessionDetails(decodeSession, level0InputName, level1InputName)
+    })
   }
 
   private def nanTo0(value: Int): Int = if (isData(value)) value else 0
@@ -325,28 +335,28 @@ package object corsa {
     require(tile.bandCount == Bands.size, s"expected bands: ${Bands mkString ", "}")
     require(tile.cols == tile.rows, s"${tile.cols}x${tile.rows}")
 
-    val tileSize = tile.cols
+    val patchSize = tile.cols
 
     val modelPath =
-      Paths.get(s"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA improvements #702/onnx/corsa_mtc_160k_64b_${tileSize}p/encoder.onnx")
+      Paths.get(s"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA improvements #702/onnx/corsa_mtc_160k_64b_${patchSize}p/encoder.onnx")
 
     require(Files.exists(modelPath))
 
-    val session = Env.createSession(modelPath.toString, sessionOptions)
+    val EncodeSessionDetails(encodeSession, encodeInputName) = encodeSessionDetails(modelPath, patchSize)
 
     val normalizedTile = tile.mapBands { case (_, bandTile) => replaceNaNsWith0(bandTile) }
     val data = reshape(normalizedTile)
 
     val tensor = OnnxTensor.createTensor(Env, data)
-    val ortInputs = Map("x" -> tensor).asJava
+    val ortInputs = Map(encodeInputName -> tensor).asJava
 
-    val result = session.run(ortInputs)
+    val result = encodeSession.run(ortInputs)
 
-    val ortL0Ids = OrtUtil.reshape(result.get(2).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, tileSize / 2, tileSize / 2)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
-    val ortL1Ids = OrtUtil.reshape(result.get(3).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, tileSize / 4, tileSize / 4)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
+    val ortL0Ids = OrtUtil.reshape(result.get(2).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, patchSize / 2, patchSize / 2)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
+    val ortL1Ids = OrtUtil.reshape(result.get(3).getValue.asInstanceOf[Array[Array[Long]]].flatten, Array(1, 1, patchSize / 4, patchSize / 4)).asInstanceOf[Array[Array[Array[Array[Long]]]]]
 
-    val level0 = UShortArrayTile(ortL0Ids.flatten.flatten.flatten.map(_.toShort), cols = tileSize / 2, rows = tileSize / 2, noDataValue = None)
-    val level1 = UShortArrayTile(ortL1Ids.flatten.flatten.flatten.map(_.toShort), cols = tileSize / 4, rows = tileSize / 4, noDataValue = None)
+    val level0 = UShortArrayTile(ortL0Ids.flatten.flatten.flatten.map(_.toShort), cols = patchSize / 2, rows = patchSize / 2, noDataValue = None)
+    val level1 = UShortArrayTile(ortL1Ids.flatten.flatten.flatten.map(_.toShort), cols = patchSize / 4, rows = patchSize / 4, noDataValue = None)
 
     MultibandTile(
       level0,
@@ -358,14 +368,12 @@ package object corsa {
     require(tile.bandCount == 2, tile.bandCount.toString)
     require(tile.cols == tile.rows, s"${tile.cols}x${tile.rows}")
 
-    val tileSize = tile.cols * 2
+    val patchSize = tile.cols * 2
 
     val modelPath =
-      Paths.get(s"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA improvements #702/onnx/corsa_mtc_160k_64b_${tileSize}p/decoder.onnx")
+      Paths.get(s"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA improvements #702/onnx/corsa_mtc_160k_64b_${patchSize}p/decoder.onnx")
 
     require(Files.exists(modelPath), modelPath.toString)
-
-    val session = Env.createSession(modelPath.toString, sessionOptions)
 
     val level0 = tile.band(0).map(nanTo0 _)
     val level1 = ResampledTile(tile.band(1).map(nanTo0 _), sourceCols = level0.cols, sourceRows = level0.rows, targetCols = level0.cols / 2, targetRows = level0.rows / 2)
@@ -375,18 +383,21 @@ package object corsa {
     val patchLevel1Data = OnnxTensor.createTensor(Env,
       OrtUtil.reshape(Array[Long](level1.toArray().map(_.toLong): _*), Array(1, level1.rows, level1.cols)))
 
+    val DecodeSessionDetails(decodeSession, decodeLevel0InputName, decodeLevel1InputName) =
+      decodeSessionDetails(modelPath)
+
     val ortInputs = Map(
-      "embed_id.1" -> patchLevel0Data,
-      "embed_id" -> patchLevel1Data,
+      decodeLevel0InputName -> patchLevel0Data,
+      decodeLevel1InputName -> patchLevel1Data,
     ).asJava
 
-    val result = session.run(ortInputs)
+    val result = decodeSession.run(ortInputs)
 
     val recon = result.get(0).getValue.asInstanceOf[Array[Array[Array[Array[Float]]]]](0)
 
     val bandTiles = for {
       band <- recon
-    } yield FloatArrayTile(band.flatten, cols = tileSize, rows = tileSize)
+    } yield FloatArrayTile(band.flatten, cols = patchSize, rows = patchSize)
 
     MultibandTile(bandTiles)
   }
