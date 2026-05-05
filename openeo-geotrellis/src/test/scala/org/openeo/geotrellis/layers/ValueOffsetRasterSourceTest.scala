@@ -5,6 +5,7 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{ConvertTargetCellType, DefaultTarget, DoubleConstantNoDataCellType, RasterSource, resample}
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.openeo.geotrellis.layers.raster_source.ValueOffsetRasterSource
 
 class ValueOffsetRasterSourceTest {
   def getCornerPixelValue(rs: RasterSource): Int = rs.read().get._1.toArrayTile().band(0).get(5, 5)

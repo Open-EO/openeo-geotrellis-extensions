@@ -1,4 +1,4 @@
-package org.openeo.geotrellis.layers
+package org.openeo.geotrellis.layers.raster_source
 
 import geotrellis.raster.SourcePath
 

@@ -10,6 +10,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIf
+import org.openeo.geotrellis.layers.raster_source.{NoDataRasterSource, OpenEoSourcePath, SentinelXMLMetadataRasterSource}
 
 class BandCompositeRasterSourceTest extends RasterMatchers {
 
