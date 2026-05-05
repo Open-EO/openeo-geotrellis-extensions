@@ -337,9 +337,7 @@ package object corsa {
 
     val patchSize = tile.cols
 
-    val modelPath =
-      Paths.get(s"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA improvements #702/onnx/corsa_mtc_160k_64b_${patchSize}p/encoder.onnx")
-
+    val modelPath = Paths.get(s"/data/users/Private/vdboschj/onnx/corsa_mtc_160k_64b_${patchSize}p/encoder.onnx")
     require(Files.exists(modelPath))
 
     val EncodeSessionDetails(encodeSession, encodeInputName) = encodeSessionDetails(modelPath, patchSize)
@@ -370,9 +368,7 @@ package object corsa {
 
     val patchSize = tile.cols * 2
 
-    val modelPath =
-      Paths.get(s"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA improvements #702/onnx/corsa_mtc_160k_64b_${patchSize}p/decoder.onnx")
-
+    val modelPath = Paths.get(s"/data/users/Private/vdboschj/onnx/corsa_mtc_160k_64b_${patchSize}p/decoder.onnx")
     require(Files.exists(modelPath), modelPath.toString)
 
     val level0 = tile.band(0).map(nanTo0 _)
