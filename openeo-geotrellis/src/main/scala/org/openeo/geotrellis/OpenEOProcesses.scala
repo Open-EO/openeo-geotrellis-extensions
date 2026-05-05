@@ -1206,6 +1206,56 @@ class OpenEOProcesses extends Serializable {
     )
   }
 
+  //noinspection ScalaUnusedSymbol
+  def corsaCompressV2(datacube: MultibandTileLayerRDD[_], modelTileSize: Int): AnyRef =
+    datacube.metadata.bounds.get.maxKey match {
+      case _: SpatialKey => corsaCompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], modelTileSize)
+      case _: SpaceTimeKey => corsaCompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], modelTileSize)
+    }
+
+  def corsaCompressV2Generic[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
+    val expectedTileSize = modelTileSize
+
+    val retiled =
+      if (datacube.metadata.tileCols == expectedTileSize && datacube.metadata.tileRows == expectedTileSize) datacube
+      else retileGeneric(datacube, sizeX = expectedTileSize, sizeY = expectedTileSize, overlapX = 0, overlapY = 0)
+
+    val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = expectedTileSize / 2, tileRows = expectedTileSize / 2)
+    val newBounds = retiled.metadata.getComponent[Bounds[K]].flatMap { keyBounds =>
+      keyBounds.rekey(retiled.metadata.layout, retiled.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    ContextRDD(
+      retiled.mapValues(corsa.compressV2),
+      retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
+  //noinspection ScalaUnusedSymbol
+  def corsaDecompressV2(datacube: MultibandTileLayerRDD[_], modelTileSize: Int): AnyRef =
+    datacube.metadata.bounds.get.maxKey match {
+      case _: SpatialKey => corsaDecompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], modelTileSize)
+      case _: SpaceTimeKey => corsaDecompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], modelTileSize)
+    }
+
+  def corsaDecompressV2Generic[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
+    val expectedTileSize = modelTileSize / 2
+
+    val retiled =
+      if (datacube.metadata.tileCols == expectedTileSize && datacube.metadata.tileRows == expectedTileSize) datacube
+      else retileGeneric(datacube, sizeX = expectedTileSize, sizeY = expectedTileSize, overlapX = 0, overlapY = 0)
+
+    val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = modelTileSize, tileRows = modelTileSize)
+    val newBounds = retiled.metadata.bounds.flatMap { keyBounds =>
+      keyBounds.rekey(retiled.metadata.layout, retiled.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    ContextRDD(
+      retiled.mapValues(corsa.decompressV2),
+      retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
   def convertDataType(datacube: Object, dataType: String): Object = {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
