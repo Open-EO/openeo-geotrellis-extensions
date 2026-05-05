@@ -68,6 +68,7 @@ object GDALCloudRasterSource {
     val compositeRasterSource = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource]
     val cloudRasterSource = (compositeRasterSource.sources.head match {
       case rsOffset: ValueOffsetRasterSource => rsOffset.rasterSource
+      case indexedRasterSource: IndexedRasterSource => indexedRasterSource.rasterSource
       case rs => rs
     }).asInstanceOf[GDALCloudRasterSource]
     cloudRasterSource match {

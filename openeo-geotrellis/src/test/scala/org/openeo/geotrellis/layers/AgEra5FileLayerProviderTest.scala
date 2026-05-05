@@ -9,31 +9,34 @@ import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIf
+import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.io.TempDir
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.{LocalSparkContextJupyter, ProjectedPolygons}
+import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.opensearch.backends.Agera5SearchClient
 
 import java.time.{LocalDate, ZoneId}
 import java.util
-import scala.collection.JavaConverters.asScalaBuffer
+import scala.jdk.CollectionConverters._
 
-object AgEra5FileLayerProviderTest extends LocalSparkContextJupyter
+object AgEra5FileLayerProviderTest
 
-class AgEra5FileLayerProviderTest {
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMepData")
+class AgEra5FileLayerProviderTest extends LocalSparkContext {
   import AgEra5FileLayerProviderTest._
 
   private val bands: util.List[String] = util.Arrays.asList("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux")
 
   private def layerProvider = FileLayerProvider(new Agera5SearchClient(dataGlob = "/data/MEP/ECMWF/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif", bands, raw".+_(\d{4})(\d{2})(\d{2})\.tif".r),"",
-    NonEmptyList.fromList(asScalaBuffer(bands).toList).get,
+    NonEmptyList.fromList((bands.asScala).toList).get,
     rootPath = "/data/MEP/ECMWF/AgERA5",
     maxSpatialResolution = CellSize(0.1, 0.1),
     new Sentinel5PPathDateExtractor(maxDepth = 3),
     layoutScheme = FloatingLayoutScheme(256), experimental = false)
 
   private def layerProvider2 = FileLayerProvider(new Agera5SearchClient(dataGlob = "/data/MEP/ECMWF/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif", bands, raw".+_(\d{4})(\d{2})(\d{2})\.tif".r),"",
-    NonEmptyList.fromList(asScalaBuffer(bands).toList).get,
+    NonEmptyList.fromList((bands.asScala).toList).get,
     rootPath = "/data/MEP/ECMWF/AgERA5",
     maxSpatialResolution = CellSize(3000, 3000),
     new Sentinel5PPathDateExtractor(maxDepth = 3),

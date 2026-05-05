@@ -1,5 +1,1524 @@
 [
   {
+    "id": "_PROBAV_L3_S1_TOC_100M_OPENSEARCH",
+    "description": "PROBA-V S1-TOC – daily global composites, Top-Of-Canopy, 100m resolution (Collection 2)",
+    "license": "proprietary",
+    "providers": [
+      {
+        "name": "VITO, on behalf of the Belgian Science Policy Office (BELSPO).",
+        "roles": [
+          "producer",
+          "licensor"
+        ],
+        "url": "http://proba-v.vgt.vito.be"
+      }
+    ],
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "extent": [
+          -179.999,
+          179.999
+        ],
+        "step": 0.000992063492063,
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "extent": [
+          -56,
+          75
+        ],
+        "step": 0.000992063492063,
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "NDVI",
+          "RED",
+          "NIR",
+          "BLUE",
+          "SWIR",
+          "SZA",
+          "SAA",
+          "SWIRVAA",
+          "SWIRVZA",
+          "VNIRVAA",
+          "VNIRVZA",
+          "SM"
+        ]
+      }
+    },
+    "summaries": {
+      "constellation": [
+        "PROBA-V"
+      ],
+      "platform": [
+        "PROBA-V"
+      ],
+      "instruments": [
+        "PROBA-V"
+      ],
+      "eo:gsd": [
+        100
+      ],
+      "raster:bands": [
+        {
+          "name": "NDVI",
+          "scale": 0.004,
+          "offset": -0.08,
+          "unit": "1"
+        },
+        {
+          "name": "RED",
+          "scale": 0.0005,
+          "offset": 0.0,
+          "unit": "1"
+        },
+        {
+          "name": "NIR",
+          "scale": 0.0005,
+          "offset": 0.0,
+          "unit": "1"
+        },
+        {
+          "name": "BLUE",
+          "scale": 0.0005,
+          "offset": 0.0,
+          "unit": "1"
+        },
+        {
+          "name": "SWIR",
+          "scale": 0.0005,
+          "offset": 0.0,
+          "unit": "1"
+        },
+        {
+          "name": "SZA",
+          "scale": 0.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "SAA",
+          "scale": 1.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "SWIRVAA",
+          "scale": 1.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "SWIRVZA",
+          "scale": 0.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "VNIRVAA",
+          "scale": 1.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "VNIRVZA",
+          "scale": 0.5,
+          "offset": 0.0,
+          "unit": "deg"
+        },
+        {
+          "name": "SM",
+          "scale": 1.0,
+          "offset": 0.0,
+          "unit": "1"
+        }
+      ],
+      "eo:bands": [
+        {
+          "name": "NDVI",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "RED",
+          "gsd": 100,
+          "type": "int16"
+        },
+        {
+          "name": "NIR",
+          "gsd": 100,
+          "type": "int16"
+        },
+        {
+          "name": "BLUE",
+          "gsd": 100,
+          "type": "int16"
+        },
+        {
+          "name": "SWIR",
+          "gsd": 100,
+          "type": "int16"
+        },
+        {
+          "name": "SZA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "SAA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "SWIRVAA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "SWIRVZA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "VNIRVAA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "VNIRVZA",
+          "gsd": 100,
+          "type": "int8"
+        },
+        {
+          "name": "SM",
+          "gsd": 100,
+          "type": "int8"
+        }
+      ]
+    },
+    "links": [
+      {
+        "href": "https://services.terrascope.be/wmts/v2",
+        "rel": "wmts",
+        "wmts:layer": "PROBAV_S1_TOC_100M_COG_V2"
+      }
+    ],
+    "_vito": {
+      "data_source": {
+        "type": "file-probav",
+        "opensearch_collection_id": "urn:eop:VITO:PROBAV_S1_TOC_100M_COG_V2",
+        "root_path": "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S1_TOC_100M",
+        "realign": true
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -179.999,
+            -56,
+            179.999,
+            75
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2014-03-12",
+            "2021-10-31"
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "PROBAV_L3_S1_TOC_100M",
+    "description": "PROBA-V S1-TOC – daily global composites, Top-Of-Canopy, 100m resolution (Collection 2)",
+    "license": "proprietary",
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "extent": [
+          -179.999,
+          179.999
+        ],
+        "step": 0.000992063492063,
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "extent": [
+          -56,
+          75
+        ],
+        "step": 0.000992063492063,
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "NDVI",
+          "RED",
+          "NIR",
+          "BLUE",
+          "SWIR",
+          "SZA",
+          "SAA",
+          "SWIRVAA",
+          "SWIRVZA",
+          "VNIRVAA",
+          "VNIRVZA",
+          "SM"
+        ]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.terrascope.be/collections/terrascope-probav-s1-toc-100m-cog-v2",
+        "load_stac_feature_flags": {
+          "granule_metadata_band_map": {
+            "SZA": "GEOMETRY##0",
+            "SAA": "GEOMETRY##1",
+            "SWIRVAA": "GEOMETRY##2",
+            "SWIRVZA": "GEOMETRY##3",
+            "VNIRVAA": "GEOMETRY##4",
+            "VNIRVZA": "GEOMETRY##5"
+          },
+          "cellsize_override": [
+            0.000992063492063,
+            0.000992063492063
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "_SENTINEL2_L2A_OPENSEARCH",
+    "name": "SENTINEL2_L2A",
+    "title": "Sentinel-2 L2A",
+    "description": "SENTINEL-2 is a wide-swath, high-resolution, multi-spectral imaging mission, supporting Copernicus Land Monitoring studies, including the monitoring of vegetation, soil and water cover, as well as observation of inland waterways and coastal areas. The SENTINEL-2 Multispectral Instrument (MSI) samples 13 spectral bands: four bands at 10 metres, six bands at 20 metres and three bands at 60 metres spatial resolution.\n The level 2A data is atmospherically corrected using Sen2Cor.",
+    "mission": "Sentinel-2",
+    "license": "proprietary",
+    "keywords": [
+      "COPERNICUS",
+      "ESA",
+      "Orthoimagery",
+      "Sentinel-2",
+      "MSI",
+      "Level-2A",
+      "Radiometry",
+      "Plant Resource",
+      "TOC"
+    ],
+    "providers": [{
+      "name": "ESA",
+      "roles": [
+        "producer"
+      ],
+      "url": "https://esa.int/"
+    },
+      {
+        "name": "CDSE",
+        "roles": [
+          "processor",
+          "host"
+        ],
+        "url": "https://dataspace.copernicus.eu/"
+      }],
+    "links": [
+      {
+        "rel": "license",
+        "href": "https://sentinels.copernicus.eu/documents/247904/690755/Sentinel_Data_Legal_Notice",
+        "type": "application/pdf"
+      },
+      {
+        "rel": "alternate",
+        "href": "https://documentation.dataspace.copernicus.eu/Data/SentinelMissions/Sentinel2.html#sentinel-2-level-2a-top-of-canopy-toc",
+        "type": "application/html"
+      },
+      {
+        "href": "https://dataspace.copernicus.eu/browser/?zoom=11&lat=45.36638&lng=12.49832&themeId=DEFAULT-THEME&visualizationUrl=https%3A%2F%2Fsh.dataspace.copernicus.eu%2Fogc%2Fwms%2F28b654e7-8912-4e59-9e58-85b58d768b3a&datasetId=S2_L2A_CDAS&fromTime=2023-02-07T00%3A00%3A00.000Z&toTime=2023-02-07T23%3A59%3A59.999Z&layerId=1_TRUE_COLOR&demSource3D=%22MAPZEN%22&cloudCoverage=10",
+        "title": "CDSE Data-Browser",
+        "rel": "browser"
+      },
+      {
+        "href": "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?cloudCover=[0,10]&productType=S2MSI2A&startDate=2022-06-11&completionDate=2022-06-22&maxRecords=10",
+        "rel": "opensearch",
+        "title": "Opensearch product query"
+      },
+      {
+        "href": "https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-2-msi/product-types/level-2a",
+        "title": "User guide",
+        "rel": "about"
+      },
+      {
+        "href": "https://services.sentinel-hub.com/ogc/wmts/7d34803f-511c-4caf-9438-6d72f32c8174",
+        "rel": "wmts",
+        "title":"Web Map Tile Service",
+        "wmts:dimensions": {
+          "warnings": true
+        },
+        "wmts:layer": "TRUE-COLOR"
+      }
+    ],
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -56,
+            180,
+            83
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2015-07-04",
+            null
+          ]
+        ]
+      }
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}, "step": 10},
+      "y": {"type": "spatial", "axis": "y", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}, "step": 10},
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "B01",
+          "B02",
+          "B03",
+          "B04",
+          "B05",
+          "B06",
+          "B07",
+          "B08",
+          "B8A",
+          "B09",
+          "B11",
+          "B12",
+          "WVP",
+          "AOT",
+          "SCL",
+          "sunAzimuthAngles",
+          "sunZenithAngles",
+          "viewAzimuthMean",
+          "viewZenithMean",
+          "CLD",
+          "SNW"
+        ]
+      }
+    },
+    "summaries": {
+      "platform": [
+        "sentinel-2a",
+        "sentinel-2b"
+      ],
+      "instrument": [
+        "msi"
+      ],
+      "constellation": [
+        "sentinel-2"
+      ],
+      "gsd": [
+        10
+      ],
+      "eo:cloud_cover": {
+        "minimum": 0,
+        "maximum": 100
+      },
+      "productIdentifier": {},
+      "tileId": {},
+      "processingBaseline": {},
+      "eo:bands": [
+        {
+          "name": "B01",
+          "aliases": ["IMG_DATA_Band_B01_60m_Tile1_Data"],
+          "common_name": "coastal",
+          "center_wavelength": 0.4427,
+          "full_width_half_max": 0.021,
+          "gsd": 60,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B02",
+          "aliases": ["IMG_DATA_Band_B02_10m_Tile1_Data"],
+          "common_name": "blue",
+          "center_wavelength": 0.4924,
+          "full_width_half_max": 0.066,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B03",
+          "aliases": ["IMG_DATA_Band_B03_10m_Tile1_Data"],
+          "common_name": "green",
+          "center_wavelength": 0.5598,
+          "full_width_half_max": 0.036,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B04",
+          "aliases": ["IMG_DATA_Band_B04_10m_Tile1_Data"],
+          "common_name": "red",
+          "center_wavelength": 0.6646,
+          "full_width_half_max": 0.031,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B05",
+          "aliases": ["IMG_DATA_Band_B05_20m_Tile1_Data"],
+          "center_wavelength": 0.7041,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B06",
+          "aliases": ["IMG_DATA_Band_B06_20m_Tile1_Data"],
+          "center_wavelength": 0.7405,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B07",
+          "aliases": ["IMG_DATA_Band_B07_20m_Tile1_Data"],
+          "center_wavelength": 0.7828,
+          "full_width_half_max": 0.02,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B08",
+          "aliases": ["IMG_DATA_Band_B08_10m_Tile1_Data"],
+          "common_name": "nir",
+          "center_wavelength": 0.8328,
+          "full_width_half_max": 0.106,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B8A",
+          "aliases": ["IMG_DATA_Band_B8A_20m_Tile1_Data"],
+          "common_name": "nir08",
+          "center_wavelength": 0.8647,
+          "full_width_half_max": 0.021,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B09",
+          "aliases": ["IMG_DATA_Band_B09_60m_Tile1_Data"],
+          "common_name": "nir09",
+          "center_wavelength": 0.9451,
+          "full_width_half_max": 0.02,
+          "gsd": 60,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B11",
+          "aliases": ["IMG_DATA_Band_B11_20m_Tile1_Data"],
+          "common_name": "swir16",
+          "center_wavelength": 1.6137,
+          "full_width_half_max": 0.091,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B12",
+          "aliases": ["IMG_DATA_Band_B12_20m_Tile1_Data"],
+          "common_name": "swir22",
+          "center_wavelength": 2.2024,
+          "full_width_half_max": 0.175,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "WVP",
+          "aliases": ["IMG_DATA_Band_WVP_10m_Tile1_Data"]
+        },
+        {
+          "name": "AOT",
+          "aliases": ["IMG_DATA_Band_AOT_20m_Tile1_Data"]
+        },
+
+        {
+          "name": "SCL",
+          "aliases": ["IMG_DATA_Band_SCL_20m_Tile1_Data"],
+          "gsd": 20
+        },
+
+        {
+          "name": "sunAzimuthAngles",
+          "aliases":["S2_Level-2A_Tile1_Metadata##0", "SAA"],
+          "unit":"deg"
+        },
+        {
+          "name": "sunZenithAngles",
+          "aliases":["S2_Level-2A_Tile1_Metadata##1", "SZA"],
+          "unit":"deg"
+        },
+        {
+          "name": "viewAzimuthMean",
+          "aliases":["S2_Level-2A_Tile1_Metadata##2", "VAA", "approximateViewAzimuth"],
+          "unit":"deg"
+        },
+        {
+          "name": "viewZenithMean",
+          "aliases":["S2_Level-2A_Tile1_Metadata##3", "VZA", "approximateViewZenith"],
+          "unit":"deg"
+        },
+        {
+          "name": "CLD",
+          "aliases":["CloudPrbMask_Tile1_Data"],
+          "gsd": 20,
+          "type": "uint8",
+          "unit": "1",
+          "statistics": {
+            "minimum": [
+              0
+            ],
+            "maximum": [
+              100
+            ]
+          }
+        },
+        {
+          "name": "SNW",
+          "aliases":["SnowPrbMask_Tile1_Data"],
+          "gsd": 20,
+          "type": "uint8",
+          "unit": "1",
+          "statistics": {
+            "minimum": [
+              0
+            ],
+            "maximum": [
+              100
+            ]
+          }
+        }
+      ]
+    },
+    "assets": {
+      "thumbnail": {
+        "href": "https://www.esa.int/var/esa/storage/images/esa_multimedia/images/2022/07/tallinn_estonia/24383281-1-eng-GB/Tallinn_Estonia_pillars.jpg",
+        "type": "image/png",
+        "roles": [
+          "thumbnail"
+        ],
+        "title": "Sentinel 2 L2A"
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s2",
+        "opensearch_collection_id": "Sentinel2",
+        "opensearch_endpoint": "https://catalogue.dataspace.copernicus.eu/resto",
+        "opensearch_variant": "disabled",
+        "root_path": "/eodata",
+        "provider:backend": "creodias",
+        "parallel_query": true,
+        "select_one_orbit_per_day": true,
+        "is_utm": true
+      },
+      "properties": {
+        "productType": {
+          "process_graph": {
+            "asc": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "value"
+                },
+                "y": "L2A"
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "SENTINEL2_L2A_STAC",
+    "description": "[EXPERIMENTAL]",
+    "experimental": true,
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a",
+        "load_stac_feature_flags": {
+          "asset_id_to_bands_map": {
+            "AOT_10m": ["AOT"],
+            "AOT_20m": ["AOT"],
+            "AOT_60m": ["AOT"],
+            "SCL_20m": ["SCL"],
+            "SCL_60m": ["SCL"],
+            "WVP_10m": ["WVP"],
+            "WVP_20m": ["WVP"],
+            "WVP_60m": ["WVP"],
+            "CLD_20m": ["CLD"],
+            "CLD_60m": ["CLD"],
+            "SNW_20m": ["SNW"],
+            "SNW_60m": ["SNW"]
+          },
+          "granule_metadata_band_map": {
+            "sunAzimuthAngles": "granule_metadata##0",
+            "sunZenithAngles": "granule_metadata##1",
+            "viewAzimuthMean": "granule_metadata##2",
+            "viewZenithMean": "granule_metadata##3"
+          },
+          "property_filter_adaptations": {
+            "productType": "drop",
+            "tileId": {
+              "rename": "grid:code",
+              "value_mapping": "add-MGRS-prefix"
+            }
+          },
+          "apply_sentinel2_reflectance_offset": true
+        }
+      }
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "y": {"type": "spatial", "axis": "y", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "B01",
+          "B02",
+          "B03",
+          "B04",
+          "B05",
+          "B06",
+          "B07",
+          "B08",
+          "B8A",
+          "B09",
+          "B11",
+          "B12",
+          "WVP",
+          "AOT",
+          "SCL",
+          "sunAzimuthAngles",
+          "sunZenithAngles",
+          "viewAzimuthMean",
+          "viewZenithMean",
+          "CLD",
+          "SNW"
+        ]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "B01",
+          "common_name": "coastal",
+          "center_wavelength": 0.4427,
+          "full_width_half_max": 0.021,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B02",
+          "common_name": "blue",
+          "center_wavelength": 0.4924,
+          "full_width_half_max": 0.066,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B03",
+          "common_name": "green",
+          "center_wavelength": 0.5598,
+          "full_width_half_max": 0.036,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B04",
+          "common_name": "red",
+          "center_wavelength": 0.6646,
+          "full_width_half_max": 0.031,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B05",
+          "center_wavelength": 0.7041,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B06",
+          "center_wavelength": 0.7405,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B07",
+          "center_wavelength": 0.7828,
+          "full_width_half_max": 0.02,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B08",
+          "common_name": "nir",
+          "center_wavelength": 0.8328,
+          "full_width_half_max": 0.106,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B8A",
+          "common_name": "nir08",
+          "center_wavelength": 0.8647,
+          "full_width_half_max": 0.021,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B09",
+          "common_name": "nir09",
+          "center_wavelength": 0.9451,
+          "full_width_half_max": 0.02,
+          "gsd": 60,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B11",
+          "common_name": "swir16",
+          "center_wavelength": 1.6137,
+          "full_width_half_max": 0.091,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B12",
+          "common_name": "swir22",
+          "center_wavelength": 2.2024,
+          "full_width_half_max": 0.175,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "WVP",
+          "gsd": 10
+        },
+        {
+          "name": "AOT",
+          "gsd": 10
+        },
+        {
+          "name": "SCL",
+          "gsd": 20
+        },
+        {
+          "name": "sunAzimuthAngles",
+          "aliases":["SAA"],
+          "unit":"deg"
+        },
+        {
+          "name": "sunZenithAngles",
+          "aliases":["SZA"],
+          "unit":"deg"
+        },
+        {
+          "name": "viewAzimuthMean",
+          "aliases":["VAA", "approximateViewAzimuth"],
+          "unit":"deg"
+        },
+        {
+          "name": "viewZenithMean",
+          "aliases":["VZA", "approximateViewZenith"],
+          "unit":"deg"
+        },
+        {
+          "name": "CLD",
+          "gsd": 20
+        },
+        {
+          "name": "SNW",
+          "gsd": 20
+        }
+      ]
+    }
+  },
+  {
+    "id": "SENTINEL2_L2A_LATEST",
+    "name": "SENTINEL2_L2A",
+    "title": "Sentinel-2 L2A",
+    "description": "SENTINEL-2 is a wide-swath, high-resolution, multi-spectral imaging mission, supporting Copernicus Land Monitoring studies, including the monitoring of vegetation, soil and water cover, as well as observation of inland waterways and coastal areas. The SENTINEL-2 Multispectral Instrument (MSI) samples 13 spectral bands: four bands at 10 metres, six bands at 20 metres and three bands at 60 metres spatial resolution.\n The level 2A data is atmospherically corrected using Sen2Cor.",
+    "mission": "Sentinel-2",
+    "keywords": [
+      "COPERNICUS",
+      "ESA",
+      "Orthoimagery",
+      "Sentinel-2",
+      "MSI",
+      "Level-2A",
+      "Radiometry",
+      "Plant Resource",
+      "TOC"
+    ],
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a",
+        "load_stac_feature_flags": {
+          "stac_api_per_page_limit": 200,
+          "skipped_assets": ["B01_20m", "AOT_10m"],
+          "asset_id_to_bands_map": {
+            "AOT_10m": ["AOT"],
+            "AOT_20m": ["AOT"],
+            "AOT_60m": ["AOT"],
+            "SCL_20m": ["SCL"],
+            "SCL_60m": ["SCL"],
+            "WVP_10m": ["WVP"],
+            "WVP_20m": ["WVP"],
+            "WVP_60m": ["WVP"],
+            "CLD_20m": ["CLD"],
+            "CLD_60m": ["CLD"],
+            "SNW_20m": ["SNW"],
+            "SNW_60m": ["SNW"]
+          },
+          "granule_metadata_band_map": {
+            "sunAzimuthAngles": "granule_metadata##0",
+            "sunZenithAngles": "granule_metadata##1",
+            "viewAzimuthMean": "granule_metadata##2",
+            "viewZenithMean": "granule_metadata##3"
+          },
+          "property_filter_adaptations": {
+            "productType": "drop",
+            "processingBaseline": {"rename": "processing:version"},
+            "tileId": {
+              "rename": "grid:code",
+              "value_mapping": "add-MGRS-prefix"
+            }
+          },
+          "apply_sentinel2_reflectance_offset": true,
+          "cellsize_override": [
+            10.0,
+            10.0
+          ]
+        }
+      }
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "y": {"type": "spatial", "axis": "y", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "B01",
+          "B02",
+          "B03",
+          "B04",
+          "B05",
+          "B06",
+          "B07",
+          "B08",
+          "B8A",
+          "B09",
+          "B11",
+          "B12",
+          "WVP",
+          "AOT",
+          "SCL",
+          "sunAzimuthAngles",
+          "sunZenithAngles",
+          "viewAzimuthMean",
+          "viewZenithMean",
+          "CLD",
+          "SNW"
+        ]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "B01",
+          "common_name": "coastal",
+          "center_wavelength": 0.4427,
+          "full_width_half_max": 0.021,
+          "gsd": 60,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B02",
+          "common_name": "blue",
+          "center_wavelength": 0.4924,
+          "full_width_half_max": 0.066,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B03",
+          "common_name": "green",
+          "center_wavelength": 0.5598,
+          "full_width_half_max": 0.036,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B04",
+          "common_name": "red",
+          "center_wavelength": 0.6646,
+          "full_width_half_max": 0.031,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B05",
+          "center_wavelength": 0.7041,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B06",
+          "center_wavelength": 0.7405,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B07",
+          "center_wavelength": 0.7828,
+          "full_width_half_max": 0.02,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B08",
+          "common_name": "nir",
+          "center_wavelength": 0.8328,
+          "full_width_half_max": 0.106,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B8A",
+          "common_name": "nir08",
+          "center_wavelength": 0.8647,
+          "full_width_half_max": 0.021,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B09",
+          "common_name": "nir09",
+          "center_wavelength": 0.9451,
+          "full_width_half_max": 0.02,
+          "gsd": 60,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B11",
+          "common_name": "swir16",
+          "center_wavelength": 1.6137,
+          "full_width_half_max": 0.091,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B12",
+          "common_name": "swir22",
+          "center_wavelength": 2.2024,
+          "full_width_half_max": 0.175,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "WVP",
+          "gsd": 10
+        },
+        {
+          "name": "AOT",
+          "gsd": 20
+        },
+        {
+          "name": "SCL",
+          "gsd": 20
+        },
+        {
+          "name": "sunAzimuthAngles",
+          "aliases":["SAA"],
+          "unit":"deg"
+        },
+        {
+          "name": "sunZenithAngles",
+          "aliases":["SZA"],
+          "unit":"deg"
+        },
+        {
+          "name": "viewAzimuthMean",
+          "aliases":["VAA", "approximateViewAzimuth"],
+          "unit":"deg"
+        },
+        {
+          "name": "viewZenithMean",
+          "aliases":["VZA", "approximateViewZenith"],
+          "unit":"deg"
+        },
+        {
+          "name": "CLD",
+          "gsd": 20
+        },
+        {
+          "name": "SNW",
+          "gsd": 20
+        }
+      ],
+      "eo:cloud_cover": {
+        "minimum": 0,
+        "maximum": 100
+      }
+    }
+  },
+  {
+    "id": "SENTINEL2_L1C_STAC",
+    "description": "[EXPERIMENTAL]",
+    "experimental": true,
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l1c",
+        "load_stac_feature_flags": {
+          "granule_metadata_band_map": {
+            "sunAzimuthAngles": "granule_metadata##0",
+            "sunZenithAngles": "granule_metadata##1",
+            "viewAzimuthMean": "granule_metadata##2",
+            "viewZenithMean": "granule_metadata##3"
+          },
+          "property_filter_adaptations": {
+            "productType": "drop",
+            "tileId": {
+              "rename": "grid:code",
+              "value_mapping": "add-MGRS-prefix"
+            }
+          },
+          "apply_sentinel2_reflectance_offset": true
+        }
+      }
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "y": {"type": "spatial", "axis": "y", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "B01",
+          "B02",
+          "B03",
+          "B04",
+          "B05",
+          "B06",
+          "B07",
+          "B08",
+          "B8A",
+          "B09",
+          "B10",
+          "B11",
+          "B12",
+          "sunAzimuthAngles",
+          "sunZenithAngles",
+          "viewAzimuthMean",
+          "viewZenithMean"
+        ]
+      }
+    },
+    "summaries": {
+      "bands": [
+        {
+          "name": "B01",
+          "eo:center_wavelength": 0.4427,
+          "eo:common_name": "coastal"
+        },
+        {
+          "name": "B02",
+          "eo:center_wavelength": 0.4924,
+          "eo:common_name": "blue"
+        },
+        {
+          "name": "B03",
+          "eo:center_wavelength": 0.5598,
+          "eo:common_name": "green"
+        },
+        {
+          "name": "B04",
+          "eo:center_wavelength": 0.6646,
+          "eo:common_name": "red"
+        },
+        {
+          "name": "B05",
+          "eo:center_wavelength": 0.7041
+        },
+        {
+          "name": "B06",
+          "eo:center_wavelength": 0.7405
+        },
+        {
+          "name": "B07",
+          "eo:center_wavelength": 0.7828
+        },
+        {
+          "name": "B08",
+          "eo:center_wavelength": 0.8328,
+          "eo:common_name": "nir"
+        },
+        {
+          "name": "B8A",
+          "eo:center_wavelength": 0.8647,
+          "eo:common_name": "nir08"
+        },
+        {
+          "name": "B09",
+          "eo:center_wavelength": 0.9451,
+          "eo:common_name": "nir09"
+        },
+        {
+          "name": "B10",
+          "eo:center_wavelength": 1.3735,
+          "eo:common_name": "cirrus"
+        },
+        {
+          "name": "B11",
+          "eo:center_wavelength": 1.6137,
+          "eo:common_name": "swir16"
+        },
+        {
+          "name": "B12",
+          "eo:center_wavelength": 2.2024,
+          "eo:common_name": "swir22"
+        },
+        {
+          "name": "sunAzimuthAngles",
+          "aliases":["SAA"]
+        },
+        {
+          "name": "sunZenithAngles",
+          "aliases":["SZA"]
+        },
+        {
+          "name": "viewAzimuthMean",
+          "aliases":["VAA", "approximateViewAzimuth"]
+        },
+        {
+          "name": "viewZenithMean",
+          "aliases":["VZA", "approximateViewZenith"]
+        }
+      ],
+      "eo:bands": [
+        {
+          "name": "B01",
+          "center_wavelength": 0.4427,
+          "common_name": "coastal",
+          "full_width_half_max": 0.021,
+          "gsd": 60,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B02",
+          "center_wavelength": 0.4924,
+          "common_name": "blue",
+          "full_width_half_max": 0.066,
+          "gsd": 10,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B03",
+          "center_wavelength": 0.5598,
+          "common_name": "green",
+          "full_width_half_max": 0.036,
+          "gsd": 10,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B04",
+          "center_wavelength": 0.6646,
+          "common_name": "red",
+          "full_width_half_max": 0.031,
+          "gsd": 10,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B05",
+          "center_wavelength": 0.7041,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B06",
+          "center_wavelength": 0.7405,
+          "full_width_half_max": 0.015,
+          "gsd": 20,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B07",
+          "center_wavelength": 0.7828,
+          "full_width_half_max": 0.02,
+          "gsd": 20,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B08",
+          "center_wavelength": 0.8328,
+          "common_name": "nir",
+          "full_width_half_max": 0.106,
+          "gsd": 10,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B8A",
+          "center_wavelength": 0.8647,
+          "common_name": "nir08",
+          "full_width_half_max": 0.021,
+          "gsd": 20,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B09",
+          "center_wavelength": 0.9451,
+          "common_name": "nir09",
+          "full_width_half_max": 0.02,
+          "gsd": 60,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B10",
+          "center_wavelength": 1.3735,
+          "common_name": "cirrus",
+          "full_width_half_max": 0.031,
+          "gsd": 60,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B11",
+          "center_wavelength": 1.6137,
+          "common_name": "swir16",
+          "full_width_half_max": 0.091,
+          "gsd": 20,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "B12",
+          "center_wavelength": 2.2024,
+          "common_name": "swir22",
+          "full_width_half_max": 0.175,
+          "gsd": 20,
+          "offset": 0,
+          "scale": 0.0001,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "sunAzimuthAngles",
+          "unit": "deg",
+          "aliases": ["SAA"]
+        },
+        {
+          "name": "sunZenithAngles",
+          "unit": "deg",
+          "aliases": ["SZA"]
+        },
+        {
+          "name": "viewAzimuthMean",
+          "unit": "deg",
+          "aliases": ["VAA", "approximateViewAzimuth"]
+        },
+        {
+          "name": "viewZenithMean",
+          "unit": "deg",
+          "aliases": ["VZA", "approximateViewZenith"]
+        }
+      ]
+    }
+  },
+  {
     "id": "TestCollection-LonLat4x4",
     "_vito": {
       "data_source": {
@@ -917,13 +2436,6 @@
         "type": "file-s2",
         "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
-        "check_missing_products": {
-          "method": "terrascope",
-          "creo_catalog": {
-            "mission": "Sentinel2",
-            "level": "LEVEL1C"
-          }
-        },
         "provider:backend": "terrascope"
       }
     }

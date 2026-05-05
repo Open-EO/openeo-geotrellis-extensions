@@ -1,10 +1,10 @@
 package org.openeo.geotrellissentinelhub
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 
 import java.util.Collections
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 class Cql2TextFormatterTest {
   private val cql2TextFormatter = new Cql2TextFormatter

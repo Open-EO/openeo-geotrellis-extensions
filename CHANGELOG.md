@@ -8,9 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Support `mod` process ([#698](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/698))
 - Add support for reading ZStd compressed GTiff files ([#516](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/516))
 - `saveRDDTemporalAllowAssetPerBand`: add support for overviews ([openeo-geopyspark-driver#1151](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1151))
 - Collect and expose input features as STAC item collection files with `derived_from` links ([openeo-geopyspark-driver#1278](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1278))
+- Experimental support for CORSA compression and decompression ([#563](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/563), [#577](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/577))
+- Experimental support for ONNX models
 
 ### Changed
 
@@ -33,3 +36,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - load_collection/load_stac: reduce number of tasks and thus resource use by making partitioner settings adaptive
 - `load_stac`: avoid areas of zeroes for assets with integral values that don't define NODATA ([#446](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/446))
 - `load_stac`: avoid empty data cube for items with large footprints ([#582](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/582))
+- Fix "ripple effect" on download of binary/mask images by converting `BitCellType` to `UByteCellType` in GeoTIFF writer

@@ -120,10 +120,11 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   }
 
   override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
-    var union = bounds.reduce(_ combine _)
+    val union = bounds.reduce(_ combine _)
     val percentageToRead = bounds.map(_.size).sum.toFloat / union.size.toFloat
     if (percentageToRead > 0.5 && readFullTile) {
-      return readBoundsFullTile(bounds)
+      logger.debug(s"Special case - percentageToRead: $percentageToRead > 0.5, readFullTile: $readFullTile")
+      readBoundsFullTile(bounds)
     } else {
       val rastersByBounds = reprojectedSources.zipWithIndex.toList.flatMap(s => {
         s._1.readBounds(bounds).zipWithIndex.map(raster_int => ((raster_int._2, (s._2, raster_int._1))))
@@ -131,7 +132,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
         val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
         Raster(MultibandTile(sortedRasters.map(_.tile.band(0).convert(cellType))), sortedRasters.head.extent)
-      }).toIterator
+      }).iterator
     }
 
   }
@@ -225,5 +226,8 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       _.reproject(targetCRS, resampleTarget, method, strategy)
     },
       crs, parallelRead = parallelRead, softErrors = softErrors)
+
+  override def toString: String = s"BandCompositeRasterSource(${sources.toList}, $crs, $gridExtent, $name)"
+
 }
 

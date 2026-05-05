@@ -2,12 +2,14 @@ package org.openeo.geotrellissentinelhub
 
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Test
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIf
 import org.openeo.geotrelliscommon.ScopedMetadataTracker
 
 import java.util
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
 class TestSameStartEndDate {
 
   private val clientId = Utils.clientId

@@ -74,8 +74,8 @@ object CreoS3Utils {
 
   private def credentialsProviderWAW = {
     //EC2 credentials in CFC are usable across regions
-    val s3AccessKeyId = sys.env.getOrElse("WAW31_ACCESS_KEY_ID", "")
-    val s3SecretKey = sys.env.getOrElse("WAW31_SECRET_ACCESS_KEY", "")
+    val s3AccessKeyId = sys.env.getOrElse("CF_ACCESS_KEY_ID", "")
+    val s3SecretKey = sys.env.getOrElse("CF_SECRET_ACCESS_KEY", "")
     val credentialsProvider = StaticCredentialsProvider.create(AwsBasicCredentials.create(s3AccessKeyId, s3SecretKey))
     credentialsProvider
   }

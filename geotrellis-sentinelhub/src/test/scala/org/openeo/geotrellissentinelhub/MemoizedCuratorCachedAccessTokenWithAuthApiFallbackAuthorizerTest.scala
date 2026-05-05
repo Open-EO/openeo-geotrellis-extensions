@@ -1,9 +1,11 @@
 package org.openeo.geotrellissentinelhub
 
-import org.junit.Assert.{assertTrue, fail}
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.{assertTrue, fail}
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIf
 import scalaj.http.{Http, HttpResponse, HttpStatusException}
 
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
 class MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizerTest {
   private val sentinelHubClientId = Utils.clientId
   private val sentinelHubClientSecret = Utils.clientSecret

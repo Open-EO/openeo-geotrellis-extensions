@@ -11,9 +11,9 @@ import geotrellis.raster.{CellSize, GridBounds, UByteConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector._
-import org.junit.Assert.assertEquals
-import org.junit.jupiter.api.Assertions.assertArrayEquals
-import org.junit.{AfterClass, Ignore, Test}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.condition.EnabledIf
+import org.junit.jupiter.api.{AfterAll, Disabled, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrellis.{LayerFixtures, LocalSparkContext, ProjectedPolygons}
@@ -25,12 +25,14 @@ import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, ZoneId}
 import java.util
 
-object CglsPyramidFactoryTest extends LocalSparkContext {
-  @AfterClass
+object CglsPyramidFactoryTest {
+
+  @AfterAll
   def tearDown(): Unit = GDALWarp.deinit()
 }
 
-class CglsPyramidFactoryTest extends RasterMatchers {
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
+class CglsPyramidFactoryTest extends LocalSparkContext with RasterMatchers {
 
   @Test
   def readOriginalGrid(): Unit = {
@@ -139,7 +141,7 @@ class CglsPyramidFactoryTest extends RasterMatchers {
   }
 
   @Test
-  @Ignore("Temporary ignore to make build pass")
+  @Disabled("Temporary ignore to make build pass")
   def datacube_seq(): Unit = {
     val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2018/201806*/*/*.nc"
     val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
@@ -189,6 +191,7 @@ class CglsPyramidFactoryTest extends RasterMatchers {
     assertEquals(0.21796850248444263, physicalMean, 0.001) // from QGIS with the corresponding geotiff
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def datacube_seqSparse(): Unit = {
     val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2018/201806*/*/*.nc"

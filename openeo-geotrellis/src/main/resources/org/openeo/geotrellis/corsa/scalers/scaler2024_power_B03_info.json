@@ -1,0 +1,1 @@
+{"pt_kwargs": {"copy": true, "method": "yeo-johnson", "standardize": true}, "scaler_mean": [7.83425653014611], "scaler_var": [1.325532794830814], "lambdas_": [0.05670195986096691], "sc_kwargs": {"copy": false, "with_mean": true, "with_std": true}}

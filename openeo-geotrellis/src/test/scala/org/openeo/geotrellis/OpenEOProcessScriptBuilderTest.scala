@@ -6,8 +6,8 @@ import org.apache.spark.SparkContext
 import org.apache.spark.ml.linalg.{SQLDataTypes, Vectors}
 import org.apache.spark.sql.types.{IntegerType, StructField, StructType}
 import org.apache.spark.sql.{Row, SparkSession}
-import org.junit.Assert.assertEquals
-import org.junit.{Ignore, Test}
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.util
 import java.util.Random
@@ -43,7 +43,11 @@ class OpenEOProcessScriptBuilderTest {
     // Reduce tiles using classifier predictions.
     val builder = new OpenEOProcessScriptBuilder
     val arguments = new util.HashMap[String, AnyRef]
-    arguments.put("model", new util.HashMap[String, String]() {{put("from_parameter", "context")}})
+    arguments.put("model", new util.HashMap[String, String]() {
+      {
+        put("from_parameter", "context")
+      }
+    })
     arguments.put("data", "dummy")
     builder.expressionStart(predict_expression, arguments)
 
@@ -53,13 +57,13 @@ class OpenEOProcessScriptBuilderTest {
 
     builder.expressionEnd(predict_expression, arguments)
 
-    val context = Map[String,Any]("context" -> model)
+    val context = Map[String, Any]("context" -> model)
     val result = builder.generateFunction(context).apply(tiles.toSeq)
     SparkContext.getOrCreate.stop()
     result
   }
 
-  @Ignore("Spark 4 issue - To be fixed")
+  @Disabled("Spark 4 issue - To be fixed")
   @Test
   def testPredictCatBoost(): Unit = {
     val random = new Random(42)
@@ -83,7 +87,7 @@ class OpenEOProcessScriptBuilderTest {
     assertEquals(2, result.head.get(3, 3))
   }
 
-  @Ignore("Spark 4 issue - To be fixed")
+  @Disabled("Spark 4 issue - To be fixed")
   @Test
   def testPredictCatBoostProbabilities(): Unit = {
     val random = new Random(42)
@@ -102,10 +106,10 @@ class OpenEOProcessScriptBuilderTest {
     // Result = Vector[3] =? Should be Vector[4]
     // result[0] = ArrayTile(4,4,float32) with 16 probabilities => Correct.
     assertEquals(FloatCellType.withDefaultNoData, result.apply(0).cellType)
-    assertEquals(3, result.map(t => t.getDouble(0,0)).zipWithIndex.maxBy(_._1)._2)
-    assertEquals(0, result.map(t => t.getDouble(0,1)).zipWithIndex.maxBy(_._1)._2)
-    assertEquals(2, result.map(t => t.getDouble(0,2)).zipWithIndex.maxBy(_._1)._2)
-    assertEquals(0, result.map(t => t.getDouble(3,2)).zipWithIndex.maxBy(_._1)._2)
-    assertEquals(2, result.map(t => t.getDouble(3,3)).zipWithIndex.maxBy(_._1)._2)
+    assertEquals(3, result.map(t => t.getDouble(0, 0)).zipWithIndex.maxBy(_._1)._2)
+    assertEquals(0, result.map(t => t.getDouble(0, 1)).zipWithIndex.maxBy(_._1)._2)
+    assertEquals(2, result.map(t => t.getDouble(0, 2)).zipWithIndex.maxBy(_._1)._2)
+    assertEquals(0, result.map(t => t.getDouble(3, 2)).zipWithIndex.maxBy(_._1)._2)
+    assertEquals(2, result.map(t => t.getDouble(3, 3)).zipWithIndex.maxBy(_._1)._2)
   }
 }

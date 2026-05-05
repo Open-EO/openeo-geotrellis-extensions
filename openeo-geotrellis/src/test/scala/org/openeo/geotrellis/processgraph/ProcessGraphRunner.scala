@@ -90,13 +90,22 @@ object ProcessGraphRunner {
         val sparkUIPort = findFirstOpenPort(4040)
         logger.info(f"Waiting for remote debugger on port $debugPort")
         logger.info(f"SparkUI will be available at http://localhost:$sparkUIPort")
-        f"docker run -e LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/jep -p $debugPort:5005 -p $sparkUIPort:4040 $credentialsFileMapping $optionalDataMapping -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath DEBUG"
+        f"docker run $openeoPythonSrcMappings -e PYTHON_SRC=/pyproj -e LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/jep -p $debugPort:5005 -p $sparkUIPort:4040 $credentialsFileMapping $optionalDataMapping $optionalEODataMapping -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath DEBUG"
       } else {
-        f"docker run -e LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/jep -v $outputDir:/out $credentialsFileMapping $optionalDataMapping -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath"
+        f"docker run $openeoPythonSrcMappings -e LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/jep -v $outputDir:/out $credentialsFileMapping $optionalDataMapping $optionalEODataMapping -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath"
       }
     logger.debug(f"Prepared command: $cmd")
     val output = cmd.!!
     logger.info(output)
+  }
+
+  lazy val openeoPythonSrcMappings: String = {
+    val openeoPythonSrc = System.getProperty("openeo.python.src")
+    if (openeoPythonSrc != null) {
+      s"-v $openeoPythonSrc:/openeo_python_src -e OPENEO_PYTHON_SRC=/openeo_python_src"
+    } else {
+      ""
+    }
   }
 
   lazy val awsCredentialsMapping: String = {
@@ -121,7 +130,7 @@ object ProcessGraphRunner {
 
   lazy val optionalDataMapping: String = {
     val dataFolder = {
-      val file = new File("~/localdata")
+      val file = new File("/data")
       if (file.exists && file.isDirectory) {
         Some(file)
       } else {
@@ -129,6 +138,18 @@ object ProcessGraphRunner {
       }
     }
     dataFolder.map(f => f"-v ${f.getAbsolutePath}:/data").getOrElse("")
+  }
+
+  lazy val optionalEODataMapping: String = {
+    val dataFolder = {
+      val file = new File("/eodata")
+      if (file.exists && file.isDirectory) {
+        Some(file)
+      } else {
+        None
+      }
+    }
+    dataFolder.map(f => f"--mount type=bind,src=${f.getAbsolutePath},dst=/eodata,readonly,bind-propagation=rslave").getOrElse("")
   }
 
 

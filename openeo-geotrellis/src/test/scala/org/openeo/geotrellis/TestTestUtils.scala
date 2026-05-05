@@ -8,9 +8,9 @@ import org.openeo.geotrelliscommon.DataCubeParameters
 import java.nio.file.{Files, Paths}
 import scala.reflect.io.Directory
 
-object TestTestUtils extends LocalSparkContextJupyter {}
+object TestTestUtils {}
 
-class TestTestUtils {
+class TestTestUtils extends LocalSparkContext {
   @Test def testBuildPlainSpatioTemporalDataCube(): Unit = {
     val path = "tmp/testBuildPlainSpatioTemporalDataCube/"
     new Directory(Paths.get(path).toFile).deleteRecursively()
@@ -30,11 +30,6 @@ class TestTestUtils {
     val gtiffOptions = new GTiffOptions
     gtiffOptions.setTileSize(dcParams.tileSize)
     saveRDDTemporal(tileLayerRDD_10M, path + "/", formatOptions = gtiffOptions)
-
-    //    println("Done")
-    //    while (true) {
-    //      Thread.sleep(1000)  // Keep the Spark context alive for debugging
-    //    }
   }
 
 }

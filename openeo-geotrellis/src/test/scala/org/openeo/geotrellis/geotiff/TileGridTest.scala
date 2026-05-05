@@ -1,19 +1,19 @@
 package org.openeo.geotrellis.geotiff
 
+import cats.data.NonEmptyList
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel.DISK_ONLY
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.{BeforeAll, Test}
-import org.junit.{AfterClass, Assert}
+import org.junit.jupiter.api.{AfterAll, Assertions, BeforeAll, Test}
 import org.openeo.geotrellis.LayerFixtures.rgbLayerProvider
 import org.openeo.geotrellis.png.PngTest
-import org.openeo.geotrellis.stac.Item
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrellis.{LayerFixtures, geotiff}
 
@@ -22,7 +22,7 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
 import java.time.{LocalDate, ZonedDateTime}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 object TileGridTest {
   private var sc: SparkContext = _
@@ -45,14 +45,16 @@ object TileGridTest {
     sc = new SparkContext(conf)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit =
     sc.stop()
 }
 
 class TileGridTest {
+
   import TileGridTest._
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSaveStitchWithTileGrids(@TempDir outDir: Path): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -78,10 +80,10 @@ class TileGridTest {
       asset <- item.assets.values().asScala
     } yield asset.path
 
-    Assert.assertEquals(expectedPaths, actualPaths.toSet)
+    Assertions.assertEquals(expectedPaths, actualPaths.toSet)
 
     val extent = bbox.reproject(spatialLayer.metadata.crs)
-    val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
+    val cropBounds = Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax).asJava
 
     val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6))
     val expectedCroppedPaths = Set(
@@ -97,13 +99,14 @@ class TileGridTest {
       asset <- item.assets.values().asScala
     } yield asset.path
 
-    Assert.assertEquals(expectedCroppedPaths, actualCroppedPaths.toSet)
+    Assertions.assertEquals(expectedCroppedPaths, actualCroppedPaths.toSet)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSaveStitchWithTileGridsWithOptions(@TempDir outDir: Path): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
-    val bbox = ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng)
+    val bbox = ProjectedExtent(Extent(1.90, 50.95, 2.10, 51.05), LatLng)
     val layer = rgbLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
     val spatialLayer = layer
@@ -112,8 +115,9 @@ class TileGridTest {
 
     val gtiffOptions = new GTiffOptions
     gtiffOptions.setTileSize(128)
+    gtiffOptions.setOverview("ALL")
 
-    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6),gtiffOptions)
+    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6), gtiffOptions)
     val expectedPaths = Set(
       outDir + "/testSaveStitched-31UDS_3_4.tiff",
       outDir + "/testSaveStitched-31UDS_2_4.tiff",
@@ -121,26 +125,28 @@ class TileGridTest {
       outDir + "/testSaveStitched-31UDS_2_5.tiff",
     )
     // TODO: check if extents (in the layer CRS) are 10000m wide/high (in UTM)
-    Assert.assertEquals(expectedPaths, tiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet)
+    Assertions.assertEquals(expectedPaths, tiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet)
 
-    for (path <- expectedPaths){
+    for (path <- expectedPaths) {
       val tile = GeoTiff.readMultiband(path)
-      Assert.assertEquals(3,tile.overviews.size)
-      Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
+      Assertions.assertEquals(3, tile.overviews.size)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
-      Assert.assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
-      Assert.assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
-      Assert.assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
+      Assertions.assertEquals(Tiled(128, 128), tile.overviews(0).options.storageMethod)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 2).toInt, tile.overviews(0).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 2).toInt, tile.overviews(0).tile.rows)
+      Assertions.assertEquals(Tiled(128, 128), tile.overviews(1).options.storageMethod)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 4).toInt, tile.overviews(1).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 4).toInt, tile.overviews(1).tile.rows)
+      Assertions.assertEquals(Tiled(128, 128), tile.overviews(2).options.storageMethod)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 8).toInt, tile.overviews(2).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 8).toInt, tile.overviews(2).tile.rows)
     }
 
     val extent = bbox.reproject(spatialLayer.metadata.crs)
-    val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
+    val cropBounds = Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax).asJava
 
-    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6),gtiffOptions)
+    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6), gtiffOptions)
     val expectedCroppedPaths = Set(
       outDir + "/testSaveStitched_cropped-31UDS_3_4.tiff",
       outDir + "/testSaveStitched_cropped-31UDS_2_4.tiff",
@@ -148,66 +154,72 @@ class TileGridTest {
       outDir + "/testSaveStitched_cropped-31UDS_2_5.tiff",
     )
 
-    Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet)
+    Assertions.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet)
 
-    for (path <- expectedCroppedPaths){
+    for (path <- expectedCroppedPaths) {
       val tile = GeoTiff.readMultiband(path)
-      Assert.assertEquals(3,tile.overviews.size)
-      Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
+      Assertions.assertEquals(4, tile.overviews.size)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
-      Assert.assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
-      Assert.assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
-      Assert.assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
+      Assertions.assertEquals(Tiled(128, 128), tile.overviews(0).options.storageMethod)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 2).toInt, tile.overviews(0).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 2).toInt, tile.overviews(0).tile.rows)
+      Assertions.assertEquals(Tiled(128, 128), tile.overviews(1).options.storageMethod)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 4).toInt, tile.overviews(1).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 4).toInt, tile.overviews(1).tile.rows)
+      Assertions.assertEquals(Tiled(128, 128), tile.overviews(2).options.storageMethod)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 8).toInt, tile.overviews(2).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 8).toInt, tile.overviews(2).tile.rows)
+      Assertions.assertEquals(Tiled(128, 128), tile.overviews(3).options.storageMethod)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 16).toInt, tile.overviews(3).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 16).toInt, tile.overviews(3).tile.rows)
     }
   }
 
 
   @Test
-  def testGetFeatures():Unit = {
+  def testGetFeatures(): Unit = {
     val utm31 = CRS.fromEpsgCode(32631)
-    val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31),utm31)
+    val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
     val features = TileGrid.computeFeaturesForTileGrid("20km", bbox)
-    Assert.assertEquals(1, features.size)
-    Assert.assertEquals("31UDS_1_2", features.head._1)
+    Assertions.assertEquals(1, features.size)
+    Assertions.assertEquals("31UDS_1_2", features.head._1)
     val extent = features.head._2
 
-    Assert.assertEquals(extent.xmin,420000.0,0.01)
-    Assert.assertEquals(extent.ymin,5640000.0,0.01)
-    Assert.assertEquals(extent.xmax,440000.0,0.01)
-    Assert.assertEquals(extent.ymax,5660000.0,0.01)
+    Assertions.assertEquals(extent.xmin, 420000.0, 0.01)
+    Assertions.assertEquals(extent.ymin, 5640000.0, 0.01)
+    Assertions.assertEquals(extent.xmax, 440000.0, 0.01)
+    Assertions.assertEquals(extent.ymax, 5660000.0, 0.01)
 
   }
 
   @Test
-  def testGetFeatures10km():Unit = {
+  def testGetFeatures10km(): Unit = {
     val utm31 = CRS.fromEpsgCode(32631)
-    val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31),utm31)
+    val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
     val features = TileGrid.computeFeaturesForTileGrid("10km", bbox)
-    Assert.assertEquals(4,features.size)
+    Assertions.assertEquals(4, features.size)
     val f = features.find(_._1 == "31UDS_2_5").get
 
     var extent = f._2
 
-    Assert.assertEquals(420000.0,extent.xmin,0.01)
-    Assert.assertEquals(5640000.0,extent.ymin,0.01)
-    Assert.assertEquals(430000.0,extent.xmax,0.01)
-    Assert.assertEquals(5650000.0,extent.ymax,0.01)
+    Assertions.assertEquals(420000.0, extent.xmin, 0.01)
+    Assertions.assertEquals(5640000.0, extent.ymin, 0.01)
+    Assertions.assertEquals(430000.0, extent.xmax, 0.01)
+    Assertions.assertEquals(5650000.0, extent.ymax, 0.01)
 
     val f2 = features.find(_._1 == "31UDS_2_4").get
 
     extent = f2._2
 
-    Assert.assertEquals(420000.0,extent.xmin,0.01)
-    Assert.assertEquals(5650000.0,extent.ymin,0.01)
-    Assert.assertEquals(430000.0,extent.xmax,0.01)
-    Assert.assertEquals(5660000.0,extent.ymax,0.01)
+    Assertions.assertEquals(420000.0, extent.xmin, 0.01)
+    Assertions.assertEquals(5650000.0, extent.ymin, 0.01)
+    Assertions.assertEquals(430000.0, extent.xmax, 0.01)
+    Assertions.assertEquals(5660000.0, extent.ymax, 0.01)
 
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSaveStitchWithTileGridsTemporal(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -215,7 +227,7 @@ class TileGridTest {
     val utm31 = CRS.fromEpsgCode(32631)
     val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
 
-    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    val layer = LayerFixtures.testLayerProvider(NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), "org/openeo/geotrellis/testSaveStitchWithTileGridsTemporal_features.json").readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
     val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
     val expectedTiles = Set(
@@ -230,9 +242,10 @@ class TileGridTest {
       asset <- item.assets.values().asScala
     } yield (asset.path, item.datetime)
 
-    Assert.assertEquals(expectedTiles, actualTiles.toSet)
+    Assertions.assertEquals(expectedTiles, actualTiles.toSet)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSaveStitchWithTileGridsTemporalWithOptions(@TempDir outDir: Path): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -240,12 +253,12 @@ class TileGridTest {
     val utm31 = CRS.fromEpsgCode(32631)
     val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
 
-    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    val layer = LayerFixtures.testLayerProvider(NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), "org/openeo/geotrellis/testSaveStitchWithTileGridsTemporalWithOptions_features.json").readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
     val gtiffOptions = new GTiffOptions
     gtiffOptions.setOverview("ALL")
     gtiffOptions.setTileSize(128)
 
-    val tiles = geotiff.saveStitchedTileGridTemporal(layer, outDir + "/", "10km", DeflateCompression(6),gtiffOptions)
+    val tiles = geotiff.saveStitchedTileGridTemporal(layer, outDir + "/", "10km", DeflateCompression(6), gtiffOptions)
     val expectedTiles = Set(
       (outDir + "/openEO_2020-04-05Z_31UDS_3_4.tif", isoFormattedDate),
       (outDir + "/openEO_2020-04-05Z_31UDS_2_4.tif", isoFormattedDate),
@@ -253,24 +266,23 @@ class TileGridTest {
       (outDir + "/openEO_2020-04-05Z_31UDS_2_5.tif", isoFormattedDate)
     )
 
-    Assert.assertEquals(expectedTiles, tiles.asScala.map { case  item => (item.assets.values().iterator().next().path, item.datetime ) }.toSet)
+    Assertions.assertEquals(expectedTiles, tiles.asScala.map { case item => (item.assets.values().iterator().next().path, item.datetime) }.toSet.asInstanceOf[Set[(String, String)]])
 
-
-    for (path <- expectedTiles){
+    for (path <- expectedTiles) {
       val tile = GeoTiff.readMultiband(path._1)
-      Assert.assertEquals(3,tile.overviews.size)
-      Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
+      Assertions.assertEquals(2, tile.overviews.size)
       val colSize = tile.tile.cols
       val rowSize = tile.tile.rows
-      Assert.assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
-      Assert.assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
-      Assert.assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
-      Assert.assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
+      Assertions.assertEquals(Tiled(128, 128), tile.overviews(0).options.storageMethod)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 2).toInt, tile.overviews(0).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 2).toInt, tile.overviews(0).tile.rows)
+      Assertions.assertEquals(Tiled(128, 128), tile.overviews(1).options.storageMethod)
+      Assertions.assertEquals(math.ceil(colSize.toDouble / 4).toInt, tile.overviews(1).tile.cols)
+      Assertions.assertEquals(math.ceil(rowSize.toDouble / 4).toInt, tile.overviews(1).tile.rows)
     }
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSaveStitchWithTileGridsTemporalPrefix(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -278,7 +290,7 @@ class TileGridTest {
     val utm31 = CRS.fromEpsgCode(32631)
     val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
 
-    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    val layer = LayerFixtures.testLayerProvider(NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), "org/openeo/geotrellis/testSaveStitchWithTileGridsTemporalPrefix_features.json").readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
     val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6), filenamePrefix = Some("testPrefix"))
     val expectedTiles = Set(
@@ -293,11 +305,12 @@ class TileGridTest {
       asset <- item.assets.values().asScala
     } yield (asset.path, item.datetime)
 
-    Assert.assertEquals(expectedTiles, actualTiles.toSet)
+    Assertions.assertEquals(expectedTiles, actualTiles.toSet)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
-  def testWriteRDDTileGrid(): Unit ={
+  def testWriteRDDTileGrid(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng)
 
@@ -310,7 +323,7 @@ class TileGridTest {
     val paths = saveRDDTileGrid(spatialLayer, 3, "/tmp/testSaveRdd.tiff", "10km")
     val expectedPaths = List("/tmp/testSaveRdd-31UDS_3_4.tiff", "/tmp/testSaveRdd-31UDS_2_4.tiff", "/tmp/testSaveRdd-31UDS_3_5.tiff", "/tmp/testSaveRdd-31UDS_2_5.tiff")
 
-    Assert.assertEquals(paths.groupBy(identity), expectedPaths.groupBy(identity))
+    Assertions.assertEquals(paths.groupBy(identity), expectedPaths.groupBy(identity))
   }
 
 }

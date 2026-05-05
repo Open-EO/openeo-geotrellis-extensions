@@ -21,13 +21,14 @@ class DataCubeParameters extends Serializable {
   var pixelBufferX:Double = 0.0
   var pixelBufferY:Double = 0.0
   var noResampleOnRead: Boolean = false
-  var useNewFeatureExtentIntersection: Boolean = false
-  var useNewFeatureExtentIntersection2: Boolean = false
+  var useNewFeatureExtentIntersection: Boolean = true
+  var useNewFeatureExtentIntersection2: Boolean = true
   var timeDimensionFilter: Option[java.io.Serializable] = Option.empty
   var allowEmptyCube: Boolean = false
   var useRasterSourceProviders: Boolean = false
   var loadPerProduct: Boolean = false
   var rasterSource: Option[String] = Option.empty
+
   /**
    * A maximum size in megabytes that output partitions should have. Not all code paths support this yet.
    * If set, automatic tuning of other parameters such as index reduction should be applied.
@@ -42,11 +43,17 @@ class DataCubeParameters extends Serializable {
   var retainNoDataTiles: Boolean = false
 
   /**
+   * Whether to resolve overlapping tiles before reading data, by selecting the best source
+   * based on distance to footprint and CRS matching.
+   */
+  var resolveTileOverlap: Boolean = true
+
+  /**
    * Configuration to override asset loading with synthetic data
    */
   var syntheticDataOverride: Option[SyntheticDataOverride] = None
 
-  override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
+  override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY, $noResampleOnRead, $useNewFeatureExtentIntersection, $useNewFeatureExtentIntersection2)"
 
   def setPartitionerIndexReduction(reduction:Int): Unit = {
     if (reduction < 0) {
@@ -90,12 +97,12 @@ class DataCubeParameters extends Serializable {
     noResampleOnRead = noResample
   }
 
-  def setUseNewFeatureExtentIntersection(v: Boolean): Unit = {
-    useNewFeatureExtentIntersection = v
+  def setUseNewFeatureExtentIntersection(newFeatureExtentIntersection: Boolean): Unit = {
+    useNewFeatureExtentIntersection = newFeatureExtentIntersection
   }
 
-  def setUseNewFeatureExtentIntersection2(v: Boolean): Unit = {
-    useNewFeatureExtentIntersection2 = v
+  def setUseNewFeatureExtentIntersection2(newFeatureExtentIntersection2: Boolean): Unit = {
+    useNewFeatureExtentIntersection2 = newFeatureExtentIntersection2
   }
 
   def setTimeDimensionFilter(conditionProcessScriptBuilder:java.io.Serializable):Unit = {
@@ -112,6 +119,10 @@ class DataCubeParameters extends Serializable {
 
   def setRetainNoDataTiles(retain:Boolean):Unit = {
     retainNoDataTiles = retain
+  }
+
+  def setResolveTileOverlap(resolve: Boolean): Unit = {
+    resolveTileOverlap = resolve
   }
 
   def setSyntheticDataOverride(syntheticData: SyntheticDataOverride): Unit = {

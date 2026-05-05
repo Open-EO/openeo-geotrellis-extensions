@@ -9,20 +9,22 @@ import org.apache.spark.SparkException;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.scheduler.SparkListener;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import static java.util.Arrays.asList;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class CancelRunawayJobListenerTest {
 
     private static final long timeoutInMilliseconds = 5000;
     private static JavaSparkContext jsc;
 
-    @BeforeClass
+    @BeforeAll
     public static void setupSpark() {
         SparkConf conf = new SparkConf()
                 .setMaster("local[2]")
@@ -37,7 +39,7 @@ public class CancelRunawayJobListenerTest {
         sc.addSparkListener(cancelRunawayJobListener);
     }
 
-    @AfterClass
+    @AfterAll
     public static void tearDownSpark() {
         jsc.stop();
     }
@@ -51,17 +53,19 @@ public class CancelRunawayJobListenerTest {
         assertEquals(6, sum);
     }
 
-    @Test(expected = SparkException.class, timeout = timeoutInMilliseconds * 2)
+    @Timeout(value = timeoutInMilliseconds*2, unit = TimeUnit.MILLISECONDS)
+    @Test
     public void runawayJobIsCancelled() {
-        JavaRDD<Integer> ints = jsc.parallelize(asList(1, 2, 3));
+        assertThrows(SparkException.class, () -> {
+            JavaRDD<Integer> ints = jsc.parallelize(asList(1, 2, 3));
 
-        int slowSum = ints
-                .mapPartitions(is -> {
-                    TimeUnit.MILLISECONDS.sleep(timeoutInMilliseconds * 2);
-                    return is;
-                })
-                .reduce(Integer::sum);
-
-        assertEquals(6, slowSum);
+            int slowSum = ints
+                    .mapPartitions(is -> {
+                        TimeUnit.MILLISECONDS.sleep(timeoutInMilliseconds * 2);
+                        return is;
+                    })
+                    .reduce(Integer::sum);
+            assertEquals(6, slowSum);
+        });
     }
 }

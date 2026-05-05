@@ -45,7 +45,7 @@
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
-            <artifactId>openeo-opensearch-client</artifactId>
+            <artifactId>openeo-opensearch-client_2.13</artifactId>
             <version>${openeo-opensearch-client.version}</version>
         </dependency>
         <dependency>
@@ -172,13 +172,16 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
-            <version>5.3.2</version>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.junit.vintage</groupId>
-            <artifactId>junit-vintage-engine</artifactId>
-            <version>5.3.2</version>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

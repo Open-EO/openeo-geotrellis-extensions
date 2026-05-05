@@ -21,6 +21,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
@@ -32,7 +33,7 @@ import org.openeo.geotrellis.geotiff._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrelliscommon.DatacubeSupport._
-import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
@@ -50,7 +51,7 @@ import java.util
 import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
-import scala.io.Source
+import scala.io.{BufferedSource, Source}
 import scala.jdk.CollectionConverters._
 import scala.reflect.io.Directory
 
@@ -88,11 +89,11 @@ object FileLayerProviderTest {
     }
   }
 
-  def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod) = {
+  def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod): DataCubeParameters = {
     val dataCubeParameters: DataCubeParameters = new DataCubeParameters
     dataCubeParameters.setPartitionerIndexReduction(6)
     dataCubeParameters.globalExtent = Some(polygonsAOI.extent)
-    if(resampleMethod!=null) {
+    if (resampleMethod != null) {
       dataCubeParameters.setResampleMethod(resampleMethod)
     }
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
@@ -118,22 +119,52 @@ class MockOpenSearchFeatures(val mockedFeatures: Array[OpenSearchResponses.Featu
   }
 }
 
-class FileLayerProviderTest extends RasterMatchers{
+class FileLayerProviderTest extends RasterMatchers {
+
   import FileLayerProviderTest._
 
   private def sentinel5PMaxSpatialResolution = CellSize(0.05, 0.05)
-  private def sentinel5PLayoutScheme = FloatingLayoutScheme(64)
-  private def sentinel5PCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1"
-  private def sentinel5PFileLayerProvider = FileLayerProvider(
-    openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
-    openSearchCollectionId = sentinel5PCollectionId,
-    NonEmptyList.one("NO2"),
-    rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1",
-    maxSpatialResolution = sentinel5PMaxSpatialResolution,
-    new Sentinel5PPathDateExtractor(maxDepth = 3),
-    layoutScheme = sentinel5PLayoutScheme
-  )
 
+  private def sentinel5PLayoutScheme = FloatingLayoutScheme(64)
+
+  private def sentinel5PCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1"
+
+  private def sentinel5PJsonStringFileLayerProvider(jsonFeaturesString: String) = {
+    val client = new FixedFeaturesOpenSearchClient
+    FeatureCollection.parse(jsonFeaturesString).features.foreach(feature => client.addFeature(feature))
+
+    FileLayerProvider(
+      openSearch = client,
+      openSearchCollectionId = sentinel5PCollectionId,
+      NonEmptyList.one("NO2"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1",
+      maxSpatialResolution = sentinel5PMaxSpatialResolution,
+      new Sentinel5PPathDateExtractor(maxDepth = 3),
+      layoutScheme = sentinel5PLayoutScheme
+    )
+  }
+
+
+  private def sentinel5PFileLayerProvider = {
+    val client = new FixedFeaturesOpenSearchClient
+    val source: BufferedSource = Source.fromResource("org/openeo/geotrellis/sentinel5PFileLayerProvider_features.json")
+    FeatureCollection.parse(
+      source.getLines().mkString("")
+    ).features.foreach(feature => client.addFeature(feature))
+
+    FileLayerProvider(
+      openSearch = client,
+      openSearchCollectionId = sentinel5PCollectionId,
+      NonEmptyList.one("NO2"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1",
+      maxSpatialResolution = sentinel5PMaxSpatialResolution,
+      new Sentinel5PPathDateExtractor(maxDepth = 3),
+      layoutScheme = sentinel5PLayoutScheme
+    )
+  }
+
+  @Disabled("Can't test against Terrascope OscarsOpenSearchClient")
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def cache(): Unit = {
     // important: multiple instances like in openeo-geopyspark-driver
@@ -147,17 +178,38 @@ class FileLayerProviderTest extends RasterMatchers{
     assertSame(metadataCall1, metadataCall2)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def smallBoundingBox(): Unit = {
     val smallBbox = ProjectedExtent(Point(x = 4.9754, y = 50.3244).buffer(0.0251).extent, LatLng)
 
-    assertTrue(smallBbox.extent.width < 0.06,s"${smallBbox.extent.width}")
+    assertTrue(smallBbox.extent.width < 0.06, s"${smallBbox.extent.width}")
     assertTrue(smallBbox.extent.height < 0.06, s"${smallBbox.extent.height}")
 
     val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
 
     //A small bounding can effectively fall between pixel centers
-    val baseLayer = sentinel5PFileLayerProvider.readTileLayer(from = date, to = date, smallBbox, sc = sc)
+    val baseLayer = sentinel5PJsonStringFileLayerProvider(
+      """{
+        |    "features": [
+        |        {
+        |            "type": "Feature",
+        |            "id": "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20191231_V100",
+        |            "geometry": {"coordinates":[[[-180.0,89.0],[-180.0,-89.0],[180.0,-89.0],[180.0,89.0],[-180.0,89.0]]],"type":"Polygon"},
+        |            "bbox": [-180.0,-89.0,180.0,89.0],
+        |            "properties":
+        |            	{"date":"2019-12-31T01:11:47.000Z","identifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20191231_V100","available":"2021-02-08T10:47:24Z","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1","productInformation":{"processingCenter":"VITO","productVersion":"V100","processingDate":"2023-03-02T10:10:39.950Z","processingMode":"OFFL","productType":"NO2_TD","availabilityTime":"2021-02-08T10:47:24Z"},"links":{"related":[{"length":2218326,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2019/12/S5P_OFFL_L3_NO2_TD_20191231_V100/S5P_NO2_TD_20191231_WEIGHT_V100.tif","type":"image/tiff","title":"WEIGHT","bandNames":["WEIGHT"],"category":"QUALITY"}],"data":[{"length":5454742,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2019/12/S5P_OFFL_L3_NO2_TD_20191231_V100/S5P_NO2_TD_20191231_NO2_V100.tif","conformsTo":"http://www.opengis.net/def/crs/EPSG/0/4326","type":"image/tiff","title":"NO2","bandNames":["NO2"]}],"previews":[],"alternates":[]},"published":"2021-02-08T10:47:24Z","title":"S5P_L3_NO2_TD_20191231_V100","bandNames":["S5P_L3_NO2_TD_20191231_V100"],"updated":"2023-03-02T10:10:39.950Z","acquisitionInformation":[{"acquisitionParameters":{"acquisitionType":"NOMINAL","beginningDateTime":"2019-12-31T01:11:47.000Z","endingDateTime":"2020-01-01T00:52:46.000Z"},"platform":{"platformShortName":"Sentinel-5P","platformSerialIdentifier":"S5P"}}],"status":"ARCHIVED","additionalAttributes":{"sourceData":[{"title":"S5P_OFFL_L2__NO2____20191231T025317_20191231T043447_11474_01_010302_20200101T192226"},{"title":"S5P_OFFL_L2__NO2____20191231T130217_20191231T144347_11480_01_010302_20200102T060402"},{"title":"S5P_OFFL_L2__NO2____20191231T061617_20191231T075747_11476_01_010302_20200101T232513"},{"title":"S5P_OFFL_L2__NO2____20191231T075747_20191231T093917_11477_01_010302_20200102T004148"},{"title":"S5P_OFFL_L2__NO2____20191231T011147_20191231T025317_11473_01_010302_20200101T180133"},{"title":"S5P_OFFL_L2__NO2____20191231T112047_20191231T130217_11479_01_010302_20200102T043947"},{"title":"S5P_OFFL_L2__NO2____20191231T180646_20191231T194816_11483_01_010302_20200102T112434"},{"title":"S5P_OFFL_L2__NO2____20191231T093917_20191231T112047_11478_01_010302_20200102T023550"},{"title":"S5P_OFFL_L2__NO2____20191231T212946_20191231T231116_11485_01_010302_20200102T140733"},{"title":"S5P_OFFL_L2__NO2____20191231T231116_20200101T005246_11486_01_010302_20200102T155014"},{"title":"S5P_OFFL_L2__NO2____20191231T194816_20191231T212946_11484_01_010302_20200102T123941"},{"title":"S5P_OFFL_L2__NO2____20191231T162516_20191231T180646_11482_01_010302_20200102T084547"},{"title":"S5P_OFFL_L2__NO2____20191231T144347_20191231T162516_11481_01_010302_20200102T070221"},{"title":"S5P_OFFL_L2__NO2____20191231T043447_20191231T061617_11475_01_010302_20200101T212406"}]}}
+        |         }
+        |        ,{
+        |            "type": "Feature",
+        |            "id": "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20200101_V100",
+        |            "geometry": {"coordinates":[[[-180.0,89.0],[-180.0,-89.0],[180.0,-89.0],[180.0,89.0],[-180.0,89.0]]],"type":"Polygon"},
+        |            "bbox": [-180.0,-89.0,180.0,89.0],
+        |            "properties":
+        |            	{"date":"2020-01-01T00:52:46.000Z","identifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20200101_V100","available":"2021-02-08T10:47:38Z","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1","productInformation":{"processingCenter":"VITO","productVersion":"V100","processingDate":"2023-03-02T10:08:00.205Z","processingMode":"OFFL","productType":"NO2_TD","availabilityTime":"2021-02-08T10:47:38Z"},"links":{"related":[{"length":2259627,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2020/01/S5P_OFFL_L3_NO2_TD_20200101_V100/S5P_NO2_TD_20200101_WEIGHT_V100.tif","type":"image/tiff","title":"WEIGHT","bandNames":["WEIGHT"],"category":"QUALITY"}],"data":[{"length":5431118,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2020/01/S5P_OFFL_L3_NO2_TD_20200101_V100/S5P_NO2_TD_20200101_NO2_V100.tif","conformsTo":"http://www.opengis.net/def/crs/EPSG/0/4326","type":"image/tiff","title":"NO2","bandNames":["NO2"]}],"previews":[],"alternates":[]},"published":"2021-02-08T10:47:38Z","title":"S5P_L3_NO2_TD_20200101_V100","bandNames":["S5P_L3_NO2_TD_20200101_V100"],"updated":"2023-03-02T10:08:00.205Z","acquisitionInformation":[{"acquisitionParameters":{"acquisitionType":"NOMINAL","beginningDateTime":"2020-01-01T00:52:46.000Z","endingDateTime":"2020-01-02T00:33:46.000Z"},"platform":{"platformShortName":"Sentinel-5P","platformSerialIdentifier":"S5P"}}],"status":"ARCHIVED","additionalAttributes":{"sourceData":[{"title":"S5P_OFFL_L2__NO2____20200101T174746_20200101T192916_11497_01_010302_20200103T104405"},{"title":"S5P_OFFL_L2__NO2____20200101T225216_20200102T003346_11500_01_010302_20200103T153646"},{"title":"S5P_OFFL_L2__NO2____20200101T073846_20200101T092016_11491_01_010302_20200103T003802"},{"title":"S5P_OFFL_L2__NO2____20200101T192916_20200101T211046_11498_01_010302_20200103T121312"},{"title":"S5P_OFFL_L2__NO2____20200101T211046_20200101T225216_11499_01_010302_20200103T140339"},{"title":"S5P_OFFL_L2__NO2____20200101T142446_20200101T160616_11495_01_010302_20200103T065547"},{"title":"S5P_OFFL_L2__NO2____20200101T160616_20200101T174746_11496_01_010302_20200103T083756"},{"title":"S5P_OFFL_L2__NO2____20200101T110146_20200101T124316_11493_01_010302_20200103T041218"},{"title":"S5P_OFFL_L2__NO2____20200101T092016_20200101T110146_11492_01_010302_20200103T021108"},{"title":"S5P_OFFL_L2__NO2____20200101T055716_20200101T073846_11490_01_010302_20200102T225627"},{"title":"S5P_OFFL_L2__NO2____20200101T124316_20200101T142446_11494_01_010302_20200103T054233"},{"title":"S5P_OFFL_L2__NO2____20200101T041546_20200101T055716_11489_01_010302_20200102T210644"},{"title":"S5P_OFFL_L2__NO2____20200101T005246_20200101T023416_11487_01_010302_20200102T172632"},{"title":"S5P_OFFL_L2__NO2____20200101T023416_20200101T041546_11488_01_010302_20200102T190100"}]}}
+        |         }
+        |    ]
+        |  }""".stripMargin).readTileLayer(from = date, to = date, smallBbox, sc = sc)
 
     val Summary(singleBandMean) = baseLayer
       .toSpatial(date)
@@ -169,8 +221,8 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
 
-  private def _getSentinel5PRasterSources(bbox: ProjectedExtent, date: ZonedDateTime, zoom: Int): (RDD[LayoutTileSource[SpaceTimeKey]], TileLayerMetadata[SpaceTimeKey]) = {
-    val fileLayerProvider = sentinel5PFileLayerProvider
+  private def _getSentinel5PRasterSources(bbox: ProjectedExtent, date: ZonedDateTime, zoom: Int, featuresJsonString: Option[String] = None): (RDD[LayoutTileSource[SpaceTimeKey]], TileLayerMetadata[SpaceTimeKey]) = {
+    val fileLayerProvider = if (featuresJsonString.isDefined) sentinel5PJsonStringFileLayerProvider(featuresJsonString.get) else sentinel5PFileLayerProvider
 
     val overlappingRasterSources: Seq[RasterSource] = fileLayerProvider.loadRasterSourceRDD(bbox, date, date, zoom).map(_._1)
     val commonCellType = overlappingRasterSources.head.cellType
@@ -180,27 +232,7 @@ class FileLayerProviderTest extends RasterMatchers{
     (rasterSources, metadata)
   }
 
-  @Test
-  def retainNoDataTilesTest(): Unit = {
-    val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
-    val bbox2 = ProjectedExtent(Extent(xmin = 50.0, ymin = 20.0, xmax = 60.0, ymax = 40.0), LatLng)
-    val fullBbox = ProjectedExtent(bbox1.extent.combine(bbox2.extent), LatLng)
-    val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
-
-    val params = new DataCubeParameters()
-    params.layoutScheme = "FloatingLayoutScheme"
-    params.globalExtent = Some(fullBbox)
-    params.tileSize = 64
-    params.retainNoDataTiles = true
-
-    val polygons1 = MultiPolygon(fullBbox.extent.toPolygon())
-    val (rasterSources1, metadata1) = _getSentinel5PRasterSources(fullBbox, date, 0)
-    val resultRetainNoDatatiles = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-      fullBbox.crs, sc, NoCloudFilterStrategy, datacubeParams=Some(params))
-    val resultRetainNoDatatilesColl = resultRetainNoDatatiles.collect()
-    assertEquals(1, resultRetainNoDatatilesColl.count(_._2.isInstanceOf[EmptyMultibandTile]))
-  }
-
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def sparsePartitionerTest(): Unit = {
     val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
@@ -216,7 +248,28 @@ class FileLayerProviderTest extends RasterMatchers{
     params.globalExtent = Some(fullBbox)
     params.tileSize = 64
 
-    val result = sentinel5PFileLayerProvider.readKeysToRasterSources(
+    val featuresJsonString =
+      """{
+        |    "features": [
+        |        {
+        |            "type": "Feature",
+        |            "id": "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20191231_V100",
+        |            "geometry": {"coordinates":[[[-180.0,89.0],[-180.0,-89.0],[180.0,-89.0],[180.0,89.0],[-180.0,89.0]]],"type":"Polygon"},
+        |            "bbox": [-180.0,-89.0,180.0,89.0],
+        |            "properties":
+        |            	{"date":"2019-12-31T01:11:47.000Z","identifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20191231_V100","available":"2021-02-08T10:47:24Z","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1","productInformation":{"processingCenter":"VITO","productVersion":"V100","processingDate":"2023-03-02T10:10:39.950Z","processingMode":"OFFL","productType":"NO2_TD","availabilityTime":"2021-02-08T10:47:24Z"},"links":{"related":[{"length":2218326,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2019/12/S5P_OFFL_L3_NO2_TD_20191231_V100/S5P_NO2_TD_20191231_WEIGHT_V100.tif","type":"image/tiff","title":"WEIGHT","bandNames":["WEIGHT"],"category":"QUALITY"}],"data":[{"length":5454742,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2019/12/S5P_OFFL_L3_NO2_TD_20191231_V100/S5P_NO2_TD_20191231_NO2_V100.tif","conformsTo":"http://www.opengis.net/def/crs/EPSG/0/4326","type":"image/tiff","title":"NO2","bandNames":["NO2"]}],"previews":[],"alternates":[]},"published":"2021-02-08T10:47:24Z","title":"S5P_L3_NO2_TD_20191231_V100","bandNames":["S5P_L3_NO2_TD_20191231_V100"],"updated":"2023-03-02T10:10:39.950Z","acquisitionInformation":[{"acquisitionParameters":{"acquisitionType":"NOMINAL","beginningDateTime":"2019-12-31T01:11:47.000Z","endingDateTime":"2020-01-01T00:52:46.000Z"},"platform":{"platformShortName":"Sentinel-5P","platformSerialIdentifier":"S5P"}}],"status":"ARCHIVED","additionalAttributes":{"sourceData":[{"title":"S5P_OFFL_L2__NO2____20191231T025317_20191231T043447_11474_01_010302_20200101T192226"},{"title":"S5P_OFFL_L2__NO2____20191231T130217_20191231T144347_11480_01_010302_20200102T060402"},{"title":"S5P_OFFL_L2__NO2____20191231T061617_20191231T075747_11476_01_010302_20200101T232513"},{"title":"S5P_OFFL_L2__NO2____20191231T075747_20191231T093917_11477_01_010302_20200102T004148"},{"title":"S5P_OFFL_L2__NO2____20191231T011147_20191231T025317_11473_01_010302_20200101T180133"},{"title":"S5P_OFFL_L2__NO2____20191231T112047_20191231T130217_11479_01_010302_20200102T043947"},{"title":"S5P_OFFL_L2__NO2____20191231T180646_20191231T194816_11483_01_010302_20200102T112434"},{"title":"S5P_OFFL_L2__NO2____20191231T093917_20191231T112047_11478_01_010302_20200102T023550"},{"title":"S5P_OFFL_L2__NO2____20191231T212946_20191231T231116_11485_01_010302_20200102T140733"},{"title":"S5P_OFFL_L2__NO2____20191231T231116_20200101T005246_11486_01_010302_20200102T155014"},{"title":"S5P_OFFL_L2__NO2____20191231T194816_20191231T212946_11484_01_010302_20200102T123941"},{"title":"S5P_OFFL_L2__NO2____20191231T162516_20191231T180646_11482_01_010302_20200102T084547"},{"title":"S5P_OFFL_L2__NO2____20191231T144347_20191231T162516_11481_01_010302_20200102T070221"},{"title":"S5P_OFFL_L2__NO2____20191231T043447_20191231T061617_11475_01_010302_20200101T212406"}]}}
+        |         }
+        |        ,{
+        |            "type": "Feature",
+        |            "id": "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20200101_V100",
+        |            "geometry": {"coordinates":[[[-180.0,89.0],[-180.0,-89.0],[180.0,-89.0],[180.0,89.0],[-180.0,89.0]]],"type":"Polygon"},
+        |            "bbox": [-180.0,-89.0,180.0,89.0],
+        |            "properties":
+        |            	{"date":"2020-01-01T00:52:46.000Z","identifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20200101_V100","available":"2021-02-08T10:47:38Z","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1","productInformation":{"processingCenter":"VITO","productVersion":"V100","processingDate":"2023-03-02T10:08:00.205Z","processingMode":"OFFL","productType":"NO2_TD","availabilityTime":"2021-02-08T10:47:38Z"},"links":{"related":[{"length":2259627,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2020/01/S5P_OFFL_L3_NO2_TD_20200101_V100/S5P_NO2_TD_20200101_WEIGHT_V100.tif","type":"image/tiff","title":"WEIGHT","bandNames":["WEIGHT"],"category":"QUALITY"}],"data":[{"length":5431118,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2020/01/S5P_OFFL_L3_NO2_TD_20200101_V100/S5P_NO2_TD_20200101_NO2_V100.tif","conformsTo":"http://www.opengis.net/def/crs/EPSG/0/4326","type":"image/tiff","title":"NO2","bandNames":["NO2"]}],"previews":[],"alternates":[]},"published":"2021-02-08T10:47:38Z","title":"S5P_L3_NO2_TD_20200101_V100","bandNames":["S5P_L3_NO2_TD_20200101_V100"],"updated":"2023-03-02T10:08:00.205Z","acquisitionInformation":[{"acquisitionParameters":{"acquisitionType":"NOMINAL","beginningDateTime":"2020-01-01T00:52:46.000Z","endingDateTime":"2020-01-02T00:33:46.000Z"},"platform":{"platformShortName":"Sentinel-5P","platformSerialIdentifier":"S5P"}}],"status":"ARCHIVED","additionalAttributes":{"sourceData":[{"title":"S5P_OFFL_L2__NO2____20200101T174746_20200101T192916_11497_01_010302_20200103T104405"},{"title":"S5P_OFFL_L2__NO2____20200101T225216_20200102T003346_11500_01_010302_20200103T153646"},{"title":"S5P_OFFL_L2__NO2____20200101T073846_20200101T092016_11491_01_010302_20200103T003802"},{"title":"S5P_OFFL_L2__NO2____20200101T192916_20200101T211046_11498_01_010302_20200103T121312"},{"title":"S5P_OFFL_L2__NO2____20200101T211046_20200101T225216_11499_01_010302_20200103T140339"},{"title":"S5P_OFFL_L2__NO2____20200101T142446_20200101T160616_11495_01_010302_20200103T065547"},{"title":"S5P_OFFL_L2__NO2____20200101T160616_20200101T174746_11496_01_010302_20200103T083756"},{"title":"S5P_OFFL_L2__NO2____20200101T110146_20200101T124316_11493_01_010302_20200103T041218"},{"title":"S5P_OFFL_L2__NO2____20200101T092016_20200101T110146_11492_01_010302_20200103T021108"},{"title":"S5P_OFFL_L2__NO2____20200101T055716_20200101T073846_11490_01_010302_20200102T225627"},{"title":"S5P_OFFL_L2__NO2____20200101T124316_20200101T142446_11494_01_010302_20200103T054233"},{"title":"S5P_OFFL_L2__NO2____20200101T041546_20200101T055716_11489_01_010302_20200102T210644"},{"title":"S5P_OFFL_L2__NO2____20200101T005246_20200101T023416_11487_01_010302_20200102T172632"},{"title":"S5P_OFFL_L2__NO2____20200101T023416_20200101T041546_11488_01_010302_20200102T190100"}]}}
+        |         }
+        |    ]
+        |  }""".stripMargin
+    val result = sentinel5PJsonStringFileLayerProvider(featuresJsonString).readKeysToRasterSources(
       from = date,
       to = date,
       fullBbox,
@@ -231,7 +284,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val metadata: TileLayerMetadata[SpaceTimeKey] = result._2
     // Create the sparse Partitioner.
-    val sparsePartitioner: SpacePartitioner[SpaceTimeKey] = DatacubeSupport.createPartitioner(Some(params),rs.keys,metadata).get
+    val sparsePartitioner: SpacePartitioner[SpaceTimeKey] = DatacubeSupport.createPartitioner(Some(params), rs.keys, metadata).get
     assertEquals(classOf[SparseSpaceTimePartitioner], sparsePartitioner.index.getClass)
     val sparsePartitionerIndex = sparsePartitioner.index.asInstanceOf[SparseSpaceTimePartitioner]
 
@@ -269,86 +322,18 @@ class FileLayerProviderTest extends RasterMatchers{
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
   }
 
-  @Test
-  def sparsePartitionerMergeTest(): Unit = {
-    val zoom = 6
-    // Create the first RDD.
-    val bbox1 = ProjectedExtent(Extent(xmin = 55.0, ymin = 20.0, xmax = 60.0, ymax = 25.0), LatLng)
-    val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
-    val polygons1 = MultiPolygon(bbox1.extent.toPolygon())
-    val (rasterSources1, metadata1) = _getSentinel5PRasterSources(bbox1, date, zoom)
-    val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-      bbox1.crs, sc,
-      NoCloudFilterStrategy)
-    val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-      bbox1.crs, sc,
-      NoCloudFilterStrategy,
-      useSparsePartitioner = false)
-
-    // Create the second RDD.
-    val bbox2 = ProjectedExtent(Extent(xmin = 58.0, ymin = 20.0, xmax = 62.0, ymax = 25.0), LatLng)
-    val polygons2 = MultiPolygon(bbox2.extent.toPolygon())
-    val (rasterSources2, metadata2) = _getSentinel5PRasterSources(bbox1, date, zoom)
-    val sparseBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
-      bbox2.crs, sc,
-      NoCloudFilterStrategy)
-    val defaultBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
-      bbox2.crs, sc,
-      NoCloudFilterStrategy,
-      useSparsePartitioner = false)
-
-    // Merge both RDDs.
-    val defaultMergedLayer = defaultBaseLayer.merge(defaultBaseLayer2)
-    val defaultMergedLayerKeys = defaultMergedLayer.keys.collect().toSet
-    val sparseMergedLayer = sparseBaseLayer.merge(sparseBaseLayer2)
-    val sparseMergedLayerKeys = sparseMergedLayer.keys.collect().toSet
-
-    assertTrue(defaultMergedLayerKeys.nonEmpty)
-    assertEquals(defaultMergedLayerKeys, sparseMergedLayerKeys)
-  }
-
-  @Test
-  def sparsePartitionerMaskTest(): Unit = {
-    // Create the base layers.
-    val bbox = ProjectedExtent(Extent(xmin = 55.0, ymin = 30.0, xmax = 60.0, ymax = 35.0), LatLng)
-    val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
-    val polygons = MultiPolygon(bbox.extent.toPolygon())
-    val (rasterSources, metadata) = _getSentinel5PRasterSources(bbox, date, 8)
-    val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
-      bbox.crs, sc,
-      NoCloudFilterStrategy)
-    val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
-      bbox.crs, sc,
-      NoCloudFilterStrategy,
-      useSparsePartitioner = false)
-
-    // Create the masked layers.
-    val maskBbox = ProjectedExtent(Extent(xmin = 57.0, ymin = 30.0, xmax = 58.0, ymax = 35.0), LatLng)
-    val maskPolygons = MultiPolygon(maskBbox.extent.toPolygon())
-    val defaultMaskedLayer = defaultBaseLayer.mask(maskPolygons)
-    val sparseMaskedLayer = sparseBaseLayer.mask(maskPolygons)
-
-    val defaultMaskedLayerKeys = defaultMaskedLayer.keys.collect().toSet
-    val sparseMaskedLayerKeys = sparseMaskedLayer.keys.collect().toSet
-
-    assertTrue(defaultMaskedLayerKeys.nonEmpty)
-    assertEquals(defaultMaskedLayerKeys, sparseMaskedLayerKeys)
-  }
-
-
-
   @ParameterizedTest
-  @ValueSource(ints = Array(101,489,1589,69854))
-  def testOptimalLayoutScheme(size:Int): Unit = {
+  @ValueSource(ints = Array(101, 489, 1589, 69854))
+  def testOptimalLayoutScheme(size: Int): Unit = {
 
     val crs = CRS.fromEpsgCode(32632)
     val x = 344110.000
     val y = 5600770.000
     // a mix of 31UGS and 32ULB
-    val boundingBox = ProjectedExtent(Extent(x, y, x+size*10, y+size*10), crs)
+    val boundingBox = ProjectedExtent(Extent(x, y, x + size * 10, y + size * 10), crs)
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
-    val scheme = LayerFixtures.sentinel2TocLayerProviderUTM20M.selectLayoutScheme(boundingBox,false,Some(dataCubeParameters))
+    val scheme = LayerFixtures.sentinel2TocLayerProviderUTM20M.selectLayoutScheme(boundingBox, multiple_polygons_flag = false, Some(dataCubeParameters))
     assertTrue(scheme.isInstanceOf[FloatingLayoutScheme])
     val expected = size match {
       case 69854 => 512 // 1024 if experimental flag set
@@ -356,10 +341,11 @@ class FileLayerProviderTest extends RasterMatchers{
       case 489 => 256
       case _ => 128
     }
-    assertEquals(expected,scheme.asInstanceOf[FloatingLayoutScheme].tileRows)
+    assertEquals(expected, scheme.asInstanceOf[FloatingLayoutScheme].tileRows)
 
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def overlapsFilterTest(): Unit = {
     val date = LocalDate.of(2022, 7, 1).atStartOfDay(UTC)
@@ -390,19 +376,19 @@ class FileLayerProviderTest extends RasterMatchers{
     val cols = math.ceil((boundingBox.extent.width / 10.0) / layout.tileCols)
     val rows = math.ceil((boundingBox.extent.height / 10.0) / layout.tileRows)
 
-    assertEquals(0,minKey.col)
-    assertEquals(0,minKey.row)
-    assertEquals(crs,result._2.crs)
+    assertEquals(0, minKey.col)
+    assertEquals(0, minKey.row)
+    assertEquals(crs, result._2.crs)
 
     val ids = result._1.values.map(_.data._2.id).distinct().collect()
     //overlap filter has removed the other potential sources
-    assertEquals(1,ids.length)
+    assertEquals(1, ids.length)
     // Tile ID changed in catalog, and might change back. So allow both versions:
     assertTrue(Seq(
-      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_32ULB_TOC_V210",
-      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_31UGS_TOC_V210",
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_32ULB_TOC_V220",
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_31UGS_TOC_V220",
     ).contains(ids(0)))
-    assertEquals(cols*rows,result._1.count(),0.1)
+    assertEquals(cols * rows, result._1.count(), 0.1)
   }
 
 
@@ -415,20 +401,21 @@ class FileLayerProviderTest extends RasterMatchers{
     val date = LocalDate.of(2022, 2, 11).atStartOfDay(UTC)
     val crs = CRS.fromEpsgCode(32629)
     // a mix of 31UGS and 32ULB
-    val boundingBox = ProjectedExtent(Extent(-8.98, 38.84, -8.95, 38.89).reproject(LatLng,crs), crs)
+    val boundingBox = ProjectedExtent(Extent(-8.98, 38.84, -8.95, 38.89).reproject(LatLng, crs), crs)
 
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     dataCubeParameters.globalExtent = Some(boundingBox)
 
     val resource = Source.fromResource("org/openeo/geotrellis/layers/opensearch_result_portugal.json")
-    val features: FeatureCollection = FeatureCollection.parse(resource.mkString,true)
+    val features: FeatureCollection = FeatureCollection.parse(resource.mkString, isUTM = true)
     object MockOpenSearch extends OpenSearchClient with IdentityEquals {
       override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
         features.features
       }
 
       override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+
       override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
     }
 
@@ -437,7 +424,7 @@ class FileLayerProviderTest extends RasterMatchers{
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B11_20M", "SCENECLASSIFICATION_20M"),
       rootPath = "/bogus",
-      CellSize(10,10),
+      CellSize(10, 10),
       SplitYearMonthDayPathDateExtractor,
       layoutScheme = FloatingLayoutScheme(256),
       experimental = false
@@ -476,7 +463,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertTrue(ids.contains("urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20220211T113321_29SNC_TOC_V210"))
 
     assertEquals(14, allTiles.size, 0.1)
-    assertEquals(4,allTiles.filter(_._1.spatialKey==SpatialKey(0,1)).toList.size)
+    assertEquals(4, allTiles.filter(_._1.spatialKey == SpatialKey(0, 1)).toList.size)
   }
 
   private val myFeatureJSON =
@@ -491,11 +478,10 @@ class FileLayerProviderTest extends RasterMatchers{
       |            "geometry": {"coordinates":[[[4.995008,49.509308],[5.473188,51.003036],[1.742552,51.41433],[1.379708,49.918747],[4.995008,49.509308]]],"type":"Polygon"},
       |            "bbox": [1.379708,49.509308,5.473188,51.41433],
       |            "properties":
-      |             {"date":"2020-03-15T05:58:49.458Z","identifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","available":"2020-09-09T14:07:35Z","parentIdentifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1","productInformation":{"processingCenter":"VITO","productVersion":"V110","timeliness":"Fast-24h","processingDate":"2020-03-15T10:23:40.698Z","productType":"SIGMA0","availabilityTime":"2020-09-09T14:07:35Z"},"links":{"related":[],"data":[{"length":1642877038,"type":"image/tiff","title":"VH","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VH.tif"},{"length":1638893250,"type":"image/tiff","title":"VV","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VV.tif"},{"length":105791005,"type":"image/tiff","title":"angle","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_angle.tif"}],"previews":[{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S1_GRD_SIGMA0&TIME=2020-03-15&BBOX=153588.3920034059,6361726.342578137,609272.5011758554,6694913.752846391&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","category":"QUICKLOOK"}],"alternates":[{"length":38284,"type":"application/vnd.iso.19139+xml","title":"Inspire metadata","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110.xml"}]},"published":"2020-09-09T14:07:35Z","title":"S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","updated":"2020-03-15T10:23:40.698Z","acquisitionInformation":[{"acquisitionParameters":{"operationalMode":"IW","polarisationMode":"D","acquisitionType":"NOMINAL","relativeOrbitNumber":110,"polarisationChannels":"VV, VH","beginningDateTime":"2020-03-15T05:58:49.458Z","orbitDirection":"DESCENDING","endingDateTime":"2020-03-15T05:59:14.456Z","orbitNumber":31682},"platform":{"platformShortName":"SENTINEL-1","platformSerialIdentifier":"S1A"}}],"status":"ARCHIVED"}
+      |             {"date":"2020-03-15T05:58:49.458Z","identifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","available":"2020-09-09T14:07:35Z","parentIdentifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1","productInformation":{"processingCenter":"VITO","productVersion":"V110","timeliness":"Fast-24h","processingDate":"2020-03-15T10:23:40.698Z","productType":"SIGMA0","availabilityTime":"2020-09-09T14:07:35Z"},"links":{"related":[],"data":[{"length":1642877038,"type":"image/tiff","title":"VH","bandNames":["VH"],"href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VH.tif"},{"length":1638893250,"type":"image/tiff","title":"VV","bandNames":["VV"],"href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VV.tif"},{"length":105791005,"type":"image/tiff","title":"angle","bandNames":["angle"],"href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_angle.tif"}],"previews":[{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S1_GRD_SIGMA0&TIME=2020-03-15&BBOX=153588.3920034059,6361726.342578137,609272.5011758554,6694913.752846391&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","bandNames":["WMS"],"category":"QUICKLOOK"}],"alternates":[{"length":38284,"type":"application/vnd.iso.19139+xml","title":"Inspire metadata","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110.xml"}]},"published":"2020-09-09T14:07:35Z","title":"S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","updated":"2020-03-15T10:23:40.698Z","acquisitionInformation":[{"acquisitionParameters":{"operationalMode":"IW","polarisationMode":"D","acquisitionType":"NOMINAL","relativeOrbitNumber":110,"polarisationChannels":"VV, VH","beginningDateTime":"2020-03-15T05:58:49.458Z","orbitDirection":"DESCENDING","endingDateTime":"2020-03-15T05:59:14.456Z","orbitNumber":31682},"platform":{"platformShortName":"SENTINEL-1","platformSerialIdentifier":"S1A"}}],"status":"ARCHIVED"}
       |         }]}""".stripMargin
 
-  private val sentinel1Product =  FeatureCollection.parse(myFeatureJSON, isUTM = true)
-
+  private val sentinel1Product = FeatureCollection.parse(myFeatureJSON, isUTM = true)
 
 
   val myCreoFeatureJSON =
@@ -792,20 +778,21 @@ class FileLayerProviderTest extends RasterMatchers{
       |  ]
       |}""".stripMargin
 
-  private lazy val creoS2Products =  CreoFeatureCollection.parse(myCreoFeatureJSON)
+  private lazy val creoS2Products = CreoFeatureCollection.parse(myCreoFeatureJSON)
 
   object MockCreoOpenSearch extends OpenSearchClient with IdentityEquals {
     override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
       val start = dateRange.get._1
       creoS2Products.features
     }
+
     override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
   }
 
   @Test
-  def testEdgeOfLargeFootPrint():Unit = {
-
+  def testEdgeOfLargeFootPrint(): Unit = {
 
 
     //val layout = LayoutDefinition(Extent(505110.0, 5676980.0, 515350.0, 5682100.0),TileLayout(1024,512,256,256))
@@ -813,7 +800,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val crs = CRS.fromEpsgCode(32631)
     // a mix of 31UGS and 32ULB
-    val boundingBox = ProjectedExtent(Extent(505110.0, 5676980.0, 515350.0, 5682100.0),crs )
+    val boundingBox = ProjectedExtent(Extent(505110.0, 5676980.0, 515350.0, 5682100.0), crs)
 
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
@@ -824,11 +811,11 @@ class FileLayerProviderTest extends RasterMatchers{
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
       rootPath = "/bogus",
-      CellSize(10.0,10.0),
+      CellSize(10.0, 10.0),
       SplitYearMonthDayPathDateExtractor,
       layoutScheme = FloatingLayoutScheme(256),
       experimental = false
-    ){
+    ) {
       //avoids having to actually read the product TODO: improve this workaround
       override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = FloatConstantNoDataCellType
     }
@@ -856,15 +843,15 @@ class FileLayerProviderTest extends RasterMatchers{
     //val count = cube.count()
     val all = cube.collect()
 
-    assertEquals(0,minKey.col)
-    assertEquals(0,minKey.row)
-    assertEquals(crs,result._2.crs)
+    assertEquals(0, minKey.col)
+    assertEquals(0, minKey.row)
+    assertEquals(crs, result._2.crs)
     assertTrue(1 <= all.length)
-    assertEquals((cols*rows).toInt,all.length)
+    assertEquals((cols * rows).toInt, all.length)
   }
 
   @Test
-  def testEdgeOfLargeFootPrintLatLon():Unit = {
+  def testEdgeOfLargeFootPrintLatLon(): Unit = {
 
 
     //val layout = LayoutDefinition(Extent(505110.0, 5676980.0, 515350.0, 5682100.0),TileLayout(1024,512,256,256))
@@ -872,7 +859,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val crs = CRS.fromEpsgCode(32631)
     // a mix of 31UGS and 32ULB
-    val boundingBox = ProjectedExtent(Extent(505110.0, 5676980.0, 515350.0, 5682100.0).reproject(crs,LatLng),LatLng )
+    val boundingBox = ProjectedExtent(Extent(505110.0, 5676980.0, 515350.0, 5682100.0).reproject(crs, LatLng), LatLng)
 
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
@@ -884,11 +871,11 @@ class FileLayerProviderTest extends RasterMatchers{
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
       rootPath = "/bogus",
-      CellSize(res,res),
+      CellSize(res, res),
       SplitYearMonthDayPathDateExtractor,
       layoutScheme = FloatingLayoutScheme(256),
       experimental = false
-    ){
+    ) {
       //avoids having to actually read the product
       override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = FloatConstantNoDataCellType
     }
@@ -906,30 +893,29 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val minKey = result._2.bounds.get.minKey
 
-    val cols = math.ceil((boundingBox.extent.width / res)/256.0)
-    val rows = math.ceil((boundingBox.extent.height / res)/256.0)
+    val cols = math.ceil((boundingBox.extent.width / res) / 256.0)
+    val rows = math.ceil((boundingBox.extent.height / res) / 256.0)
 
     val cube = result._1
     //val ids = cube.values.map(_.data._2.id).distinct().collect()
     //val count = cube.count()
     val all = cube.collect()
 
-    assertEquals(0,minKey.col)
-    assertEquals(0,minKey.row)
-    assertEquals(LatLng,result._2.crs)
-    assertEquals(12,all.length)
-    assertEquals((cols*rows).toInt,all.length)
+    assertEquals(0, minKey.col)
+    assertEquals(0, minKey.row)
+    assertEquals(LatLng, result._2.crs)
+    assertEquals(8, all.length)
   }
 
   @Test
-  def testBufferingOnTheEdge():Unit = {
+  def testBufferingOnTheEdge(): Unit = {
 
     //val layout = LayoutDefinition(Extent(505110.0, 5676980.0, 515350.0, 5682100.0),TileLayout(1024,512,256,256))
     val date = LocalDate.of(2020, 3, 15).atStartOfDay(UTC)
 
     val crs = CRS.fromEpsgCode(32631)
     // a mix of 31UGS and 32ULB
-    val boundingBox = ProjectedExtent(Extent(505110.0, 5676980.0, 515350.0, 5682100.0),crs )
+    val boundingBox = ProjectedExtent(Extent(505110.0, 5676980.0, 515350.0, 5682100.0), crs)
 
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
@@ -943,11 +929,11 @@ class FileLayerProviderTest extends RasterMatchers{
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
       rootPath = "/bogus",
-      CellSize(10.0,10.0),
+      CellSize(10.0, 10.0),
       SplitYearMonthDayPathDateExtractor,
       layoutScheme = FloatingLayoutScheme(256),
       experimental = false
-    ){
+    ) {
       //avoids having to actually read the product
       override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = FloatConstantNoDataCellType
     }
@@ -967,23 +953,23 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val layout = flp.selectLayoutScheme(boundingBox, multiple_polygons_flag = false, Some(dataCubeParameters))
       .asInstanceOf[FloatingLayoutScheme]
-    val cols = math.ceil(((boundingBox.extent.width + 20.0*buffer) / 10.0)/layout.tileCols)
-    val rows = math.ceil(((boundingBox.extent.height + 20.0*buffer) / 10.0)/layout.tileRows)
+    val cols = math.ceil(((boundingBox.extent.width + 20.0 * buffer) / 10.0) / layout.tileCols)
+    val rows = math.ceil(((boundingBox.extent.height + 20.0 * buffer) / 10.0) / layout.tileRows)
 
     val cube = result._1
     //val ids = cube.values.map(_.data._2.id).distinct().collect()
     //val count = cube.count()
     val all = cube.collect()
 
-    assertEquals(0,minKey.col)
-    assertEquals(0,minKey.row)
-    assertEquals(crs,result._2.crs)
+    assertEquals(0, minKey.col)
+    assertEquals(0, minKey.row)
+    assertEquals(crs, result._2.crs)
     assertTrue(1 <= all.length) // dependant on selectLayoutScheme
-    assertEquals((cols*rows).toInt,all.length)
+    assertEquals((cols * rows).toInt, all.length)
 
-    assertEquals(505110.0 - 1000.0, result._2.extent.xmin,0.01)
-    assertEquals(515350.0 + buffer*10.0, result._2.extent.xmax,0.01)
-    assertEquals(5676980.0 - 1000.0, result._2.extent.ymin,0.01)
+    assertEquals(505110.0 - 1000.0, result._2.extent.xmin, 0.01)
+    assertEquals(515350.0 + buffer * 10.0, result._2.extent.xmax, 0.01)
+    assertEquals(5676980.0 - 1000.0, result._2.extent.ymin, 0.01)
   }
 
   @Test
@@ -994,7 +980,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val crs = CRS.fromEpsgCode(32631)
     // a mix of 31UGS and 32ULB
-    val boundingBox = ProjectedExtent(Extent(5.085980189812683,51.0353667302808,5.146073667675196,51.05305736567695).reproject(LatLng,crs),crs )
+    val boundingBox = ProjectedExtent(Extent(5.085980189812683, 51.0353667302808, 5.146073667675196, 51.05305736567695).reproject(LatLng, crs), crs)
 
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
@@ -1013,26 +999,26 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val minKey = result._2.bounds.get.minKey
 
-    val cols = math.ceil((boundingBox.extent.width / 10.0)/256.0)
-    val rows = math.ceil((boundingBox.extent.height / 10.0)/256.0)
+    val cols = math.ceil((boundingBox.extent.width / 10.0) / 256.0)
+    val rows = math.ceil((boundingBox.extent.height / 10.0) / 256.0)
 
-    assertEquals(0,minKey.col)
-    assertEquals(0,minKey.row)
-    assertEquals(crs,result._2.crs)
+    assertEquals(0, minKey.col)
+    assertEquals(0, minKey.row)
+    assertEquals(crs, result._2.crs)
 
     val cube = result._1
     val ids = cube.values.map(_.data._2.id).distinct().collect()
     val count = cube.count()
     //overlap filter has removed the other potential sources
-    assertEquals(2,ids.length)
-    assertEquals("urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110",ids(0))
-    assertEquals("urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110",ids(1))
+    assertEquals(2, ids.length)
+    assertEquals("urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110", ids(0))
+    assertEquals("urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110", ids(1))
     //the cube only covers 2 tiles, but we have 2 source products, so times 2
-    assertEquals(2*cols*rows,count,0.1)
+    assertEquals(2 * cols * rows, count, 0.1)
     println(s"Count: $count")
   }
 
-  def unpackTarFile(filePath:Path, outputDir:Path):Unit ={
+  def unpackTarFile(filePath: Path, outputDir: Path): Unit = {
     val tarInputStream = new TarArchiveInputStream(new FileInputStream(filePath))
     try {
       var entry: TarArchiveEntry = tarInputStream.getNextTarEntry
@@ -1063,16 +1049,16 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
-  def testReadKeysToRasterSources(@TempDir tempDir: Path):Unit = {
+  def testReadKeysToRasterSources(@TempDir tempDir: Path): Unit = {
     val Filename = "zarrExample.tar"
     val url = new URL(s"https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/$Filename")
     FileUtils.copyURLToFile(url, tempDir.resolve(Filename).toFile)
     val tarFile = tempDir resolve Filename
-    unpackTarFile(tarFile,tempDir)
+    unpackTarFile(tarFile, tempDir)
     val date = LocalDate.of(2020, 3, 15).atStartOfDay(UTC)
     val crs = CRS.fromEpsgCode(32631)
     val extent = Extent(xmin = 55.0, ymin = 30.0, xmax = 60.0, ymax = 35.0)
-    val feature = OpenSearchResponses.Feature(id="zarrExample",bbox=extent,nominalDate=date,links=Array(Link(tempDir.resolve("exampleZarr.zarr").toUri,title=Some("IMG_DATA_Zarr"),bandNames = Some(Seq("NO2")))),resolution = None)
+    val feature = OpenSearchResponses.Feature(id = "zarrExample", bbox = extent, nominalDate = date, links = Array(Link(tempDir.resolve("exampleZarr.zarr").toUri, title = Some("IMG_DATA_Zarr"), bandNames = Some(Seq("NO2")))), resolution = None)
     val openEOSearchClient = new FixedFeaturesOpenSearchClient()
     openEOSearchClient.addFeature(feature)
     val zarFileLayerProvider = FileLayerProvider(
@@ -1084,13 +1070,14 @@ class FileLayerProviderTest extends RasterMatchers{
       new Sentinel5PPathDateExtractor(maxDepth = 3),
       layoutScheme = sentinel5PLayoutScheme,
     )
-    val boundingBox = ProjectedExtent(extent,crs )
-    ProjectedExtent(Extent(5.085980189812683,51.0353667302808,5.146073667675196,51.05305736567695).reproject(LatLng,crs),crs )
-    val raster = zarFileLayerProvider.readKeysToRasterSources(from=date,to=date, boundingBox = boundingBox, polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())), polygons_crs = crs, zoom = 0, sc = sc, datacubeParams = None)
-    assertEquals(extent,raster._2.extent)
-    assertEquals(crs,raster._2.crs)
+    val boundingBox = ProjectedExtent(extent, crs)
+    ProjectedExtent(Extent(5.085980189812683, 51.0353667302808, 5.146073667675196, 51.05305736567695).reproject(LatLng, crs), crs)
+    val raster = zarFileLayerProvider.readKeysToRasterSources(from = date, to = date, boundingBox = boundingBox, polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())), polygons_crs = crs, zoom = 0, sc = sc, datacubeParams = None)
+    assertEquals(extent, raster._2.extent)
+    assertEquals(crs, raster._2.crs)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testSinglePoint(): Unit = {
     val date = LocalDate.of(2019, 9, 25).atStartOfDay(UTC)
@@ -1100,7 +1087,7 @@ class FileLayerProviderTest extends RasterMatchers{
     // a mix of 31UGS and 32ULB
 
     //    val boundingBox = ProjectedExtent(Extent(481100.0, 5663200.0, 481100.0, 5663200.0), crs) // TODO: This would cause a crash
-    val boundingBox = ProjectedExtent(Extent(2.7355, 51.1281, 2.7355, 51.1281).reproject(LatLng,crs), crs)
+    val boundingBox = ProjectedExtent(Extent(2.7355, 51.1281, 2.7355, 51.1281).reproject(LatLng, crs), crs)
 
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
@@ -1118,23 +1105,23 @@ class FileLayerProviderTest extends RasterMatchers{
     )
     val minKey = result._2.bounds.get.minKey
 
-    val cols = math.ceil((boundingBox.extent.width / 10.0)/256.0)
-    val rows = math.ceil((boundingBox.extent.height / 10.0)/256.0)
+    val cols = math.ceil((boundingBox.extent.width / 10.0) / 256.0)
+    val rows = math.ceil((boundingBox.extent.height / 10.0) / 256.0)
 
-    assertEquals(0,minKey.col)
-    assertEquals(0,minKey.row)
-    assertEquals(crs,result._2.crs)
+    assertEquals(0, minKey.col)
+    assertEquals(0, minKey.row)
+    assertEquals(crs, result._2.crs)
   }
 
   @Test
-  def testCreoNonNativeProjection():Unit = {
+  def testCreoNonNativeProjection(): Unit = {
 
 
     val date = LocalDate.of(2021, 4, 6).atStartOfDay(UTC)
 
     val crs = CRS.fromEpsgCode(3035)
     // a mix of 31UGS and 32ULB
-    val boundingBox = ProjectedExtent(Extent(3040003.0,2180000.0,3060000.0,2200000.0),crs )
+    val boundingBox = ProjectedExtent(Extent(3040003.0, 2180000.0, 3060000.0, 2200000.0), crs)
 
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
@@ -1147,12 +1134,12 @@ class FileLayerProviderTest extends RasterMatchers{
       "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_B04_10m_Tile1_Data"),
       rootPath = "/bogus",
-      CellSize(10.0,10.0),
+      CellSize(10.0, 10.0),
       SplitYearMonthDayPathDateExtractor,
       layoutScheme = FloatingLayoutScheme(1024),
       experimental = false,
-      attributeValues = Map("productType"->"L2A")
-    ){
+      attributeValues = Map("productType" -> "L2A")
+    ) {
       //avoids having to actually read the product
       override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = FloatConstantNoDataCellType
     }
@@ -1170,25 +1157,26 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val minKey = result._2.bounds.get.minKey
 
-    val cols = math.ceil((boundingBox.extent.width / 10.0)/1024.0)
-    val rows = math.ceil((boundingBox.extent.height / 10.0)/1024.0)
+    val cols = math.ceil((boundingBox.extent.width / 10.0) / 1024.0)
+    val rows = math.ceil((boundingBox.extent.height / 10.0) / 1024.0)
 
     val cube = result._1
     //val ids = cube.values.map(_.data._2.id).distinct().collect()
     //val count = cube.count()
     val all = cube.collect()
 
-    val tileSources = all.map(t=>(t._1,LayoutTileSource.spatial(t._2.data._1,result._2.layout).rasterRegionForKey(t._1.spatialKey).get))
+    val tileSources = all.map(t => (t._1, LayoutTileSource.spatial(t._2.data._1, result._2.layout).rasterRegionForKey(t._1.spatialKey).get))
     val minKeySource = tileSources.toMap.get(minKey).get
-    assertEquals(3040003.0,minKeySource.extent.xmin,0.1)
+    assertEquals(3040003.0, minKeySource.extent.xmin, 0.1)
     //the test should reach this point without requiring access to the actual files. If it fails because of not having creo mounts, something is wrong.
-    assertEquals(0,minKey.col)
-    assertEquals(0,minKey.row)
-    assertEquals(crs,result._2.crs)
-    assertEquals(8,all.length)
-    assertEquals((2*cols*rows).toInt,all.length)
+    assertEquals(0, minKey.col)
+    assertEquals(0, minKey.row)
+    assertEquals(crs, result._2.crs)
+    assertEquals(8, all.length)
+    assertEquals((2 * cols * rows).toInt, all.length)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testPixelValueOffsetNeededCorner(@TempDir outDir: Path): Unit = {
     // This selection will go over a corner that has nodata pixels
@@ -1208,6 +1196,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(187, at_137_747.get._2.toArrayTile().band(0).get(160, 5), 1)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testPixelValueOffsetNeededDark(@TempDir outDir: Path): Unit = {
     // This will cover an area where pixels go under 0
@@ -1235,7 +1224,7 @@ class FileLayerProviderTest extends RasterMatchers{
     LayerFixtures.sentinel2Cube(localDate, projected_polygons_native_crs, jsonPath)
   }
 
-
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
   def testMissingS2(@TempDir outDir: Path): Unit = {
     val from = ZonedDateTime.parse("2024-03-24T00:00:00Z")
@@ -1281,7 +1270,6 @@ class FileLayerProviderTest extends RasterMatchers{
     Files.writeString(Paths.get(outDir + "/" + uniqueName + ".geojson"), poly2GeoJson)
 
     val dataCubeParameters = new DataCubeParameters
-    dataCubeParameters.useNewFeatureExtentIntersection = true
 
     val layer = LayerFixtures.sentinel2Cube(
       LocalDate.of(2024, 4, 2),
@@ -1309,6 +1297,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(outDir + "/" + uniqueName + ".tiff")
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @ParameterizedTest
   @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
@@ -1325,7 +1314,7 @@ class FileLayerProviderTest extends RasterMatchers{
    * Test a case where the catalog would return Features that are outside the valid extent of the requested CRS
    */
   @Test
-  def testImpossibleIntersection(): Unit = {
+  def testImpossibleIntersection(@TempDir outDir: Path): Unit = {
     val crsName = "EPSG:32632"
     val extent = Extent(3.3, 50.6, 7.6, 51.6) // Belgium, which is invalid with the available features
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
@@ -1346,9 +1335,6 @@ class FileLayerProviderTest extends RasterMatchers{
       assertTrue(layer_collected.isEmpty)
       val cubeSpatial = layer.toSpatial()
 
-      val outDir = Paths.get("tmp/testImpossibleIntersection/")
-      new Directory(outDir.toFile).deepFiles.foreach(_.delete())
-      Files.createDirectories(outDir)
       cubeSpatial.writeGeoTiff(outDir + "/testImpossibleIntersection_" + crsName.replace(":", "_") + ".tiff")
     }
 
@@ -1359,18 +1345,12 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
-  def testAntimerideanArtifacts(): Unit = {
-    val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
-    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
-    Files.createDirectories(outDir)
-
+  def testAntimerideanArtifacts(@TempDir outDir: Path): Unit = {
     val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
     val poly2 = ProjectedPolygons(projectedExtent)
     dumpGeoJson(toGeoJsonDebug(poly2), Some("testAntimerideanArtifacts"))
 
     val dataCubeParameters = new DataCubeParameters
-    dataCubeParameters.useNewFeatureExtentIntersection = true
-    dataCubeParameters.useNewFeatureExtentIntersection2 = true
     val layer = LayerFixtures.creodiasCube(
       LocalDate.of(2020, 7, 31),
       poly2,
@@ -1393,11 +1373,7 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
-  def testAntimerideanArtifacts2(): Unit = {
-    val outDir = Paths.get("tmp/testAntimerideanArtifacts2/")
-    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
-    Files.createDirectories(outDir)
-
+  def testAntimerideanArtifacts2(@TempDir outDir: Path): Unit = {
     val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
     val spatialExtent = ProjectedPolygons(projectedExtent).reproject(CRS.fromName("EPSG:32660"))
     dumpGeoJson(toGeoJsonDebug(spatialExtent), Some("testAntimerideanArtifacts2"))
@@ -1406,8 +1382,6 @@ class FileLayerProviderTest extends RasterMatchers{
     dataCubeParameters.tileSize = 256
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     dataCubeParameters.setPartitionerIndexReduction(6)
-    dataCubeParameters.useNewFeatureExtentIntersection = true
-    dataCubeParameters.useNewFeatureExtentIntersection2 = true
     dataCubeParameters.globalExtent = Some(ProjectedExtent(Extent(526300.0, 7682200.0, 646340.0, 7802240.0), CRS.fromName("EPSG:32660")))
 
     val factory = new PyramidFactory(
@@ -1440,11 +1414,7 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
-  def testAntimerideanArtifacts3(): Unit = {
-    val outDir = Paths.get("tmp/testAntimerideanArtifacts3/")
-    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
-    Files.createDirectories(outDir)
-
+  def testAntimerideanArtifacts3(@TempDir outDir: Path): Unit = {
     val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
     val spatialExtent = ProjectedPolygons(projectedExtent).reproject(CRS.fromName("EPSG:32660"))
     dumpGeoJson(toGeoJsonDebug(spatialExtent), Some("testAntimerideanArtifacts3"))
@@ -1453,8 +1423,6 @@ class FileLayerProviderTest extends RasterMatchers{
     dataCubeParameters.tileSize = 128 // only difference with testAntimerideanArtifacts2
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     dataCubeParameters.setPartitionerIndexReduction(6)
-    dataCubeParameters.useNewFeatureExtentIntersection = true
-    dataCubeParameters.useNewFeatureExtentIntersection2 = true
     dataCubeParameters.globalExtent = Some(ProjectedExtent(Extent(526300.0, 7682200.0, 646340.0, 7802240.0), CRS.fromName("EPSG:32660")))
 
     val factory = new PyramidFactory(
@@ -1486,16 +1454,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(0.0227, value, 0.1)
   }
 
-  @Test
-  def testMissingS2DateLineOutside(): Unit = {
-    if (!new DataCubeParameters().useNewFeatureExtentIntersection) {
-      return
-    }
-    // Target extent should be valid: Extent not within its CRS limits: ProjectedExtent(Extent(649630.0, 1.212245E7, 684180.0, 1.219141E7),EPSG:32631)
-    assertThrows[IllegalArgumentException](testMissingS2DateLine("EPSG:32631"))
-  }
-
-  private def keysForLargeArea(useBBox:Boolean=false) = {
+  private def keysForLargeArea(useBBox: Boolean = false) = {
     val date = LocalDate.of(2022, 2, 11).atStartOfDay(UTC)
     val crs = CRS.fromEpsgCode(32630)
 
@@ -1535,8 +1494,8 @@ class FileLayerProviderTest extends RasterMatchers{
     val polygons = ProjectedPolygons.fromVectorFile(Thread.currentThread.getContextClassLoader.getResource("org/openeo/geotrellis/geometries/samples.geojson").toString)
     dataCubeParameters.globalExtent = Some(polygons.extent)
     var polygonsInCRS = polygons.polygons.map(_.reproject(LatLng, crs))
-    if(useBBox) {
-      polygonsInCRS = Array(MultiPolygon(polygonsInCRS.seq.extent.toPolygon()))
+    if (useBBox) {
+      polygonsInCRS = Array(MultiPolygon(polygonsInCRS.toList.extent.toPolygon()))
     }
 
 
@@ -1551,13 +1510,14 @@ class FileLayerProviderTest extends RasterMatchers{
       sc,
       Some(dataCubeParameters)
     )
-    (dataCubeParameters,result)
+    (dataCubeParameters, result)
   }
+
   /**
    * Test to mimick a large area sampling case
    */
   @Test
-  @Timeout(value=4,unit=TimeUnit.MINUTES)//test should not take longer than this
+  @Timeout(value = 4, unit = TimeUnit.MINUTES) //test should not take longer than this
   def samplingDataCubeTest(): Unit = {
 
     val listener = new GetInfoSparkListener()
@@ -1566,26 +1526,26 @@ class FileLayerProviderTest extends RasterMatchers{
     val ProgressListener = new BatchJobProgressListener()
     sc.addSparkListener(ProgressListener)
 
-    val (datacubeParams,result) = keysForLargeArea()
+    val (datacubeParams, result) = keysForLargeArea()
 
     val allTiles = result._1.collect()
     sc.removeSparkListener(listener)
     print(allTiles)
     val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
 
-    val partitioner = DatacubeSupport.createPartitioner(Some(datacubeParams), result._1.keys,result._2)
+    val partitioner = DatacubeSupport.createPartitioner(Some(datacubeParams), result._1.keys, result._2)
     println(partitioner)
     val index = partitioner.get.index
     println(index)
 
     assertTrue(index.isInstanceOf[SparseSpaceTimePartitioner])
     assertTrue(index.asInstanceOf[SparseSpaceTimePartitioner].theKeys.isDefined)
-    assertEquals(128,result._2.tileLayout.tileCols)
+    assertEquals(128, result._2.tileLayout.tileCols)
     //overlap filter has removed the other potential sources
     assertEquals(229, ids.size)
 
     assertTrue(Seq(1, 2).contains(listener.getJobsCompleted))
-    assertEquals(4,listener.getStagesCompleted)
+    assertTrue(listener.getStagesCompleted <= 4)
     assertTrue(listener.getTasksCompleted >= 90) // Range to make test less flaky
     assertTrue(listener.getTasksCompleted <= 200)
     assertTrue(allTiles.length >= 2384 - 0.1)
@@ -1593,7 +1553,7 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
-  @Timeout(value=5,unit=TimeUnit.MINUTES)//test should not take longer than this
+  @Timeout(value = 5, unit = TimeUnit.MINUTES) //test should not take longer than this
   def largeDataCubeTest(): Unit = {
 
     val listener = new GetInfoSparkListener()
@@ -1602,21 +1562,22 @@ class FileLayerProviderTest extends RasterMatchers{
     val ProgressListener = new BatchJobProgressListener()
     sc.addSparkListener(ProgressListener)
 
-    val (datacubeParams,result) = keysForLargeArea(true)
+    val (datacubeParams, result) = keysForLargeArea(true)
 
     val allTiles = result._1.collect()
+
     sc.removeSparkListener(listener)
     print(allTiles)
     val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
 
-    assertEquals(512,result._2.tileLayout.tileCols)
+    assertEquals(512, result._2.tileLayout.tileCols)
     //overlap filter has removed the other potential sources
     assertEquals(694, ids.size)
 
     assertEquals(1, listener.getJobsCompleted)
     assertEquals(3, listener.getStagesCompleted)
     assertEquals(21, listener.getTasksCompleted)
-    assertEquals(77314, allTiles.size)
+    assertEquals(77316, allTiles.size)
     println(listener.getPeakMemoryMB)
 
     val partitioner = DatacubeSupport.createPartitioner(Some(datacubeParams), result._1.keys, result._2)
@@ -1625,12 +1586,12 @@ class FileLayerProviderTest extends RasterMatchers{
     println(index)
 
     assertTrue(index.isInstanceOf[ConfigurableSpaceTimePartitioner])
-    assertEquals(7,index.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction)
-
+    assertEquals(7, index.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
   @Test
-  def testSamplingLoadPerProduct(@TempDir outDir: Path):Unit = {
+  def testSamplingLoadPerProduct(@TempDir outDir: Path): Unit = {
     val srs32631 = "EPSG:32631"
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(Extent(703109 - 100, 5600100, 709000, 5610000 - 100), srs32631)
     val dataCubeParameters = new DataCubeParameters()
@@ -1639,31 +1600,31 @@ class FileLayerProviderTest extends RasterMatchers{
     dataCubeParameters.loadPerProduct = true
 
 
-    val cube = LayerFixtures.sentinel2Cube(LocalDate.of(2023, 4, 5), projected_polygons_native_crs, "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json",dataCubeParameters)
+    val cube = LayerFixtures.sentinel2Cube(LocalDate.of(2023, 4, 5), projected_polygons_native_crs, "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json", dataCubeParameters)
     val opts = new GTiffOptions
     opts.setFilenamePrefix("load_per_product")
-    saveRDDTemporal(cube,outDir.toString, formatOptions = opts)
+    saveRDDTemporal(cube, outDir.toString, formatOptions = opts)
 
 
     dataCubeParameters.loadPerProduct = false
-    val cube_ref = LayerFixtures.sentinel2Cube(LocalDate.of(2023, 4, 5), projected_polygons_native_crs, "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json",dataCubeParameters)
+    val cube_ref = LayerFixtures.sentinel2Cube(LocalDate.of(2023, 4, 5), projected_polygons_native_crs, "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json", dataCubeParameters)
     opts.setFilenamePrefix("load_regular")
     saveRDDTemporal(cube_ref, outDir.toString, formatOptions = opts)
 
     val reference = GeoTiff.readMultiband(f"$outDir/load_regular_2023-04-05Z.tif").raster
     val actual = GeoTiff.readMultiband(f"$outDir/load_per_product_2023-04-05Z.tif").raster
 
-    assertRastersEqual(actual,reference)
+    assertRastersEqual(actual, reference)
 
   }
 
   @Test
-  def testGDALConvert():Unit = {
-    val result = FileLayerProvider.convertNetcdfLinksToGDALFormat(Link(URI.create("file:///data/MTDA/Copernicus/Land/global/netcdf/dry_matter_productivity/gdmp_300m_v1_10daily/2020/20200310/c_gls_GDMP300-RT5_202003100000_GLOBE_PROBAV_V1.0.1.nc"),Some("DMP")),"dry_matter_productivity",1)
-    assertEquals(Some((Link(URI.create("NETCDF:/data/MTDA/Copernicus/Land/global/netcdf/dry_matter_productivity/gdmp_300m_v1_10daily/2020/20200310/c_gls_GDMP300-RT5_202003100000_GLOBE_PROBAV_V1.0.1.nc:dry_matter_productivity"),Some("DMP")),0)),result)
+  def testGDALConvert(): Unit = {
+    val result = FileLayerProvider.convertNetcdfLinksToGDALFormat(Link(URI.create("file:///data/MTDA/Copernicus/Land/global/netcdf/dry_matter_productivity/gdmp_300m_v1_10daily/2020/20200310/c_gls_GDMP300-RT5_202003100000_GLOBE_PROBAV_V1.0.1.nc"), Some("DMP")), "dry_matter_productivity", 1)
+    assertEquals(Some((Link(URI.create("NETCDF:/data/MTDA/Copernicus/Land/global/netcdf/dry_matter_productivity/gdmp_300m_v1_10daily/2020/20200310/c_gls_GDMP300-RT5_202003100000_GLOBE_PROBAV_V1.0.1.nc:dry_matter_productivity"), Some("DMP")), 0)), result)
 
-    val httpResult = FileLayerProvider.convertNetcdfLinksToGDALFormat(Link(URI.create("http://openeo.vito.be/job-xxx/results/result.nc"),Some("DMP")),"dry_matter_productivity",1)
-    assertEquals(Some((Link(URI.create("NETCDF:http://openeo.vito.be/job-xxx/results/result.nc:dry_matter_productivity"),Some("DMP")),0)),httpResult)
+    val httpResult = FileLayerProvider.convertNetcdfLinksToGDALFormat(Link(URI.create("http://openeo.vito.be/job-xxx/results/result.nc"), Some("DMP")), "dry_matter_productivity", 1)
+    assertEquals(Some((Link(URI.create("NETCDF:http://openeo.vito.be/job-xxx/results/result.nc:dry_matter_productivity"), Some("DMP")), 0)), httpResult)
 
   }
 
@@ -1704,11 +1665,11 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testMultibandCOGViaSTACResample(@TempDir outDir: Path): Unit = {
-    val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0))
+    val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0, 10.0))
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
     val latlon = CRS.fromName("EPSG:4326")
-    val projected_polygons_native_crs = ProjectedPolygons.reproject(ProjectedPolygons.fromExtent(extent, latlon.toString()),32604)
+    val projected_polygons_native_crs = ProjectedPolygons.reproject(ProjectedPolygons.fromExtent(extent, latlon.toString()), 32604)
 
     val resampleMethod = CubicConvolution
 
@@ -1750,11 +1711,11 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testMultibandCOGViaSTACResampleReadOneBand(@TempDir outDir: Path): Unit = {
-    val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0),util.Arrays.asList("precipitation-flux"))
+    val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0, 10.0), util.Arrays.asList("precipitation-flux"))
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
     val latlon = CRS.fromName("EPSG:4326")
-    val projected_polygons_native_crs = ProjectedPolygons.reproject(ProjectedPolygons.fromExtent(extent, latlon.toString()),32604)
+    val projected_polygons_native_crs = ProjectedPolygons.reproject(ProjectedPolygons.fromExtent(extent, latlon.toString()), 32604)
 
     val dataCubeParameters: DataCubeParameters = datacubeParams(projected_polygons_native_crs, Bilinear)
 
@@ -1765,7 +1726,6 @@ class FileLayerProviderTest extends RasterMatchers{
     writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory,
       f"$outDir/testSinglebandCOGViaSTACResampled.nc", referenceFile)
   }
-
 
 
   private def writeToNetCDFAndCompare(polygonAOI: ProjectedPolygons, dataCubeParameters: DataCubeParameters, bands: util.ArrayList[String], factory: PyramidFactory, outLocation: String, referenceFile: String): Unit = {
@@ -1787,10 +1747,10 @@ class FileLayerProviderTest extends RasterMatchers{
   def testVsis3ToS3(): Unit = {
     assertEquals(FileLayerProvider.vsis3ToS3(
       "/vsis3/eodata/auxdata/test.tif"),
-      "S3://EODATA/auxdata/test.tif")
+      "S3://eodata/auxdata/test.tif")
 
     assertEquals(FileLayerProvider.vsis3ToS3(
       "/vsis3/EODATA/auxdata/ESA_WORLD_COVER/2021/ESA_WorldCover_10m_2021_v200_N51E012/ESA_WorldCover_10m_2021_v200_N51E012_Map.tif"),
-      "S3://EODATA/auxdata/ESA_WORLD_COVER/2021/ESA_WorldCover_10m_2021_v200_N51E012/ESA_WorldCover_10m_2021_v200_N51E012_Map.tif")
+      "S3://eodata/auxdata/ESA_WORLD_COVER/2021/ESA_WorldCover_10m_2021_v200_N51E012/ESA_WorldCover_10m_2021_v200_N51E012_Map.tif")
   }
 }

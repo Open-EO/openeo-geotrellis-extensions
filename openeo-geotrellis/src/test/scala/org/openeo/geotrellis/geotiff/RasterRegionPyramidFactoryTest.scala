@@ -3,23 +3,23 @@ package org.openeo.geotrellis.geotiff
 import geotrellis.layer._
 import geotrellis.raster.Raster
 import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.spark.util.SparkUtils
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
+import geotrellis.spark.util.SparkUtils
 import org.apache.spark.SparkContext
-import org.junit.{AfterClass, BeforeClass, Ignore, Test}
-import org.junit.Assert._
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 
 object RasterRegionPyramidFactoryTest {
   private implicit var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = {
     val conf = SparkUtils.createSparkConf.set("spark.kryoserializer.buffer.max", "512m")
     sc = SparkUtils.createLocalSparkContext("local[2]", getClass.getName, conf)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = {
     sc.stop()
   }
@@ -29,7 +29,8 @@ object RasterRegionPyramidFactoryTest {
   }
 }
 
-@Ignore("no need to run automatically as it's a POC")
+@Disabled("no need to run automatically as it's a POC")
+@Test
 class RasterRegionPyramidFactoryTest {
   import RasterRegionPyramidFactoryTest._
 
@@ -41,7 +42,7 @@ class RasterRegionPyramidFactoryTest {
     val data = pyramidFactory.data(zoom)
 
     println(data.toDebugString)
-    assertTrue(data.partitioner.toString, data.partitioner.get.isInstanceOf[SpacePartitioner[_]])
+    assertTrue(data.partitioner.get.isInstanceOf[SpacePartitioner[_]], data.partitioner.toString)
 
     val mask = pyramidFactory.mask(zoom)
     assertTrue(mask.partitioner == data.partitioner)

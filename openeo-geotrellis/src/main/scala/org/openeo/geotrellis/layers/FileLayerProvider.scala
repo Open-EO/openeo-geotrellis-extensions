@@ -7,11 +7,8 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
-import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
-import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -27,8 +24,9 @@ import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
+import org.openeo.geotrellis.layers.provider._
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.{Logger, LoggerFactory}
@@ -39,7 +37,6 @@ import java.nio.file.{Files, Path, Paths}
 import java.time._
 import java.time.temporal.ChronoUnit.DAYS
 import java.util.concurrent.TimeUnit
-import scala.collection.immutable
 import scala.collection.parallel.CollectionsHaveToParArray
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
@@ -59,6 +56,28 @@ private class LayoutTileSourceFixed[K: SpatialComponent](
   override def sourceRowOffset: Long = ((layout.extent.ymax - source.extent.ymax) / layout.cellheight).round
 
 }
+
+final case class RasterRegionContext(
+  requiredKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])],
+  regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))],
+  metadata: TileLayerMetadata[SpaceTimeKey],
+  maskStrategy: Option[CloudFilterStrategy],
+  partitioner: Option[SpacePartitioner[SpaceTimeKey]],
+  sources: Seq[(RasterSource, Feature)]
+) {
+  def unpersist(): Unit =
+    requiredKeys.unpersist(false)
+
+  // Py4J-friendly getters.
+  def hasMaskStrategy: Boolean = maskStrategy.isDefined
+  def getMaskStrategy: CloudFilterStrategy = maskStrategy.orNull
+  def hasPartitioner: Boolean = partitioner.isDefined
+  def getPartitioner: SpacePartitioner[SpaceTimeKey] = partitioner.orNull
+  def getSourcesAsJavaList: java.util.List[(RasterSource, Feature)] = {
+    sources.asJava
+  }
+}
+
 
 object FileLayerProvider {
 
@@ -88,7 +107,7 @@ object FileLayerProvider {
   def vsis3ToS3(path: String): String = {
     val vsis3Prefix = "/vsis3/eodata/"
     if (path.toLowerCase().startsWith(vsis3Prefix)) {
-      "S3://EODATA/" + path.substring(vsis3Prefix.length)
+      "S3://eodata/" + path.substring(vsis3Prefix.length)
     } else {
       path
     }
@@ -148,16 +167,6 @@ object FileLayerProvider {
       }
 
     tiledLayoutSourceRDD
-  }
-
-  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams: Option[DataCubeParameters] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
-    val polygonsRDD = sc.parallelize(polygons).map {
-      _.reproject(polygons_crs, metadata.crs)
-    }
-    // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
-    var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
-    val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
-    tileSourcesToDataCube(rasterSources, metadata, requiredSpatialKeys, sc, retainNoDataTiles, cloudFilterStrategy, useSparsePartitioner, datacubeParams)
   }
 
   private def checkLatLon(extent: Extent): Boolean = {
@@ -326,135 +335,6 @@ object FileLayerProvider {
 
 
   private val PIXEL_COUNTER = "InputPixels"
-
-  private def rasterRegionsToTilesLoadPerProductStrategy(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))],
-                                                         metadata: TileLayerMetadata[SpaceTimeKey],
-                                                         retainNoDataTiles: Boolean,
-                                                         cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy,
-                                                         partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None,
-                                                         datacubeParams : Option[DataCubeParameters] = None,
-                                                         expectedBandCount : Int = -1,
-                                                         sources: Seq[(RasterSource, Feature)],
-                                                         softErrors: Boolean,
-                                  ): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
-
-    if(cloudFilterStrategy!=NoCloudFilterStrategy) {
-      throw new IllegalArgumentException("load_collection: mask_l1c or mask_scl_dilation are not supported by the 'load per product' strategy. Consider using 'to_scl_dilation_mask'.")
-    }
-
-    val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
-    logger.info(s"Cube partitioner index: ${partitioner.index}")
-    val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
-    val tracker = BatchJobMetadataTracker.tracker("")
-    tracker.registerCounter(PIXEL_COUNTER)
-    val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
-    val crs = metadata.crs
-    val layout = metadata.layout
-
-    rasterRegionRDD.sparkContext.setCallSite("load_collection: group by input product")
-    val loadPerProduct = datacubeParams.forall(!_.loadPerProduct)
-    val byBandSource = rasterRegionRDD.flatMap(key_region_sourcename => {
-      val source = key_region_sourcename._2._1.asInstanceOf[GridBoundsRasterRegion].source
-      val bounds = key_region_sourcename._2._1.asInstanceOf[GridBoundsRasterRegion].bounds
-      val result: Seq[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] =
-        source match {
-          case source1: MultibandCompositeRasterSource =>
-            //decompose into individual bands
-            //TODO do something like line below, but make sure that band order is maintained! For now we just return the composite source.
-            //source1.sourcesListWithBandIds.map(s => (s._1.name, (s._2,key_region_sourcename._1,GridBoundsRasterRegion(s._1, bounds))))
-            Seq((source.name, (Seq(0), key_region_sourcename._1, key_region_sourcename._2._1)))
-
-          case source1: BandCompositeRasterSource =>
-            //decompose into individual bands
-            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s), source1.crs, source1.attributes, source1.predefinedExtent, parallelRead = loadPerProduct, softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
-
-          case _ =>
-            Seq((source.name, (Seq(0), key_region_sourcename._1, key_region_sourcename._2._1)))
-
-        }
-
-      result
-    })
-
-    /**
-     *  Determine unique sources, to be used for partitioning.
-     *  Avoid the use of the rdd to simply compute source names, because this triggers a lot of computation which is then repeated later on, even touching the rasters in some cases.
-     */
-    val allSources: Array[SourceName] = sources.flatMap( t =>{
-      t._1 match {
-        case source1: MultibandCompositeRasterSource =>
-          //decompose into individual bands
-          //TODO do something like line below, but make sure that band order is maintained! For now we just return the composite source.
-          //source1.sourcesListWithBandIds.map(s => (s._1.name, (s._2,key_region_sourcename._1,GridBoundsRasterRegion(s._1, bounds))))
-          Seq(t._1.name)
-        case source1: BandCompositeRasterSource =>
-          //decompose into individual bands
-          source1.sources.map(s => s.name).toList
-        case _ =>
-          Seq(t._1.name)
-      }
-    }).distinct.toArray
-
-    val theCellType = metadata.cellType
-    rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
-    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = byBandSource.groupByKey(new ByKeyPartitioner(allSources)).mapPartitions((partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
-      var totalPixelsPartition = 0
-      val startTime = System.currentTimeMillis()
-
-      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))],partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout,theCellType )
-      totalPixelsPartition += partitionPixels
-
-      val durationMillis = System.currentTimeMillis() - startTime
-      if (totalPixelsPartition > 0) {
-        val secondsPerChunk = (durationMillis / 1000.0) / (totalPixelsPartition / (256 * 256))
-        loadingTimeAcc.add(secondsPerChunk)
-        val megapixelPerSecond = (totalPixelsPartition /(1024*1024)) / (durationMillis / 1000.0)
-        megapixelPerSecondMeter.set(megapixelPerSecond)
-      }
-      loadedPartitions
-
-    },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
-      var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1)
-        .map(t => (t._1, t._2.toList.sortBy(x => sortableSourceName(x._3))))
-        .view.mapValues(x => x.map(_._2).reduceOption(_ merge _))
-        .flatMap{case (index,multiband) =>{
-          if(multiband.isDefined && multiband.get.bandCount>1) {
-            if(index != 0) {
-              throw new NotImplementedError("load_collection: read by input product: no support for reading from multiple multiband assets")
-            }else{
-              val bandsWithIndex: immutable.Seq[(Tile, Int)] = multiband.get.bands.zipWithIndex
-              bandsWithIndex.map(t=>(t._2,Some(MultibandTile(t._1))))
-            }
-          }else{
-            Seq[(Int,Option[MultibandTile])]((index,multiband))
-          }
-        }}.toMap
-      for (x <- 0 until expectedBandCount){
-        if(!mergedBands.contains(x)){
-          logger.warn("Band " + x + " is missing in the input data. Filling with empty tile.")
-          val someTile = mergedBands.head._2.get
-          mergedBands = mergedBands + (x -> Some(someTile.prototype(someTile.cols,someTile.rows)))
-        }
-      }
-      MultibandTile(mergedBands.toSeq.sortBy(_._1).flatMap(_._2.get.bands))
-
-    } )
-    val withEmptyTiles = tiledRDD.mapValues {
-      case tile if retainNoDataTiles && tile.bands.forall(_.isNoDataTile) =>
-        new EmptyMultibandTile(tile.cols, tile.rows, tile.cellType, tile.bandCount)
-      case tile =>
-        tile
-    }
-    tiledRDD = withEmptyTiles.filter { case (_, tile) => retainNoDataTiles ||  !tile.bands.forall(_.isNoDataTile) }
-
-    rasterRegionRDD.sparkContext.setCallSite("load_collection: apply mask pixel wise")
-    tiledRDD = DatacubeSupport.applyDataMask(datacubeParams,tiledRDD,metadata, pixelwiseMasking = true)
-    rasterRegionRDD.sparkContext.clearCallSite()
-    val cRDD = ContextRDD(tiledRDD, metadata)
-    cRDD.name = rasterRegionRDD.name
-    cRDD
-
-  }
 
   private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))],
                                    metadata: TileLayerMetadata[SpaceTimeKey],
@@ -789,7 +669,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
   private val fromLoadStac = openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
   private val softErrors = maxSoftErrorsRatio > 0.0
-  private val itemRasterSourceProviderChain = List(SyntheticDataItemRasterSourceProvider, Sentinel2JP2RasterSourceProvider, DefaultItemRasterSourceProvider(openSearch, openSearchLinkTitles, rootPath, maxSpatialResolution, bandIndices, experimental, maxSoftErrorsRatio))
+  private val rasterSourceProviderChain: Seq[RasterSourceProvider] = List(SyntheticDataRasterSourceProvider, SentinelXmlMetadataRasterSourceProvider, ZarrRasterSourceProvider, GdalRasterSourceProvider, DefaultRasterSourceProvider)
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     if (bandIndices.nonEmpty) {
@@ -875,7 +755,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     //Certain STAC items can have large number of links!
     overlappingRasterSources = overlappingRasterSources.map(source_feature => (source_feature._1,source_feature._2.copy(links = Array.empty, generalProperties = null)))
 
-    var commonCellType: CellType = determineCelltype(overlappingRasterSources)
+    val commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
     val spatialBounds = metadata.bounds.get.toSpatial
@@ -994,7 +874,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     requiredSpacetimeKeys = applySpaceTimeMask(datacubeParams, requiredSpacetimeKeys,metadata)
 
-    if (isUTM && !fromLoadStac) {
+    if (isUTM && datacubeParams.forall(_.resolveTileOverlap)) {
       //only for utm is just a safeguard to limit to Sentinel-1/2 for now
       //try to resolve overlap before actually reading the data
       requiredSpacetimeKeys = requiredSpacetimeKeys
@@ -1118,89 +998,150 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     selectedLayoutScheme
   }
 
-
-
-  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon], polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
-
-    val readKeysToRasterSourcesResult: (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy], Seq[(RasterSource, Feature)]) = readKeysToRasterSources(from,to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams)
-
-    var maskStrategy: Option[CloudFilterStrategy] = readKeysToRasterSourcesResult._3
-    val metadata = readKeysToRasterSourcesResult._2
-    val requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = readKeysToRasterSourcesResult._1.persist()
-    requiredSpacetimeKeys.setName(s"FileLayerProvider_keys_${this.openSearchCollectionId}_${from.toString}_${to.toString}")
-
-    try{
-
-      val spatialBounds = metadata.bounds.get.toSpatial
-      val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
-
-      val partitioner: Option[SpacePartitioner[SpaceTimeKey]] = {
-        if(maxKeys>4) {
-          DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
-        }else{
-
-          //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
-          val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
-          val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
-          val dates = readKeysToRasterSourcesResult._4.map(_._2.nominalDate).distinct
-          val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
-          val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
-          Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction,theKeys = Some(allKeys.toArray))))
-        }
-
-      }
-
-      val layoutDefinition = metadata.layout
-      val resample = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) >= 0.0000001 * layoutDefinition.cellSize.resolution
-      val reduction = if (resample) 1 else 5
-      //resampling is still needed in case bounding boxes are not aligned with pixels
-      // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
-      val theResampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
-
-      requiredSpacetimeKeys.sparkContext.setCallSite(s"load_collection: determine raster regions to read resample: ${resample}")
-
-      val regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys
-        .groupBy { case (_, vector.Feature(_, (rasterSource, _))) => rasterSource }
-        .flatMap { case (rasterSource, keyedFeatures) =>
-          val source = if (resample) {
-            //slow path
-            rasterSource.tileToLayout(layoutDefinition, theResampleMethod)
-          } else {
-            //fast path
-            new LayoutTileSourceFixed(rasterSource, layoutDefinition, identity)
-          }
-
-          keyedFeatures
-            .map { case (spaceTimeKey, vector.Feature(_, (rasterSource, _))) =>
-              (spaceTimeKey, (source.rasterRegionForKey(spaceTimeKey.spatialKey), rasterSource.name))
-            }
-            .filter { case (spaceTimeKey, (rasterRegion, sourceName)) =>
-              val canRead = rasterRegion.isDefined
-              if (!canRead) logger.warn(s"no RasterRegion for $spaceTimeKey in $sourceName")
-              canRead
-            }
-            .map { case (spaceTimeKey, (Some(rasterRegion), sourceName)) => (spaceTimeKey, (rasterRegion, sourceName)) }
-        }
-
-      regions.name = s"FileCollection-${openSearchCollectionId}"
-
-      val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
-
-      //convert to raster region
-      val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
-      val cube=
-        if(!datacubeParams.exists(_.loadPerProduct) || theMaskStrategy != NoCloudFilterStrategy ){
-          rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
-        }else{
-          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size,readKeysToRasterSourcesResult._4, softErrors)
-        }
-      logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
+  def readMultibandTileLayer(
+    from: ZonedDateTime,
+    to: ZonedDateTime,
+    boundingBox: ProjectedExtent,
+    polygons: Array[MultiPolygon],
+    polygons_crs: CRS,
+    zoom: Int,
+    sc: SparkContext,
+    datacubeParams: Option[DataCubeParameters]
+  ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val rasterRegionContext = prepareRasterRegions(
+      from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
+    )
+    try {
+      val cube = RasterTileLoader.loadRasterRegionsToTiles(
+        rasterRegionContext.regions,
+        rasterRegionContext.metadata,
+        rasterRegionContext.maskStrategy,
+        rasterRegionContext.partitioner,
+        datacubeParams,
+        rasterRegionContext.sources,
+        openSearchLinkTitlesWithBandId,
+        softErrors
+      )
+      logger.info(
+        s"Created cube for $openSearchCollectionId with metadata ${cube.metadata} " +
+          s"and partitioner ${cube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}"
+      )
       cube
-    }finally{
-      requiredSpacetimeKeys.unpersist(false)
+    } finally {
+      rasterRegionContext.unpersist()
     }
+  }
 
+  def prepareRasterRegions(
+    from: ZonedDateTime,
+    to: ZonedDateTime,
+    boundingBox: ProjectedExtent,
+    polygons: Array[MultiPolygon],
+    polygons_crs: CRS,
+    zoom: Int,
+    sc: SparkContext,
+    datacubeParams: Option[DataCubeParameters]
+  ): RasterRegionContext = {
 
+    val (keys, metadata, maskStrategy, sources) =
+      readKeysToRasterSources(
+        from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
+      )
+
+    val requiredKeys = keys.persist()
+    requiredKeys.setName(
+      s"FileLayerProvider_keys_${openSearchCollectionId}_${from}_${to}"
+    )
+
+    try {
+      val partitioner =
+        createSpaceTimePartitioner(
+          metadata.bounds.get.toSpatial,
+          datacubeParams,
+          requiredKeys.keys,
+          metadata,
+          sources
+        )
+
+      val regions =
+        convertToRasterRegions(
+          requiredKeys,
+          metadata.layout,
+          datacubeParams
+        )
+
+      regions.setName(s"FileCollection-$openSearchCollectionId")
+
+      RasterRegionContext(
+        requiredKeys = requiredKeys,
+        regions = regions,
+        metadata = metadata,
+        maskStrategy = maskStrategy,
+        partitioner = partitioner,
+        sources = sources
+      )
+    } catch {
+      case e: Throwable =>
+        requiredKeys.unpersist(false)
+        throw e
+    }
+  }
+
+  private def convertToRasterRegions(
+    requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])],
+    layoutDefinition: LayoutDefinition,
+    datacubeParams: Option[DataCubeParameters]
+  ): RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = {
+    val resample = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) >= 0.0000001 * layoutDefinition.cellSize.resolution
+    // Resampling is still needed in case bounding boxes are not aligned with pixels
+    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
+    val theResampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
+
+    requiredSpacetimeKeys.sparkContext.setCallSite(s"load_collection: determine raster regions to read resample: ${resample}")
+
+    requiredSpacetimeKeys
+      .groupBy { case (_, vector.Feature(_, (rasterSource, _))) => rasterSource }
+      .flatMap { case (rasterSource, keyedFeatures) =>
+        val source = if (resample) {
+          //slow path
+          rasterSource.tileToLayout(layoutDefinition, theResampleMethod)
+        } else {
+          //fast path
+          new LayoutTileSourceFixed(rasterSource, layoutDefinition, identity)
+        }
+
+        keyedFeatures
+          .map { case (spaceTimeKey, vector.Feature(_, (rasterSource, _))) =>
+            (spaceTimeKey, (source.rasterRegionForKey(spaceTimeKey.spatialKey), rasterSource.name))
+          }
+          .filter { case (spaceTimeKey, (rasterRegion, sourceName)) =>
+            val canRead = rasterRegion.isDefined
+            if (!canRead) logger.warn(s"no RasterRegion for $spaceTimeKey in $sourceName")
+            canRead
+          }
+          .map { case (spaceTimeKey, (Some(rasterRegion), sourceName)) => (spaceTimeKey, (rasterRegion, sourceName)) }
+      }
+  }
+
+  private def createSpaceTimePartitioner(
+    spatialBounds: KeyBounds[SpatialKey],
+    datacubeParams: Option[DataCubeParameters],
+    spaceTimeKeys: RDD[SpaceTimeKey],
+    metadata: TileLayerMetadata[SpaceTimeKey],
+    sources: Seq[(RasterSource, Feature)]
+  ): Option[SpacePartitioner[SpaceTimeKey]] = {
+    val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
+    if (maxKeys > 4) {
+      DatacubeSupport.createPartitioner(datacubeParams, spaceTimeKeys, metadata)
+    } else {
+      //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
+      val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
+      val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
+      val dates = sources.map(_._2.nominalDate).distinct
+      val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
+      val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
+      Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(allKeys.toArray))))
+    }
   }
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
@@ -1255,189 +1196,23 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
    * @param targetResolution Target resolution to read.
    * @return
    */
-  private def deriveRasterSourcesUsingItemRasterSourceProviders(feature: Feature, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(RasterSource, Feature)] = {
-    val rasterExtent = RasterExtent(targetExtent.extent, targetResolution.getOrElse(maxSpatialResolution))
-    itemRasterSourceProviderChain
-      .find(_.canProcess(feature, datacubeParams))
-      .flatMap(
-        _.getRasterSource(feature, targetExtent = rasterExtent, targetExtent.crs, openSearchLinkTitlesWithBandId, datacubeParams)
-      ).map((_, feature))
-  }
+  private def deriveRasterSourcesUsingRasterSourceProviders(feature: Feature, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty, resolver: BandAssetLinkResolver): Option[(RasterSource, Feature)] = {
 
-
-  /**
-   *
-   * @param feature
-   * @param targetExtent The target extent to read from 'feature'
-   * @param datacubeParams Data cube parameters
-   * @param targetResolution Target resolution to read.
-   * @return
-   */
-  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(RasterSource, Feature)] = {
-    if (datacubeParams.exists(_.useRasterSourceProviders)) {
-      deriveRasterSourcesUsingItemRasterSourceProviders(feature, targetExtent, datacubeParams, targetResolution)
-    } else {
-      deriveRasterSourcesLegacy(feature, targetExtent, datacubeParams, targetResolution)
-    }
-  }
-
-  private def deriveRasterSourcesLegacy(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(BandCompositeRasterSource, Feature)] = {
-
-    val noResampleOnRead = datacubeParams.exists(_.noResampleOnRead)
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
     val featureExtentInLayout: Option[GridExtent[Long]] = computeItemExtentInTargetLayout(feature, re, targetExtent, datacubeParams)
-
     var predefinedExtent: Option[GridExtent[Long]] = None
-    /**
-     * Benefit of targetregion: it can be valid in the target projection system
-     * Downside of targetregion: it is a virtual cropping of the raster, so we're not able to load data beyond targetExtent
-     *
-     */
-    val alignment =
-      if(feature.crs.isDefined && feature.crs.get.proj4jCrs.getProjection.getName == "utm" && datacubeParams.map(_.maskingStrategyParameters.getOrDefault("method", "")).contains("mask_scl_dilation")) {
-        //this hack avoid virtual cropping for Sentinel-2 (utm), which breaks mask_scl_dilation
-        TargetAlignment(re)
-      }else{
-        TargetRegion(re)
-      }
-
-
-    val resampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
-
-    def vsisToHttpsCreo(path: String): String = {
-      if (path.startsWith("/vsicurl/")) path.replaceFirst("/vsicurl/", "")
-      else if (path.startsWith("/vsis3/eodata/"))
-        path.replaceFirst("/vsis3/eodata/", "https://finder.creodias.eu/files/")
-      else if (path.startsWith("/eodata/"))
-        path.replaceFirst("/eodata/", "https://zipper.creodias.eu/get-object?path=/")
-      else if (path.startsWith("http")) path
-      else {
-        logger.warn("unexpected path: " + path)
-        path
-      }
-    }
-
-    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, sentinelXmlAngleBandIndex: Int): RasterSource = {
-      if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
-        var warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
-        if (dataPath.endsWith("SCL_20m.jp2")) {
-          // The overviews in the S2 SCL bands can be wrong, so we need to use the original resolution.
-          warpOptionsOvr = Some(geotrellis.raster.io.geotiff.Base)
-        }
-        val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
-        val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
-          te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs), ovr = warpOptionsOvr
-        )
-        if (cloudPath.isDefined) {
-          GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
-        } else {
-          predefinedExtent = featureExtentInLayout
-          GDALRasterSource(GDALPath(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
-        }
-      }else if(dataPath.endsWith("MTD_TL.xml")) {
-        val targetProjectedExtent = featureExtentInLayout match {
-          case None => None
-          case Some(featureExtentInLayoutGet) =>
-            Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
-        }
-        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
-      }else if(dataPath.endsWith(".zarr")) {
-        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
-        GDALRasterSource(GDALPath(dataPath),options = warpOptions, targetCellType = targetCellType)
-      }
-      else {
-        def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
-            // When noResampleOnRead is set, we retrieve the actual resolution from the dataPath.
-            // Note: This is only supported for S2 dataPaths.
-            // E.g. S2A_20190307T105021_31UFT_TOC-B05_20M_V200.tif = 20.0
-            val splitPath: Array[String] = dataPath.split("_")
-            val tiffResolution = splitPath(splitPath.length - 2).replace("M", "").toDouble
-            val tiffCellSize = CellSize(tiffResolution, tiffResolution)
-            val tiffRe = RasterExtent(expandToCellSize(projectedExtent.extent, tiffCellSize), tiffCellSize)
-            TargetRegion(tiffRe)
-        }
-        if( feature.crs.isDefined && feature.crs.get != null && feature.crs.get.equals(targetExtent.crs)) {
-          // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
-          if(experimental) {
-            GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType)
-          }else{
-            val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
-            if (noResampleOnRead) {
-              val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
-              val geotiffRasterSource = GeoTiffRasterSource(geotiffPath, targetCellType)
-              new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, theResolution)
-            } else {
-              GeoTiffResampleRasterSource(geotiffPath, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None)
-            }
-          }
-        }else{
-          if(experimental) {
-            val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
-            GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
-          }else{
-            val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
-            if (noResampleOnRead) {
-              val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
-              val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, tiffAlignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType)
-              new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, theResolution)
-            } else {
-              GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType)
-            }
-          }
-        }
-      }
-    }
-
     val bandNames = openSearchLinkTitles.toList
 
-
-
-    def getBandAssetsByBandInfo: Seq[Option[(Link, Int)]] = { // [Some((href, bandIndex))]
-      def getBandAsset(bandName: String): Option[(Link, Int)] = { // (href, bandIndex)
-        feature.links
-          .flatMap(link => link.bandNames match {
-            case Some(assetBandNames) =>
-              val bandIndex = assetBandNames.indexWhere(_ == bandName)
-              if (bandIndex >= 0) {
-                convertNetcdfLinksToGDALFormat(link, bandName, bandIndex)
-              } else None
-            case _ => None
-          })
-          .headOption
-          .orElse {
-            logger.warn(s"asset with band name $bandName not found in feature ${feature.id}; inserting NODATA band instead")
-            None
-          }
-      }
-
-      bandNames
-        .map(getBandAsset)
-    }
-
-    def getBandAssetsByLinkTitle : Seq[Option[(Link, Int)]] = for {
-      (title, bandIndex) <- openSearchLinkTitlesWithBandId.toList
-      linkWithTitle = feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase).orElse {
-        logger.warn(s"asset with ID/title $title not found in feature ${feature.id}; inserting NODATA band instead")
-        None
-      }
-    } yield linkWithTitle.map(convertNetcdfLinksToGDALFormat(_,title,bandIndex).get)
-
-    // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
     val byLinkTitle = !fromLoadStac
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
-    lazy val cloudPath = for {
-      cloudDataPath <- feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString)
-      metadataPath <- feature.links.find(_.title contains "S2_Level-1C_Tile1_Metadata").map(_.href.toString)
-    } yield (cloudDataPath, metadataPath)
-
     val rasterSources: Seq[Option[(RasterSource, Int)]] =
-      (if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo).map {
+      resolver.getBandAssets(feature).map {
         case Some((link, bandIndex)) =>
-          val path = deriveFilePath(link.href)
+          val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
           //special case handling for data that does not declare nodata properly
@@ -1457,10 +1232,27 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
             case _ => None
           }
-
-          val rasterSourceRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, sentinelXmlAngleBandIndex = bandIndex)
-          val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
-          Some((rasterSourceWrapped, bandIndex))
+          val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental)
+          val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
+              _.canProcess(definition)
+            ).map(
+              p => {
+                if (p.usePredefinedExtent(definition)) {
+                  predefinedExtent = featureExtentInLayout
+                }
+                p.rasterSource(definition)
+              }
+            )
+            .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
+          if (maybeSource.isDefined) {
+            if (bandIndex > 0) {
+              Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
+            } else {
+              Some(maybeSource.get, 0)
+            }
+          } else {
+            None
+          }
         case _ => None
       }
 
@@ -1492,8 +1284,27 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }
 
         Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
-      } else Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct)), feature))
+      } else if (sources.forall { case(_, idx) => idx == 0}) {
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
+      } else {
+        logger.warn("Unexpected use of MultibandCompositeRasterSource")
+        Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
+      }
     }
+  }
+
+
+  /**
+   *
+   * @param feature
+   * @param targetExtent The target extent to read from 'feature'
+   * @param datacubeParams Data cube parameters
+   * @param targetResolution Target resolution to read.
+   * @return
+   */
+  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(RasterSource, Feature)] = {
+    val resolver = BandAssetLinkResolver(openSearch, openSearchLinkTitles, rootPath, maxSpatialResolution, bandIndices, experimental, maxSoftErrorsRatio)
+    deriveRasterSourcesUsingRasterSourceProviders(feature, targetExtent, datacubeParams, targetResolution, resolver)
   }
 
   private def computeItemExtentInTargetLayout(item: Feature, re: RasterExtent, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters]) = {
@@ -1590,23 +1401,26 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           case None => f
           case Some(geom) =>
             var pp = ProjectedPolygons(geom, LatLng)
-            if (openSearchCollectionId == "GLOBAL-MOSAICS" && f.id.length > 7) {
-              val tileIdGuess = f.id.substring(f.id.length - 9, f.id.length - 7)
-              val crs = CRS.fromName("EPSG:326" + tileIdGuess)
+            val fileIdPattern: Regex = "^.*_(\\d\\d)[^\\d]+_[^_]+_[^_]+$".r
+            f.id match {
+              case fileIdPattern(zone) => {
+                val crs = CRS.fromName("EPSG:326" + zone)
 
-              // The geom in the catalog does not take into account curvature.
-              // Doing a basic projection and a refined projection back fixes this.
-              pp = pp
-                .safeReproject(crs, refine = false)
-                .safeReproject(LatLng, refine = true)
-                .splitPolygonsOnWrapPoint()
+                // The geom in the catalog does not take into account curvature.
+                // Doing a basic projection and a refined projection back fixes this.
+                pp = pp
+                  .safeReproject(crs, refine = false)
+                  .safeReproject(LatLng, refine = true)
+                  .splitPolygonsOnWrapPoint()
 
-              var ps = pp.getFlatMultiPolygon.polygons
-              // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
-              // Remove the polygons that cross the line to mitigate this
-              if (tileIdGuess == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
-              if (tileIdGuess == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
-              pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
+                var ps = pp.getFlatMultiPolygon.polygons
+                // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
+                // Remove the polygons that cross the line to mitigate this
+                if (zone == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
+                if (zone == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
+                pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
+              }
+              case _ => logger.debug(s"${f.id} does not match UTM zone regex")
             }
             f.copy(geometry = Some(pp.getFlatMultiPolygon))
         }

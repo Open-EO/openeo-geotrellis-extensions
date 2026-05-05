@@ -12,8 +12,9 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.store.s3.util.S3RangeReader
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert._
-import org.junit.{AfterClass, BeforeClass, Ignore, Test}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNotNull, assertTrue, fail}
+import org.junit.jupiter.api.condition.EnabledIf
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
@@ -34,7 +35,7 @@ object PyramidFactoryTest {
 
   private implicit var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = {
     val sparkConf = new SparkConf()
       .set("spark.kryoserializer.buffer.max", "512m")
@@ -43,7 +44,7 @@ object PyramidFactoryTest {
     sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, sparkConf)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = {
     sc.stop()
   }
@@ -52,6 +53,7 @@ object PyramidFactoryTest {
 class PyramidFactoryTest {
   import PyramidFactoryTest._
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def singleBandGeoTiffFromDiskForSingleDate(): Unit = {
     val from = ZonedDateTime.of(LocalDate.of(2019, 4, 24), MIDNIGHT, UTC)
@@ -61,6 +63,7 @@ class PyramidFactoryTest {
       globPattern = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/24/*/10M/*_FAPAR_10M_V200.tif", from, to)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def singleBandGeoTiffFromDiskForMultipleDates(): Unit = {
     val from = ZonedDateTime.of(LocalDate.of(2019, 4, 24), MIDNIGHT, UTC)
@@ -70,9 +73,10 @@ class PyramidFactoryTest {
       globPattern = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/2[34567]/*/10M/*_FAPAR_10M_V200.tif", from, to)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def singleBandGeoTiffFromDiskForSingleFixedDate(): Unit = {
-    val singlePath = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2023/01/03/S2B_20230103T110349_31UES_FAPAR_V210/20M/S2B_20230103T110349_31UES_FAPAR_20M_V210.tif"
+    val singlePath = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2023/01/03/S2B_20230103T110349_31UES_FAPAR_V220/20M/S2B_20230103T110349_31UES_FAPAR_20M_V220.tif"
     val singleDate = LocalDate.of(2023, 1, 3).atStartOfDay(UTC)
 
     val pyramidFactory = PyramidFactory.from_disk(
@@ -88,7 +92,7 @@ class PyramidFactoryTest {
 
     baseLayer.cache()
 
-    assertFalse("base layer contains no tiles!", baseLayer.isEmpty())
+    assertFalse(baseLayer.isEmpty(), "base layer contains no tiles!")
 
     val uniqueTimestamps = baseLayer.keys
       .map(_.time)
@@ -99,6 +103,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, maxZoom)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasProjectsData")
   @Test
   def loadResultGeoTiffFromDiskForSingleFixedDate(): Unit = {
     val singlePath = "file:/data/projects/OpenEO/automated_test_files/load_result_openEO_2019-09-22Z.tif"
@@ -128,7 +133,7 @@ class PyramidFactoryTest {
 
     baseLayer.cache()
 
-    assertFalse("base layer contains no tiles!", baseLayer.isEmpty())
+    assertFalse(baseLayer.isEmpty(), "base layer contains no tiles!")
 
     val uniqueTimestamps = baseLayer.keys
       .map(_.time)
@@ -186,13 +191,13 @@ class PyramidFactoryTest {
     }
   }
 
-  @Ignore("currently works only against amazonaws.com")
+  @Disabled("currently works only against amazonaws.com")
   @Test
   def singleBandGeoTiffFromS3ForSingleDate(): Unit = {
     // otherwise the S3 client will keep retrying to access
     // http://169.254.169.254/latest/meta-data/iam/security-credentials/
-    assertNotNull("aws.accessKeyId is not set", System.getProperty("aws.accessKeyId"))
-    assertNotNull("aws.secretKey is not set", System.getProperty("aws.secretKey"))
+    assertNotNull(System.getProperty("aws.accessKeyId"), "aws.accessKeyId is not set")
+    assertNotNull(System.getProperty("aws.secretKey"), "aws.secretKey is not set")
     System.setProperty("aws.region", "eu-west-3")
 
     val boundingBox = ProjectedExtent(Extent(xmin = 679605.00, ymin = 5667337.31, xmax = 691784.50, ymax = 5678547.98),
@@ -218,7 +223,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 10)
   }
 
-  @Ignore("the bucket is being emptied because S3 costs are through the roof")
+  @Disabled("the bucket is being emptied because S3 costs are through the roof")
   @Test
   def sentinelHubBatchProcessApiGeoTiffFromS3ForMultipleDates(): Unit = {
     assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
@@ -252,7 +257,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, reprojectedBoundingBox, zoom = maxZoom)
   }
 
-  @Ignore
+  @Disabled
   @Test
   def assembledSentinelHubBatchProcessResultsFromS3(): Unit = {
     assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
@@ -282,7 +287,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
-  @Ignore("the bucket is being emptied because S3 costs are through the roof")
+  @Disabled("the bucket is being emptied because S3 costs are through the roof")
   @Test
   def sentinelHubCard4LBatchProcessApiGeoTiffFromS3ForMultipleDates(): Unit = {
     assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
@@ -313,7 +318,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
-  @Ignore("added for debugging purposes")
+  @Disabled("added for debugging purposes")
   @Test
   def adjacentSentinelHubCard4LBatchProcessApiGeotiffs(): Unit = {
     val pyramidFactory = PyramidFactory.from_disk(
@@ -335,7 +340,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
-  @Ignore("the bucket is being emptied because S3 costs are through the roof")
+  @Disabled("the bucket is being emptied because S3 costs are through the roof")
   @Test
   def sentinelHubBatchProcessApiGeoTiffFromS3ForMultipleDates_pyramid_seq(): Unit = {
     assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
@@ -367,7 +372,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
-  @Ignore("depends on data in AWS S3")
+  @Disabled("depends on data in AWS S3")
   @Test
   def sentinelHubBatchProcessApiGeoTiffFromS3BucketInDifferentRegion(): Unit = {
     assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
@@ -399,6 +404,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def joinLayers(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
@@ -460,7 +466,7 @@ class PyramidFactoryTest {
     }
   }
 
-  @Ignore
+  @Disabled
   @Test
   def assembledSentinelHubBatchProcessResultsFromDisk(): Unit = {
     val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), LatLng)
@@ -485,7 +491,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, reprojectedBoundingBox, zoom = maxZoom)
   }
 
-  @Ignore("requires a file with Terrascope credentials")
+  @Disabled("requires a file with Terrascope credentials")
   @Test
   def authorizedGeoTiffFromUri(): Unit = {
     val singleDate = LocalDate.of(2020, 1, 5).atStartOfDay(UTC) format ISO_OFFSET_DATE_TIME
@@ -510,7 +516,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
-  @Ignore("doesn't work, the S3Client instance is not propagated as RasterSources are manipulated")
+  @Disabled("doesn't work, the S3Client instance is not propagated as RasterSources are manipulated")
   @Test
   def anonymousInnerClass(): Unit = {
 
