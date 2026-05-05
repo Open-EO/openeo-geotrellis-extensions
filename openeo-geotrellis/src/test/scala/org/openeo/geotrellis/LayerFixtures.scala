@@ -251,25 +251,549 @@ object LayerFixtures {
     val client = new FixedFeaturesOpenSearchClient
     FeatureCollection.parse(
       """{
-        |    "features": [
-        |        {
-        |            "type": "Feature",
-        |            "id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20220427T103631_31UFS_TOC_V210",
-        |            "geometry": {"type":"Polygon","coordinates":[[[4.4359272,51.345824],[4.4087151,50.4552722],[5.9538697,50.4262937],[6.017025,51.4123427],[4.4754747,51.4416564],[4.440161,51.3561033],[4.4359272,51.345824]]]},
-        |            "bbox": [4.4087151,50.4262937,6.017025,51.4416564],
-        |            "properties":
-        |            	{"date":"2022-04-27T10:36:31.024Z","updated":"2024-05-04T05:49:45.914Z","available":"2024-05-04T05:49:47Z","published":"2024-05-04T05:49:47Z","status":"ARCHIVED","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S2_TOC_V2","title":"S2A_20220427T103631_31UFS_TOC_V210","identifier":"urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20220427T103631_31UFS_TOC_V210","acquisitionInformation":[{"platform":{"platformShortName":"Sentinel-2","platformSerialIdentifier":"S2A"},"acquisitionParameters":{"acquisitionType":"NOMINAL","orbitDirection":"DESCENDING","orbitNumber":35755,"relativeOrbitNumber":8,"beginningDateTime":"2022-04-27T10:36:31.024Z","endingDateTime":"2022-04-27T10:36:31.024Z","tileId":"31UFS"}}],"productInformation":{"cloudCover":4.0,"productType":"TOC","availabilityTime":"2024-05-04T05:49:47Z","productVersion":"V210","processingCenter":"VITO","processingDate":"2024-05-04T05:49:45.914Z"},"links":{"previews":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC_QUICKLOOK_V210.tif","type":"image/tiff","length":1167730,"category":"QUICKLOOK"},{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S2_RADIOMETRY&TIME=2022-04-27&BBOX=490775.91998461616,6520432.343963758,669812.159090397,6699792.617822841&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","bandNames":["WMS"],"category":"QUICKLOOK"}],"alternates":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC_V210.xml","type":"application/vnd.iso.19139+xml","length":39914,"title":"Inspire metadata"}],"related":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_AOT_60M_V210.tif","type":"image/tiff","length":542566,"title":"AOT_60M","bandNames":["AOT_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_RAA_60M_V210.tif","type":"image/tiff","length":707167,"title":"RAA_60M","bandNames":["RAA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_SCENECLASSIFICATION_20M_V210.tif","type":"image/tiff","length":4189675,"title":"SCENECLASSIFICATION_20M","bandNames":["SCENECLASSIFICATION_20M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_SZA_60M_V210.tif","type":"image/tiff","length":112778,"title":"SZA_60M","bandNames":["SZA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_VZA_60M_V210.tif","type":"image/tiff","length":245124,"title":"VZA_60M","bandNames":["VZA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_WVP_60M_V210.tif","type":"image/tiff","length":7222904,"title":"WVP_60M","bandNames":["WVP_60M"],"category":"QUALITY"}],"data":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B01_60M_V210.tif","type":"image/tiff","length":5238899,"title":"TOC-B01_60M","bandNames":["TOC-B01_60M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B02_10M_V210.tif","type":"image/tiff","length":182872148,"title":"TOC-B02_10M","bandNames":["TOC-B02_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B03_10M_V210.tif","type":"image/tiff","length":185502794,"title":"TOC-B03_10M","bandNames":["TOC-B03_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B04_10M_V210.tif","type":"image/tiff","length":191130525,"title":"TOC-B04_10M","bandNames":["TOC-B04_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B05_20M_V210.tif","type":"image/tiff","length":50371478,"title":"TOC-B05_20M","bandNames":["TOC-B05_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B06_20M_V210.tif","type":"image/tiff","length":53325324,"title":"TOC-B06_20M","bandNames":["TOC-B06_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B07_20M_V210.tif","type":"image/tiff","length":54635441,"title":"TOC-B07_20M","bandNames":["TOC-B07_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B08_10M_V210.tif","type":"image/tiff","length":215814722,"title":"TOC-B08_10M","bandNames":["TOC-B08_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B11_20M_V210.tif","type":"image/tiff","length":52370812,"title":"TOC-B11_20M","bandNames":["TOC-B11_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B12_20M_V210.tif","type":"image/tiff","length":52369099,"title":"TOC-B12_20M","bandNames":["TOC-B12_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V210/S2A_20220427T103631_31UFS_TOC-B8A_20M_V210.tif","type":"image/tiff","length":54911382,"title":"TOC-B8A_20M","bandNames":["TOC-B8A_20M"]}]}}
-        |         }
-        |        ,{
-        |            "type": "Feature",
-        |            "id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220425T104619_31UFS_TOC_V210",
-        |            "geometry": {"type":"Polygon","coordinates":[[[5.966209,50.6189483],[6.017025,51.4123427],[4.4388768,51.4423523],[4.4087151,50.4552722],[5.8705214,50.4278568],[5.9056393,50.4984909],[5.966209,50.6189483]]]},
-        |            "bbox": [4.4087151,50.4278568,6.017025,51.4423523],
-        |            "properties":
-        |            	{"date":"2022-04-25T10:46:19.024Z","updated":"2024-05-04T06:17:20.547Z","available":"2024-05-04T06:17:21Z","published":"2024-05-04T06:17:21Z","status":"ARCHIVED","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S2_TOC_V2","title":"S2B_20220425T104619_31UFS_TOC_V210","identifier":"urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220425T104619_31UFS_TOC_V210","acquisitionInformation":[{"platform":{"platformShortName":"Sentinel-2","platformSerialIdentifier":"S2B"},"acquisitionParameters":{"acquisitionType":"NOMINAL","orbitDirection":"ASCENDING","orbitNumber":26818,"relativeOrbitNumber":51,"beginningDateTime":"2022-04-25T10:46:19.024Z","endingDateTime":"2022-04-25T10:46:19.024Z","tileId":"31UFS"}}],"productInformation":{"cloudCover":81.89,"productType":"TOC","availabilityTime":"2024-05-04T06:17:21Z","productVersion":"V210","processingCenter":"VITO","processingDate":"2024-05-04T06:17:20.547Z"},"links":{"previews":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC_QUICKLOOK_V210.tif","type":"image/tiff","length":397398,"category":"QUICKLOOK"},{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S2_RADIOMETRY&TIME=2022-04-25&BBOX=490775.91998461616,6520705.479222213,669812.159090397,6699916.902160429&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","bandNames":["WMS"],"category":"QUICKLOOK"}],"alternates":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC_V210.xml","type":"application/vnd.iso.19139+xml","length":39916,"title":"Inspire metadata"}],"related":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_AOT_60M_V210.tif","type":"image/tiff","length":315056,"title":"AOT_60M","bandNames":["AOT_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_RAA_60M_V210.tif","type":"image/tiff","length":686575,"title":"RAA_60M","bandNames":["RAA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_SCENECLASSIFICATION_20M_V210.tif","type":"image/tiff","length":2552415,"title":"SCENECLASSIFICATION_20M","bandNames":["SCENECLASSIFICATION_20M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_SZA_60M_V210.tif","type":"image/tiff","length":104369,"title":"SZA_60M","bandNames":["SZA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_VZA_60M_V210.tif","type":"image/tiff","length":255300,"title":"VZA_60M","bandNames":["VZA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_WVP_60M_V210.tif","type":"image/tiff","length":1428764,"title":"WVP_60M","bandNames":["WVP_60M"],"category":"QUALITY"}],"data":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B01_60M_V210.tif","type":"image/tiff","length":2614598,"title":"TOC-B01_60M","bandNames":["TOC-B01_60M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B02_10M_V210.tif","type":"image/tiff","length":80158218,"title":"TOC-B02_10M","bandNames":["TOC-B02_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B03_10M_V210.tif","type":"image/tiff","length":80437024,"title":"TOC-B03_10M","bandNames":["TOC-B03_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B04_10M_V210.tif","type":"image/tiff","length":81500126,"title":"TOC-B04_10M","bandNames":["TOC-B04_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B05_20M_V210.tif","type":"image/tiff","length":22693576,"title":"TOC-B05_20M","bandNames":["TOC-B05_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B06_20M_V210.tif","type":"image/tiff","length":22973634,"title":"TOC-B06_20M","bandNames":["TOC-B06_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B07_20M_V210.tif","type":"image/tiff","length":23113419,"title":"TOC-B07_20M","bandNames":["TOC-B07_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B08_10M_V210.tif","type":"image/tiff","length":80739192,"title":"TOC-B08_10M","bandNames":["TOC-B08_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B11_20M_V210.tif","type":"image/tiff","length":22573019,"title":"TOC-B11_20M","bandNames":["TOC-B11_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B12_20M_V210.tif","type":"image/tiff","length":22397251,"title":"TOC-B12_20M","bandNames":["TOC-B12_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V210/S2B_20220425T104619_31UFS_TOC-B8A_20M_V210.tif","type":"image/tiff","length":23128264,"title":"TOC-B8A_20M","bandNames":["TOC-B8A_20M"]}]}}
-        |         }
-        |    ]
-        |  }""".stripMargin).features.foreach(feature => client.addFeature(feature))
+        |  "features": [
+        |    {
+        |      "type": "Feature",
+        |      "id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20220427T103631_31UFS_TOC_V220",
+        |      "geometry": {
+        |        "type": "Polygon",
+        |        "coordinates": [
+        |          [
+        |            [
+        |              4.4359272,
+        |              51.345824
+        |            ],
+        |            [
+        |              4.4087151,
+        |              50.4552722
+        |            ],
+        |            [
+        |              5.9538697,
+        |              50.4262937
+        |            ],
+        |            [
+        |              6.017025,
+        |              51.4123427
+        |            ],
+        |            [
+        |              4.4754747,
+        |              51.4416564
+        |            ],
+        |            [
+        |              4.440161,
+        |              51.3561033
+        |            ],
+        |            [
+        |              4.4359272,
+        |              51.345824
+        |            ]
+        |          ]
+        |        ]
+        |      },
+        |      "bbox": [
+        |        4.4087151,
+        |        50.4262937,
+        |        6.017025,
+        |        51.4416564
+        |      ],
+        |      "properties": {
+        |        "date": "2022-04-27T10:36:31.024Z",
+        |        "updated": "2024-05-04T05:49:45.914Z",
+        |        "available": "2024-05-04T05:49:47Z",
+        |        "published": "2024-05-04T05:49:47Z",
+        |        "status": "ARCHIVED",
+        |        "parentIdentifier": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+        |        "title": "S2A_20220427T103631_31UFS_TOC_V220",
+        |        "identifier": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20220427T103631_31UFS_TOC_V220",
+        |        "acquisitionInformation": [
+        |          {
+        |            "platform": {
+        |              "platformShortName": "Sentinel-2",
+        |              "platformSerialIdentifier": "S2A"
+        |            },
+        |            "acquisitionParameters": {
+        |              "acquisitionType": "NOMINAL",
+        |              "orbitDirection": "DESCENDING",
+        |              "orbitNumber": 35755,
+        |              "relativeOrbitNumber": 8,
+        |              "beginningDateTime": "2022-04-27T10:36:31.024Z",
+        |              "endingDateTime": "2022-04-27T10:36:31.024Z",
+        |              "tileId": "31UFS"
+        |            }
+        |          }
+        |        ],
+        |        "productInformation": {
+        |          "cloudCover": 4.0,
+        |          "productType": "TOC",
+        |          "availabilityTime": "2024-05-04T05:49:47Z",
+        |          "productVersion": "V210",
+        |          "processingCenter": "VITO",
+        |          "processingDate": "2024-05-04T05:49:45.914Z"
+        |        },
+        |        "links": {
+        |          "previews": [
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC_QUICKLOOK_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 1167730,
+        |              "category": "QUICKLOOK"
+        |            },
+        |            {
+        |              "href": "https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S2_RADIOMETRY&TIME=2022-04-27&BBOX=490775.91998461616,6520432.343963758,669812.159090397,6699792.617822841&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true",
+        |              "type": "image/png",
+        |              "title": "WMS",
+        |              "bandNames": [
+        |                "WMS"
+        |              ],
+        |              "category": "QUICKLOOK"
+        |            }
+        |          ],
+        |          "alternates": [
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC_V220.xml",
+        |              "type": "application/vnd.iso.19139+xml",
+        |              "length": 39914,
+        |              "title": "Inspire metadata"
+        |            }
+        |          ],
+        |          "related": [
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_AOT_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 542566,
+        |              "title": "AOT_60M",
+        |              "bandNames": [
+        |                "AOT_60M"
+        |              ],
+        |              "category": "QUALITY"
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_RAA_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 707167,
+        |              "title": "RAA_60M",
+        |              "bandNames": [
+        |                "RAA_60M"
+        |              ],
+        |              "category": "QUALITY"
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_SCENECLASSIFICATION_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 4189675,
+        |              "title": "SCENECLASSIFICATION_20M",
+        |              "bandNames": [
+        |                "SCENECLASSIFICATION_20M"
+        |              ],
+        |              "category": "QUALITY"
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_SZA_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 112778,
+        |              "title": "SZA_60M",
+        |              "bandNames": [
+        |                "SZA_60M"
+        |              ],
+        |              "category": "QUALITY"
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_VZA_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 245124,
+        |              "title": "VZA_60M",
+        |              "bandNames": [
+        |                "VZA_60M"
+        |              ],
+        |              "category": "QUALITY"
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_WVP_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 7222904,
+        |              "title": "WVP_60M",
+        |              "bandNames": [
+        |                "WVP_60M"
+        |              ],
+        |              "category": "QUALITY"
+        |            }
+        |          ],
+        |          "data": [
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B01_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 5238899,
+        |              "title": "TOC-B01_60M",
+        |              "bandNames": [
+        |                "TOC-B01_60M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B02_10M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 182872148,
+        |              "title": "TOC-B02_10M",
+        |              "bandNames": [
+        |                "TOC-B02_10M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B03_10M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 185502794,
+        |              "title": "TOC-B03_10M",
+        |              "bandNames": [
+        |                "TOC-B03_10M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B04_10M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 191130525,
+        |              "title": "TOC-B04_10M",
+        |              "bandNames": [
+        |                "TOC-B04_10M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B05_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 50371478,
+        |              "title": "TOC-B05_20M",
+        |              "bandNames": [
+        |                "TOC-B05_20M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B06_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 53325324,
+        |              "title": "TOC-B06_20M",
+        |              "bandNames": [
+        |                "TOC-B06_20M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B07_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 54635441,
+        |              "title": "TOC-B07_20M",
+        |              "bandNames": [
+        |                "TOC-B07_20M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B08_10M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 215814722,
+        |              "title": "TOC-B08_10M",
+        |              "bandNames": [
+        |                "TOC-B08_10M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B11_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 52370812,
+        |              "title": "TOC-B11_20M",
+        |              "bandNames": [
+        |                "TOC-B11_20M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B12_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 52369099,
+        |              "title": "TOC-B12_20M",
+        |              "bandNames": [
+        |                "TOC-B12_20M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/27/S2A_20220427T103631_31UFS_TOC_V220/S2A_20220427T103631_31UFS_TOC-B8A_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 54911382,
+        |              "title": "TOC-B8A_20M",
+        |              "bandNames": [
+        |                "TOC-B8A_20M"
+        |              ]
+        |            }
+        |          ]
+        |        }
+        |      }
+        |    },
+        |    {
+        |      "type": "Feature",
+        |      "id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220425T104619_31UFS_TOC_V220",
+        |      "geometry": {
+        |        "type": "Polygon",
+        |        "coordinates": [
+        |          [
+        |            [
+        |              5.966209,
+        |              50.6189483
+        |            ],
+        |            [
+        |              6.017025,
+        |              51.4123427
+        |            ],
+        |            [
+        |              4.4388768,
+        |              51.4423523
+        |            ],
+        |            [
+        |              4.4087151,
+        |              50.4552722
+        |            ],
+        |            [
+        |              5.8705214,
+        |              50.4278568
+        |            ],
+        |            [
+        |              5.9056393,
+        |              50.4984909
+        |            ],
+        |            [
+        |              5.966209,
+        |              50.6189483
+        |            ]
+        |          ]
+        |        ]
+        |      },
+        |      "bbox": [
+        |        4.4087151,
+        |        50.4278568,
+        |        6.017025,
+        |        51.4423523
+        |      ],
+        |      "properties": {
+        |        "date": "2022-04-25T10:46:19.024Z",
+        |        "updated": "2024-05-04T06:17:20.547Z",
+        |        "available": "2024-05-04T06:17:21Z",
+        |        "published": "2024-05-04T06:17:21Z",
+        |        "status": "ARCHIVED",
+        |        "parentIdentifier": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+        |        "title": "S2B_20220425T104619_31UFS_TOC_V220",
+        |        "identifier": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220425T104619_31UFS_TOC_V220",
+        |        "acquisitionInformation": [
+        |          {
+        |            "platform": {
+        |              "platformShortName": "Sentinel-2",
+        |              "platformSerialIdentifier": "S2B"
+        |            },
+        |            "acquisitionParameters": {
+        |              "acquisitionType": "NOMINAL",
+        |              "orbitDirection": "ASCENDING",
+        |              "orbitNumber": 26818,
+        |              "relativeOrbitNumber": 51,
+        |              "beginningDateTime": "2022-04-25T10:46:19.024Z",
+        |              "endingDateTime": "2022-04-25T10:46:19.024Z",
+        |              "tileId": "31UFS"
+        |            }
+        |          }
+        |        ],
+        |        "productInformation": {
+        |          "cloudCover": 81.89,
+        |          "productType": "TOC",
+        |          "availabilityTime": "2024-05-04T06:17:21Z",
+        |          "productVersion": "V210",
+        |          "processingCenter": "VITO",
+        |          "processingDate": "2024-05-04T06:17:20.547Z"
+        |        },
+        |        "links": {
+        |          "previews": [
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC_QUICKLOOK_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 397398,
+        |              "category": "QUICKLOOK"
+        |            },
+        |            {
+        |              "href": "https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S2_RADIOMETRY&TIME=2022-04-25&BBOX=490775.91998461616,6520705.479222213,669812.159090397,6699916.902160429&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true",
+        |              "type": "image/png",
+        |              "title": "WMS",
+        |              "bandNames": [
+        |                "WMS"
+        |              ],
+        |              "category": "QUICKLOOK"
+        |            }
+        |          ],
+        |          "alternates": [
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC_V220.xml",
+        |              "type": "application/vnd.iso.19139+xml",
+        |              "length": 39916,
+        |              "title": "Inspire metadata"
+        |            }
+        |          ],
+        |          "related": [
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_AOT_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 315056,
+        |              "title": "AOT_60M",
+        |              "bandNames": [
+        |                "AOT_60M"
+        |              ],
+        |              "category": "QUALITY"
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_RAA_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 686575,
+        |              "title": "RAA_60M",
+        |              "bandNames": [
+        |                "RAA_60M"
+        |              ],
+        |              "category": "QUALITY"
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_SCENECLASSIFICATION_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 2552415,
+        |              "title": "SCENECLASSIFICATION_20M",
+        |              "bandNames": [
+        |                "SCENECLASSIFICATION_20M"
+        |              ],
+        |              "category": "QUALITY"
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_SZA_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 104369,
+        |              "title": "SZA_60M",
+        |              "bandNames": [
+        |                "SZA_60M"
+        |              ],
+        |              "category": "QUALITY"
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_VZA_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 255300,
+        |              "title": "VZA_60M",
+        |              "bandNames": [
+        |                "VZA_60M"
+        |              ],
+        |              "category": "QUALITY"
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_WVP_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 1428764,
+        |              "title": "WVP_60M",
+        |              "bandNames": [
+        |                "WVP_60M"
+        |              ],
+        |              "category": "QUALITY"
+        |            }
+        |          ],
+        |          "data": [
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B01_60M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 2614598,
+        |              "title": "TOC-B01_60M",
+        |              "bandNames": [
+        |                "TOC-B01_60M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B02_10M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 80158218,
+        |              "title": "TOC-B02_10M",
+        |              "bandNames": [
+        |                "TOC-B02_10M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B03_10M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 80437024,
+        |              "title": "TOC-B03_10M",
+        |              "bandNames": [
+        |                "TOC-B03_10M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B04_10M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 81500126,
+        |              "title": "TOC-B04_10M",
+        |              "bandNames": [
+        |                "TOC-B04_10M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B05_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 22693576,
+        |              "title": "TOC-B05_20M",
+        |              "bandNames": [
+        |                "TOC-B05_20M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B06_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 22973634,
+        |              "title": "TOC-B06_20M",
+        |              "bandNames": [
+        |                "TOC-B06_20M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B07_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 23113419,
+        |              "title": "TOC-B07_20M",
+        |              "bandNames": [
+        |                "TOC-B07_20M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B08_10M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 80739192,
+        |              "title": "TOC-B08_10M",
+        |              "bandNames": [
+        |                "TOC-B08_10M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B11_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 22573019,
+        |              "title": "TOC-B11_20M",
+        |              "bandNames": [
+        |                "TOC-B11_20M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B12_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 22397251,
+        |              "title": "TOC-B12_20M",
+        |              "bandNames": [
+        |                "TOC-B12_20M"
+        |              ]
+        |            },
+        |            {
+        |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2022/04/25/S2B_20220425T104619_31UFS_TOC_V220/S2B_20220425T104619_31UFS_TOC-B8A_20M_V220.tif",
+        |              "type": "image/tiff",
+        |              "length": 23128264,
+        |              "title": "TOC-B8A_20M",
+        |              "bandNames": [
+        |                "TOC-B8A_20M"
+        |              ]
+        |            }
+        |          ]
+        |        }
+        |      }
+        |    }
+        |  ]
+        |}""".stripMargin).features.foreach(feature => client.addFeature(feature))
     new file.PyramidFactory(client, "urn:eop:VITO:TERRASCOPE_S2_TOC_V2", NonEmptyList.of("TOC-B04_10M", "TOC-B08_10M").toList.asJava, null, CellSize(10, 10))
       .datacube_seq(ProjectedPolygons(polygons, crs), from_date, to_date, util.Collections.emptyMap[String, Any](), "",parameters).head._2
   }
