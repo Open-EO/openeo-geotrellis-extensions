@@ -670,7 +670,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
   private val fromLoadStac = openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
   private val softErrors = maxSoftErrorsRatio > 0.0
-  private val rasterSourceProviderChain: Seq[RasterSourceProvider] = List(SyntheticDataRasterSourceProvider, SentinelXmlMetadataRasterSourceProvider, ZarrRasterSourceProvider, NetCDFRasterSourceProvider, JPEGRasterSourceProvider, DefaultRasterSourceProvider)
+  private val rasterSourceProviderChain: Seq[RasterSourceProvider] = List(SyntheticDataRasterSourceProvider, SentinelXmlMetadataRasterSourceProvider, ZarrRasterSourceProvider, HDFRasterSourceProvider, NetCDFRasterSourceProvider, JPEGRasterSourceProvider, DefaultRasterSourceProvider)
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     if (bandIndices.nonEmpty) {
