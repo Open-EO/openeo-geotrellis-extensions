@@ -16,7 +16,7 @@ import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.resample.{AggregateResampleMethod, NearestNeighbor, ResampleMethod}
+import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
@@ -549,7 +549,6 @@ class OpenEOProcesses extends Serializable {
     val minKey = allKeys.reduce((a,b)=>SpaceTimeKey.Boundable.minBound(a,b))
     val maxKey = allKeys.reduce((a,b)=>SpaceTimeKey.Boundable.maxBound(a,b))
     val newBounds : Bounds[SpaceTimeKey] = new KeyBounds(minKey,maxKey)
-    logger.debug(s"New bounds: $newBounds")
     logger.info(s"aggregate_temporal on ${incomingIndex} results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index} with bounds ${newBounds}" )
     val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly,implicitly, index)
 
@@ -1096,43 +1095,6 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def aggregateSpatialWindow[K: SpatialComponent: ClassTag](dataCube: MultibandTileLayerRDD[K], window: (Int, Int), reducer: AggregateResampleMethod, pad: Boolean = true): MultibandTileLayerRDD[K] = {
-    val layout = dataCube.metadata.layout
-
-    val sourceCube: MultibandTileLayerRDD[K] = {
-      if (layout.tileLayout.tileCols > window._1 && layout.tileLayout.tileCols % window._1 == 0
-        && layout.tileLayout.tileRows > window._2 && layout.tileLayout.tileRows % window._2 == 0) {
-        logger.debug(s"The spatial window (${window._1}, ${window._2}) fits into the tile (${layout.tileLayout.tileCols}, ${layout.tileLayout.tileRows})")
-        dataCube
-      } else {
-        logger.debug(s"The spatial window (${window._1}, ${window._2}) does not fit into the tile (${layout.tileLayout.tileCols}, ${layout.tileLayout.tileRows})")
-        // don't use tiles bigger than 1GB
-        val maxFactor: Int = 1024*1024*1024 / (math.max(window._1, window._2) * dataCube.metadata.cellType.bytes * RDDBandCount(dataCube))
-
-        var factor: Int = math.min(maxFactor, math.max(layout.cols / window._1, layout.rows / window._2)).toInt
-        factor = 1
-        logger.debug(s"Retiling to a tile size of $factor times the window size")
-        retileGeneric(dataCube, window._1*factor, window._2*factor, 0, 0)
-      }
-    }
-    val sourceLayout = sourceCube.metadata.layout
-    val xFactor: Int = sourceLayout.tileCols / window._1
-    val yFactor: Int = sourceLayout.tileRows / window._2
-    val destinationLayout = sourceLayout.copy(tileLayout = TileLayout(sourceLayout.tileLayout.layoutCols, sourceLayout.tileLayout.layoutRows, xFactor, yFactor))
-    val result: MultibandTileLayerRDD[K] = sourceCube match {
-      case spaceTimeCube: MultibandTileLayerRDD[SpaceTimeKey] => resampleCubeSpatial_spacetime(spaceTimeCube, spaceTimeCube.metadata.crs, destinationLayout, reducer, null)._2.asInstanceOf[MultibandTileLayerRDD[K]]
-      case spatialCube: MultibandTileLayerRDD[SpatialKey] => resampleCubeSpatial_spatial(spatialCube, spatialCube.metadata.crs, destinationLayout, reducer, null)._2.asInstanceOf[MultibandTileLayerRDD[K]]
-    }
-    if (!pad) {
-      result match {
-        case spaceTimeCube: MultibandTileLayerRDD[SpaceTimeKey] => crop_spacetime(spaceTimeCube, layout.extent).asInstanceOf[MultibandTileLayerRDD[K]]
-        case spatialCube: MultibandTileLayerRDD[SpatialKey] => crop_spatial(spatialCube, layout.extent).asInstanceOf[MultibandTileLayerRDD[K]]
-      }
-    } else {
-      result
-    }
-  }
-
   def checkMetadataCompatible[_](left:TileLayerMetadata[_],right:TileLayerMetadata[_]): Unit = {
     if(!left.layout.equals(right.layout)) {
       throw new IllegalArgumentException(s"merge_cubes: Merging cubes with incompatible layout, please use resample_cube_spatial to align layouts. LayoutLeft: ${left.layout} Layout (right): ${right.layout}")
@@ -1240,6 +1202,56 @@ class OpenEOProcesses extends Serializable {
 
     ContextRDD(
       retiled.mapValues(tile => corsa.decompress(modelDir, tile)),
+      retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
+  //noinspection ScalaUnusedSymbol
+  def corsaCompressV2(datacube: MultibandTileLayerRDD[_], modelTileSize: Int): AnyRef =
+    datacube.metadata.bounds.get.maxKey match {
+      case _: SpatialKey => corsaCompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], modelTileSize)
+      case _: SpaceTimeKey => corsaCompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], modelTileSize)
+    }
+
+  def corsaCompressV2Generic[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
+    val expectedTileSize = modelTileSize
+
+    val retiled =
+      if (datacube.metadata.tileCols == expectedTileSize && datacube.metadata.tileRows == expectedTileSize) datacube
+      else retileGeneric(datacube, sizeX = expectedTileSize, sizeY = expectedTileSize, overlapX = 0, overlapY = 0)
+
+    val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = expectedTileSize / 2, tileRows = expectedTileSize / 2)
+    val newBounds = retiled.metadata.getComponent[Bounds[K]].flatMap { keyBounds =>
+      keyBounds.rekey(retiled.metadata.layout, retiled.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    ContextRDD(
+      retiled.mapValues(corsa.compressV2),
+      retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
+    )
+  }
+
+  //noinspection ScalaUnusedSymbol
+  def corsaDecompressV2(datacube: MultibandTileLayerRDD[_], modelTileSize: Int): AnyRef =
+    datacube.metadata.bounds.get.maxKey match {
+      case _: SpatialKey => corsaDecompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], modelTileSize)
+      case _: SpaceTimeKey => corsaDecompressV2Generic(datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], modelTileSize)
+    }
+
+  def corsaDecompressV2Generic[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], modelTileSize: Int): MultibandTileLayerRDD[K] = {
+    val expectedTileSize = modelTileSize / 2
+
+    val retiled =
+      if (datacube.metadata.tileCols == expectedTileSize && datacube.metadata.tileRows == expectedTileSize) datacube
+      else retileGeneric(datacube, sizeX = expectedTileSize, sizeY = expectedTileSize, overlapX = 0, overlapY = 0)
+
+    val newTileLayout = retiled.metadata.tileLayout.copy(tileCols = modelTileSize, tileRows = modelTileSize)
+    val newBounds = retiled.metadata.bounds.flatMap { keyBounds =>
+      keyBounds.rekey(retiled.metadata.layout, retiled.metadata.layout.copy(tileLayout = newTileLayout))
+    }
+
+    ContextRDD(
+      retiled.mapValues(corsa.decompressV2),
       retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = newTileLayout), bounds = newBounds)
     )
   }
