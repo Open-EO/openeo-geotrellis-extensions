@@ -233,7 +233,7 @@
         </dependency>
         <dependency>
             <groupId>ai.catboost</groupId>
-            <artifactId>catboost-spark_3.5_2.13</artifactId>
+            <artifactId>catboost-spark_4.0_2.13</artifactId>
             <version>${catboost-spark.version}</version>
             <scope>compile</scope>
             <exclusions>

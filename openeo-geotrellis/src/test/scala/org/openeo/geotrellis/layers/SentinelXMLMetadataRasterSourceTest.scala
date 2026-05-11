@@ -6,6 +6,7 @@ import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, GridBounds, Gri
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.{BeforeAll, Test}
+import org.openeo.geotrellis.layers.raster_source.{NoDataRasterSource, SentinelXMLMetadataRasterSource}
 
 import java.nio.file.{Files, Paths}
 

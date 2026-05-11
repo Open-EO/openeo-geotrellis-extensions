@@ -1,10 +1,10 @@
-package org.openeo.geotrellis.layers
+package org.openeo.geotrellis.layers.raster_source
 
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.openeo.geotrellis.layers.SentinelXMLMetadataRasterSource.logger
+import org.openeo.geotrellis.layers.raster_source.SentinelXMLMetadataRasterSource.logger
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 import org.slf4j.LoggerFactory
 
