@@ -142,6 +142,34 @@ package object geotrellis {
     }
   }
 
+  def cellTypeUnion(a:CellType,b:CellType):CellType = {
+    if (a.bits < b.bits)
+      b
+    else if (a.bits > b.bits)
+      a
+    else if (a.isFloatingPoint && !b.isFloatingPoint)
+      a
+    else if(isUnSigned(a) != isUnSigned(b) ) {
+      if(a.bits==8) {
+        ShortConstantNoDataCellType
+      }else if(a.isFloatingPoint || b.isFloatingPoint){
+        Seq(a,b).maxBy(_.bits)
+      }else{
+        IntConstantNoDataCellType
+      }
+    }
+    else
+      b
+  }
+
+  private def isUnSigned(a:CellType): Boolean = {
+    a match{
+      case x:UByteCells => true
+      case x:UShortCells => true
+      case _ => false
+    }
+  }
+
   /**
    * Inspired on 'Files.createTempFile', but does not create an empty file.
    * The default permissions of 'createTempFile' are a bit too strict too: 600, which is not accessible by other users.
