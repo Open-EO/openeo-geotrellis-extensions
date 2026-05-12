@@ -211,4 +211,23 @@ class DataCubeSupportSpec {
 
   }
 
+  @Test
+  def computeReductionForTileSize(): Unit = {
+    // Standard 256x256 float32 single-band tile: 256 KB per tile
+    // With 512 MB budget: ~2048 tiles per partition => reduction ~ log2(2048) - 1 = 10
+    val reduction1 = DatacubeSupport.computeReductionForTileSize(256, 256, 32, 1, 512)
+    assertTrue(reduction1 > 0, s"Expected positive reduction, got $reduction1")
+
+    // Large tile (2460x1800, float32, 6 bands): ~100 MB per tile
+    // With 512 MB budget: ~5 tiles per partition => small reduction
+    val reduction2 = DatacubeSupport.computeReductionForTileSize(2460, 1800, 32, 6, 512)
+    assertTrue(reduction2 >= 0, s"Expected non-negative reduction, got $reduction2")
+    // Large tiles should need fewer tiles per partition than small tiles
+    assertTrue(reduction2 < reduction1, s"Expected reduction for large tiles ($reduction2) < small tiles ($reduction1)")
+
+    // Tiny 1x1 tile: more tiles per partition => higher reduction
+    val reduction3 = DatacubeSupport.computeReductionForTileSize(1, 1, 8, 1, 512)
+    assertTrue(reduction3 > reduction1, s"Expected higher reduction for tiny tiles ($reduction3) > ($reduction1)")
+  }
+
 }

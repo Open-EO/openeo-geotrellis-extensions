@@ -150,21 +150,24 @@ object DatacubeSupport {
   }
 
 
-  private def computeReduction(datacubeParams: Option[DataCubeParameters], metadata: TileLayerMetadata[SpaceTimeKey], bandCount: Int): Int = {
-    val cols = metadata.layout.tileLayout.tileCols
-    val rows = metadata.layout.tileLayout.tileRows
-    val bytesPerCell = metadata.cellType.bytes
-    val bytesPerKey = bandCount * bytesPerCell * rows * cols
+  def computeReductionForTileSize(tileCols: Int, tileRows: Int, cellTypeBits: Int, bandCount: Int, maxPartitionSizeMb: Int = 512): Int = {
+    val bytesPerCell = cellTypeBits / 8
+    val bytesPerKey = bandCount.toLong * bytesPerCell * tileRows * tileCols
 
-    logger.debug(f"Memory needed per key: ${bytesPerKey}B ($bandCount*$cols*$rows*$bytesPerCell)")
-    val maxPartitionBytes: Long = 1024L * 1024L * datacubeParams.map(_.maxPartitionSize).getOrElse(Option.empty).getOrElse(512)
+    logger.debug(f"Memory needed per key: ${bytesPerKey}B ($bandCount*$tileCols*$tileRows*$bytesPerCell)")
+    val maxPartitionBytes: Long = 1024L * 1024L * maxPartitionSizeMb
     logger.debug(f"Memory available for data: ${maxPartitionBytes}B")
     val reduction = math.max((math.log(maxPartitionBytes) - math.log(bytesPerKey)) / math.log(2), 0).floor.toInt
     logger.debug(f"Proposed reduction: $reduction")
     reduction
   }
 
-  def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey], metadata: TileLayerMetadata[SpaceTimeKey], bandCount: Int = 6): Some[SpacePartitioner[SpaceTimeKey]] = {
+  private def computeReduction(datacubeParams: Option[DataCubeParameters], metadata: TileLayerMetadata[SpaceTimeKey], bandCount: Int): Int = {
+    val maxPartitionSizeMb = datacubeParams.map(_.maxPartitionSize).getOrElse(Option.empty).getOrElse(512)
+    computeReductionForTileSize(metadata.layout.tileLayout.tileCols, metadata.layout.tileLayout.tileRows, metadata.cellType.bits, bandCount, maxPartitionSizeMb)
+  }
+
+  def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey],  metadata: TileLayerMetadata[SpaceTimeKey], bandCount: Int = 6): Some[SpacePartitioner[SpaceTimeKey]] = {
     // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
 
     val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(computeReduction(datacubeParams, metadata, bandCount))

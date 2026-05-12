@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers.provider
 
 import geotrellis.raster.RasterSource
 import geotrellis.vector.ProjectedExtent
-import org.openeo.geotrellis.layers.SentinelXMLMetadataRasterSource
+import org.openeo.geotrellis.layers.raster_source.SentinelXMLMetadataRasterSource
 import org.slf4j.{Logger, LoggerFactory}
 
 object SentinelXmlMetadataRasterSourceProvider extends SentinelXmlMetadataRasterSourceProvider

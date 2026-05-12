@@ -385,8 +385,8 @@ class FileLayerProviderTest extends RasterMatchers {
     assertEquals(1, ids.length)
     // Tile ID changed in catalog, and might change back. So allow both versions:
     assertTrue(Seq(
-      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_32ULB_TOC_V210",
-      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_31UGS_TOC_V210",
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_32ULB_TOC_V220",
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_31UGS_TOC_V220",
     ).contains(ids(0)))
     assertEquals(cols * rows, result._1.count(), 0.1)
   }

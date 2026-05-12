@@ -3,6 +3,7 @@ import geotrellis.raster.gdal.GDALPath
 import geotrellis.vector._
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.{Disabled, Test}
+import org.openeo.geotrellis.layers.raster_source.GDALCloudRasterSource
 
 import scala.collection.parallel.CollectionConverters._
 
