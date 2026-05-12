@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.layers.provider
 
 import geotrellis.raster.{RasterExtent, RasterSource}
-import org.openeo.geotrellis.layers.SyntheticDataRasterSource
+import org.openeo.geotrellis.layers.raster_source.SyntheticDataRasterSource
 import org.openeo.geotrelliscommon.SyntheticDataOverride
 import org.slf4j.{Logger, LoggerFactory}
 

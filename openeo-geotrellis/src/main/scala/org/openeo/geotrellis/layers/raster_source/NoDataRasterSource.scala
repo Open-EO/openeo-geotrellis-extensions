@@ -1,9 +1,9 @@
-package org.openeo.geotrellis.layers
+package org.openeo.geotrellis.layers.raster_source
 
 import geotrellis.layer.CRSWorldExtent
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{UByteConstantNoDataCellType, UByteConstantTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile, ubyteNODATA}
+import geotrellis.raster.{CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile, UByteConstantNoDataCellType, UByteConstantTile, ubyteNODATA}
 import geotrellis.vector.Extent
 
 object NoDataRasterSource {
