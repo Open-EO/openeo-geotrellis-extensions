@@ -162,6 +162,105 @@ package object geotrellis {
       b
   }
 
+  def cellTypeUnionWithNoData(leftCellType:CellType, rightCellType:CellType):CellType = {
+    def getNodataAndMax(cellType:CellType):(Option[Double],Double) = {
+      cellType match {
+        case BitCellType => (None, 1)
+        case ByteCellType => (None, Byte.MaxValue)
+        case UByteCellType => (None, 255)
+        case ShortCellType => (None, Short.MaxValue)
+        case UShortCellType => (None, 65535)
+        case IntCellType => (None, Int.MaxValue)
+        case FloatCellType => (None, Float.MaxValue)
+        case DoubleCellType => (None, Double.MaxValue)
+        case ByteConstantNoDataCellType => (Some(byteNODATA), Byte.MaxValue)
+        case UByteConstantNoDataCellType => (Some(ubyteNODATA), 255)
+        case ShortConstantNoDataCellType => (Some(shortNODATA), Short.MaxValue)
+        case UShortConstantNoDataCellType => (Some(ushortNODATA), 65535)
+        case IntConstantNoDataCellType => (Some(NODATA), Int.MaxValue)
+        case FloatConstantNoDataCellType => (Some(floatNODATA), Float.MaxValue)
+        case DoubleConstantNoDataCellType => (Some(doubleNODATA), Double.MaxValue)
+        case ct: ByteUserDefinedNoDataCellType => (Some(ct.noDataValue), Byte.MaxValue)
+        case ct: UByteUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 255)
+        case ct: ShortUserDefinedNoDataCellType => (Some(ct.noDataValue), Short.MaxValue)
+        case ct: UShortUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt.toShort), 65535)
+        case ct: IntUserDefinedNoDataCellType => (Some(ct.noDataValue), Int.MaxValue)
+        case ct: FloatUserDefinedNoDataCellType => (Some(ct.noDataValue), Float.MaxValue)
+        case ct: DoubleUserDefinedNoDataCellType => (Some(ct.noDataValue), Double.MaxValue)
+      }
+    }
+
+    def upgradeCellTypes(dataType: CellType): CellType = {
+      dataType match {
+        case _: BitCells => ByteConstantNoDataCellType
+        case _: ByteCells => ShortUserDefinedNoDataCellType(Short.MaxValue)
+        case _: UByteCells => ShortUserDefinedNoDataCellType(Short.MaxValue)
+        case _: ShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
+        case _: UShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
+        case _: IntCells => DoubleConstantNoDataCellType
+        case _: FloatCells => FloatConstantNoDataCellType
+        case _: DoubleCells => DoubleConstantNoDataCellType
+      }
+    }
+
+    val dataType = cellTypeUnion(leftCellType,rightCellType)
+    val (maybeNodataLeft,maxLeft) = getNodataAndMax(leftCellType)
+    val (maybeNodataRight,maxRight) = getNodataAndMax(rightCellType)
+
+    if (maybeNodataLeft.isEmpty || maybeNodataRight.isEmpty){
+      if (maybeNodataLeft.isDefined) {
+        dataType.withNoData(maybeNodataLeft)
+      } else if (maybeNodataRight.isDefined) {
+        dataType.withNoData(maybeNodataRight)
+      } else dataType
+    }
+    else {
+      val nodataLeft = maybeNodataLeft.get
+      val nodataRight = maybeNodataRight.get
+
+      if (nodataLeft.isNaN || nodataRight.isNaN) {
+        if (dataType.isInstanceOf[FloatCells]) {
+          FloatConstantNoDataCellType
+        } else {
+          DoubleConstantNoDataCellType
+        }
+      }
+      else {
+        if (nodataLeft == nodataRight) {
+          dataType.withNoData(maybeNodataLeft)
+        } else if (nodataLeft > nodataRight) {
+          if (maxRight < nodataLeft) {
+            dataType.withNoData(Some(nodataLeft)) // vb left = Short(32767) and right = Byte(0) => Short(32767)
+          } else {
+            if (isUnSigned(leftCellType) || isUnSigned(rightCellType)) {
+              if (leftCellType.bits >= rightCellType.bits){
+                upgradeCellTypes(leftCellType)
+              }else {
+                upgradeCellTypes(rightCellType)
+              }
+            } else {
+              upgradeCellTypes(dataType)
+            }
+          }
+        } else { // nodataRight > nodataLeft
+          if (maxLeft < nodataRight) {
+            dataType.withNoData(Some(nodataRight))
+          } else {
+            if (isUnSigned(leftCellType) || isUnSigned(rightCellType)) {
+              if (leftCellType.bits >= rightCellType.bits){
+                upgradeCellTypes(leftCellType)
+              }else {
+                upgradeCellTypes(rightCellType)
+              }
+            } else {
+              upgradeCellTypes(dataType)
+            }
+          }
+        }
+      }
+    }
+  }
+
   private def isUnSigned(a:CellType): Boolean = {
     a match{
       case x:UByteCells => true

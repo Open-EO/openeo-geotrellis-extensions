@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutScheme, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileLayerMetadata}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, MultibandTile, Raster, RasterExtent, ShortUserDefinedNoDataCellType, Tile}
+import geotrellis.raster.{CellSize, CellType, MultibandTile, Raster, RasterExtent, Tile}
 import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, GDALWarpOptions}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods, _}
 import geotrellis.spark.tiling.Tiler
@@ -10,7 +10,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.{ProjectedPolygons, cellTypeUnion}
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, DataCubeParameters, DatacubeSupport}
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.slf4j.{Logger, LoggerFactory}
@@ -116,9 +116,9 @@ object NetCDFCollection {
       })
     })
 
-    val first = features.first()
+    val cellTypes = features.map(_._2.cellType)
+    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnion(CurrentCellType,nextCellType))
 
-    val cellType = first._2.cellType
     val extent = bboxWGS84.reproject(LatLng, crs(0))
     val layout = LayoutDefinition(RasterExtent(extent, CellSize(resolutions(0), resolutions(0))), 128)
 

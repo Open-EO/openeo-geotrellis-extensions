@@ -8,7 +8,7 @@ import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{BitCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -29,7 +29,7 @@ import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, Indexe
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
-import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
+import org.openeo.opensearch.OpenSearchResponses.{DoubleType, Feature, IntType, Link}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.{IOException, Serializable}
@@ -695,7 +695,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def determineCelltype(overlappingRasterSources: Seq[(RasterSource, Feature)]): CellType = {
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
-      val commonCellType = arbitraryRasterSource.cellType
+      val commonCellType = overlappingRasterSources.foldLeft(BitCellType:CellType)((cumCellType, CurCellType) => cellTypeUnion(cumCellType, CurCellType._1.cellType))
       commonCellType match {
         case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
         case _: NoNoData => commonCellType.withDefaultNoData()
@@ -1216,6 +1216,20 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
+          val dataType = link.datatype
+          val nodata = link.nodata
+
+          val cellTypeSTAC = if (dataType.isDefined){
+            val nodataDouble = nodata match {
+              case Some(i) if i.isInstanceOf[IntType] => Some(i.value().doubleValue())
+              case Some(d) if d.isInstanceOf[DoubleType] => Some(d.value().doubleValue())
+              case _ => None
+
+            }
+            Some(ConvertTargetCellType(dataType.get.withNoData(nodataDouble)))
+          }
+          else None
+
           //special case handling for data that does not declare nodata properly
           val targetCellType = link.title match {
             // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
@@ -1223,7 +1237,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
             case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(UShortConstantNoDataCellType)) // TODO: get info from Link object
             case Some(title) if fromLoadStac && Seq("SCL_20m", "SCL_60m").contains(title) => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) // TODO: get info from Link object
-            case _ => None
+            case _ => cellTypeSTAC
           }
 
           val targetTargetCellType: Option[TargetCellType] = link.title match {
@@ -1231,7 +1245,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
             case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
-            case _ => None
+            case _ => cellTypeSTAC
           }
           val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental)
           val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
