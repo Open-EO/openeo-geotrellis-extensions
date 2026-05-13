@@ -31,7 +31,7 @@ import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -945,7 +945,12 @@ class OpenEOProcesses extends Serializable {
     val res = minKey.setComponent[SpatialKey](SpatialKey(math.max(0,minSpatial._1),math.max(0,minSpatial._2)))
     val newBounds = KeyBounds(res, data.metadata.bounds.get.maxKey)
     logger.info("Keybounds after preemptive filtering: " + newBounds)
-    ContextRDD(filtered,data.metadata.copy(bounds = newBounds))
+    val result = ContextRDD(filtered, data.metadata.copy(bounds = newBounds))
+    if (data.isInstanceOf[OpenEORasterCube[K]]) {
+      new OpenEORasterCube[K](result, result.metadata, data.asInstanceOf[OpenEORasterCube[K]].openEOMetadata)
+    } else {
+      result
+    }
   }
 
   def transformSparseSpaceTimePartition(keys: Option[Array[SpaceTimeKey]],
