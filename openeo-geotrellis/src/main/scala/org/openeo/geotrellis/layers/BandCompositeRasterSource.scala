@@ -7,7 +7,7 @@ import geotrellis.raster.{CellType, CropOptions, CroppedTile, GridBounds, GridEx
 import geotrellis.vector.Extent
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder
+import org.openeo.geotrellis.cellTypeUnion
 import org.openeo.geotrelliscommon.ResampledTile
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
@@ -15,7 +15,6 @@ import software.amazon.awssdk.core.exception.AbortedException
 import java.io.IOException
 import java.time.temporal.ChronoUnit.SECONDS
 import java.util.Collections
-import scala.collection.GenSeq
 import scala.collection.parallel.CollectionConverters._
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
@@ -97,7 +96,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
   }
 
-  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => OpenEOProcessScriptBuilder.cellTypeUnion(a, b))
+  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => cellTypeUnion(a, b))
 
   override def name: SourceName = sources.head.name
 

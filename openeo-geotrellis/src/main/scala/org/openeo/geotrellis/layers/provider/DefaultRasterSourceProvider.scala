@@ -6,7 +6,7 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, RasterExtent, RasterSource, TargetRegion}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.layers.FileLayerProvider.vsis3ToS3
-import org.openeo.geotrellis.layers.ResampledRasterSource
+import org.openeo.geotrellis.layers.raster_source.ResampledRasterSource
 import org.slf4j.{Logger, LoggerFactory}
 
 object DefaultRasterSourceProvider extends DefaultRasterSourceProvider

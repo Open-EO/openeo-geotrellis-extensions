@@ -3,18 +3,18 @@ package org.openeo.geotrellis.layers.provider
 import geotrellis.raster.RasterSource
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import org.openeo.geotrellis.layers.GDALCloudRasterSource
+import org.openeo.geotrellis.layers.raster_source.GDALCloudRasterSource
 import org.slf4j.{Logger, LoggerFactory}
 
-object GdalRasterSourceProvider extends GdalRasterSourceProvider
+object JPEGRasterSourceProvider extends JPEGRasterSourceProvider
 
-class GdalRasterSourceProvider extends RasterSourceProvider {
+class JPEGRasterSourceProvider extends RasterSourceProvider {
 
-  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[GdalRasterSourceProvider])
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[JPEGRasterSourceProvider])
 
   override def canProcess(rasterSourceDefinition: RasterSourceDefinition): Boolean = {
     val dataPath = rasterSourceDefinition.dataPath
-    dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")
+    dataPath.endsWith(".jp2")
   }
 
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
@@ -25,11 +25,10 @@ class GdalRasterSourceProvider extends RasterSourceProvider {
       warpOptionsOvr = Some(geotrellis.raster.io.geotiff.Base)
     }
 
-    val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
-    val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(definition.theResolution), targetCRS = Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod),
+    val warpOptions = GDALWarpOptions(cellSize = Some(definition.theResolution), targetCRS = Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod),
       te = definition.featureExtentInLayout.map(_.extent), teCRS = Some(definition.targetExtent.crs), ovr = warpOptionsOvr
     )
-    logger.debug(s"cloudpath: $definition.cloudPath, warp options: $warpOptions")
+    logger.debug(s"cloudpath: ${definition.cloudPath}, warp options: $warpOptions")
     if (definition.cloudPath.isDefined) {
       GDALCloudRasterSource(definition.cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(definition.cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = definition.targetCellType)
     } else {

@@ -10,14 +10,14 @@
         <gt-version>32.2</gt-version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
-        <spark.version>3.5.5</spark.version>
+        <spark.version>4.0.1</spark.version>
         <scala.binary.version>2.13</scala.binary.version>
         <scala.version>2.13.16</scala.version>
         <geotrellis.version>3.8.0+15-ec9f3348-SNAPSHOT</geotrellis.version>
         <gdal-bindings.version>3.8.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
         <openeo-opensearch-client.version>2.0.1-SNAPSHOT</openeo-opensearch-client.version>
-        <catboost-spark.version>1.2.8</catboost-spark.version>
+        <catboost-spark.version>1.2.10</catboost-spark.version>
         <awssdk.version>2.23.19</awssdk.version>
         <jaxb.api.version>2.3.0</jaxb.api.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -38,7 +38,7 @@
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-core</artifactId>
-                <version>2.15.2</version>
+                <version>2.18.2</version>
             </dependency>
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>

@@ -1,4 +1,4 @@
-package org.openeo.geotrellis.layers
+package org.openeo.geotrellis.layers.raster_source
 
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
@@ -62,7 +62,7 @@ class ValueOffsetRasterSource(val rasterSource: RasterSource,
         val originalCellType = rasterSource.cellType
         if (pixelValueOffset < 0) {
           if (toSigned(originalCellType) != originalCellType) {
-            logger.warn("Offset might cause integer underflow. Best to specify targetCellType explicitly.")
+            logger.warn(s"load_collection: Offset might cause integer underflow. Source: ${rasterSource.name}, cellType: $originalCellType, offset: $pixelValueOffset. Best to specify targetCellType explicitly.")
           }
         }
         originalCellType

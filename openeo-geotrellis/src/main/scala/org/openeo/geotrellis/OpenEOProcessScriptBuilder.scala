@@ -82,33 +82,6 @@ object OpenEOProcessScriptBuilder{
     }
   }
 
-  def cellTypeUnion(a:CellType,b:CellType):CellType = {
-    if (a.bits < b.bits)
-      b
-    else if (a.bits > b.bits)
-      a
-    else if (a.isFloatingPoint && !b.isFloatingPoint)
-      a
-    else if(isUnSigned(a) != isUnSigned(b) ) {
-      if(a.bits==8) {
-        ShortConstantNoDataCellType
-      }else if(a.isFloatingPoint || b.isFloatingPoint){
-        Seq(a,b).maxBy(_.bits)
-      }else{
-        IntConstantNoDataCellType
-      }
-    }
-    else
-      b
-  }
-
-  private def isUnSigned(a:CellType): Boolean = {
-    a match{
-      case x:UByteCells => true
-      case x:UShortCells => true
-      case _ => false
-    }
-  }
 
 
   private def ifElseProcess(value: OpenEOProcess, accept: OpenEOProcess, reject: OpenEOProcess) = {

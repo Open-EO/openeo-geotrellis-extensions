@@ -1,11 +1,12 @@
 package org.openeo.geotrellis
 
-import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.crop.Crop
 import geotrellis.raster.crop.Crop.Options
+import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.raster.{ByteArrayTile, MultibandTile, Raster}
+import geotrellis.raster.{ByteArrayTile, MultibandTile, Raster, ReadingSource}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import io.circe.Json
@@ -73,7 +74,7 @@ class VectorizeSpec {
     val croppedCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = cube._1.crop(newExtent, Options(force = true, clamp = true))
 
     val openEOProcesses = new OpenEOProcesses()
-    val (features: Array[(String, List[PolygonFeature[Int]])], crs: CRS) = openEOProcesses.vectorize(ContextRDD(croppedCube, croppedCube.metadata.copy(extent = newExtent)))
+    val (features: Array[(String, Seq[PolygonFeature[Int]])], crs: CRS) = openEOProcesses.vectorize(ContextRDD(croppedCube, croppedCube.metadata.copy(extent = newExtent)))
     val geojson = openEOProcesses.featuresToGeojson(features, crs)
 
     // assert that geojson["features"][0]["properties"] is a Map
@@ -83,5 +84,21 @@ class VectorizeSpec {
     // assert that geojson["features"][0]["properties"]["value"] == 0
     val value = hcursor.downField("value").focus.flatMap(_.asNumber).flatMap(_.toInt)
     assertEquals(Some(0), value)
+  }
+
+
+  /**
+   * Test vectorization of a complex real-world raster resulting in ~3000 features.
+   * https://github.com/Open-EO/openeo-geotrellis-extensions/issues/312
+   *
+   */
+  @Test
+  def vectorizeOverflow():Unit = {
+    val inputFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/chl_masked.tif").getPath
+    val extent = GeoTiff.readMultiband(inputFile).rasterExtent
+    val rsRDD = RasterSourceRDD.read(Seq(ReadingSource(GeoTiffRasterSource(inputFile),1,0)), LayoutDefinition(extent,128))(VectorizeSpec.sc)
+
+    new OpenEOProcesses().vectorize(rsRDD,"/tmp/out.geojson")
+
   }
 }
