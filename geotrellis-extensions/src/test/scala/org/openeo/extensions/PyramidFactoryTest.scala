@@ -18,6 +18,7 @@ class PyramidFactoryTest {
   @Disabled("TODO re-enable")
   @Test
   def sentinelHubSmallAreaToTiff(): Unit = {
+    /*
     implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
     import org.openeo.geotrellissentinelhub.{PyramidFactory, SampleType}
     try {
@@ -75,5 +76,6 @@ class PyramidFactoryTest {
         assert(arr.exists(_ != -2147483648))
       } finally println(s"$testScopeMetadataTracker consumed a total of ${testScopeMetadataTracker.sentinelHubProcessingUnits} PUs")
     } finally sc.stop()
+     */
   }
 }
