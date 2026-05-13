@@ -53,17 +53,6 @@
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
-            <artifactId>geotrellis-sentinelhub</artifactId>
-            <version>${project.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.scala-lang</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.openeo</groupId>
             <artifactId>snap-integration</artifactId>
             <version>${project.version}</version>
             <exclusions>
