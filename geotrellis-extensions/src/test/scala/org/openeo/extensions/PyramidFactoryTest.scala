@@ -9,7 +9,6 @@ import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrelliscommon.{DataCubeParameters, ScopedMetadataTracker}
-import org.openeo.geotrellissentinelhub.{PyramidFactory, SampleType}
 
 import java.util.Collections
 import scala.jdk.CollectionConverters._
@@ -20,6 +19,7 @@ class PyramidFactoryTest {
   @Test
   def sentinelHubSmallAreaToTiff(): Unit = {
     implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+    import org.openeo.geotrellissentinelhub.{PyramidFactory, SampleType}
     try {
       val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(
         endpoint = "https://services.sentinel-hub.com",
