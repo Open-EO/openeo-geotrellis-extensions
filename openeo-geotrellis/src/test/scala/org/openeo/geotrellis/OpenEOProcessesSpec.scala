@@ -20,7 +20,7 @@ import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNotEquals, assertTrue}
+import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName, Test}
 import org.junit.jupiter.params.ParameterizedTest
@@ -34,7 +34,7 @@ import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAg
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTemporal}
 import org.openeo.geotrellis.layers.FileLayerProviderTest
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpaceTimePartitioner, DataCubeParameters, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Path, Paths}
@@ -1288,10 +1288,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // with a ConfigurableSpaceTimePartitioner whose indexReduction matches the target tile memory budget.
     val tileSize = 256
     val targetSize = 512
-    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(
-      PixelType.Float, cols = tileSize, rows = tileSize)
 
-    val retiled = new OpenEOProcesses().retileGeneric(layer, targetSize, targetSize, 0, 0)
+    val processes = new OpenEOProcesses()
+    val cube = processes.wrapCube( LayerFixtures.randomNoiseLayer(PixelType.Float, cols = tileSize, rows = tileSize))
+    cube.openEOMetadata.setBandNames(util.Arrays.asList("band1"))
+
+    val retiled = processes.retileGeneric(cube, targetSize, targetSize, 0, 0)
 
     assertEquals(targetSize, retiled.metadata.tileCols)
     assertEquals(targetSize, retiled.metadata.tileRows)
@@ -1303,6 +1305,8 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val idx = retiled.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
     assertTrue(idx.isInstanceOf[ConfigurableSpaceTimePartitioner],
       s"Expected ConfigurableSpaceTimePartitioner, got ${idx.getClass.getSimpleName}")
+    assertEquals(9, idx.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction,
+      "Expected indexReduction of 9 for 512x512 tiles with Float32 and no overlap")
   }
 
   @Test
