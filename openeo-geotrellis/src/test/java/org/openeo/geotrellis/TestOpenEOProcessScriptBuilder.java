@@ -1752,7 +1752,7 @@ public class TestOpenEOProcessScriptBuilder {
         assertTrue(falseCondition.getMessage().contains("condition=false"));
 
         IllegalArgumentException numericCondition = assertThrows(IllegalArgumentException.class, () -> createCountWithCondition(2));
-        assertTrue(numericCondition.getMessage().contains("condition=null"));
+        assertTrue(numericCondition.getMessage().contains("got: 2"));
     }
 
     private Seq<Tile> predictWithDefaultRandomForestClassifier(scala.collection.mutable.Buffer<Tile> tiles, Random random) {
