@@ -1745,6 +1745,16 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(3, result4.apply(0).get(0, 0));
     }
 
+    @DisplayName("Test count process invalid condition")
+    @Test
+    public void testCountInvalidCondition() {
+        IllegalArgumentException falseCondition = assertThrows(IllegalArgumentException.class, () -> createCountWithCondition(false));
+        assertTrue(falseCondition.getMessage().contains("condition=false"));
+
+        IllegalArgumentException numericCondition = assertThrows(IllegalArgumentException.class, () -> createCountWithCondition(2));
+        assertTrue(numericCondition.getMessage().contains("condition=null"));
+    }
+
     private Seq<Tile> predictWithDefaultRandomForestClassifier(scala.collection.mutable.Buffer<Tile> tiles, Random random) {
         SparkConf conf = new SparkConf();
         conf.setAppName("OpenEOTest");
@@ -2482,12 +2492,13 @@ public class TestOpenEOProcessScriptBuilder {
     }
 
     static OpenEOProcessScriptBuilder createCount(boolean countAll) {
+        return createCountWithCondition(countAll ? Boolean.TRUE : null);
+    }
+
+    static OpenEOProcessScriptBuilder createCountWithCondition(Object condition) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = new HashMap<>();
-        if (countAll)
-            arguments.put("condition", true);
-        else
-            arguments.put("condition", null);
+        arguments.put("condition", condition);
 
         builder.expressionStart("count", arguments);
 

@@ -24,7 +24,6 @@ import scala.Double.NaN
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
 import scala.jdk.CollectionConverters._
-import scala.util.Try
 import scala.util.control.Breaks.{break, breakable}
 
 object Exp extends Serializable {
@@ -1096,8 +1095,11 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     val hasExpressions = arguments.containsKey("expressions")
     val hasData = arguments.containsKey("data")
     val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
-    val hasTrueCondition = Try(arguments.get("condition").toString.toBoolean).getOrElse(false)
-    val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean]
+    val condition = arguments.get("condition")
+    val hasTrueCondition = condition == Boolean.box(true) || condition == "true"
+    val hasFalseCondition = condition == Boolean.box(false) || condition == "false"
+    val hasConditionCallback = contextStack.head.contains("condition")
+    val hasConditionExpression = hasConditionCallback && typeStack.head.get("condition").contains("boolean")
 
     resultingDataType = FloatConstantNoDataCellType
 
@@ -1175,7 +1177,10 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           case "median" if ignoreNoData => applyListFunction("data", median, dataTypeMode = PRESERVE_DATATYPE_MODE)
           case "median" => applyListFunction("data", medianWithNodata, dataTypeMode = PRESERVE_DATATYPE_MODE )
           case "count" if hasTrueCondition => applyListFunction("data", countAll, dataTypeMode = Some(IntConstantNoDataCellType.name))
+          case "count" if hasFalseCondition => throw new IllegalArgumentException("The count process does not support condition=false. Use null or omit condition to count valid items, true to count all items, or provide a boolean callback expression.")
           case "count" if hasConditionExpression => mapListFunction("data", "condition", countCondition, dataTypeMode = Some(IntConstantNoDataCellType.name))
+          case "count" if hasConditionCallback => throw new IllegalArgumentException("The count process expects a boolean callback expression for condition.")
+          case "count" if condition != null => throw new IllegalArgumentException("The count process only supports condition=null, condition=true, or a boolean callback expression.")
           case "count" => applyListFunction("data", countValid, dataTypeMode = Some(IntConstantNoDataCellType.name))
           // Unary math
           case "abs" if hasX => mapFunction("x", Abs.apply, dataTypeMode = PRESERVE_DATATYPE_MODE)
