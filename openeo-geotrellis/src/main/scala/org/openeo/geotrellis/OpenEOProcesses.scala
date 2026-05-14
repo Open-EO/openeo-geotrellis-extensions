@@ -1109,6 +1109,43 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
+  /**
+   * Checks whether two spatiotemporal cubes have actual spatiotemporal overlap.
+   * This can be used to determine whether an overlap resolver is truly required for merge_cubes:
+   * if the cubes do not overlap in their spatiotemporal extent, no overlap resolver is needed
+   * even when both cubes share the same band names.
+   *
+   * @param leftCube  the left data cube
+   * @param rightCube the right data cube
+   * @return true if the cubes overlap in both spatial extent and temporal range, false otherwise
+   */
+  def cubesHaveOverlap(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey]): Boolean = {
+    val leftMeta = leftCube.metadata
+    val rightMeta = rightCube.metadata
+
+    if (!leftMeta.extent.intersects(rightMeta.extent)) return false
+
+    (leftMeta.bounds, rightMeta.bounds) match {
+      case (KeyBounds(leftMin, leftMax), KeyBounds(rightMin, rightMax)) =>
+        !leftMin.time.isAfter(rightMax.time) && !rightMin.time.isAfter(leftMax.time)
+      case _ => false
+    }
+  }
+
+  /**
+   * Checks whether two spatial cubes have actual spatial overlap.
+   * This can be used to determine whether an overlap resolver is truly required for merge_cubes:
+   * if the cubes do not overlap in their spatial extent, no overlap resolver is needed
+   * even when both cubes share the same band names.
+   *
+   * @param leftCube  the left data cube
+   * @param rightCube the right data cube
+   * @return true if the cubes overlap in spatial extent, false otherwise
+   */
+  def cubesHaveOverlap(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey]): Boolean = {
+    leftCube.metadata.extent.intersects(rightCube.metadata.extent)
+  }
+
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
     leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands)")
     val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,NearestNeighbor,leftCube.partitioner.orNull)._2

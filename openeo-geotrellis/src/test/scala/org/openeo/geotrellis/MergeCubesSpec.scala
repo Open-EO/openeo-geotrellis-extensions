@@ -8,7 +8,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.util.withGetComponentMethods
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertNotEquals, assertTrue, fail}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertTrue, fail}
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
@@ -544,5 +544,32 @@ class MergeCubesSpec {
     assertEquals(1,c1Tiles.length)
     assertEquals(1,c2Tiles.length)
     assertEquals(localTiles(0)._2, MultibandTile(c1Tiles(0)._2.bands ++ c2Tiles(0)._2.bands))
+  }
+
+  @Test def testCubesHaveOverlap_temporalDisjoint(): Unit = {
+    // Cubes with same spatial extent but non-overlapping temporal ranges
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)
+    val cube1 = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-06-01T00:00:00Z"))
+    val cube2 = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-07-01T00:00:00Z", "2020-12-01T00:00:00Z"))
+    assertFalse(new OpenEOProcesses().cubesHaveOverlap(cube1, cube2))
+  }
+
+  @Test def testCubesHaveOverlap_temporalOverlap(): Unit = {
+    // Cubes with same spatial extent and overlapping temporal ranges
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)
+    val cube1 = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-08-01T00:00:00Z"))
+    val cube2 = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-06-01T00:00:00Z", "2020-12-01T00:00:00Z"))
+    assertTrue(new OpenEOProcesses().cubesHaveOverlap(cube1, cube2))
+  }
+
+  @Test def testCubesHaveOverlap_fullTemporalOverlap(): Unit = {
+    // Cubes with identical temporal ranges (full overlap)
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)
+    val cube1 = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-06-01T00:00:00Z"))
+    val cube2 = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-06-01T00:00:00Z"))
+    assertTrue(new OpenEOProcesses().cubesHaveOverlap(cube1, cube2))
   }
 }
