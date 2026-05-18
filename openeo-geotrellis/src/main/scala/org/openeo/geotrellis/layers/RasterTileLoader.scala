@@ -257,21 +257,23 @@ case class RasterTileLoader() {
     val theCellType = metadata.cellType
     rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
     val partitionedBySource = byBandSource.groupByKey(new ByKeyPartitioner(allSources))
-    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = partitionedBySource.mapPartitions((partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
+    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = partitionedBySource.mapPartitions((partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
       var totalPixelsPartition = 0
       val startTime = System.currentTimeMillis()
 
-      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker, crs, layout, theCellType)
+      val (loadedPartition: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels) = loadPartitionBySource(partition, cloudFilterStrategy, totalChunksAcc, tracker, crs, layout, theCellType)
       totalPixelsPartition += partitionPixels
 
       val durationMillis = System.currentTimeMillis() - startTime
+      assert(totalPixelsPartition == partitionPixels)
       if (totalPixelsPartition > 0) {
         val secondsPerChunk = (durationMillis / 1000.0) / (totalPixelsPartition / (256 * 256))
         loadingTimeAcc.add(secondsPerChunk)
-        val megapixelPerSecond = (totalPixelsPartition / (1024 * 1024)) / (durationMillis / 1000.0)
+        val megapixelPerSecond = (totalPixelsPartition / (1024.0 * 1024)) / (durationMillis / 1000.0)
+        logger.info(s"totalPixelsPartition=$totalPixelsPartition durationMillis=$durationMillis megapixelPerSecond=$megapixelPerSecond")
         megapixelPerSecondMeter.set(megapixelPerSecond)
       }
-      loadedPartitions
+      loadedPartition
 
     }, preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
       var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1)
@@ -427,9 +429,9 @@ case class RasterTileLoader() {
   }
 
 
-  private def loadPartitionBySource(partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs: CRS, layout: LayoutDefinition, cellType: CellType) = {
+  private def loadPartitionBySource(partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs: CRS, layout: LayoutDefinition, cellType: CellType) = {
     var totalPixelsPartition = 0
-    val tiles: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))] = partitionIterator.flatMap((tuple: (SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])) => {
+    val tiles: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))] = partition.flatMap((tuple: (SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])) => {
       val keys = tuple._2.map(_._2).asJavaCollection
       val source = tuple._2.head._3.asInstanceOf[GridBoundsRasterRegion].source
       val bounds = tuple._2.map(_._3.asInstanceOf[GridBoundsRasterRegion].bounds).toSeq
@@ -479,7 +481,7 @@ case class RasterTileLoader() {
       keys.iterator().asScala.zip(paddedRasters.map(b => (theIndex, b.tile, tuple._1)).iterator)
 
     })
-    (tiles, totalPixelsPartition)
+    (tiles.toVector.iterator, totalPixelsPartition) // materialize to actually read partition elements and take time
   }
 
 }
