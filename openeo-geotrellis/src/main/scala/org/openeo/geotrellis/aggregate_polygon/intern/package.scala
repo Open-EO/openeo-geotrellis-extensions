@@ -1,24 +1,24 @@
 package org.openeo.geotrellis.aggregate_polygon
 
-import java.time.ZonedDateTime
-import java.time.temporal.ChronoUnit.DAYS
-import java.util.concurrent.TimeUnit.MINUTES
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileBounds, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster._
 import geotrellis.raster.histogram.{FastMapHistogram, Histogram, MutableHistogram, StreamingHistogram}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.{MultibandTileLayerRDD, _}
-import geotrellis.vector._
+import geotrellis.vector.{MultiPolygon, _}
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{RangePartitioner, SparkContext}
-import org.locationtech.jts.geom.TopologyException
+import org.locationtech.jts.geom.{Coordinate, LinearRing, TopologyException}
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern.polygonal._
 import org.openeo.geotrellis.layers.LayerProvider
 import org.slf4j.LoggerFactory
 
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit.DAYS
+import java.util.concurrent.TimeUnit.MINUTES
 import scala.Double.NaN
 import scala.collection.mutable
 import scala.collection.parallel.CollectionConverters._
@@ -28,8 +28,30 @@ package object intern {
 
   private type PolygonsWithIndexMapping = (Seq[MultiPolygon], Seq[Set[Int]])
   type MultibandHistogram[T <: AnyVal] = Seq[Histogram[T]]
+  private val SpikinessDistanceThreshold = 0.000000001
+  private val OverlapAreaThreshold = 10E-14
 
   private val logger = LoggerFactory.getLogger("be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellis")
+
+  implicit class PolygonManipulations(p: Polygon) {
+    def removeCoordinate(c: Coordinate): Polygon = {
+      val exteriorRing: LinearRing = p.getExteriorRing
+      val factory = exteriorRing.getFactory
+      var coordinates = exteriorRing.getCoordinates.filter(_ != c)
+      if (coordinates(0) != coordinates(coordinates.length-1)) {
+        coordinates = coordinates :+ coordinates(0)
+      }
+      val newExteriorRing = factory.createLinearRing(coordinates)
+      val newHoles: Array[LinearRing] = Range(0, p.getNumInteriorRing).map(i => p.getInteriorRingN(i)).map(r => r.getCoordinates).map(cs => {
+        var coordinates1 = cs.filter(_ != c)
+        if (coordinates1(0) != coordinates1(coordinates1.length-1)) {
+          coordinates1 = coordinates1 :+ coordinates1(0)
+        }
+        factory.createLinearRing(coordinates1)
+      }).toArray
+      factory.createPolygon(newExteriorRing, newHoles)
+    }
+  }
 
   def computeAverageTimeSeries(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, statisticsCallback: StatisticsCallback[_ >: Seq[MeanResult]], cancellationContext: CancellationContext, sc: SparkContext): Unit = {
     val boundingBox = ProjectedExtent(polygons.toSeq.extent, crs)
@@ -51,7 +73,7 @@ package object intern {
         logOverlapWarning(polygons.length)
       }
       val sparkPool = sc.getLocalProperty("spark.scheduler.pool")
-      val results: Array[Map[TemporalKey, Array[MeanResult]]] = computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate,  sc).par.flatMap { rdd =>
+      val results: Array[Map[TemporalKey, Array[MeanResult]]] = computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate, sc).par.flatMap { rdd =>
         if (!cancellationContext.canceled) {
           sc.setJobGroup(cancellationContext.id, cancellationContext.description, interruptOnCancel = true)
           sc.setLocalProperty("spark.scheduler.pool", sparkPool)
@@ -70,7 +92,7 @@ package object intern {
       dates.foreach(d => statisticsCallback.onComputed(d, {
         val maybeResultses: Array[Option[Array[MeanResult]]] = results.map(_.get(d))
         val converted: Seq[Seq[_ <: MeanResult]] = maybeResultses.map {
-          case Some(r) =>r.map{meanResult => new MeanResult(meanResult.sum, meanResult.valid, meanResult.total,Option.empty,Option.empty)}.toSeq
+          case Some(r) => r.map { meanResult => new MeanResult(meanResult.sum, meanResult.valid, meanResult.total, Option.empty, Option.empty) }.toSeq
           case None => Seq.empty
         }
         converted
@@ -80,7 +102,7 @@ package object intern {
     }
   }
 
-  def computeAverageTimeSeries(maskedRdd: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, sc: SparkContext) : Array[RDD[(TemporalKey, Array[MeanResult])]] = {
+  def computeAverageTimeSeries(maskedRdd: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, sc: SparkContext): Array[RDD[(TemporalKey, Array[MeanResult])]] = {
     if (polygons.length > 1 && maskedRdd.getStorageLevel == StorageLevel.NONE) {
       maskedRdd.cache()
     }
@@ -96,10 +118,10 @@ package object intern {
   }
 
 
-  def computeMultibandCollectionTimeSeries(datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, statisticsCallback: StatisticsCallback[_ >: Seq[MeanResult]], cancellationContext: CancellationContext, sc: SparkContext): Unit =
+  def computeMultibandCollectionTimeSeries(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, statisticsCallback: StatisticsCallback[_ >: Seq[MeanResult]], cancellationContext: CancellationContext, sc: SparkContext): Unit =
     computeMultibandCollectionTimeSeries(datacube, polygonsWithIndexMapping, crs, startDate, endDate, statisticsCallback, sc, denseMeansMultiBand, cancellationContext)
 
-  def computeMultibandCollectionHistogramTimeSeries(datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, multibandHistogramsCallback: StatisticsCallback[_ >: MultibandHistogram[Double]], cancellationContext: CancellationContext, sc: SparkContext): Unit = {
+  def computeMultibandCollectionHistogramTimeSeries(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, multibandHistogramsCallback: StatisticsCallback[_ >: MultibandHistogram[Double]], cancellationContext: CancellationContext, sc: SparkContext): Unit = {
     val multibandHistogramsWithoutEmptyDatesCallback = new StatisticsCallback[Seq[Histogram[Double]]] {
       override def onComputed(date: ZonedDateTime, multibandHistograms: Seq[MultibandHistogram[Double]]): Unit =
         if (multibandHistograms.flatten.nonEmpty) multibandHistogramsCallback.onComputed(date, multibandHistograms)
@@ -110,9 +132,9 @@ package object intern {
     computeMultibandCollectionTimeSeries(datacube, polygonsWithIndexMapping, crs, startDate, endDate, multibandHistogramsWithoutEmptyDatesCallback, sc, denseHistogramsMultiband, cancellationContext)
   }
 
-  private def computeMultibandCollectionTimeSeries[V](datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, statisticsCallback: StatisticsCallback[V], sc: SparkContext,
+  private def computeMultibandCollectionTimeSeries[V](datacube: MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, statisticsCallback: StatisticsCallback[V], sc: SparkContext,
                                                       denseResults: (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]],
-                                                        RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition], Seq[Set[Int]], ZonedDateTime,  Int) => Seq[V] , cancellationContext: CancellationContext): Unit = {
+                                                        RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition], Seq[Set[Int]], ZonedDateTime, Int) => Seq[V], cancellationContext: CancellationContext): Unit = {
     import org.apache.spark.storage.StorageLevel._
 
     val (polygons, indexMapping) = polygonsWithIndexMapping
@@ -136,8 +158,8 @@ package object intern {
       val featuresEnvelope: Extent = indexedFeatures.map(_.geom).extent.reproject(crs, datacube.metadata.crs)
 
       val spatialBounds: TileBounds = datacube.metadata.mapTransform.apply(featuresEnvelope)
-      val minKey = SpatialKey(spatialBounds.colMin,spatialBounds.rowMin)
-      val maxKey = SpatialKey(spatialBounds.colMax,spatialBounds.rowMax)
+      val minKey = SpatialKey(spatialBounds.colMin, spatialBounds.rowMin)
+      val maxKey = SpatialKey(spatialBounds.colMax, spatialBounds.rowMax)
 
 
       val sparkPool = sc.getLocalProperty("spark.scheduler.pool")
@@ -152,11 +174,11 @@ package object intern {
               val partitionIndicies = (rp.getPartition(lower), rp.getPartition(upper)) match {
                 case (l, u) => Math.min(l, u) to Math.max(l, u)
               }
-              PartitionPruningRDD.create(datacube,partitionIndicies.contains).filterByRange(lower,upper)
+              PartitionPruningRDD.create(datacube, partitionIndicies.contains).filterByRange(lower, upper)
             case Some(rp: RangePartitioner[SpaceTimeKey, MultibandTile]) =>
-              datacube.filterByRange(lower,upper)
+              datacube.filterByRange(lower, upper)
             case _ =>
-              datacube.persist(MEMORY_AND_DISK_SER).filterByRange(lower,upper)
+              datacube.persist(MEMORY_AND_DISK_SER).filterByRange(lower, upper)
           }
 
           sc.setJobGroup(cancellationContext.id, cancellationContext.description, true)
@@ -219,11 +241,10 @@ package object intern {
   }
 
 
+  private def zonalHistograms(dataLayer: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], zoneLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition], date: ZonedDateTime): Map[Int, Seq[Histogram[Double]]] = {
 
-  private def zonalHistograms(dataLayer: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], zoneLayer: RDD[(SpatialKey, Tile)]  with Metadata[LayoutDefinition], date: ZonedDateTime): Map[Int, Seq[Histogram[Double]]] = {
-
-    if(dataLayer.metadata.cellType.isFloatingPoint) {
-      val histogramsForDate = MultibandZonal.histogramDouble(dataLayer.toSpatial(date),zoneLayer, zoneLayer.partitioner)
+    if (dataLayer.metadata.cellType.isFloatingPoint) {
+      val histogramsForDate = MultibandZonal.histogramDouble(dataLayer.toSpatial(date), zoneLayer, zoneLayer.partitioner)
       val doubleHistograms = histogramsForDate
         .filter { case (zone, _) => zone != Int.MinValue } // noDataValue for IntConstantNoDataCellType of mask layer
         .mapValues(_.map((hist: Histogram[Double]) => {
@@ -237,8 +258,8 @@ package object intern {
         })).toMap
 
       doubleHistograms
-    }else{
-      val histogramsForDate = MultibandZonal.histogram(dataLayer.toSpatial(date),zoneLayer, zoneLayer.partitioner)
+    } else {
+      val histogramsForDate = MultibandZonal.histogram(dataLayer.toSpatial(date), zoneLayer, zoneLayer.partitioner)
       val doubleHistograms = histogramsForDate
         .filter { case (zone, _) => zone != Int.MinValue } // noDataValue for IntConstantNoDataCellType of mask layer
         .view.mapValues(_.map((hist: Histogram[Int]) => toDouble(withoutNoData(hist)) { digital => digital.doubleValue() })).toMap
@@ -271,6 +292,7 @@ package object intern {
 
   /**
    * Multiband version of the above
+   *
    * @param dataLayer
    * @param zoneLayer
    * @param date
@@ -282,7 +304,7 @@ package object intern {
     val means = runningTotalsForDate
       .filter { case (zone, _) => zone != Int.MinValue } // noDataValue for IntConstantNoDataCellType of mask layer
       .map { case (index, runningTotalForBands) =>
-        (index, runningTotalForBands.map{runningTotal => MeanResult(runningTotal.validSum,runningTotal.validCount, runningTotal.totalCount) })
+        (index, runningTotalForBands.map { runningTotal => MeanResult(runningTotal.validSum, runningTotal.validCount, runningTotal.totalCount) })
       }
     means
   }
@@ -394,12 +416,12 @@ package object intern {
       j <- (i + 1) until polygons.length
     } {
       val (p, q) = (polygons(i), polygons(j))
-      try{
+      try {
         if (p.intersects(q) && p.intersection(q).getArea > threshold) {
           return true
         }
-      }catch {
-        case e: TopologyException => logger.warn(s"A topology exception occurred while determining the overlap between two polygons: ${p.toGeoJson()} - ${q.toGeoJson()}. Processing will continue, but aggregate_spatial results may be inaccurate.",e)
+      } catch {
+        case e: TopologyException => logger.warn(s"A topology exception occurred while determining the overlap between two polygons: ${p.toGeoJson()} - ${q.toGeoJson()}. Processing will continue, but aggregate_spatial results may be inaccurate.", e)
       }
     }
 
@@ -415,6 +437,38 @@ package object intern {
       }
     else {
       None
+    }
+  }
+
+  def clean(multiPolygon: MultiPolygon): MultiPolygon = {
+    val array: Array[Polygon] = Range(0, multiPolygon.getNumGeometries).map(index => multiPolygon.getGeometryN(index).asInstanceOf[Polygon]).map(p => clean(p)).toArray
+    MultiPolygon(array)
+  }
+
+  private def isSpiky(v1: Coordinate, v2: Coordinate, v3: Coordinate): Boolean = {
+    val d = math.abs(v1.distance(v2) - v1.distance(v3) - v2.distance(v3))
+    val bool = d < SpikinessDistanceThreshold
+    bool
+  }
+
+  private def clean(polygon: Polygon): Polygon = {
+    val coordinates: Array[Coordinate] = polygon.getExteriorRing.getCoordinates
+    val n = coordinates.length - 1
+    if (n < 5) {
+      polygon
+    } else {
+      val faultyIndices = Range(0, coordinates.length - 1).filter(index => {
+        isSpiky(coordinates((index - 1 + n) % n), coordinates(index), coordinates((index + 1) % n))
+      })
+      if (faultyIndices.isEmpty) {
+        polygon
+      } else {
+        var cleanPolygon = polygon
+        faultyIndices.foreach (i => {
+          cleanPolygon = cleanPolygon.removeCoordinate(coordinates(i))
+        })
+        cleanPolygon
+      }
     }
   }
 
@@ -451,21 +505,23 @@ package object intern {
               val jPolRemove = mutable.Set[MultiPolygonEq]()
               val jPolAdd = mutable.Set[MultiPolygonEq]()
               for (jPolPart <- jPolMap(jPol)) {
-                try{
+                try {
                   if (iPolPart.p.intersects(jPolPart.p)) {
-                    iPolPart.p.intersectionSafe(jPolPart.p).asMultiPolygon.foreach(int => {
-                      convertToMultiPolygon(iPolPart.p.difference(int)).foreach(dif => {
+                    iPolPart.p.intersectionSafe(jPolPart.p).asMultiPolygon.filter(_.getArea > OverlapAreaThreshold).foreach(intersection => {
+                      convertToMultiPolygon(iPolPart.p.difference(intersection)).filter(_.getArea > OverlapAreaThreshold).foreach(difference => {
                         iPolRemove += iPolPart
-                        iPolAdd += MultiPolygonEq(int) += MultiPolygonEq(dif)
+                        iPolAdd += MultiPolygonEq(intersection) += MultiPolygonEq(clean(difference))
                       })
-                      convertToMultiPolygon(jPolPart.p.difference(int)).foreach(dif => {
+                      convertToMultiPolygon(jPolPart.p.difference(intersection)).filter(_.getArea > OverlapAreaThreshold).foreach(dif => {
                         jPolRemove += jPolPart
-                        jPolAdd += MultiPolygonEq(int) += MultiPolygonEq(dif)
+                        jPolAdd += MultiPolygonEq(intersection) += MultiPolygonEq(clean(dif))
                       })
                     })
                   }
-                }catch {
-                  case e: TopologyException => logger.error(s"A topology exception occurred while determining the intersection between two polygons: ${iPolPart.p.toGeoJson()} - ${jPolPart.p.toGeoJson()}. Processing will continue, but aggregate_spatial results may be inaccurate.",e)
+                } catch {
+                  case e: TopologyException => {
+                    logger.error(s"A topology exception occurred while determining the intersection between two polygons: ${iPolPart.p.toGeoJson()} - ${jPolPart.p.toGeoJson()}. Processing will continue, but aggregate_spatial results may be inaccurate.", e)
+                  }
                 }
 
               }
@@ -485,7 +541,7 @@ package object intern {
 
       (polygonsResult.map(_.p), indexResult)
     } else {
-      (polygons, polygons.zipWithIndex.map { case(_, i) => Set(i) })
+      (polygons, polygons.zipWithIndex.map { case (_, i) => Set(i) })
     }
   }
 
@@ -495,8 +551,10 @@ package object intern {
     val estimateString = {
       val hours = estimateDuration.toHours
       val minutes = estimateDuration.toMinutes % 60
-      s"${if (hours > 0) s"$hours hour${if (hours > 1) "s" else ""}" +
-        s"${if (minutes > 0) s" and " else ""}" else ""}" +
+      s"${
+        if (hours > 0) s"$hours hour${if (hours > 1) "s" else ""}" +
+          s"${if (minutes > 0) s" and " else ""}" else ""
+      }" +
         s"${if (minutes > 0) s"$minutes minutes" else ""}"
     }
 
@@ -524,7 +582,8 @@ package object intern {
             val z = tile.getDouble(col, row)
             total += 1
             if (isData(z)) {
-              sum = sum + z; valid = valid + 1
+              sum = sum + z;
+              valid = valid + 1
             }
           })
         } else {
@@ -532,7 +591,8 @@ package object intern {
             val z = tile.get(col, row)
             total += 1
             if (isData(z)) {
-              sum = sum + z; valid = valid + 1
+              sum = sum + z;
+              valid = valid + 1
             }
           })
         }
@@ -553,15 +613,15 @@ package object intern {
     override def combineResults(rs: Seq[Array[MeanResult]]): Array[MeanResult] = {
 
       val bandCount = rs.map(_.length).max
-      rs.foldLeft(Array.fill(bandCount)(MEAN0))((a1, a2) => a1.zip(a2).map{ case (mr1:MeanResult,mr2:MeanResult)=> mr1+mr2 })
+      rs.foldLeft(Array.fill(bandCount)(MEAN0))((a1, a2) => a1.zip(a2).map { case (mr1: MeanResult, mr2: MeanResult) => mr1 + mr2 })
     }
 
     override def combineOp(v1: Array[MeanResult], v2: Array[MeanResult]): Array[MeanResult] = {
-      if(v1.isEmpty) {
+      if (v1.isEmpty) {
         combineResults(Seq(Array.fill(v2.length)(MEAN0), v2))
-      }else if(v2.isEmpty) {
-        combineResults(Seq(v1,Array.fill(v1.length)(MEAN0)))
-      }else{
+      } else if (v2.isEmpty) {
+        combineResults(Seq(v1, Array.fill(v1.length)(MEAN0)))
+      } else {
         combineResults(Seq(v1, v2))
       }
     }

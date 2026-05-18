@@ -20,7 +20,7 @@ import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNotEquals, assertTrue}
+import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName, Test}
 import org.junit.jupiter.params.ParameterizedTest
@@ -34,7 +34,7 @@ import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAg
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTemporal}
 import org.openeo.geotrellis.layers.FileLayerProviderTest
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, DataCubeParameters, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Path, Paths}
@@ -1282,5 +1282,74 @@ class OpenEOProcessesSpec extends RasterMatchers {
     assertEqual(expectedConvolution,theResultTile)
   }
 
+  @Test
+  def testRetilePartitionerSpaceTimeKey(): Unit = {
+    // Create a cube with 256x256 tiles and retile to 512x512: the result should have a SpacePartitioner
+    // with a ConfigurableSpaceTimePartitioner whose indexReduction matches the target tile memory budget.
+    val tileSize = 256
+    val targetSize = 512
+
+    val processes = new OpenEOProcesses()
+    val cube = processes.wrapCube( LayerFixtures.randomNoiseLayer(PixelType.Float, cols = tileSize, rows = tileSize))
+    cube.openEOMetadata.setBandNames(util.Arrays.asList("band1"))
+
+    val retiled = processes.retileGeneric(cube, targetSize, targetSize, 0, 0)
+
+    assertEquals(targetSize, retiled.metadata.tileCols)
+    assertEquals(targetSize, retiled.metadata.tileRows)
+
+    // Verify a SpacePartitioner with ConfigurableSpaceTimePartitioner is used
+    assertTrue(retiled.partitioner.isDefined, "Partitioner should be defined")
+    assertTrue(retiled.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]],
+      s"Expected SpacePartitioner[SpaceTimeKey], got ${retiled.partitioner.get.getClass.getSimpleName}")
+    val idx = retiled.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+    assertTrue(idx.isInstanceOf[ConfigurableSpaceTimePartitioner],
+      s"Expected ConfigurableSpaceTimePartitioner, got ${idx.getClass.getSimpleName}")
+    assertEquals(9, idx.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction,
+      "Expected indexReduction of 9 for 512x512 tiles with Float32 and no overlap")
+  }
+
+  @Test
+  def testRetilePartitionerSpatialKey(): Unit = {
+    // Create a spatial-key cube with 256x256 tiles and retile to 512x512
+    val tileSize = 256
+    val targetSize = 512
+    val tile = FloatArrayTile.fill(1.0f, tileSize, tileSize)
+    val layer = TileLayerRDDBuilders.createMultibandTileLayerRDD(
+      OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(4, 4, tileSize, tileSize))
+
+    val retiled = new OpenEOProcesses().retileGeneric(layer, targetSize, targetSize, 0, 0)
+
+    assertEquals(targetSize, retiled.metadata.tileCols)
+    assertEquals(targetSize, retiled.metadata.tileRows)
+
+    // Verify a SpacePartitioner with ConfigurableSpatialPartitioner is used
+    assertTrue(retiled.partitioner.isDefined, "Partitioner should be defined")
+    assertTrue(retiled.partitioner.get.isInstanceOf[SpacePartitioner[SpatialKey]],
+      s"Expected SpacePartitioner[SpatialKey], got ${retiled.partitioner.get.getClass.getSimpleName}")
+    val idx = retiled.partitioner.get.asInstanceOf[SpacePartitioner[SpatialKey]].index
+    assertTrue(idx.isInstanceOf[ConfigurableSpatialPartitioner],
+      s"Expected ConfigurableSpatialPartitioner, got ${idx.getClass.getSimpleName}")
+  }
+
+  @Test
+  def testRetilePartitionerWithOverlap(): Unit = {
+    // Overlap should be factored into the memory estimation (effective tile = sizeX+2*overlapX)
+    val tileSize = 256
+    val targetSize = 256
+    val overlapSize = 16
+    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(
+      PixelType.Float, cols = tileSize, rows = tileSize)
+
+    val retiledNoOverlap = new OpenEOProcesses().retileGeneric(layer, targetSize, targetSize, 0, 0)
+    val retiledWithOverlap = new OpenEOProcesses().retileGeneric(layer, targetSize, targetSize, overlapSize, overlapSize)
+
+    // Both should use a SpacePartitioner; with larger effective tiles (overlap),
+    // indexReduction should be <= the no-overlap case (fewer tiles per partition)
+    val idxNoOverlap = retiledNoOverlap.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.asInstanceOf[ConfigurableSpaceTimePartitioner]
+    val idxWithOverlap = retiledWithOverlap.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.asInstanceOf[ConfigurableSpaceTimePartitioner]
+    assertTrue(idxWithOverlap.indexReduction <= idxNoOverlap.indexReduction,
+      s"Overlap should not increase indexReduction: ${idxWithOverlap.indexReduction} <= ${idxNoOverlap.indexReduction}")
+  }
 
 }
