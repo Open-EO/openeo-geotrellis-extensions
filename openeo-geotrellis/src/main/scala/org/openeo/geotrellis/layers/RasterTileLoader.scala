@@ -17,7 +17,7 @@ import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelPerSecondMeter}
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, time}
 import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.{Logger, LoggerFactory}
 import spire.implicits.coordinateSpaceOps
@@ -258,19 +258,17 @@ case class RasterTileLoader() {
     rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
     val partitionedBySource = byBandSource.groupByKey(new ByKeyPartitioner(allSources))
     var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = partitionedBySource.mapPartitions((partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
-      var totalPixelsPartition = 0
-      val startTime = System.currentTimeMillis()
 
-      val (loadedPartition: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels) = loadPartitionBySource(partition, cloudFilterStrategy, totalChunksAcc, tracker, crs, layout, theCellType)
-      totalPixelsPartition += partitionPixels
+      val ((loadedPartition: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels), duration) = time {
+        loadPartitionBySource(partition, cloudFilterStrategy, totalChunksAcc, tracker, crs, layout, theCellType)
+      }
 
-      val durationMillis = System.currentTimeMillis() - startTime
-      assert(totalPixelsPartition == partitionPixels)
-      if (totalPixelsPartition > 0) {
-        val secondsPerChunk = (durationMillis / 1000.0) / (totalPixelsPartition / (256 * 256))
+      if (partitionPixels > 0) {
+        val durationSeconds = duration.toMillis / 1000.0
+        val secondsPerChunk = durationSeconds / (partitionPixels / (256 * 256))
         loadingTimeAcc.add(secondsPerChunk)
-        val megapixelPerSecond = (totalPixelsPartition / (1024.0 * 1024)) / (durationMillis / 1000.0)
-        logger.info(s"totalPixelsPartition=$totalPixelsPartition durationMillis=$durationMillis megapixelPerSecond=$megapixelPerSecond")
+        val megapixelPerSecond = (partitionPixels / (1024.0 * 1024)) / durationSeconds
+        logger.info(s"totalPixelsPartition=$partitionPixels durationSeconds=$durationSeconds megapixelPerSecond=$megapixelPerSecond")
         megapixelPerSecondMeter.set(megapixelPerSecond)
       }
       loadedPartition
