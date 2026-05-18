@@ -1679,7 +1679,7 @@ class FileLayerProviderTest extends RasterMatchers {
     bands.add("temperature-mean")
     bands.add("precipitation-flux")
 
-    val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testMultibandCOGViaSTACResampledCubic.nc"
+    val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testMultibandCOGViaSTACResampledCubic.nc"
     writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory,
       f"$outDir/testMultibandCOGViaSTACResampledCubic.nc", referenceFile)
   }
@@ -1722,7 +1722,7 @@ class FileLayerProviderTest extends RasterMatchers {
     val bands: util.ArrayList[String] = new util.ArrayList[String]()
     bands.add("precipitation-flux")
 
-    val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testSinglebandCOGViaSTACResampled.nc"
+    val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testSinglebandCOGViaSTACResampled.nc"
     writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory,
       f"$outDir/testSinglebandCOGViaSTACResampled.nc", referenceFile)
   }
