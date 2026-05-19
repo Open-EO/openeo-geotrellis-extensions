@@ -25,8 +25,8 @@ class DataCubeParameters extends Serializable {
   var useNewFeatureExtentIntersection2: Boolean = true
   var timeDimensionFilter: Option[java.io.Serializable] = Option.empty
   var allowEmptyCube: Boolean = false
-  var useRasterSourceProviders: Boolean = false
-  var loadPerProduct: Boolean = false
+  var useRasterSourceProviders: Boolean = true
+  var loadPerProduct: Boolean = true
   var rasterSource: Option[String] = Option.empty
 
   /**
