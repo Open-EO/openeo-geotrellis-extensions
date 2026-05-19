@@ -39,7 +39,7 @@ object OpenEOProcessScriptBuilder{
 
   // Subset of boolean-result operators that can be evaluated in xyConstantFunction.
   private val xyConstantBooleanOperators = Set("or", "and", "eq", "neq", "date_between")
-  private val booleanResultOperators = Set("gt", "lt", "lte", "gte", "eq", "neq", "between", "any", "and", "all", "or", "xor", "not", "is_nodata", "is_nan", "array_contains", "date_between")
+  private val booleanResultOperators = xyConstantBooleanOperators ++ Set("gt", "lt", "lte", "gte", "between", "any", "all", "xor", "not", "is_nodata", "is_nan", "array_contains")
 
   private def isBooleanProcessType(processType: String): Boolean = processType == "boolean" || processType == BitCellType.toString
 
@@ -1255,7 +1255,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           argNames.head
         }
 
-      if((xyConstantComparison && xyConstantBooleanOperators.contains(operator)) || booleanResultOperators.contains(operator)){
+      if(booleanResultOperators.contains(operator)){
         typeStack.head(argName) = "boolean"
       }else{
         typeStack.head(argName) = resultingDataType.toString()
