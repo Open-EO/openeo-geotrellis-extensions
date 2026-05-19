@@ -5,6 +5,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue, fail}
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{Test, Timeout}
+import org.openeo.geotrelliscommon.time
 import org.openeo.geotrellissentinelhub.DefaultProcessApi.withRetryAfterRetries
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -13,21 +14,9 @@ import java.util
 import java.util.concurrent.TimeUnit
 import scala.math.Ordered.orderingToOrdered
 
-object DefaultProcessApiTest {
-  private def time[R](body: => R): (R, Duration) = {
-    val start = Instant.now()
-    val result = body
-    val end = Instant.now()
-
-    (result, Duration.between(start, end))
-  }
-}
 
 @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasSentinelHubCredentials")
 class DefaultProcessApiTest {
-
-  import DefaultProcessApiTest._
-
   private val clientId = Utils.clientId
   private val clientSecret = Utils.clientSecret
   private val authorizer = new MemoizedAuthApiAccessTokenAuthorizer(

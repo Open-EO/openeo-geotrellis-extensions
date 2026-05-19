@@ -17,6 +17,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
+import _root_.io.opentelemetry.api._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.{LongAccumulator, SizeEstimator}
 import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
@@ -85,11 +86,8 @@ object FileLayerProvider {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
 
 
-  lazy val sdk = {
-    import _root_.io.opentelemetry.api.GlobalOpenTelemetry
-    GlobalOpenTelemetry.get()
-  }
-  lazy val megapixelPerSecondMeter = sdk.meterBuilder("load_collection_read").build().gaugeBuilder("megapixel_per_second").build()
+  private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
+  private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("load_collection_read").build().gaugeBuilder("megapixel_per_second").build()
 
   {
     try {
