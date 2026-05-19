@@ -37,8 +37,11 @@ object OpenEOProcessScriptBuilder{
 
   private val logger = LoggerFactory.getLogger(classOf[OpenEOProcessScriptBuilder])
 
-  //operators that return a boolean
-  private val booleanOperators = Set("or", "and", "eq", "neq", "date_between")
+  // Subset of boolean-result operators that can be evaluated in xyConstantFunction.
+  private val xyConstantBooleanOperators = Set("or", "and", "eq", "neq", "date_between")
+  private val booleanResultOperators = Set("gt", "lt", "lte", "gte", "eq", "neq", "between", "any", "and", "all", "or", "xor", "not", "is_nodata", "is_nan", "array_contains", "date_between")
+
+  private def isBooleanProcessType(processType: String): Boolean = processType == "boolean" || processType == BitCellType.toString
 
   type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
   type AnyProcess =  Map[String,Any] => (Any  => Any )
@@ -1099,7 +1102,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     val hasTrueCondition = condition == Boolean.box(true) || condition == "true"
     val hasFalseCondition = condition == Boolean.box(false) || condition == "false"
     val hasConditionCallback = contextStack.head.contains("condition")
-    val hasConditionExpression = hasConditionCallback && typeStack.head.get("condition").contains("boolean")
+    val hasConditionExpression = hasConditionCallback && typeStack.head.get("condition").exists(isBooleanProcessType)
 
     resultingDataType = FloatConstantNoDataCellType
 
@@ -1110,7 +1113,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       || typeStack.head.getOrElse("y","") == "boolean")
 
     val operation = {
-      if(xyConstantComparison && booleanOperators.contains(operator)) {
+      if(xyConstantComparison && xyConstantBooleanOperators.contains(operator)) {
         xyConstantFunction(operator,arguments)
       }
       else if ("any" == operator && typeStack.head.head._2.contains("boolean")) {
@@ -1233,7 +1236,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
     if(operator != "linear_scale_range") {
       //TODO: generalize to other operations that result in a specific datatype?
-      if(Array("gt","lt","lte","gte","eq","neq","between","any","and","all","or", "is_nodata", "is_nan", "array_contains").contains(operator)) {
+      if(booleanResultOperators.contains(operator)) {
         resultingDataType = BitCellType
       }
     }
@@ -1252,7 +1255,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           argNames.head
         }
 
-      if((xyConstantComparison && booleanOperators.contains(operator)) || operator == "date_between"){
+      if((xyConstantComparison && xyConstantBooleanOperators.contains(operator)) || booleanResultOperators.contains(operator)){
         typeStack.head(argName) = "boolean"
       }else{
         typeStack.head(argName) = resultingDataType.toString()
