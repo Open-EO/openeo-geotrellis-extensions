@@ -10,7 +10,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.{ProjectedPolygons, cellTypeUnion}
+import org.openeo.geotrellis.{ProjectedPolygons, cellTypeUnionWithNoData}
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, DataCubeParameters, DatacubeSupport}
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.slf4j.{Logger, LoggerFactory}
@@ -117,7 +117,7 @@ object NetCDFCollection {
     })
 
     val cellTypes = features.map(_._2.cellType)
-    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnion(CurrentCellType,nextCellType))
+    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
 
     val extent = bboxWGS84.reproject(LatLng, crs(0))
     val layout = LayoutDefinition(RasterExtent(extent, CellSize(resolutions(0), resolutions(0))), 128)
