@@ -25,6 +25,7 @@ import geotrellis.vector._
 import org.apache.commons.io.FileUtils
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
+import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
@@ -1708,6 +1709,37 @@ class OpenEOProcesses extends Serializable {
       retiled.mapValues(x => onnx.predictOnnx(x,model)),
       retiled.metadata
     )
+  }
+
+
+  def checkPoint(cube: Object): Unit = {
+    cube match {
+      case rdd1 if cube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].checkpoint()
+      case rdd2 if cube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].checkpoint()
+      case _ => throw new IllegalArgumentException(s"Unsupported cube type for checkpoint: ${cube}")
+    }
+  }
+
+  def localCheckpoint(cube: Object): Object = {
+    cube match {
+      case rdd1 if cube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].withContext(_.localCheckpoint())
+      case rdd2 if cube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].withContext(_.localCheckpoint())
+      case _ => throw new IllegalArgumentException(s"Unsupported cube type for local checkpoint: ${cube}")
+    }
+  }
+
+  def withResources(cube: Object, resources: ResourceProfile): Object = {
+    cube match {
+      case rdd1 if cube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].withContext(_.withResources(resources))
+      case rdd2 if cube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].withContext(_.withResources(resources))
+      case _ => throw new IllegalArgumentException(s"Unsupported cube type for withResources: ${cube}")
+    }
   }
 
 }
