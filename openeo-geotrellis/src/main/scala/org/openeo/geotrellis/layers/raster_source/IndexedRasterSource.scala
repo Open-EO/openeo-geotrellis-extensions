@@ -5,8 +5,11 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.{CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleTarget, SourceName, TargetCellType}
 import geotrellis.vector.Extent
+import org.slf4j.LoggerFactory
 
 case class IndexedRasterSource(rasterSource: RasterSource, bandIndex: Int) extends RasterSource {
+
+  private val logger = LoggerFactory.getLogger(getClass)
 
   val targetCellType = None
 
@@ -17,12 +20,18 @@ case class IndexedRasterSource(rasterSource: RasterSource, bandIndex: Int) exten
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = IndexedRasterSource(rasterSource.resample(resampleTarget, method, strategy), bandIndex)
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    assert(bands == Seq(0))
+    assert(bands.length == 1)
+    if (bands != Seq(0)) {
+      logger.warn(s"Requested bands $bands, reading data from underlying ${rasterSource} band $bandIndex.")
+    }
     rasterSource.read(extent, Seq(bandIndex))
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    assert(bands == Seq(0))
+    assert(bands.length == 1)
+    if (bands != Seq(0)) {
+      logger.warn(s"Requested bands $bands, reading data from underlying ${rasterSource} band $bandIndex.")
+    }
     rasterSource.read(bounds, Seq(bandIndex))
   }
 
@@ -43,7 +52,6 @@ case class IndexedRasterSource(rasterSource: RasterSource, bandIndex: Int) exten
   override def attributes: Map[String, String] = rasterSource.attributes
 
   override def attributesForBand(band: Int): Map[String, String] = {
-    assert(band == 0)
     rasterSource.attributesForBand(bandIndex)
   }
 }
