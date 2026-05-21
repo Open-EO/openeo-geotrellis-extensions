@@ -20,18 +20,10 @@ case class IndexedRasterSource(rasterSource: RasterSource, bandIndex: Int) exten
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = IndexedRasterSource(rasterSource.resample(resampleTarget, method, strategy), bandIndex)
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    assert(bands.length == 1)
-    if (bands != Seq(0)) {
-      logger.warn(s"Requested bands $bands, reading data from underlying ${rasterSource} band $bandIndex.")
-    }
     rasterSource.read(extent, Seq(bandIndex))
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    assert(bands.length == 1)
-    if (bands != Seq(0)) {
-      logger.warn(s"Requested bands $bands, reading data from underlying ${rasterSource} band $bandIndex.")
-    }
     rasterSource.read(bounds, Seq(bandIndex))
   }
 
