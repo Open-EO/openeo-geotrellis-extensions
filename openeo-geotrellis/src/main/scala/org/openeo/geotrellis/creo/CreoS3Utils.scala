@@ -24,13 +24,16 @@ import software.amazon.awssdk.transfer.s3.model.UploadFileRequest
 import java.net.URI
 import java.nio.file.{Files, Path}
 import java.time.Duration
+import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters._
+import scala.compat.java8.FunctionConverters._
 import scala.collection.immutable.Iterable
 import scala.util.control.Breaks.{break, breakable}
 
 object CreoS3Utils {
   private val logger = LoggerFactory.getLogger(getClass)
   private val objectMapper = new ObjectMapper()
+  private val proxyS3ClientCache = new ConcurrentHashMap[String, S3Client]()
 
   private val cloudFerroRegion: Region = Region.of("RegionOne")
 
@@ -52,7 +55,13 @@ object CreoS3Utils {
   }
 
   // Return a Client that goes through the S3 proxy if S3 proxy is available for the execution environment.
+  // Results are cached per bucket name; failures (null) are not cached and will be retried on the next call.
   def getProxyS3Client(bucketName: String): S3Client = {
+    if (bucketName == null || bucketName.isEmpty) return null
+    proxyS3ClientCache.computeIfAbsent(bucketName, (buildProxyS3Client _).asJava)
+  }
+
+  private def buildProxyS3Client(bucketName: String): S3Client = {
     val tokenFile = Path.of(sys.env.getOrElse("OPENEO_WEB_IDENTITY_TOKEN_FILE", "/opt/job_config/token"))
     if (!Files.isRegularFile(tokenFile) || !Files.isReadable(tokenFile)) {
       logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: web identity token file is not readable: $tokenFile")
