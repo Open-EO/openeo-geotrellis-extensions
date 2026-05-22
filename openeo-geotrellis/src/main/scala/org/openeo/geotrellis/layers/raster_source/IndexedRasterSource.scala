@@ -20,10 +20,12 @@ case class IndexedRasterSource(rasterSource: RasterSource, bandIndex: Int) exten
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = IndexedRasterSource(rasterSource.resample(resampleTarget, method, strategy), bandIndex)
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
+    assert(bands == Seq(0))
     rasterSource.read(extent, Seq(bandIndex))
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
+    assert(bands == Seq(0))
     rasterSource.read(bounds, Seq(bandIndex))
   }
 
@@ -33,7 +35,7 @@ case class IndexedRasterSource(rasterSource: RasterSource, bandIndex: Int) exten
 
   override def crs: CRS = rasterSource.crs
 
-  override def bandCount: Int = rasterSource.bandCount
+  override def bandCount: Int = 1
 
   override def cellType: CellType = rasterSource.cellType
 
