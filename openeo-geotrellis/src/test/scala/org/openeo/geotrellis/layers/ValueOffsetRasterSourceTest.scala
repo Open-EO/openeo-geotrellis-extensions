@@ -9,6 +9,7 @@ import org.openeo.geotrellis.layers.raster_source.ValueOffsetRasterSource
 
 class ValueOffsetRasterSourceTest {
   def getCornerPixelValue(rs: RasterSource): Int = rs.read().get._1.toArrayTile().band(0).get(5, 5)
+  def getCornerPixelValueDouble(rs: RasterSource): Double = rs.read().get._1.toArrayTile().band(0).getDouble(5, 5)
 
   @Test
   def testOffset(): Unit = {
@@ -84,6 +85,32 @@ class ValueOffsetRasterSourceTest {
       .convert(ConvertTargetCellType(DoubleConstantNoDataCellType))
     )
     assertEquals(originalValue * 2 - 1000, newValue)
+  }
+
+  @Test
+  def testScaleOffsetConvert(): Unit = {
+    val file = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/S2-bands.tiff")
+    val originalRasterSource = GeoTiffRasterSource(file.toString)
+
+    val originalValue = getCornerPixelValue(originalRasterSource)
+    val offsetRasterSource = new ValueOffsetRasterSource(originalRasterSource, 0.2, 0)
+    val offsetValue = getCornerPixelValueDouble(offsetRasterSource)
+
+    assertEquals(DoubleConstantNoDataCellType, offsetRasterSource.cellType)
+    assertEquals((originalValue * 0.2), offsetValue)
+  }
+
+  @Test
+  def testOffsetOffsetConvert(): Unit = {
+    val file = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/S2-bands.tiff")
+    val originalRasterSource = GeoTiffRasterSource(file.toString)
+
+    val originalValue = getCornerPixelValue(originalRasterSource)
+    val offsetRasterSource = new ValueOffsetRasterSource(originalRasterSource, 1, 10E16)
+    val offsetValue = getCornerPixelValueDouble(offsetRasterSource)
+
+    assertEquals(DoubleConstantNoDataCellType, offsetRasterSource.cellType)
+    assertEquals((originalValue + 10E16), offsetValue)
   }
 
 }
