@@ -1,11 +1,12 @@
 package org.openeo.geotrellis.creo
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.store.s3.AmazonS3URI
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 import org.openeo.geotrelliss3.S3Utils
 import org.slf4j.LoggerFactory
-import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
+import software.amazon.awssdk.auth.credentials.{AnonymousCredentialsProvider, AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
@@ -15,6 +16,8 @@ import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model._
 import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Client, S3Configuration}
+import software.amazon.awssdk.services.sts.StsClient
+import software.amazon.awssdk.services.sts.auth.StsWebIdentityTokenFileCredentialsProvider
 import software.amazon.awssdk.transfer.s3.S3TransferManager
 import software.amazon.awssdk.transfer.s3.model.UploadFileRequest
 
@@ -27,6 +30,7 @@ import scala.util.control.Breaks.{break, breakable}
 
 object CreoS3Utils {
   private val logger = LoggerFactory.getLogger(getClass)
+  private val objectMapper = new ObjectMapper()
 
   private val cloudFerroRegion: Region = Region.of("RegionOne")
 
@@ -45,6 +49,66 @@ object CreoS3Utils {
       .region(cloudFerroRegion)
       .endpointOverride(URI.create(sys.env("SWIFT_URL")))
       .build();
+  }
+
+  // Return a Client that goes through the S3 proxy if S3 proxy is available for the execution environment.
+  def getProxyS3Client(bucketName: String): S3Client = {
+    val tokenFile = Path.of(sys.env.getOrElse("OPENEO_WEB_IDENTITY_TOKEN_FILE", "/opt/job_config/token"))
+    if (!Files.isRegularFile(tokenFile) || !Files.isReadable(tokenFile)) {
+      logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: web identity token file is not readable: $tokenFile")
+      return null
+    }
+
+    val bucketConfigFile = Path.of(sys.env.getOrElse("OPENEO_BUCKET_CONFIG_FILE", "/opt/job_config/bucket_config.json"))
+    if (!Files.isRegularFile(bucketConfigFile) || !Files.isReadable(bucketConfigFile)) {
+      logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config file is not readable: $bucketConfigFile")
+      return null
+    }
+
+    val bucketConfig = readProxyBucketConfig(bucketName, bucketConfigFile)
+    if (bucketConfig == null) {
+      return null
+    }
+
+    val stsEndpoint = getRequiredUri("S3PROXY_STS_ENDPOINT_URL")
+    if (stsEndpoint == null) {
+      return null
+    }
+
+    val s3Endpoint = getRequiredUri("S3PROXY_S3_ENDPOINT_URL")
+    if (s3Endpoint == null) {
+      return null
+    }
+
+    try {
+      val region = Region.of(bucketConfig.region)
+      val stsClient = StsClient.builder()
+        .credentialsProvider(AnonymousCredentialsProvider.create())
+        .region(region)
+        .endpointOverride(stsEndpoint)
+        .build()
+
+      // Use the STS-backed variant so the web identity exchange can target a custom endpoint.
+      val credentialsProvider = StsWebIdentityTokenFileCredentialsProvider.builder()
+        .stsClient(stsClient)
+        .roleArn(bucketConfig.roleArn)
+        .roleSessionName(proxyRoleSessionName(bucketName))
+        .webIdentityTokenFile(tokenFile)
+        .build()
+
+      S3Client.builder()
+        .credentialsProvider(credentialsProvider)
+        .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
+        .overrideConfiguration(overrideConfig)
+        .forcePathStyle(true)
+        .region(region)
+        .endpointOverride(s3Endpoint)
+        .build()
+    } catch {
+      case e: Exception =>
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: ${e.getMessage}", e)
+        null
+    }
   }
 
   def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
@@ -102,6 +166,66 @@ object CreoS3Utils {
         .retryPolicy(retryPolicy)
         .build()
     overrideConfig
+  }
+
+  private case class ProxyBucketConfig(region: String, roleArn: String)
+
+  private def readProxyBucketConfig(bucketName: String, bucketConfigFile: Path): ProxyBucketConfig = {
+    try {
+      val bucketConfigRoot = objectMapper.readTree(bucketConfigFile.toFile)
+      if (bucketConfigRoot == null || !bucketConfigRoot.isObject) {
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config file does not contain a JSON object: $bucketConfigFile")
+        return null
+      }
+
+      val bucketNode = bucketConfigRoot.path(bucketName)
+      if (bucketNode.isMissingNode || !bucketNode.isObject) {
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config file has no object entry for this bucket: $bucketConfigFile")
+        return null
+      }
+
+      val region = Option(bucketNode.path("region").asText(null)).map(_.trim).filter(_.nonEmpty).orNull
+      if (region == null) {
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config entry has no region: $bucketConfigFile")
+        return null
+      }
+
+      val roleArn = Option(bucketNode.path("role_arn").asText(null)).map(_.trim).filter(_.nonEmpty).orNull
+      if (roleArn == null) {
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config entry has no role_arn: $bucketConfigFile")
+        return null
+      }
+
+      ProxyBucketConfig(region, roleArn)
+    } catch {
+      case e: Exception =>
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: failed to read bucket config file $bucketConfigFile: ${e.getMessage}", e)
+        null
+    }
+  }
+
+  private def getRequiredUri(envName: String): URI = {
+    val endpointValue = sys.env.get(envName).map(_.trim).filter(_.nonEmpty).orNull
+    if (endpointValue == null) {
+      logger.warn(s"Cannot build proxy S3 client: environment variable $envName is not set.")
+      return null
+    }
+
+    try {
+      URI.create(endpointValue)
+    } catch {
+      case e: IllegalArgumentException =>
+        logger.warn(s"Cannot build proxy S3 client: environment variable $envName does not contain a valid URI: $endpointValue", e)
+        null
+    }
+  }
+
+  private def proxyRoleSessionName(bucketName: String): String = {
+    val podName = sys.env.getOrElse("SPARK_EXECUTOR_POD_NAME", "unknown-sparkappid")
+    val sparkAppId = podName.split("-").slice(0, 2).mkString("-")
+    val executorId = sys.env.getOrElse("SPARK_EXECUTOR_ID", "00")
+
+    s"$sparkAppId-$executorId-$bucketName".take(64)
   }
 
   //noinspection ScalaWeakerAccess
