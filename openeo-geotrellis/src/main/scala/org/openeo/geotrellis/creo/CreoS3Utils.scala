@@ -54,9 +54,10 @@ object CreoS3Utils {
       .build();
   }
 
-  // Return a Client that goes through the S3 proxy if S3 proxy is available for the execution environment.
+  // Return a Client that goes through the S3 proxy if S3 proxy is available for the execution environment and
+  // if the job received a bucket configuration.
   // Results are cached per bucket name; failures (null) are not cached and will be retried on the next call.
-  def getProxyS3Client(bucketName: String): S3Client = {
+  private def getProxyS3Client(bucketName: String): S3Client = {
     if (bucketName == null || bucketName.isEmpty) return null
     proxyS3ClientCache.computeIfAbsent(bucketName, (buildProxyS3Client _).asJava)
   }
@@ -120,6 +121,12 @@ object CreoS3Utils {
     }
   }
 
+  def getS3Client(uri: AmazonS3URI): S3Client = {
+    val proxy = getProxyS3Client(uri.getBucket)
+    if (proxy != null) proxy else getCreoS3Client()
+  }
+
+  //Prefer using getS3Client with an S3 URI
   def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
     val endpointURI = if (region != cloudFerroRegion) this.getCFEndpoin(region) else URI.create(sys.env("SWIFT_URL"))
     val credProvider = if (region.toString.contains("waw")) credentialsProviderWAW else credentialsProvider

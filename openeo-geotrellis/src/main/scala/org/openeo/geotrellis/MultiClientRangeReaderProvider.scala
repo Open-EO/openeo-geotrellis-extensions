@@ -35,7 +35,7 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
     val isCloudFerro = s3Endpoint != null &&
       (s3Endpoint.toLowerCase.contains("cloudferro") || s3Endpoint.toLowerCase.endsWith(".dataspace.copernicus.eu"))
 
-    val proxyClient = CreoS3Utils.getProxyS3Client(s3Uri.getBucket)
+    val proxyClient = CreoS3Utils.getS3Client(s3Uri)
 
     val theClient: S3Client =
       if (proxyClient != null) {
