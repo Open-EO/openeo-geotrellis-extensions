@@ -2,13 +2,14 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{ConvertTargetCellType, DefaultTarget, DoubleConstantNoDataCellType, RasterSource, resample}
+import geotrellis.raster.{ConvertTargetCellType, DefaultTarget, DoubleConstantNoDataCellType, FloatConstantNoDataCellType, RasterSource, ShortConstantNoDataCellType, UShortConstantNoDataCellType, resample}
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.openeo.geotrellis.layers.raster_source.ValueOffsetRasterSource
 
 class ValueOffsetRasterSourceTest {
   def getCornerPixelValue(rs: RasterSource): Int = rs.read().get._1.toArrayTile().band(0).get(5, 5)
+  def getCornerPixelValueDouble(rs: RasterSource): Double = rs.read().get._1.toArrayTile().band(0).getDouble(5, 5)
 
   @Test
   def testOffset(): Unit = {
@@ -86,4 +87,68 @@ class ValueOffsetRasterSourceTest {
     assertEquals(originalValue * 2 - 1000, newValue)
   }
 
+  @Test
+  def testScaleTypeConversion(): Unit = {
+    val file = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/S2-bands.tiff")
+    val originalRasterSource = GeoTiffRasterSource(file.toString)
+
+    val originalValue = getCornerPixelValue(originalRasterSource)
+    val offsetRasterSource = new ValueOffsetRasterSource(originalRasterSource, 0.2, 0)
+    val offsetValue = getCornerPixelValueDouble(offsetRasterSource)
+
+    assertEquals(DoubleConstantNoDataCellType, offsetRasterSource.cellType)
+    assertEquals((originalValue * 0.2), offsetValue)
+  }
+
+  @Test
+  def testBigOffsetTypeConversion(): Unit = {
+    val file = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/S2-bands.tiff")
+    val originalRasterSource = GeoTiffRasterSource(file.toString)
+
+    val originalValue = getCornerPixelValue(originalRasterSource)
+    val offsetRasterSource = new ValueOffsetRasterSource(originalRasterSource, 1, 1E16)
+    val offsetValue = getCornerPixelValueDouble(offsetRasterSource)
+
+    assertEquals(DoubleConstantNoDataCellType, offsetRasterSource.cellType)
+    assertEquals((originalValue + 1E16), offsetValue)
+  }
+
+  @Test
+  def testNegativeOffsetTypeConversion(): Unit = {
+    val file = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/S2-bands.tiff")
+    val unsignedRasterSource = GeoTiffRasterSource(file.toString).convert(UShortConstantNoDataCellType)
+
+    val originalValue = getCornerPixelValue(unsignedRasterSource)
+    val offsetRasterSource = new ValueOffsetRasterSource(unsignedRasterSource, 1, -10)
+    val offsetValue = getCornerPixelValueDouble(offsetRasterSource)
+
+    assertEquals(ShortConstantNoDataCellType, offsetRasterSource.cellType)
+    assertEquals((originalValue - 10), offsetValue)
+  }
+
+  @Test
+  def testScaleTypeFloatNoConversion(): Unit = {
+    val file = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/S2-bands.tiff")
+    val originalRasterSource = GeoTiffRasterSource(file.toString).convert(FloatConstantNoDataCellType)
+
+    val originalValue = getCornerPixelValue(originalRasterSource)
+    val offsetRasterSource = new ValueOffsetRasterSource(originalRasterSource, 2, -2000)
+    val offsetValue = getCornerPixelValueDouble(offsetRasterSource)
+
+    assertEquals(FloatConstantNoDataCellType, offsetRasterSource.cellType)
+    assertEquals(originalValue * 2 - 2000, offsetValue)
+  }
+
+  @Test
+  def testBigOffsetTypeFloatNoConversion(): Unit = {
+    val file = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/S2-bands.tiff")
+    val originalRasterSource = GeoTiffRasterSource(file.toString).convert(FloatConstantNoDataCellType)
+
+    val originalValue = getCornerPixelValue(originalRasterSource)
+    val offsetRasterSource = new ValueOffsetRasterSource(originalRasterSource, 1, 1E12)
+    val offsetValue = getCornerPixelValueDouble(offsetRasterSource)
+
+    assertEquals(FloatConstantNoDataCellType, offsetRasterSource.cellType)
+    assertEquals(originalValue + 1E12, offsetValue, 10000)
+  }
 }
