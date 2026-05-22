@@ -246,7 +246,7 @@ object CreoS3Utils {
 
   //noinspection ScalaWeakerAccess
   def deleteCreoSubFolder(bucket_name: String, subfolder: String): Unit = {
-    val s3Client = getCreoS3Client()
+    val s3Client = getS3Client(new AmazonS3URI(s"s3://$bucket_name"))
     S3Utils.deleteSubFolder(s3Client, bucket_name, subfolder)
   }
 
@@ -296,7 +296,7 @@ object CreoS3Utils {
         .bucket(s3Uri.getBucket)
         .delete(Delete.builder.objects(keys.map(key => ObjectIdentifier.builder.key(key).build).asJavaCollection).build)
         .build
-      getCreoS3Client().deleteObjects(deleteObjectsRequest)
+      getS3Client(s3Uri).deleteObjects(deleteObjectsRequest)
     } else {
       val p = Path.of(path)
       if (Files.isDirectory(p)) {
@@ -314,7 +314,7 @@ object CreoS3Utils {
         .bucket(s3Uri.getBucket)
         .prefix(s3Uri.getKey)
         .build
-      val listObjectsResponse = getCreoS3Client().listObjects(listObjectsRequest)
+      val listObjectsResponse = getS3Client(s3Uri).listObjects(listObjectsRequest)
       listObjectsResponse.contents.asScala.map(o => f"s3://${s3Uri.getBucket}/${o.key}").toSet
     } else {
       Files.list(Path.of(path)).toArray.map(_.toString).toSet
@@ -330,7 +330,7 @@ object CreoS3Utils {
           .bucket(s3Uri.getBucket)
           .key(s3Uri.getKey)
           .build
-        getCreoS3Client().headObject(objectRequest)
+        getS3Client(s3Uri).headObject(objectRequest)
         true
       } catch {
         case _: NoSuchKeyException => false
@@ -350,7 +350,12 @@ object CreoS3Utils {
         .destinationBucket(s3UriDestination.getBucket)
         .destinationKey(s3UriDestination.getKey)
         .build
-      getCreoS3Client().copyObject(copyRequest)
+      val originClient = getS3Client(s3UriOrigin)
+      val destClient = getS3Client(s3UriDestination)
+      if (originClient.serviceClientConfiguration().region() == destClient.serviceClientConfiguration().region() ) {
+        throw new IllegalArgumentException(f"S3->S3 cross region not supported yet ($pathOrigin, $pathDestination)")
+      }
+      originClient.copyObject(copyRequest)
     } else if (!isS3(pathOrigin) && !isS3(pathDestination)) {
       Files.copy(Path.of(pathOrigin), Path.of(pathDestination))
     } else if (!isS3(pathOrigin) && isS3(pathDestination)) {
@@ -419,7 +424,7 @@ object CreoS3Utils {
       .key(s3Uri.getKey)
       .build
 
-    getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(localFile))
+    getS3Client(s3Uri).putObject(objectRequest, RequestBody.fromFile(localFile))
     s3Path
   }
 
@@ -472,7 +477,7 @@ object CreoS3Utils {
         .bucket(s3Uri.getBucket)
         .key(s3Uri.getKey)
         .build
-      val response = getCreoS3Client().getObject(objectRequest)
+      val response = getS3Client(s3Uri).getObject(objectRequest)
       val content = response.readAllBytes()
       new String(content)
     } else {
@@ -489,7 +494,7 @@ object CreoS3Utils {
         .build
       val tempFile = Files.createTempFile("tmp_writeStringToFile", ".txt")
       Files.writeString(tempFile, content)
-      getCreoS3Client().putObject(objectRequest, tempFile)
+      getS3Client(s3Uri).putObject(objectRequest, tempFile)
       Files.delete(tempFile)
     } else {
       Files.writeString(Path.of(path), content)
