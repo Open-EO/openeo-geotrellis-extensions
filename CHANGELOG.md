@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Support OpenTelemetry console exporter for observability ([#746](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/746))
+- Support OpenTelemetry Prometheus exporter for metrics scraping ([#717](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/717), [#750](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/750))
 - `merge_cubes`: add `mean` as a supported overlap resolver ([#741](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/741))
 - Support `mod` process ([#698](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/698))
 - Add support for reading ZStd compressed GTiff files ([#516](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/516))
@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `IndexedRasterSource`: fix incorrect `bandCount` (was returning total bands; now correctly returns 1) ([#751](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/751))
+- `ValueOffsetRasterSource`: convert `CellType` when needed before applying scale and offset to prevent type mismatch errors ([#754](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/754))
 - `GeoTiffReprojectRasterSource`: use accurate reprojection to avoid spatial drift ([#732](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/732))
 - Fix extremely slow overlapping polygon split ([#729](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/729))
 - Key filtering: do not drop band metadata when filtering datacube keys
