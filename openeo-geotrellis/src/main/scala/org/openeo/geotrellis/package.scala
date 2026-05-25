@@ -178,7 +178,8 @@ package object geotrellis {
   def getTempFile(prefix: String, suffix: String): Path = {
     val prefixNonNull = if (prefix == null) "" else prefix
     val suffixNonNull = if (suffix == null) ".tmp" else suffix
-    val tmpdirProp = sun.security.action.GetPropertyAction.privilegedGetProperty("java.io.tmpdir")
+
+    val tmpdirProp = System.getProperty("java.io.tmpdir")
     val tmpdir = Paths.get(tmpdirProp)
     val random = new java.security.SecureRandom()
 

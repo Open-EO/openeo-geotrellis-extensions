@@ -79,6 +79,7 @@
                 <module>openeo-logging</module>
                 <module>geopyspark-geotrellis</module>
                 <module>openeo-dependencies</module>
+                <module>openeo-geotrellis-healpix</module>
             </modules>
         </profile>
     </profiles>
