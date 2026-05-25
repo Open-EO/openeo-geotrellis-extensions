@@ -1,8 +1,9 @@
 package org.openeo.geotrellis.layers.raster_source
 
+import breeze.numerics.log
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, DoubleConstantNoDataCellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile}
 import geotrellis.vector.Extent
 import org.openeo.geotrellis.toSigned
 import org.slf4j.LoggerFactory
@@ -38,10 +39,13 @@ class ValueOffsetRasterSource(val rasterSource: RasterSource,
   import ValueOffsetRasterSource._
 
   private def withScaleAndOffset(bandTile: Tile): Tile = {
-    if (pixelValueOffset == 0) bandTile
-    else if (cellType.isFloatingPoint) bandTile.convert(cellType).mapIfSetDouble(x => x * pixelValueScale + pixelValueOffset)
-    else {
-      bandTile.convert(cellType).mapIfSet(i => (i * pixelValueScale + pixelValueOffset).toInt)    }
+    if (pixelValueScale == 1.0 && pixelValueOffset == 0) {
+      bandTile
+    } else if (cellType.isFloatingPoint) {
+      bandTile.convert(cellType).mapIfSetDouble(x => pixelValueScale*x + pixelValueOffset)
+    } else {
+      bandTile.convert(cellType).mapIfSet(i => (i * pixelValueScale + pixelValueOffset).toInt)
+    }
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
@@ -56,16 +60,33 @@ class ValueOffsetRasterSource(val rasterSource: RasterSource,
   }
 
   override def cellType: CellType = {
-    targetCellType match {
-      case Some(t) => t.cellType
-      case None =>
-        val originalCellType = rasterSource.cellType
+    if (pixelValueScale != 1.0) {
+      if (rasterSource.cellType.isFloatingPoint) {
+        rasterSource.cellType
+      } else {
+        logger.warn(s"Applying a pixel value scale of $pixelValueScale to a raster with cell type ${rasterSource.cellType} forces conversion to ${DoubleConstantNoDataCellType}.")
+        DoubleConstantNoDataCellType
+      }
+    }
+    else {
+      var cellType = targetCellType match {
+        case Some(t) => t.cellType
+        case None => rasterSource.cellType
+      }
+      if (!cellType.isFloatingPoint && pixelValueOffset != 0) {
         if (pixelValueOffset < 0) {
-          if (toSigned(originalCellType) != originalCellType) {
-            logger.warn(s"load_collection: Offset might cause integer underflow. Source: ${rasterSource.name}, cellType: $originalCellType, offset: $pixelValueOffset. Best to specify targetCellType explicitly.")
+          val signedCellType = toSigned(cellType)
+          if (signedCellType != cellType) {
+            logger.warn(s"Applying a pixel value offset of $pixelValueOffset results in converting unsigned data to signed.")
+            cellType = signedCellType
           }
         }
-        originalCellType
+        if (BigDecimal(math.abs(pixelValueOffset)).toBigInt.bitLength > cellType.bits) {
+          logger.warn(s"Applying a pixel value offset of $pixelValueOffset to a raster with cell type ${rasterSource.cellType} forces conversion to ${DoubleConstantNoDataCellType}.")
+          cellType = DoubleConstantNoDataCellType
+        }
+      }
+      cellType
     }
   }
 

@@ -87,7 +87,7 @@ object FileLayerProvider {
 
 
   private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
-  private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("load_collection_read").build().gaugeBuilder("megapixel_per_second").build()
+  private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("load_collection_read").build().gaugeBuilder("openeo_megapixel_per_second").build()
 
   {
     try {
