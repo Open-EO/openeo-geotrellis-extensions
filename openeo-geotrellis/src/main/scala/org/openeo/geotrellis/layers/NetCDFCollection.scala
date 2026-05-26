@@ -10,7 +10,8 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.{ProjectedPolygons, cellTypeUnionWithNoData}
+import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.GeneralUtils.cellTypeUnionWithNoData
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, DataCubeParameters, DatacubeSupport}
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.slf4j.{Logger, LoggerFactory}
