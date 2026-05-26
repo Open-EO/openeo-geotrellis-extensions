@@ -5,7 +5,9 @@ import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 import org.openeo.geotrelliss3.S3Utils
 import org.slf4j.LoggerFactory
-import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
+import software.amazon.awssdk.auth.credentials.{AnonymousCredentialsProvider, AwsBasicCredentials, StaticCredentialsProvider}
+import software.amazon.awssdk.services.sts.StsClient
+import software.amazon.awssdk.services.sts.auth.StsWebIdentityTokenFileCredentialsProvider
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
@@ -47,9 +49,30 @@ object CreoS3Utils {
       .build();
   }
 
+  private val cdseS3Endpoint = "https://s3.eu-west-1.openeo.v1.dataspace.copernicus.eu"
+  private val cdseStsEndpoint = "https://sts.eu-west-1.openeo.v1.dataspace.copernicus.eu"
+
   def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
-    val endpointURI = if (region != cloudFerroRegion) this.getCFEndpoin(region) else URI.create(sys.env("SWIFT_URL"))
-    val credProvider = if (region.toString.contains("waw")) credentialsProviderWAW else credentialsProvider
+    val endpointURI = if (region.toString == "us-west-2") URI.create(cdseS3Endpoint)
+    else if (region != cloudFerroRegion) this.getCFEndpoin(region)
+    else URI.create(sys.env("SWIFT_URL"))
+
+    val credProvider = if (region.toString.contains("waw")) credentialsProviderWAW
+    else if (region.toString == "us-west-2") { // Temporary hack. Need to use workspace api
+      val stsClient = StsClient.builder()
+        .region(region)
+        .endpointOverride(URI.create(cdseStsEndpoint))
+        .credentialsProvider(AnonymousCredentialsProvider.create())
+        .build()
+      StsWebIdentityTokenFileCredentialsProvider.builder()
+        .stsClient(stsClient)
+        .webIdentityTokenFile(java.nio.file.Path.of("/tmp/openeo.token"))
+        .roleArn("arn:openeows:iam:::role/test-landsat")
+        .roleSessionName("openeo-session")
+        .build()
+    }
+    else credentialsProvider
+
     S3Client.builder()
       .credentialsProvider(credProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())

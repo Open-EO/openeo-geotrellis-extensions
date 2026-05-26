@@ -76,6 +76,8 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
         } else if (swiftEndpoint.toString.contains("waw4-1") || swiftEndpoint.toString.contains("otc")) {
           //Hack while transitioning from single region to multi region setup
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
+        } else if (s3Uri.getBucket.toLowerCase() == "usgs-landsat") {
+          CreoS3Utils.getCreoS3Client(Region.of("us-west-2"))
         }
         else s3Client(Region.of("RegionOne"), swiftEndpoint)
       } else s3Client(bucketRegion(s3Uri.getBucket))
