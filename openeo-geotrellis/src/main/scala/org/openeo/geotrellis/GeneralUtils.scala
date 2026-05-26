@@ -73,7 +73,7 @@ object GeneralUtils {
         case ct: ByteUserDefinedNoDataCellType => (Some(ct.noDataValue), Byte.MaxValue)
         case ct: UByteUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 255)
         case ct: ShortUserDefinedNoDataCellType => (Some(ct.noDataValue), Short.MaxValue)
-        case ct: UShortUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt.toShort), 65535)
+        case ct: UShortUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 65535)
         case ct: IntUserDefinedNoDataCellType => (Some(ct.noDataValue), Int.MaxValue)
         case ct: FloatUserDefinedNoDataCellType => (Some(ct.noDataValue), Float.MaxValue)
         case ct: DoubleUserDefinedNoDataCellType => (Some(ct.noDataValue), Double.MaxValue)
