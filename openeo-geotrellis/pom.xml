@@ -207,7 +207,7 @@
         </dependency>
         <dependency>
             <groupId>edu.ucar</groupId>
-            <artifactId>cdm</artifactId>
+            <artifactId>cdm-core</artifactId>
             <version>5.9.1</version>
         </dependency>
         <dependency>
