@@ -24,23 +24,23 @@ class TestGeneralUtils {
 
     assertEquals(ByteCellType, cellTypeUnion(ByteCellType, BitCellType))
     assertEquals(ByteCellType, cellTypeUnion(ByteCellType, ByteCellType))
-    assertEquals(ShortCellType, cellTypeUnion(ByteCellType, UByteCellType))
+    assertEquals(ShortConstantNoDataCellType, cellTypeUnion(ByteCellType, UByteCellType))
     assertEquals(ShortCellType, cellTypeUnion(ByteCellType, ShortCellType))
     assertEquals(FloatCellType, cellTypeUnion(ByteCellType, FloatCellType))
 
     assertEquals(UByteCellType, cellTypeUnion(UByteCellType, BitCellType))
-    assertEquals(ShortCellType, cellTypeUnion(UByteCellType, ByteCellType))
+    assertEquals(ShortConstantNoDataCellType, cellTypeUnion(UByteCellType, ByteCellType))
     assertEquals(UByteCellType, cellTypeUnion(UByteCellType, UByteCellType))
     assertEquals(UShortCellType, cellTypeUnion(UByteCellType, UShortCellType))
     assertEquals(DoubleCellType, cellTypeUnion(UByteCellType, DoubleCellType))
 
     assertEquals(ShortCellType, cellTypeUnion(ShortCellType, UByteCellType))
     assertEquals(ShortCellType, cellTypeUnion(ShortCellType, ShortCellType))
-    assertEquals(IntCellType, cellTypeUnion(ShortCellType, UShortCellType))
+    assertEquals(IntConstantNoDataCellType, cellTypeUnion(ShortCellType, UShortCellType))
     assertEquals(DoubleCellType, cellTypeUnion(ShortCellType, DoubleCellType))
 
     assertEquals(UShortCellType, cellTypeUnion(UShortCellType, BitCellType))
-    assertEquals(IntCellType, cellTypeUnion(UShortCellType, ShortCellType))
+    assertEquals(IntConstantNoDataCellType, cellTypeUnion(UShortCellType, ShortCellType))
     assertEquals(UShortCellType, cellTypeUnion(UShortCellType, UShortCellType))
     assertEquals(IntCellType, cellTypeUnion(UShortCellType, IntCellType))
 
