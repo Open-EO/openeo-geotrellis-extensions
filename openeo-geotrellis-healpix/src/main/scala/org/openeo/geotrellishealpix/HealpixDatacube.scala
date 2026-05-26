@@ -7,6 +7,7 @@ import geotrellis.vector.Extent
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder
+import org.openeo.geotrelliscommon.OpenEOProcess
 
 /**
  * An openEO datacube backed by a Spark SQL DataFrame addressed by
@@ -36,19 +37,40 @@ trait HealpixDatacube {
    * via [[HealpixTileBridge]] so that the existing `OpenEOProcessScriptBuilder`
    * machinery can be reused without duplication.
    */
+  @OpenEOProcess(id = "apply",
+    description = "Apply a process to each pixel value of each band.")
   def applyProcess(scriptBuilder: OpenEOProcessScriptBuilder,
                    context: java.util.Map[String, Any]): HealpixDatacube
 
   /**
-   * Render this HEALPix datacube as a GeoTrellis `MultibandTileLayerRDD[SpaceTimeKey]`
+   * Resample this HEALPix datacube into a GeoTrellis `MultibandTileLayerRDD[SpaceTimeKey]`
    * at the given target CRS and layout, using nearest-neighbour resampling
    * (raster cell center -> HEALPix cell id via `ang2pix`).
    */
-  def toMultibandTileLayerRDD(targetCRS: CRS,
-                              layout: LayoutDefinition,
-                              extent: Extent,
-                              bandIndices: Seq[Int] = Seq(0)): MultibandTileLayerRDD[SpaceTimeKey] =
+  @OpenEOProcess(id = "resample_spatial",
+    description = "Resample the HEALPix datacube to a regular grid at a chosen CRS and layout.",
+    returns = "rdd")
+  def resampleSpatial(targetCRS: CRS,
+                      layout: LayoutDefinition,
+                      extent: Extent,
+                      bandIndices: Seq[Int] = Seq(0)): MultibandTileLayerRDD[SpaceTimeKey] =
     HealpixToGeotrellis.render(this, targetCRS, layout, extent, bandIndices)
+
+  /**
+   * Filter the datacube by temporal extent.
+   */
+  @OpenEOProcess(id = "filter_temporal",
+    description = "Filter the datacube to a temporal extent.")
+  def filterTemporal(start: String, end: String): HealpixDatacube
+
+  /**
+   * Filter the datacube to selected bands.
+   */
+  @OpenEOProcess(id = "filter_bands",
+    description = "Filter the datacube to a subset of bands.")
+  def filterBands(bandNames: java.util.List[String]): HealpixDatacube
+
+
 }
 
 object HealpixDatacube {

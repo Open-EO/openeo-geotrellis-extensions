@@ -1,8 +1,12 @@
 package org.openeo.geotrellishealpix
 
+import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder
+
+import java.sql.Timestamp
+import scala.jdk.CollectionConverters._
 
 /**
  * Packed layout: each row holds an array of HEALPix cells that all share the
@@ -62,6 +66,21 @@ final case class PackedHealpixDatacube(
     }
 
     copy(df = spark.createDataFrame(newRdd, schema))
+  }
+
+  override def filterTemporal(start: String, end: String): HealpixDatacube = {
+    val tsStart = Timestamp.valueOf(start.replace("T", " ").replace("Z", ""))
+    val tsEnd   = Timestamp.valueOf(end.replace("T", " ").replace("Z", ""))
+    copy(df = df.filter(
+      col(HealpixSchema.Timestamp).between(tsStart, tsEnd)))
+  }
+
+  override def filterBands(bandNames: java.util.List[String]): HealpixDatacube = {
+    val keep = bandNames.asScala.toSeq
+    val selectCols = Seq(HealpixSchema.CellIdStart, HealpixSchema.ChunkSize,
+      HealpixSchema.Timestamp) ++ keep
+    val newBands = bands.filter { case (name, _) => keep.contains(name) }
+    copy(bands = newBands, df = df.select(selectCols.map(col): _*))
   }
 }
 

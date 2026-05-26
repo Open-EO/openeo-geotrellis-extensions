@@ -93,7 +93,7 @@ class HealpixDatacubeTest {
     val tileLayout = TileLayout(layoutCols = 4, layoutRows = 2, tileCols = 256, tileRows = 256)
     val layout = LayoutDefinition(extent, tileLayout)
 
-    val rdd = cube.toMultibandTileLayerRDD(LatLng, layout, extent)
+    val rdd = cube.resampleSpatial(LatLng, layout, extent)
     val collected = rdd.collect()
     assertEquals(8, collected.length) // 2 spatial keys * 1 timestamp
 
@@ -157,5 +157,58 @@ class HealpixDatacubeTest {
     assertTrue(levelJson.contains("\"n_parents\": 48"))
 
     println(s"HEALPix Zarr v3 store written to: $outDir")
+  }
+
+  @Test
+  def processRegistryDiscovery(): Unit = {
+    val processes = HealpixProcessRegistry.listProcesses()
+    assertFalse(processes.isEmpty, "No processes discovered")
+
+    val ids = HealpixProcessRegistry.processIds()
+    assertTrue(ids.contains("apply"), s"'apply' not found in $ids")
+    assertTrue(ids.contains("resample_spatial"), s"'resample_spatial' not found in $ids")
+    assertTrue(ids.contains("filter_temporal"), s"'filter_temporal' not found in $ids")
+    assertTrue(ids.contains("filter_bands"), s"'filter_bands' not found in $ids")
+
+    // Verify descriptor structure
+    import scala.jdk.CollectionConverters._
+    val applyDesc = processes.asScala.find(_.get("id") == "apply").get
+    assertEquals("datacube", applyDesc.get("returns"))
+    assertEquals("applyProcess", applyDesc.get("scala_method"))
+    val params = applyDesc.get("params").asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+    assertTrue(params.size() >= 2, s"Expected >= 2 params for apply, got ${params.size()}")
+
+    println(s"Discovered ${processes.size()} processes: ${ids.asScala.mkString(", ")}")
+  }
+
+  @Test
+  def filterTemporalScalar(): Unit = {
+    val ts2 = Seq(
+      Timestamp.from(Instant.parse("2024-01-01T00:00:00Z")),
+      Timestamp.from(Instant.parse("2024-06-01T00:00:00Z")),
+      Timestamp.from(Instant.parse("2024-12-01T00:00:00Z"))
+    )
+    val cube = HealpixDataGenerator.randomScalar(spark, nside = 2, ts2, Seq("B1"))
+    val totalBefore = cube.df.count()
+    assertEquals(12L * 4 * 3, totalBefore) // 48 cells * 3 timestamps
+
+    val filtered = cube.filterTemporal("2024-01-01 00:00:00", "2024-06-30 00:00:00")
+      .asInstanceOf[ScalarHealpixDatacube]
+    val countAfter = filtered.df.count()
+    assertEquals(12L * 4 * 2, countAfter) // 48 cells * 2 timestamps
+  }
+
+  @Test
+  def filterBandsScalar(): Unit = {
+    val cube = HealpixDataGenerator.randomScalar(spark, nside = 2, ts, Seq("B1", "B2", "B3"))
+    assertEquals(3, cube.bands.size)
+
+    val filtered = cube.filterBands(java.util.Arrays.asList("B1", "B3"))
+      .asInstanceOf[ScalarHealpixDatacube]
+    assertEquals(2, filtered.bands.size)
+    assertEquals("B1", filtered.bands.head._1)
+    assertEquals("B3", filtered.bands(1)._1)
+    assertEquals(Seq("cell_id", "timestamp", "B1", "B3"),
+      filtered.df.columns.toSeq)
   }
 }

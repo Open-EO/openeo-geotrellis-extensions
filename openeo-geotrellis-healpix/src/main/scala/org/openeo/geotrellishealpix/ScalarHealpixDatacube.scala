@@ -1,8 +1,12 @@
 package org.openeo.geotrellishealpix
 
+import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder
+
+import java.sql.Timestamp
+import scala.jdk.CollectionConverters._
 
 /** One HEALPix cell per row. Simple but row-overhead heavy. */
 final case class ScalarHealpixDatacube(
@@ -17,11 +21,8 @@ final case class ScalarHealpixDatacube(
     val schema    = df.schema
     val spark     = df.sparkSession
 
-    // Group by timestamp so each "tile" represents a single time-slice.
-    // For very large slices this should be further chunked; left as a TODO
-    // because the packed layout already provides a natural chunking strategy.
     val grouped = df.rdd
-      .map(r => (r.getAs[java.sql.Timestamp](HealpixSchema.Timestamp), r))
+      .map(r => (r.getAs[Timestamp](HealpixSchema.Timestamp), r))
       .groupByKey()
 
     val processedRdd = grouped.flatMap { case (ts, rows) =>
@@ -33,6 +34,20 @@ final case class ScalarHealpixDatacube(
 
     val newDf = spark.createDataFrame(processedRdd, schema)
     copy(df = newDf)
+  }
+
+  override def filterTemporal(start: String, end: String): HealpixDatacube = {
+    val tsStart = Timestamp.valueOf(start.replace("T", " ").replace("Z", ""))
+    val tsEnd   = Timestamp.valueOf(end.replace("T", " ").replace("Z", ""))
+    copy(df = df.filter(
+      col(HealpixSchema.Timestamp).between(tsStart, tsEnd)))
+  }
+
+  override def filterBands(bandNames: java.util.List[String]): HealpixDatacube = {
+    val keep = bandNames.asScala.toSeq
+    val selectCols = Seq(HealpixSchema.CellId, HealpixSchema.Timestamp) ++ keep
+    val newBands = bands.filter { case (name, _) => keep.contains(name) }
+    copy(bands = newBands, df = df.select(selectCols.map(col): _*))
   }
 }
 

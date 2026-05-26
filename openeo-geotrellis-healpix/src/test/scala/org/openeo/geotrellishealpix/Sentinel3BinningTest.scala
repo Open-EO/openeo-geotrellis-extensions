@@ -158,7 +158,7 @@ class Sentinel3BinningTest {
       layoutCols = 2, layoutRows = 1, tileCols = 360, tileRows = 180)
     val layout = LayoutDefinition(extent, tileLayout)
 
-    val rdd = cube.toMultibandTileLayerRDD(LatLng, layout, extent)
+    val rdd = cube.resampleSpatial(LatLng, layout, extent)
     val collected = rdd.collect()
     assertTrue(collected.nonEmpty, "RDD is empty after rendering")
 

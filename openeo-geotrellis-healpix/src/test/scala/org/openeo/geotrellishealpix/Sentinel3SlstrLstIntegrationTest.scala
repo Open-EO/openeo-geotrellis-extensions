@@ -95,7 +95,7 @@ class Sentinel3SlstrLstIntegrationTest {
     val layout = LayoutDefinition(renderExtent,
       TileLayout(layoutCols = 4, layoutRows = 2, tileCols = 256, tileRows = 256))
 
-    val rdd = cube.toMultibandTileLayerRDD(LatLng, layout, renderExtent)
+    val rdd = cube.resampleSpatial(LatLng, layout, renderExtent)
     val collected = rdd.collect()
     println(s"GeoTrellis RDD: ${collected.length} tiles")
     assertTrue(collected.nonEmpty, "Rendered RDD is empty")
