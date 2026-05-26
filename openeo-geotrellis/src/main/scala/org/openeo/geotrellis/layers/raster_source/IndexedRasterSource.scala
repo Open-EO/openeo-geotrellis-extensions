@@ -5,8 +5,11 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.{CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleTarget, SourceName, TargetCellType}
 import geotrellis.vector.Extent
+import org.slf4j.LoggerFactory
 
 case class IndexedRasterSource(rasterSource: RasterSource, bandIndex: Int) extends RasterSource {
+
+  private val logger = LoggerFactory.getLogger(getClass)
 
   val targetCellType = None
 
@@ -32,7 +35,7 @@ case class IndexedRasterSource(rasterSource: RasterSource, bandIndex: Int) exten
 
   override def crs: CRS = rasterSource.crs
 
-  override def bandCount: Int = rasterSource.bandCount
+  override def bandCount: Int = 1
 
   override def cellType: CellType = rasterSource.cellType
 
@@ -43,7 +46,6 @@ case class IndexedRasterSource(rasterSource: RasterSource, bandIndex: Int) exten
   override def attributes: Map[String, String] = rasterSource.attributes
 
   override def attributesForBand(band: Int): Map[String, String] = {
-    assert(band == 0)
     rasterSource.attributesForBand(bandIndex)
   }
 }

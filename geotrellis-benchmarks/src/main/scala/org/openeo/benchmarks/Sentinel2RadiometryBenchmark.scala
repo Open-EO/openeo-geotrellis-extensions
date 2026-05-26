@@ -88,12 +88,4 @@ object Sentinel2RadiometryBenchmark {
       .map(_.geom)
       .take(amount)
   }
-
-  private def time[R](body: => R): (R, Duration) = {
-    val start = Instant.now()
-    val result = body
-    val end = Instant.now()
-
-    (result, Duration.between(start, end))
-  }
 }

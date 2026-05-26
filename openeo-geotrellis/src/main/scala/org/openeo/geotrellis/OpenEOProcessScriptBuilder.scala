@@ -431,6 +431,20 @@ object OpenEOProcessScriptBuilder{
       else math.max(z1, z2)
   }
 
+  object MeanIgnoreNoData extends LocalTileBinaryOp {
+    def combine(z1:Int,z2:Int) =
+      if( isNoData(z1) && isNoData(z2)) NODATA
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else (z1 + z2) / 2
+
+    def combine(z1:Double,z2:Double) =
+      if( isNoData(z1) && isNoData(z2)) NaN
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else (z1 + z2) / 2.0
+  }
+
 
   private def unifyCellType(combined: Seq[Tile]) = {
     if (combined.nonEmpty) {

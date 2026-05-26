@@ -10,7 +10,7 @@ import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.time.{LocalTime, OffsetTime, ZonedDateTime}
+import java.time.{Duration, Instant, LocalTime, OffsetTime, ZonedDateTime}
 
 package object geotrelliscommon {
 
@@ -117,13 +117,11 @@ package object geotrelliscommon {
       state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
     }
 
-
-    override def toString = s"SparseSpaceTimePartitioner ${indices.length} ${theKeys.isDefined}"
-
     override def spatialKeys: Option[Array[SpatialKey]] = {
       theKeys.map(_.map(_.spatialKey).distinct)
     }
 
+    override def toString: String = s"SparseSpaceTimePartitioner with indexReduction $indexReduction and ${theKeys.map(_.length).getOrElse(0)} spacetime keys"
   }
 
   class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty ) extends PartitionerIndex[SpaceTimeKey] with SpatialKeysProvider {
@@ -150,6 +148,8 @@ package object geotrelliscommon {
     }
 
     override def spatialKeys: Option[Array[SpatialKey]] = theKeys.map(_.map(_.spatialKey).distinct)
+
+    override def toString: String = s"SparseSpaceOnlyPartitioner with indexReduction $indexReduction and ${theKeys.map(_.length).getOrElse(0)} spatial keys"
   }
 
   class SparseSpatialPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpatialKey]] = Option.empty ) extends PartitionerIndex[SpatialKey] with SpatialKeysProvider {
@@ -176,6 +176,8 @@ package object geotrelliscommon {
     }
 
     override def spatialKeys: Option[Array[SpatialKey]] = theKeys
+
+    override def toString: String = s"SparseSpatialPartitioner with indexReduction $indexReduction and ${theKeys.map(_.length).getOrElse(0)} spatial keys"
   }
 
   class ConfigurableSpatialPartitioner(val indexReduction:Int = 4) extends PartitionerIndex[SpatialKey] {
@@ -185,6 +187,8 @@ package object geotrelliscommon {
 
     def indexRanges(keyRange: (SpatialKey, SpatialKey)): Seq[(BigInt, BigInt)] =
       Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(t=> (BigInt.long2bigInt(t.lower),BigInt.long2bigInt(t.upper)))
+
+    override def toString: String = s"ConfigurableSpatialPartitioner with indexReduction $indexReduction"
   }
 
   object ConfigurableSpatialPartitionerReduceZ {
@@ -234,6 +238,8 @@ package object geotrelliscommon {
       val originalRanges: Seq[(BigInt, BigInt)] = originalZRanges.map(t => (BigInt.long2bigInt(t.lower), BigInt.long2bigInt(t.upper)))
       return ConfigurableSpatialPartitionerReduceZ.mapIndexRangeWithReduction(originalRanges, indexReduction)
     }
+
+    override def toString: String = s"ConfigurableSpatialPartitionerReduceZ with indexReduction $indexReduction"
   }
 
   class ConfigurableSpaceTimePartitioner ( val indexReduction:Int = SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION, val keyIndex: KeyIndex[SpaceTimeKey] = SfCurveZSpaceTimeKeyIndex.byDay(null) )  extends PartitionerIndex[SpaceTimeKey] {
@@ -246,6 +252,8 @@ package object geotrelliscommon {
       val originalRanges = keyIndex.indexRanges(keyRange)
       return ConfigurableSpatialPartitionerReduceZ.mapIndexRangeWithReduction(originalRanges, indexReduction)
     }
+
+    override def toString: String = s"ConfigurableSpaceTimePartitioner with indexReduction $indexReduction and keyIndex ${keyIndex.getClass.getSimpleName}"
   }
 
   implicit object SpaceTimeByMonthPartitioner extends PartitionerIndex[SpaceTimeKey] {
@@ -322,5 +330,13 @@ package object geotrelliscommon {
       } else until minusNanos 1
 
     (from, to)
+  }
+
+  def time[R](body: => R): (R, Duration) = {
+    val start = Instant.now()
+    val result = body
+    val end = Instant.now()
+
+    (result, Duration.between(start, end))
   }
 }
