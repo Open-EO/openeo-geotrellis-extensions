@@ -57,7 +57,7 @@ object CreoS3Utils {
   // Return a Client that goes through the S3 proxy if S3 proxy is available for the execution environment and
   // if the job received a bucket configuration.
   // Results are cached per bucket name; failures (null) are not cached and will be retried on the next call.
-  private def getProxyS3Client(bucketName: String): S3Client = {
+  def getProxyS3Client(bucketName: String): S3Client = {
     if (bucketName == null || bucketName.isEmpty) return null
     proxyS3ClientCache.computeIfAbsent(bucketName, (buildProxyS3Client _).asJava)
   }
