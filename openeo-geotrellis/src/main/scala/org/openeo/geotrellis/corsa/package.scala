@@ -7,7 +7,7 @@ import io.circe.generic.auto._
 import org.apache.commons.math3.linear.MatrixUtils
 import org.openeo.geotrelliscommon.{CirceException, ResampledTile}
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Path, Paths}
 import java.util
 import java.util.concurrent.ConcurrentHashMap
 import scala.io.Source
@@ -198,8 +198,6 @@ package object corsa {
   }
 
   private def processWindowOnnx(cubeArrayNormalized: MultibandTile, modelPath: Path): (Tile, Tile)  = {
-    require(Files.exists(modelPath))
-
     val data = reshape(cubeArrayNormalized)
     require(data.length == 1)
     require(data.head.length == Bands.size)
@@ -338,7 +336,6 @@ package object corsa {
     val patchSize = tile.cols
 
     val modelPath = Paths.get(s"/data/users/Private/vdboschj/onnx/corsa_mtc_160k_64b_${patchSize}p/encoder.onnx")
-    require(Files.exists(modelPath))
 
     val EncodeSessionDetails(encodeSession, encodeInputName) = encodeSessionDetails(modelPath, patchSize)
 
@@ -369,7 +366,6 @@ package object corsa {
     val patchSize = tile.cols * 2
 
     val modelPath = Paths.get(s"/data/users/Private/vdboschj/onnx/corsa_mtc_160k_64b_${patchSize}p/decoder.onnx")
-    require(Files.exists(modelPath), modelPath.toString)
 
     val level0 = tile.band(0).map(nanTo0 _)
     val level1 = ResampledTile(tile.band(1).map(nanTo0 _), sourceCols = level0.cols, sourceRows = level0.rows, targetCols = level0.cols / 2, targetRows = level0.rows / 2)

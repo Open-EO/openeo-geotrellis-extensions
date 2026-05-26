@@ -82,33 +82,6 @@ object OpenEOProcessScriptBuilder{
     }
   }
 
-  def cellTypeUnion(a:CellType,b:CellType):CellType = {
-    if (a.bits < b.bits)
-      b
-    else if (a.bits > b.bits)
-      a
-    else if (a.isFloatingPoint && !b.isFloatingPoint)
-      a
-    else if(isUnSigned(a) != isUnSigned(b) ) {
-      if(a.bits==8) {
-        ShortConstantNoDataCellType
-      }else if(a.isFloatingPoint || b.isFloatingPoint){
-        Seq(a,b).maxBy(_.bits)
-      }else{
-        IntConstantNoDataCellType
-      }
-    }
-    else
-      b
-  }
-
-  private def isUnSigned(a:CellType): Boolean = {
-    a match{
-      case x:UByteCells => true
-      case x:UShortCells => true
-      case _ => false
-    }
-  }
 
 
   private def ifElseProcess(value: OpenEOProcess, accept: OpenEOProcess, reject: OpenEOProcess) = {
@@ -455,6 +428,20 @@ object OpenEOProcessScriptBuilder{
       else if( isNoData(z1) ) z2
       else if( isNoData(z2) ) z1
       else math.max(z1, z2)
+  }
+
+  object MeanIgnoreNoData extends LocalTileBinaryOp {
+    def combine(z1:Int,z2:Int) =
+      if( isNoData(z1) && isNoData(z2)) NODATA
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else (z1 + z2) / 2
+
+    def combine(z1:Double,z2:Double) =
+      if( isNoData(z1) && isNoData(z2)) NaN
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else (z1 + z2) / 2.0
   }
 
 
