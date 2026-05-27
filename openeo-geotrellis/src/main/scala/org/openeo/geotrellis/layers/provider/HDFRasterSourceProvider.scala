@@ -15,7 +15,8 @@ class HDFRasterSourceProvider extends RasterSourceProvider {
   }
 
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
+    val dataPath = definition.dataPath.replace("/vsis3/EODATA/", "/vsis3/eodata/").replace("https", "/vsicurl/https")
     val warpOptions = GDALWarpOptions(cellSize = Some(definition.theResolution), targetCRS=Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod),te = Some(definition.targetExtent.extent))
-    GDALRasterSource(GDALPath(definition.dataPath),options = warpOptions, targetCellType = definition.targetCellType)
+    GDALRasterSource(GDALPath(dataPath),options = warpOptions, targetCellType = definition.targetCellType)
   }
 }
