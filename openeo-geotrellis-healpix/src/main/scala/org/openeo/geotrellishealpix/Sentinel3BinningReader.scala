@@ -129,8 +129,7 @@ object Sentinel3BinningReader {
                    correlationId: String,
                    dataCubeParameters: DataCubeParameters,
                    nside: Int,
-                   config: ProductConfig,
-                   aggregation: HealpixBinner.Aggregation = HealpixBinner.Aggregation.Mean
+                   config: ProductConfig
                   ): ScalarHealpixDatacube = {
 
     val spark = SparkSession.active
@@ -150,7 +149,7 @@ object Sentinel3BinningReader {
     }
 
     // 2. Read and bin on executors
-    loadCollection(spark, products, nside, config, aggregation)
+    loadCollection(spark, products, nside, config, HealpixBinner.Aggregation.Mean)
   }
 
   // ---- Product discovery via OpenSearch --------------------------------------

@@ -80,8 +80,7 @@ class Sentinel3SlstrLstIntegrationTest {
       correlationId = "s3-lst-inttest",
       dataCubeParameters = new DataCubeParameters(),
       nside = 256,
-      config = config,
-      aggregation = HealpixBinner.Aggregation.Mean
+      config = config
     )
 
     val cellCount = cube.df.count()
