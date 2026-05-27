@@ -734,7 +734,7 @@ object NetCDFRDDWriter {
       .key(s3Uri.getKey)
       .build
 
-    CreoS3Utils.getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(Paths.get(localPath)))
+    CreoS3Utils.getS3Client(s3Uri).putObject(objectRequest, RequestBody.fromFile(Paths.get(localPath)))
     correctS3Path
   }
 
