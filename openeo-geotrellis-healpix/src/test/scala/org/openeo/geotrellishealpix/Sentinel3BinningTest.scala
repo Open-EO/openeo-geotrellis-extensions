@@ -72,13 +72,13 @@ class Sentinel3BinningTest {
     val nPixels = 100
     val (_, ref) = createSyntheticProduct(nPixels)
     val config = Sentinel3BinningReader.ProductConfig(
-      bandVariables = Seq("B1", "B2"))
+      assetVariables = Map("B1" -> Seq("B1")))
 
     val raw = Sentinel3BinningReader.readRaw(spark, Seq(ref), nside = 4, config)
 
     // All 100 pixels have valid lat/lon, so we expect 100 raw rows
     assertEquals(nPixels.toLong, raw.df.count())
-    assertEquals(2, raw.bands.size)
+    assertEquals(1, raw.bands.size)
     assertEquals("B1", raw.bands.head._1)
   }
 
@@ -87,7 +87,7 @@ class Sentinel3BinningTest {
     val nPixels = 200
     val (_, ref) = createSyntheticProduct(nPixels)
     val config = Sentinel3BinningReader.ProductConfig(
-      bandVariables = Seq("B1"))
+      assetVariables = Map("B1" -> Seq("B1")))
 
     // NSIDE = 2 -> only 48 cells total, so 200 pixels will have many
     // duplicates per cell.
@@ -112,7 +112,7 @@ class Sentinel3BinningTest {
     val nPixels = 50
     val (_, ref) = createSyntheticProduct(nPixels)
     val config = Sentinel3BinningReader.ProductConfig(
-      bandVariables = Seq("B1"))
+      assetVariables = Map("B1" -> Seq("B1")))
 
     val raw = Sentinel3BinningReader.readRaw(spark, Seq(ref), nside = 2, config)
     val counted = HealpixBinner.aggregate(raw, HealpixBinner.Aggregation.Count)
@@ -127,7 +127,7 @@ class Sentinel3BinningTest {
     val nPixels = 150
     val (_, ref) = createSyntheticProduct(nPixels)
     val config = Sentinel3BinningReader.ProductConfig(
-      bandVariables = Seq("B1", "B2"))
+      assetVariables = Map("B1" -> Seq("B1")))
 
     val cube = Sentinel3BinningReader.loadCollection(
       spark, Seq(ref), nside = 4, config)
@@ -147,7 +147,7 @@ class Sentinel3BinningTest {
     val nPixels = 500
     val (_, ref) = createSyntheticProduct(nPixels)
     val config = Sentinel3BinningReader.ProductConfig(
-      bandVariables = Seq("B1"))
+      assetVariables = Map("B1" -> Seq("B1")))
 
     val cube = Sentinel3BinningReader.loadCollection(
       spark, Seq(ref), nside = 8, config)
@@ -181,7 +181,7 @@ class Sentinel3BinningTest {
     val (_, ref2) = createSyntheticProduct(80)
 
     val config = Sentinel3BinningReader.ProductConfig(
-      bandVariables = Seq("B1"))
+      assetVariables = Map("B1" -> Seq("B1")))
 
     val raw = Sentinel3BinningReader.readRaw(
       spark, Seq(ref1, ref2), nside = 4, config)
@@ -199,7 +199,7 @@ class Sentinel3BinningTest {
   def toPackedConversion(): Unit = {
     val (_, ref) = createSyntheticProduct(100)
     val config = Sentinel3BinningReader.ProductConfig(
-      bandVariables = Seq("B1"))
+      assetVariables = Map("B1" -> Seq("B1")))
 
     val raw = Sentinel3BinningReader.readRaw(spark, Seq(ref), nside = 4, config)
     val aggregated = HealpixBinner.aggregate(raw, HealpixBinner.Aggregation.Mean)

@@ -42,7 +42,7 @@ class Sentinel3SlstrLstIntegrationTest {
   @BeforeAll
   def setup(): Unit = {
     spark = SparkSession.builder()
-      .master("local[4]")
+      .master("local[3]")
       .appName("Sentinel3SlstrLstIntegrationTest")
       .config("spark.ui.enabled", "false")
       .config("spark.sql.shuffle.partitions", "4")
@@ -66,7 +66,7 @@ class Sentinel3SlstrLstIntegrationTest {
     val config = Sentinel3BinningReader.ProductConfig(
       latVariable = "latitude_in",
       lonVariable = "longitude_in",
-      bandVariables = Seq("LST_in"),
+      assetVariables = Map("LST_in" -> Seq("LST")),
       geoFileSuffix = Some("geodetic_in.nc")
     )
 
@@ -79,7 +79,7 @@ class Sentinel3SlstrLstIntegrationTest {
       metadata_properties = Collections.emptyMap(),
       correlationId = "s3-lst-inttest",
       dataCubeParameters = new DataCubeParameters(),
-      nside = 1024,
+      nside = 256,
       config = config,
       aggregation = HealpixBinner.Aggregation.Mean
     )

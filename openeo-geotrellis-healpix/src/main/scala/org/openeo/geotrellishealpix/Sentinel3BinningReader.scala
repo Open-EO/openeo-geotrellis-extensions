@@ -78,12 +78,13 @@ object Sentinel3BinningReader {
   case class ProductConfig(
     latVariable: String = "latitude",
     lonVariable: String = "longitude",
-    bandVariables: Seq[String],
-    scaleFactor: Option[Double] = None,
+    assetVariables: scala.collection.Map[String, Seq[String]],
     fillValue: Double = Double.NaN,
     geoFileSuffix: Option[String] = None,
     s3Endpoint: String = "eodata.dataspace.copernicus.eu"
-  )
+  ) {
+    lazy val allVariables: Seq[String] = assetVariables.values.flatten.toSeq
+  }
 
   /**
    * Describes a single input product to be binned.
@@ -145,7 +146,7 @@ object Sentinel3BinningReader {
 
     if (products.isEmpty) {
       // Return empty datacube
-      return ScalarHealpixDatacube.empty(spark, nside, config.bandVariables.map(_ -> (DoubleType: DataType)))
+      return ScalarHealpixDatacube.empty(spark, nside, config.allVariables.map(_ -> (DoubleType: DataType)))
     }
 
     // 2. Read and bin on executors
@@ -196,7 +197,7 @@ object Sentinel3BinningReader {
     // Find the first link whose title matches one of the band variables,
     // or fall back to the first available data link.
     val link = feature.links.find { l =>
-      l.title.exists(t => config.bandVariables.contains(t))
+      l.title.exists(t => config.assetVariables.contains(t))
     }.orElse(feature.links.headOption)
 
     link.map { l =>
@@ -235,8 +236,8 @@ object Sentinel3BinningReader {
               nside: Int,
               config: ProductConfig): ScalarHealpixDatacube = {
 
-    val bandNames = config.bandVariables
-    val bandDefs: Seq[(String, DataType)] = bandNames.map(_ -> DoubleType)
+
+    val bandDefs: Seq[(String, DataType)] = config.allVariables.map(_ -> DoubleType)
     val schema = HealpixSchema.scalarSchema(bandDefs)
 
     // Distribute product reading across executors: one partition per product.
@@ -314,14 +315,14 @@ object Sentinel3BinningReader {
       val totalPixels = latData.getSize.toInt
 
       // Read band data
-      val bandArrays: Seq[ucar.ma2.Array] = config.bandVariables.map { name =>
+      //TODO support reading multiple bands from different assets
+      val bandArrays: Seq[ucar.ma2.Array] = config.allVariables.map { name =>
         val v = bandFile.findVariable(name)
-        require(v != null, s"Band variable '$name' not found in ${bandFile.getLocation}")
+        require(v != null, s"Band variable '$name' not found in ${bandFile.getLocation}, available variables: ${bandFile.getVariables.stream().map(_.getNameAndDimensions).toList}")
         v.read()
       }
 
       val rows = new scala.collection.mutable.ArrayBuffer[Row](totalPixels)
-      val sf   = config.scaleFactor.getOrElse(1.0)
       val fill = config.fillValue
 
       var i = 0
@@ -333,7 +334,7 @@ object Sentinel3BinningReader {
         if (!java.lang.Double.isNaN(lat) && !java.lang.Double.isNaN(lon) &&
             lat >= -90.0 && lat <= 90.0) {
 
-          val bandValues = new Array[Any](config.bandVariables.size)
+          val bandValues = new Array[Any](config.allVariables.size)
           var allFill = true
           var b = 0
           while (b < bandArrays.size) {
@@ -341,7 +342,7 @@ object Sentinel3BinningReader {
             if (java.lang.Double.isNaN(raw) || raw == fill) {
               bandValues(b) = null
             } else {
-              bandValues(b) = raw * sf
+              bandValues(b) = raw
               allFill = false
             }
             b += 1

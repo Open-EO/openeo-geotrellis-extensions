@@ -5,6 +5,8 @@ import org.apache.spark.sql.types.{DataType, DoubleType}
 import org.apache.spark.sql.{Row, SparkSession}
 
 import java.sql.Timestamp
+import java.time.ZonedDateTime
+import scala.jdk.CollectionConverters._
 import scala.util.Random
 
 /** Helpers to populate a HealpixDatacube with synthetic data. */
@@ -110,5 +112,79 @@ object HealpixDataGenerator {
     }
     val df = spark.createDataFrame(spark.sparkContext.parallelize(rows), schema)
     ScalarHealpixDatacube(nside, bandDefs, df)
+  }
+
+  // ---- Java-friendly overloads (using java.util.List and ISO 8601 strings) ----
+
+  /**   * Java-friendly version of randomScalar using java.util.List and ISO 8601 timestamp strings.   *   * @param spark active SparkSession   * @param nside HEALPix NSIDE (power of two)   * @param timestamps list of ISO 8601 timestamp strings (e.g., "2024-05-27T10:30:00Z")   * @param bands list of band/variable names   * @param seed random seed (default: 42)   * @return ScalarHealpixDatacube with random values   */
+  def randomScalar(spark: SparkSession,
+                   nside: Int,
+                   timestamps: java.util.List[String],
+                   bands: java.util.List[String],
+                   seed: Long): ScalarHealpixDatacube = {
+    val scalaTimestamps = timestamps.asScala.toSeq.map(parseTimestamp)
+    val scalaBands = bands.asScala.toSeq
+    randomScalar(spark, nside, scalaTimestamps, scalaBands, seed)
+  }
+
+  /**   * Java-friendly version of randomScalar with default seed.   */
+  def randomScalar(spark: SparkSession,
+                   nside: Int,
+                   timestamps: java.util.List[String],
+                   bands: java.util.List[String]): ScalarHealpixDatacube = {
+    randomScalar(spark, nside, timestamps, bands, 42L)
+  }
+
+  /**   * Java-friendly version of fractalPacked using java.util.List and ISO 8601 strings.   *   * @param spark active SparkSession   * @param nside HEALPix NSIDE (power of two)   * @param chunkSize children per parent (must be power of 4)   * @param timestamps list of ISO 8601 timestamp strings   * @param bands list of band/variable names   * @param seed random seed (default: 1234)   * @return PackedHealpixDatacube   */
+  def fractalPacked(spark: SparkSession,
+                    nside: Int,
+                    chunkSize: Int,
+                    timestamps: java.util.List[String],
+                    bands: java.util.List[String],
+                    seed: Long): PackedHealpixDatacube = {
+    val scalaTimestamps = timestamps.asScala.toSeq.map(parseTimestamp)
+    val scalaBands = bands.asScala.toSeq
+    fractalPacked(spark, nside, chunkSize, scalaTimestamps, scalaBands, seed)
+  }
+
+  /**   * Java-friendly version of fractalPacked with default seed.   */
+  def fractalPacked(spark: SparkSession,
+                    nside: Int,
+                    chunkSize: Int,
+                    timestamps: java.util.List[String],
+                    bands: java.util.List[String]): PackedHealpixDatacube = {
+    fractalPacked(spark, nside, chunkSize, timestamps, bands, 1234L)
+  }
+
+  /**   * Java-friendly version of latitudeStripesScalar using java.util.List and ISO 8601 strings.   *   * @param spark active SparkSession   * @param nside HEALPix NSIDE (power of two)   * @param timestamps list of ISO 8601 timestamp strings   * @param band band/variable name (default: "lat")   * @return ScalarHealpixDatacube with latitude-based values   */
+  def latitudeStripesScalar(spark: SparkSession,
+                            nside: Int,
+                            timestamps: java.util.List[String],
+                            band: String): ScalarHealpixDatacube = {
+    val scalaTimestamps = timestamps.asScala.toSeq.map(parseTimestamp)
+    latitudeStripesScalar(spark, nside, scalaTimestamps, band)
+  }
+
+  /**   * Java-friendly version of latitudeStripesScalar with default band name.   */
+  def latitudeStripesScalar(spark: SparkSession,
+                            nside: Int,
+                            timestamps: java.util.List[String]): ScalarHealpixDatacube = {
+    latitudeStripesScalar(spark, nside, timestamps, "lat")
+  }
+
+  // ---- Helper: parse ISO 8601 timestamp string ----
+
+  /**   * Parse an ISO 8601 timestamp string to java.sql.Timestamp.   * Examples: "2024-05-27T10:30:00Z", "2024-05-27T10:30:00+00:00"   */
+  private def parseTimestamp(iso8601: String): Timestamp = {
+    try {
+      val zdt = ZonedDateTime.parse(iso8601)
+      Timestamp.from(zdt.toInstant)
+    } catch {
+      case e: Exception =>
+        throw new IllegalArgumentException(
+          s"Invalid ISO 8601 timestamp: '$iso8601' (e.g., '2024-05-27T10:30:00Z')",
+          e
+        )
+    }
   }
 }
