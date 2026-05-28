@@ -1,5 +1,6 @@
 package org.openeo.geotrellishealpix
 
+import geotrellis.vector.Extent
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
@@ -14,6 +15,10 @@ final case class ScalarHealpixDatacube(
   bands: Seq[(String, DataType)],
   df: DataFrame
 ) extends HealpixDatacube {
+
+  override protected def computeExtent(targetCRS: geotrellis.proj4.CRS): Extent = {
+    HealpixExtentComputer.extentFromScalarCellIds(df, nside, targetCRS)
+  }
 
   override def applyProcess(scriptBuilder: OpenEOProcessScriptBuilder,
                             context: java.util.Map[String, Any]): HealpixDatacube = {

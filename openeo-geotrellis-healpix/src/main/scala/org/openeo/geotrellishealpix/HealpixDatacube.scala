@@ -2,6 +2,7 @@ package org.openeo.geotrellishealpix
 
 import geotrellis.layer.{LayoutDefinition, SpaceTimeKey}
 import geotrellis.proj4.CRS
+import geotrellis.raster.{CellSize, RasterExtent}
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector.Extent
 import org.apache.spark.sql.types.DataType
@@ -29,6 +30,8 @@ trait HealpixDatacube {
   /** Total number of HEALPix cells at this resolution. */
   def npix: Long = 12L * nside.toLong * nside.toLong
 
+  protected def computeExtent(targetCRS: CRS): Extent
+
   /**
    * openEO `apply` process: applies the process to every cell value of every
    * band, returning a new HealpixDatacube of the same layout.
@@ -50,6 +53,16 @@ trait HealpixDatacube {
   @OpenEOProcess(id = "resample_spatial",
     description = "Resample the HEALPix datacube to a regular grid at a chosen CRS and layout.",
     returns = "rdd")
+  def resampleSpatial(targetCRSEpsg: Int,
+                      targetResolution: Double): MultibandTileLayerRDD[SpaceTimeKey] = {
+    import geotrellis.proj4.CRS
+
+    val targetCRS = CRS.fromEpsgCode(targetCRSEpsg)
+    val extent = computeExtent(targetCRS)
+    val layout = LayoutDefinition(RasterExtent(extent,CellSize(targetResolution,targetResolution)), 256 )
+    resampleSpatial(targetCRS, layout, extent)
+  }
+
   def resampleSpatial(targetCRS: CRS,
                       layout: LayoutDefinition,
                       extent: Extent,

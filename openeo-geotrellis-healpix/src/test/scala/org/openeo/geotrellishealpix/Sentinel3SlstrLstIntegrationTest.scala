@@ -1,13 +1,11 @@
 package org.openeo.geotrellishealpix
 
-import geotrellis.layer.LayoutDefinition
-import geotrellis.proj4.LatLng
-import geotrellis.raster.TileLayout
 import geotrellis.vector.Extent
 import org.apache.spark.sql.SparkSession
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.geotiff.saveRDDTemporal
 import org.openeo.geotrelliscommon.DataCubeParameters
@@ -33,7 +31,7 @@ import java.util.Collections
  *  - `LST_in.nc` : variable `LST` (Land Surface Temperature in K)
  *  - `geodetic_in.nc` : variables `latitude_in`, `longitude_in`
  */
-//@EnabledIfEnvironmentVariable(named = "RUN_INTEGRATION_TESTS", matches = "true")
+@EnabledIfEnvironmentVariable(named = "RUN_INTEGRATION_TESTS", matches = "true")
 @TestInstance(Lifecycle.PER_CLASS)
 class Sentinel3SlstrLstIntegrationTest {
 
@@ -89,12 +87,8 @@ class Sentinel3SlstrLstIntegrationTest {
 
     cube.df.select("cell_id", "LST").show(10, truncate = false)
 
-    // Render to GeoTrellis RDD
-    val renderExtent = Extent(3.0, 50.0, 7.0, 52.0)
-    val layout = LayoutDefinition(renderExtent,
-      TileLayout(layoutCols = 4, layoutRows = 2, tileCols = 256, tileRows = 256))
 
-    val rdd = cube.resampleSpatial(LatLng, layout, renderExtent)
+    val rdd = cube.resampleSpatial(3857, 500.0)
     val collected = rdd.collect()
     println(s"GeoTrellis RDD: ${collected.length} tiles")
     assertTrue(collected.nonEmpty, "Rendered RDD is empty")

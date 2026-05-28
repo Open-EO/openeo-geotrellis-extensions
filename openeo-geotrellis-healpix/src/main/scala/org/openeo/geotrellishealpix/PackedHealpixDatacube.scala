@@ -1,5 +1,6 @@
 package org.openeo.geotrellishealpix
 
+import geotrellis.vector.Extent
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
@@ -51,6 +52,11 @@ final case class PackedHealpixDatacube(
 
   /** Alias for backward compatibility with code using `chunkSize`. */
   def chunkSize: Int = childrenPerParent
+
+
+  override protected def computeExtent(targetCRS: geotrellis.proj4.CRS): Extent = {
+    HealpixExtentComputer.extentFromPackedCellIds(df, nside, targetCRS)
+  }
 
   override def applyProcess(scriptBuilder: OpenEOProcessScriptBuilder,
                             context: java.util.Map[String, Any]): HealpixDatacube = {
