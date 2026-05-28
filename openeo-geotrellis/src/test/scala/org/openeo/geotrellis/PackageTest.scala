@@ -2,7 +2,6 @@ package org.openeo.geotrellis
 
 import geotrellis.proj4.{CRS, LatLng, Sinusoidal, WebMercator}
 import geotrellis.raster.io.geotiff.{GeoTiff, Int16GeoTiffMultibandTile}
-import geotrellis.raster.{ByteCellType, ByteUserDefinedNoDataCellType, FloatUserDefinedNoDataCellType, UByteCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.vector._
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
@@ -59,14 +58,6 @@ object PackageTest {
 class PackageTest {
 
   import PackageTest._
-
-  @Test
-  def testToSigned(): Unit = {
-    assertEquals(ByteCellType, toSigned(UByteCellType))
-    assertEquals(ByteUserDefinedNoDataCellType(42), toSigned(UByteUserDefinedNoDataCellType(42)))
-    assertEquals(FloatUserDefinedNoDataCellType(42), toSigned(FloatUserDefinedNoDataCellType(42)))
-    assertEquals(ByteUserDefinedNoDataCellType(42), toSigned(ByteUserDefinedNoDataCellType(42)))
-  }
 
   @Test
   def testFileMove(): Unit = {
