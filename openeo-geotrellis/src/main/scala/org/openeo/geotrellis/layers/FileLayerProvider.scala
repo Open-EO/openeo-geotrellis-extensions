@@ -322,6 +322,16 @@ object FileLayerProvider {
       }
       val netCdfDatasetBandIndex = 0
       Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex))
+    } else if ((link.href.toString contains ".hdf") && !link.href.toString.startsWith("HDF4:")) {
+      val hdfDataset = {
+        if(link.href.getScheme == "file") {
+          s"HDF4_EOS:EOS_GRID:${link.href.getPath}:$bandName"
+        }else{
+          //note that /vsicurl/ is added for http urls later on, perhaps this can also happen here?
+          s"HDF4_EOS:EOS_GRID:${link.href}:$bandName"
+        }
+      }
+      Some((link.copy(href = URI.create(hdfDataset)), 0))
     } else Some((link, bandIndex))
   }
 
