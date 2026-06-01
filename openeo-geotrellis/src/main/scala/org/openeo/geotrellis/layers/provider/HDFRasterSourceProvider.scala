@@ -15,7 +15,14 @@ class HDFRasterSourceProvider extends RasterSourceProvider {
   }
 
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
-    val dataPath = s"HDF4_EOS:EOS_GRID:${definition.dataPath.replace("/vsis3/EODATA/", "/vsis3/eodata/").replace("https", "/vsicurl/https")}"
+    val bandName = definition.bandName
+    val title = definition.link.title.getOrElse(definition.link.href.toString)
+    val band = title match {
+      case "MODIS Terra Snow Cover Daily Global 500m" => s":MOD_Grid_Snow_500m:$bandName"
+      case _ => throw new NotImplementedError(s"Band name $bandName currently not supported for HDF files with title $title and datapath ${definition.dataPath}")
+    }
+
+    val dataPath = s"HDF4_EOS:EOS_GRID:${definition.dataPath.replace("/vsis3/EODATA/", "/vsis3/eodata/").replace("https", "/vsicurl/https")}$band"
     logger.info(s"Creating HDFRasterSource for path: $dataPath")
     logger.info(s"Information in the definition: ${definition.link.toString()}")
     val warpOptions = GDALWarpOptions(cellSize = Some(definition.theResolution), targetCRS = Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod),te = Some(definition.targetExtent.extent))

@@ -321,17 +321,10 @@ object FileLayerProvider {
         }
       }
       val netCdfDatasetBandIndex = 0
-      Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex))
+      Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex, bandName))
     } else if ((link.href.toString contains ".hdf") && !link.href.toString.startsWith("HDF4:")) {
-      val hdfDataset = {
-        if(link.href.getScheme == "file") {
-          s"${link.href.getPath}:MOD_Grid_Snow_500m:$bandName"
-        }else{
-          s"${link.href}:MOD_Grid_Snow_500m:$bandName"
-        }
-      }
-      Some((link.copy(href = URI.create(hdfDataset)), 0))
-    } else Some((link, bandIndex))
+      Some((link, 0, bandName))
+    } else Some((link, bandIndex, bandName))
   }
 
   def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], filteredSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
@@ -1219,7 +1212,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val rasterSources: Seq[Option[(RasterSource, Int)]] =
       resolver.getBandAssets(feature).map {
-        case Some((link, bandIndex)) =>
+        case Some((link, bandIndex, bandName)) =>
           val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
@@ -1240,7 +1233,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
             case _ => None
           }
-          val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental)
+          val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental, bandName)
           val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
               _.canProcess(definition)
             ).map(
