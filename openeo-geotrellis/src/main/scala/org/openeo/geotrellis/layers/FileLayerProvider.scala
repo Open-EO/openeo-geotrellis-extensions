@@ -121,8 +121,8 @@ object FileLayerProvider {
             maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
             bandIndices: Seq[Int] = Seq(), correlationId: String = "", experimental: Boolean = false,
             maxSoftErrorsRatio: Double = 0.0): FileLayerProvider = new FileLayerProvider(
-    openSearch, openSearchCollectionId, openSearchLinkTitles, rootPath, maxSpatialResolution, pathDateExtractor,
-    attributeValues, layoutScheme, bandIndices, correlationId, experimental, maxSoftErrorsRatio,
+    openSearch, openSearchCollectionId, NonEmptyList.fromListUnsafe(openSearchLinkTitles.filterNot(s => s.equalsIgnoreCase("prob_class_25"))), rootPath, maxSpatialResolution, pathDateExtractor,
+    attributeValues, layoutScheme, bandIndices /*0Seq(0,1,2,3,4,5,6)*/, correlationId, experimental, maxSoftErrorsRatio,
     disambiguateConstructors = null
   )
 
@@ -672,7 +672,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private val rasterSourceProviderChain: Seq[RasterSourceProvider] = List(SyntheticDataRasterSourceProvider, SentinelXmlMetadataRasterSourceProvider, ZarrRasterSourceProvider, HDFRasterSourceProvider, NetCDFRasterSourceProvider, JPEGRasterSourceProvider, DefaultRasterSourceProvider)
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
-    if (bandIndices.nonEmpty) {
+    if (fromLoadStac) {
+      val features: Seq[Feature] = openSearch.asInstanceOf[FixedFeaturesOpenSearchClient].asInstanceOf[FixedFeaturesOpenSearchClient].getProducts(null, null, null)
+      val bandNameWithIdList: Seq[(String, Int)] = openSearchLinkTitles.map(bandName =>
+        (bandName, features.head.links.find(_.bandNames.get.contains(bandName)).getOrElse(throw new IllegalArgumentException(s"band name $bandName not found in any link title for collection $openSearchCollectionId")).bandNames.get.indexOf(bandName))
+        ).toList
+      bandNameWithIdList
+    } else
+      if (bandIndices.nonEmpty) {
       //case 1: PROBA-V, geotiff file containing multiple bands, bandids parameter is used to indicate which bands to load
       openSearchLinkTitles.toList zip bandIndices
     } else {

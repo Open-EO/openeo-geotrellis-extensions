@@ -18,17 +18,27 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
   private val logger: Logger = LoggerFactory.getLogger(classOf[BandAssetLinkResolver])
 
   val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
-    if (bandIndices.nonEmpty) {
-      //case 1: PROBA-V, geotiff file containing multiple bands, bandids parameter is used to indicate which bands to load
-      openSearchLinkTitles.toList zip bandIndices
-    } else {
-      //case 2: Sentinel-2 angle metadata: band number is encoded in the oscars link title directly, maybe proba could use this system as well...
-      openSearchLinkTitles
-        .map { title =>
-          val Array(t, bandIndex@_*) = title.split("##")
-          (t, if (bandIndex.nonEmpty) bandIndex.head.toInt else 0)
+    openSearch match {
+      case client: FixedFeaturesOpenSearchClient =>
+        val features: Seq[Feature] = client.asInstanceOf[FixedFeaturesOpenSearchClient].getProducts(null, null, null)
+        val bandNameWithIdList: Seq[(String, Int)] = openSearchLinkTitles.map(bandName =>
+          (bandName, features.head.links.find(_.bandNames.get.contains(bandName)).getOrElse(throw new IllegalArgumentException(s"band name $bandName not found in any link title")).bandNames.get.indexOf(bandName))
+        ).toList
+        bandNameWithIdList
+      case _ => {
+        if (bandIndices.nonEmpty) {
+          //case 1: PROBA-V, geotiff file containing multiple bands, bandids parameter is used to indicate which bands to load
+          openSearchLinkTitles.toList zip bandIndices
+        } else {
+          //case 2: Sentinel-2 angle metadata: band number is encoded in the oscars link title directly, maybe proba could use this system as well...
+          openSearchLinkTitles
+            .map { title =>
+              val Array(t, bandIndex@_*) = title.split("##")
+              (t, if (bandIndex.nonEmpty) bandIndex.head.toInt else 0)
+            }
+            .toList
         }
-        .toList
+      }
     }
   }
 
