@@ -255,7 +255,7 @@ case class RasterTileLoader() {
     val theCellType = metadata.cellType
     rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
     val partitionedBySource = byBandSource.groupByKey(new ByKeyPartitioner(allSources))
-    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = partitionedBySource.mapPartitions((partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
+    val value1 = partitionedBySource.mapPartitions((partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
 
       val ((loadedPartition: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels), duration) = time {
         loadPartitionBySource(partition, cloudFilterStrategy, totalChunksAcc, tracker, crs, layout, theCellType)
@@ -271,7 +271,9 @@ case class RasterTileLoader() {
       }
       loadedPartition
 
-    }, preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
+    }, preservesPartitioning = true)
+    val value = value1.groupByKey(partitioner)
+    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = value.mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
       val tuples: List[(Option[MultibandTile])] = tiles.groupBy(_._1)
         .map(t => (t._1, t._2.toList.sortBy(x => sortableSourceName(x._3))))
         .view.mapValues(x => x.map(_._2).reduceOption(_ merge _))
@@ -285,9 +287,7 @@ case class RasterTileLoader() {
           }
         }
         }
-      val blah = tuples.zipWithIndex.map(t => (t._2, t._1))
-      var mergedBands: Map[Int, Option[MultibandTile]] = blah.toMap
-      logger.warn(s"merged bands $mergedBands")
+      var mergedBands: Map[Int, Option[MultibandTile]] = tuples.zipWithIndex.map(t => (t._2, t._1)).toMap
       for (x <- 0 until expectedBandCount) {
         if (!mergedBands.contains(x)) {
           logger.warn("Band " + x + " is missing in the input data. Filling with empty tile.")
@@ -312,7 +312,6 @@ case class RasterTileLoader() {
     val cRDD = ContextRDD(tiledRDD, metadata)
     cRDD.name = rasterRegionRDD.name
     cRDD
-
   }
 
 

@@ -2,7 +2,7 @@
   "features": [
     {
       "type": "Feature",
-      "id": "soil_land_veg_2021",
+      "id": "multimulti",
       "geometry": {
         "type": "Polygon",
         "coordinates": [
@@ -37,32 +37,32 @@
         46.332985
       ],
       "properties": {
-        "date": "2024-04-22T10:56:21.024Z",
+        "date": "2024-04-07T00:00:00.000Z",
         "updated": "2024-04-22T20:59:12.782Z",
         "available": "2024-04-22T20:59:13Z",
         "published": "2024-04-22T20:59:13Z",
         "status": "ARCHIVED",
-        "parentIdentifier": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-        "title": "Vojvodina_soil_land_veg-V1",
-        "identifier": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20240422T105621_31UDS_TOC_V220",
+        "parentIdentifier": "urn:eop:VITO:TERRASCOPE_WHATEVER_PARENT",
+        "title": "Whatever",
+        "identifier": "urn:eop:VITO:TERRASCOPE_WHATEVER",
         "links": {
           "data": [
             {
-              "href": "https://s3.waw3-1.cloudferro.com/sonata-waw3-1-5q898zye7hp0yud0n8ot6nuzp7d8t3khy7faxzzvyj64avl81/national_data/Vojvodina/LAI_3035_10m_2021_median_cog.tif",
+              "href": "https://whatever1.tif",
               "type": "image/tiff",
-              "length": 3785306,
-              "title": "LAI_median",
+              "length": 666,
+              "title": "part1",
               "bandNames": [
-                "LAI_median"
+                "B1", "B2"
               ]
             },
             {
-              "href": "https://s3.waw3-1.cloudferro.com/sonata-waw3-1-5q898zye7hp0yud0n8ot6nuzp7d8t3khy7faxzzvyj64avl81/national_data/Vojvodina/HRVPP-s1-part2_10m_2021_Vojvodina_buffer_3035_AMPL_cog.tif",
+              "href": "https://whatever2.tif",
               "type": "image/tiff",
-              "length": 33024900,
+              "length": 666,
               "title": "part2",
               "bandNames": [
-                "s2_SOSD", "s2_EOSD"
+                "B3", "B4"
               ]
             }
           ]

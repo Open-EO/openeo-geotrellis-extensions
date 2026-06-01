@@ -4,7 +4,7 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, CellType, CellValue, MultibandTile, RasterSource}
+import geotrellis.raster.{CellSize, MultibandTile, RasterSource}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
@@ -293,8 +293,13 @@ class RasterTileLoaderTest extends RasterMatchers {
 
   @Test
   def multipleMultibandAssetsPerFeature(): Unit = {
-    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
-    val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
+    val date = ZonedDateTime.of(LocalDate.of(2024, 4, 7), MIDNIGHT, UTC)
+    val bbox = ProjectedExtent(Extent(
+      20.6,
+      45.5,
+      20.7,
+      45.6
+    ), LatLng)
 
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.setLoadPerProduct(true)
@@ -309,19 +314,17 @@ class RasterTileLoaderTest extends RasterMatchers {
 
     val layerProvider = FileLayerProvider(
       client,
-      openSearchCollectionId = "soil_land_veg_2021",
-      openSearchLinkTitles = NonEmptyList.of("LAI_median", "s2_SOSD", "s2_EOSD"),
-      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      openSearchCollectionId = "multimulti",
+      openSearchLinkTitles = NonEmptyList.of("B1", "B2", "B3", "B4"),
+      rootPath = "/tmp",
       CellSize(10, 10),
-      SplitYearMonthDayPathDateExtractor
+      SplitYearMonthDayPathDateExtractor, layoutScheme = FloatingLayoutScheme(256)
     )
 
-    val layer = layerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs, layerProvider.maxZoom, sc, datacubeParams = Some(dataCubeParameters))
+    val layer: MultibandTileLayerRDD[SpaceTimeKey] = layerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs, layerProvider.maxZoom, sc, datacubeParams = Some(dataCubeParameters))
     val spatialLayer: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = layer
       .toSpatial(date)
       .cache()
-
     spatialLayer.writeGeoTiff("/tmp/multipleMultibandAssetsPerFeature.tif", bbox)
   }
-
 }
