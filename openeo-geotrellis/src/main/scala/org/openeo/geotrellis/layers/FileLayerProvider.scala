@@ -325,10 +325,9 @@ object FileLayerProvider {
     } else if ((link.href.toString contains ".hdf") && !link.href.toString.startsWith("HDF4:")) {
       val hdfDataset = {
         if(link.href.getScheme == "file") {
-          s"${link.href.getPath}:$bandName"
+          s"${link.href.getPath}:MOD_Grid_Snow_500m:$bandName"
         }else{
-          //note that /vsicurl/ is added for http urls later on, perhaps this can also happen here?
-          s"${link.href}:$bandName"
+          s"${link.href}:MOD_Grid_Snow_500m:$bandName"
         }
       }
       Some((link.copy(href = URI.create(hdfDataset)), 0))
