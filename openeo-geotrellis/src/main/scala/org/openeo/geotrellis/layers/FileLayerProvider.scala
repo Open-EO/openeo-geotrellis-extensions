@@ -674,6 +674,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     if (fromLoadStac) {
       val features: Seq[Feature] = openSearch.asInstanceOf[FixedFeaturesOpenSearchClient].asInstanceOf[FixedFeaturesOpenSearchClient].getProducts(null, null, null)
+      if (features.isEmpty) {
+        throw new IllegalArgumentException(s"No features found for collection $openSearchCollectionId, cannot determine band indices for link titles.")
+      }
       val bandNameWithIdList: Seq[(String, Int)] = openSearchLinkTitles.map(bandName =>
         (bandName, features.head.links.find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(throw new IllegalArgumentException(s"band name $bandName not found in any link title for collection $openSearchCollectionId")).bandNames.get.indexOf(bandName))
         ).toList
