@@ -22,7 +22,7 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
       case client: FixedFeaturesOpenSearchClient =>
         val features: Seq[Feature] = client.asInstanceOf[FixedFeaturesOpenSearchClient].getProducts(null, null, null)
         val bandNameWithIdList: Seq[(String, Int)] = openSearchLinkTitles.map(bandName =>
-          (bandName, features.head.links.find(_.bandNames.get.contains(bandName)).getOrElse(throw new IllegalArgumentException(s"band name $bandName not found in any link title")).bandNames.get.indexOf(bandName))
+          (bandName, features.head.links.find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(throw new IllegalArgumentException(s"band name $bandName not found in any link title")).bandNames.get.indexOf(bandName))
         ).toList
         bandNameWithIdList
       case _ => {
