@@ -677,8 +677,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       if (features.isEmpty) {
         throw new IllegalArgumentException(s"No features found for collection $openSearchCollectionId, cannot determine band indices for link titles.")
       }
+      // dummy link to access the link parsing logic in the raster source providers
       val bandNameWithIdList: Seq[(String, Int)] = openSearchLinkTitles.map(bandName =>
-        (bandName, features.head.links.find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(throw new IllegalArgumentException(s"band name $bandName not found in any link title for collection $openSearchCollectionId")).bandNames.get.indexOf(bandName))
+        (bandName, features.head.links.find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(new Link(new URI(""), Some(""), Some(""), Some(Seq()))).bandNames.get.indexOf(bandName))
         ).toList
       bandNameWithIdList
     } else

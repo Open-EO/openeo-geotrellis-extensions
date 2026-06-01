@@ -8,6 +8,7 @@ import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.{Logger, LoggerFactory}
 
+import java.net.URI
 import java.nio.file.{Path, Paths}
 
 case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
@@ -22,7 +23,7 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
       case client: FixedFeaturesOpenSearchClient =>
         val features: Seq[Feature] = client.asInstanceOf[FixedFeaturesOpenSearchClient].getProducts(null, null, null)
         val bandNameWithIdList: Seq[(String, Int)] = openSearchLinkTitles.map(bandName =>
-          (bandName, features.head.links.find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(throw new IllegalArgumentException(s"band name $bandName not found in any link title")).bandNames.get.indexOf(bandName))
+          (bandName, features.head.links.find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(Link(new URI(""), Some(""), Some(""), Some(Seq()))).bandNames.get.indexOf(bandName))
         ).toList
         bandNameWithIdList
       case _ => {
