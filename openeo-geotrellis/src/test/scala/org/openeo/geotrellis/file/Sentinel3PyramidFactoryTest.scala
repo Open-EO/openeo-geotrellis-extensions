@@ -62,7 +62,7 @@ class Sentinel3PyramidFactoryTest extends RasterMatchers {
     val referenceCrs = referenceGeoTiff.crs
     val referenceRaster = referenceGeoTiff.raster
 
-    val bandMix = util.Arrays.asList("MIR", "TOA_NDVI", "B2", "tg")
+    val bandMix = util.Arrays.asList("MIR", "NDVI", "B2", "tg")
     val (actualRaster, actualCrs) = sentinel3Raster(bandMix)
 
     assertEqual(referenceRaster.tile, actualRaster.tile)
