@@ -274,7 +274,7 @@ case class RasterTileLoader() {
         val secondsPerChunk = durationSeconds / (partitionPixels / (256 * 256))
         loadingTimeAcc.add(secondsPerChunk)
         val megapixelPerSecond = (partitionPixels / (1024.0 * 1024)) / durationSeconds
-        logger.info(s"totalPixelsPartition=$partitionPixels durationSeconds=$durationSeconds megapixelPerSecond=$megapixelPerSecond")
+        logger.debug(s"totalPixelsPartition=$partitionPixels durationSeconds=$durationSeconds megapixelPerSecond=$megapixelPerSecond")
         megapixelPerSecondMeter.set(megapixelPerSecond)
       }
       loadedPartition
