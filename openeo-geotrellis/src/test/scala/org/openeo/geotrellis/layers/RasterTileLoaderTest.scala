@@ -1,10 +1,10 @@
 package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
-import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, RasterSource}
+import geotrellis.raster.{CellSize, CellType, CellValue, MultibandTile, RasterSource}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
@@ -13,14 +13,17 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api._
 import org.junit.jupiter.api.condition.EnabledIf
+import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrelliscommon.DatacubeSupport._
-import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy}
+import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SyntheticDataOverride}
 import org.openeo.opensearch.OpenSearchResponses.FeatureCollection
 import org.slf4j.{Logger, LoggerFactory}
 
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import scala.io.{BufferedSource, Source}
 
@@ -68,33 +71,6 @@ class RasterTileLoaderTest extends RasterMatchers {
   private def sentinel5PLayoutScheme = FloatingLayoutScheme(64)
 
   private def sentinel5PCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1"
-
-  private val openSearchClient = {
-    val client = new FixedFeaturesOpenSearchClient
-    FeatureCollection.parse(
-      """{
-        |    "features": [
-        |        {
-        |            "type": "Feature",
-        |            "id": "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20191231_V100",
-        |            "geometry": {"coordinates":[[[-180.0,89.0],[-180.0,-89.0],[180.0,-89.0],[180.0,89.0],[-180.0,89.0]]],"type":"Polygon"},
-        |            "bbox": [-180.0,-89.0,180.0,89.0],
-        |            "properties":
-        |            	{"date":"2019-12-31T01:11:47.000Z","identifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20191231_V100","available":"2021-02-08T10:47:24Z","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1","productInformation":{"processingCenter":"VITO","productVersion":"V100","processingDate":"2023-03-02T10:10:39.950Z","processingMode":"OFFL","productType":"NO2_TD","availabilityTime":"2021-02-08T10:47:24Z"},"links":{"related":[{"length":2218326,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2019/12/S5P_OFFL_L3_NO2_TD_20191231_V100/S5P_NO2_TD_20191231_WEIGHT_V100.tif","type":"image/tiff","title":"WEIGHT","bandNames":["WEIGHT"],"category":"QUALITY"}],"data":[{"length":5454742,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2019/12/S5P_OFFL_L3_NO2_TD_20191231_V100/S5P_NO2_TD_20191231_NO2_V100.tif","conformsTo":"http://www.opengis.net/def/crs/EPSG/0/4326","type":"image/tiff","title":"NO2","bandNames":["NO2"]}],"previews":[],"alternates":[]},"published":"2021-02-08T10:47:24Z","title":"S5P_L3_NO2_TD_20191231_V100","bandNames":["S5P_L3_NO2_TD_20191231_V100"],"updated":"2023-03-02T10:10:39.950Z","acquisitionInformation":[{"acquisitionParameters":{"acquisitionType":"NOMINAL","beginningDateTime":"2019-12-31T01:11:47.000Z","endingDateTime":"2020-01-01T00:52:46.000Z"},"platform":{"platformShortName":"Sentinel-5P","platformSerialIdentifier":"S5P"}}],"status":"ARCHIVED","additionalAttributes":{"sourceData":[{"title":"S5P_OFFL_L2__NO2____20191231T025317_20191231T043447_11474_01_010302_20200101T192226"},{"title":"S5P_OFFL_L2__NO2____20191231T130217_20191231T144347_11480_01_010302_20200102T060402"},{"title":"S5P_OFFL_L2__NO2____20191231T061617_20191231T075747_11476_01_010302_20200101T232513"},{"title":"S5P_OFFL_L2__NO2____20191231T075747_20191231T093917_11477_01_010302_20200102T004148"},{"title":"S5P_OFFL_L2__NO2____20191231T011147_20191231T025317_11473_01_010302_20200101T180133"},{"title":"S5P_OFFL_L2__NO2____20191231T112047_20191231T130217_11479_01_010302_20200102T043947"},{"title":"S5P_OFFL_L2__NO2____20191231T180646_20191231T194816_11483_01_010302_20200102T112434"},{"title":"S5P_OFFL_L2__NO2____20191231T093917_20191231T112047_11478_01_010302_20200102T023550"},{"title":"S5P_OFFL_L2__NO2____20191231T212946_20191231T231116_11485_01_010302_20200102T140733"},{"title":"S5P_OFFL_L2__NO2____20191231T231116_20200101T005246_11486_01_010302_20200102T155014"},{"title":"S5P_OFFL_L2__NO2____20191231T194816_20191231T212946_11484_01_010302_20200102T123941"},{"title":"S5P_OFFL_L2__NO2____20191231T162516_20191231T180646_11482_01_010302_20200102T084547"},{"title":"S5P_OFFL_L2__NO2____20191231T144347_20191231T162516_11481_01_010302_20200102T070221"},{"title":"S5P_OFFL_L2__NO2____20191231T043447_20191231T061617_11475_01_010302_20200101T212406"}]}}
-        |         }
-        |        ,{
-        |            "type": "Feature",
-        |            "id": "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20200101_V100",
-        |            "geometry": {"coordinates":[[[-180.0,89.0],[-180.0,-89.0],[180.0,-89.0],[180.0,89.0],[-180.0,89.0]]],"type":"Polygon"},
-        |            "bbox": [-180.0,-89.0,180.0,89.0],
-        |            "properties":
-        |            	{"date":"2020-01-01T00:52:46.000Z","identifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1:S5P_L3_NO2_TD_20200101_V100","available":"2021-02-08T10:47:38Z","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1","productInformation":{"processingCenter":"VITO","productVersion":"V100","processingDate":"2023-03-02T10:08:00.205Z","processingMode":"OFFL","productType":"NO2_TD","availabilityTime":"2021-02-08T10:47:38Z"},"links":{"related":[{"length":2259627,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2020/01/S5P_OFFL_L3_NO2_TD_20200101_V100/S5P_NO2_TD_20200101_WEIGHT_V100.tif","type":"image/tiff","title":"WEIGHT","bandNames":["WEIGHT"],"category":"QUALITY"}],"data":[{"length":5431118,"href":"file:///data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1/2020/01/S5P_OFFL_L3_NO2_TD_20200101_V100/S5P_NO2_TD_20200101_NO2_V100.tif","conformsTo":"http://www.opengis.net/def/crs/EPSG/0/4326","type":"image/tiff","title":"NO2","bandNames":["NO2"]}],"previews":[],"alternates":[]},"published":"2021-02-08T10:47:38Z","title":"S5P_L3_NO2_TD_20200101_V100","bandNames":["S5P_L3_NO2_TD_20200101_V100"],"updated":"2023-03-02T10:08:00.205Z","acquisitionInformation":[{"acquisitionParameters":{"acquisitionType":"NOMINAL","beginningDateTime":"2020-01-01T00:52:46.000Z","endingDateTime":"2020-01-02T00:33:46.000Z"},"platform":{"platformShortName":"Sentinel-5P","platformSerialIdentifier":"S5P"}}],"status":"ARCHIVED","additionalAttributes":{"sourceData":[{"title":"S5P_OFFL_L2__NO2____20200101T174746_20200101T192916_11497_01_010302_20200103T104405"},{"title":"S5P_OFFL_L2__NO2____20200101T225216_20200102T003346_11500_01_010302_20200103T153646"},{"title":"S5P_OFFL_L2__NO2____20200101T073846_20200101T092016_11491_01_010302_20200103T003802"},{"title":"S5P_OFFL_L2__NO2____20200101T192916_20200101T211046_11498_01_010302_20200103T121312"},{"title":"S5P_OFFL_L2__NO2____20200101T211046_20200101T225216_11499_01_010302_20200103T140339"},{"title":"S5P_OFFL_L2__NO2____20200101T142446_20200101T160616_11495_01_010302_20200103T065547"},{"title":"S5P_OFFL_L2__NO2____20200101T160616_20200101T174746_11496_01_010302_20200103T083756"},{"title":"S5P_OFFL_L2__NO2____20200101T110146_20200101T124316_11493_01_010302_20200103T041218"},{"title":"S5P_OFFL_L2__NO2____20200101T092016_20200101T110146_11492_01_010302_20200103T021108"},{"title":"S5P_OFFL_L2__NO2____20200101T055716_20200101T073846_11490_01_010302_20200102T225627"},{"title":"S5P_OFFL_L2__NO2____20200101T124316_20200101T142446_11494_01_010302_20200103T054233"},{"title":"S5P_OFFL_L2__NO2____20200101T041546_20200101T055716_11489_01_010302_20200102T210644"},{"title":"S5P_OFFL_L2__NO2____20200101T005246_20200101T023416_11487_01_010302_20200102T172632"},{"title":"S5P_OFFL_L2__NO2____20200101T023416_20200101T041546_11488_01_010302_20200102T190100"}]}}
-        |         }
-        |    ]
-        |  }""".stripMargin).features.foreach(feature => client.addFeature(feature))
-
-    client
-  }
 
   private def sentinel5PJsonStringFileLayerProvider(jsonFeaturesString: String) = {
     val client = new FixedFeaturesOpenSearchClient
@@ -314,4 +290,38 @@ class RasterTileLoaderTest extends RasterMatchers {
     assertTrue(defaultMaskedLayerKeys.nonEmpty)
     assertEquals(defaultMaskedLayerKeys, sparseMaskedLayerKeys)
   }
+
+  @Test
+  def multipleMultibandAssetsPerFeature(): Unit = {
+    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+    val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.setLoadPerProduct(true)
+    dataCubeParameters.setSyntheticDataOverride(new SyntheticDataOverride("uint16raw", None))
+
+    val client = new FixedFeaturesOpenSearchClient
+
+    val source: BufferedSource = Source.fromResource("org/openeo/geotrellis/multipleMultibandAssetsPerFeature_features.json")
+    FeatureCollection.parse(
+      source.getLines().mkString("")
+    ).features.foreach(feature => client.addFeature(feature))
+
+    val layerProvider = FileLayerProvider(
+      client,
+      openSearchCollectionId = "soil_land_veg_2021",
+      openSearchLinkTitles = NonEmptyList.of("LAI_median", "s2_SOSD", "s2_EOSD"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      CellSize(10, 10),
+      SplitYearMonthDayPathDateExtractor
+    )
+
+    val layer = layerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs, layerProvider.maxZoom, sc, datacubeParams = Some(dataCubeParameters))
+    val spatialLayer: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = layer
+      .toSpatial(date)
+      .cache()
+
+    spatialLayer.writeGeoTiff("/tmp/multipleMultibandAssetsPerFeature.tif", bbox)
+  }
+
 }
