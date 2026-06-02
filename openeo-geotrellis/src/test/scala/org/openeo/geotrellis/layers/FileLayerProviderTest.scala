@@ -46,7 +46,7 @@ import java.io.{File, FileInputStream, FileOutputStream}
 import java.net.{URI, URL}
 import java.nio.file.{Files, Path, Paths}
 import java.time.ZoneOffset.UTC
-import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.time.{LocalDate, LocalDateTime, ZoneId, ZonedDateTime}
 import java.util
 import java.util.Formatter
 import java.util.concurrent.TimeUnit
@@ -1075,6 +1075,81 @@ class FileLayerProviderTest extends RasterMatchers {
     val raster = zarFileLayerProvider.readKeysToRasterSources(from = date, to = date, boundingBox = boundingBox, polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())), polygons_crs = crs, zoom = 0, sc = sc, datacubeParams = None)
     assertEquals(extent, raster._2.extent)
     assertEquals(crs, raster._2.crs)
+  }
+
+
+  @Test
+  def testHDFRasterSourceProvider(@TempDir tempDir: Path): Unit = {
+    val date = LocalDateTime.of(2026, 5, 6, 21, 0).atZone(UTC)
+    val endDate = LocalDateTime.of(2026, 5, 6, 21, 10).atZone(UTC)
+
+    val crs = CRS.fromEpsgCode(32756)
+
+    val boundingBox = ProjectedExtent(Extent(152.91, -4.37, 155.39, -1.81), crs)
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(boundingBox)
+
+    val dirArti = "https://artifactory.vgt.vito.be/artifactory/testdata-public/"
+    val dirModis = "eodata/Terra/MODIS/MOD10A1.061/2026/04/06/MOD10A1.A2026096.h26v06.061.2026098032156/"
+    val fileName = "MOD10A1.A2026096.h26v06.061.2026098032156.hdf"
+    val urlArti = new URL(s"$dirArti$dirModis$fileName")
+    FileUtils.copyURLToFile(urlArti, tempDir.resolve(dirModis).resolve(fileName).toFile)
+
+    val feature = OpenSearchResponses.Feature(
+      id = "MODIS",
+      bbox = boundingBox.extent,
+      nominalDate = date,
+      links = Array(
+        Link(
+          href= tempDir.resolve(dirModis).resolve(fileName).toUri,
+          title = Some("MODIS Terra Snow Cover Daily Global 500m"),
+          bandNames = Some(Seq("NDSI", "NDSI_Snow_Cover"))
+        )
+      ),
+      resolution = Some(0.1))
+
+    val openEOSearchClient = new FixedFeaturesOpenSearchClient()
+    openEOSearchClient.addFeature(feature)
+    val zarFileLayerProvider = FileLayerProvider(
+      openSearch = openEOSearchClient,
+      openSearchCollectionId = "MODIS",
+      NonEmptyList.of("NDSI", "NDSI_Snow_Cover"),
+      rootPath = tempDir.resolve("/eodata/Terra/MODIS"),
+      maxSpatialResolution = CellSize(1, 1),
+      SplitYearMonthDayPathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256),
+    )
+    
+    val provider = FileLayerProvider(
+      openEOSearchClient,
+      "MODIS",
+      openSearchLinkTitles = NonEmptyList.of("NDSI"),
+      rootPath = "/eodata/Terra/MODIS",
+      CellSize(10, 10),
+      SplitYearMonthDayPathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256),
+      experimental = false
+    )
+    val cellSize = CellSize(1, 1)
+
+    val result = provider.loadRasterSourceRDD(boundingBox,date,endDate,0,Some(dataCubeParameters), Some(cellSize))
+
+    result.foreach({
+      case (key, rasterSource) =>
+        val source = key.asInstanceOf[BandCompositeRasterSource].sources
+        assertEquals(1, source.length)
+        val res = source.head.read(boundingBox.extent)
+        assertTrue(res.isDefined)
+        assertEquals(res.get.extent, Extent(153.0, -4.0, 155.0, -2.0))
+        val tile = res.get.tile
+        assertEquals(tile.bandCount, 1)
+        assertEquals(tile.cellType, CellType.fromName("int16ud0"))
+        assertEquals(tile.cols, 2)
+        assertEquals(tile.rows, 2)
+
+    })
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
