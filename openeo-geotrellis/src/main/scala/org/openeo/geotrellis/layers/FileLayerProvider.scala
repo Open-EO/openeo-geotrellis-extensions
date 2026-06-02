@@ -121,7 +121,7 @@ object FileLayerProvider {
             maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
             bandIndices: Seq[Int] = Seq(), correlationId: String = "", experimental: Boolean = false,
             maxSoftErrorsRatio: Double = 0.0): FileLayerProvider = new FileLayerProvider(
-    openSearch, openSearchCollectionId, NonEmptyList.fromListUnsafe(openSearchLinkTitles.filterNot(s => s.equalsIgnoreCase("prob_class_25"))), rootPath, maxSpatialResolution, pathDateExtractor,
+    OpenSearchClientMerger.merge(openSearch), openSearchCollectionId, NonEmptyList.fromListUnsafe(openSearchLinkTitles.filterNot(s => s.equalsIgnoreCase("prob_class_25"))), rootPath, maxSpatialResolution, pathDateExtractor,
     attributeValues, layoutScheme, bandIndices /*0Seq(0,1,2,3,4,5,6)*/, correlationId, experimental, maxSoftErrorsRatio,
     disambiguateConstructors = null
   )
@@ -635,6 +635,21 @@ object FileLayerProvider {
           Some(bbox, dates)
         }
       })
+
+  def fixIt(openSearch: OpenSearchClient): OpenSearchClient = {
+    openSearch match {
+      case client: FixedFeaturesOpenSearchClient =>
+        val features = client.getProducts(null, null, null)
+        if (features.size < 2) {
+          openSearch
+        } else {
+          openSearch
+        }
+      case _ =>
+        openSearch
+    }
+  }
+
 }
 
 class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
@@ -650,7 +665,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
            maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
            bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean = false,
-           maxSoftErrorsRatio: Double = 0.0) = this(openSearch, openSearchCollectionId,
+           maxSoftErrorsRatio: Double = 0.0) = this(OpenSearchClientMerger.merge(openSearch), openSearchCollectionId,
            openSearchLinkTitles = NonEmptyList.fromListUnsafe(for {
              (title, bandIndices) <- openSearchLinkTitles.toList.zipAll(bandIds, thisElem = "", thatElem = Seq(0))
              _ <- bandIndices
@@ -679,7 +694,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
       // dummy link to access the link parsing logic in the raster source providers
       val bandNameWithIdList: Seq[(String, Int)] = openSearchLinkTitles.map(bandName =>
-        (bandName, features.head.links.find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(new Link(new URI(""), Some(""), Some(""), Some(Seq()))).bandNames.get.indexOf(bandName))
+        (bandName, features.flatMap(f => f.links).find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(new Link(new URI(""), Some(""), Some(""), Some(Seq()))).bandNames.get.indexOf(bandName))
         ).toList
       bandNameWithIdList
     } else
