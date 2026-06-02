@@ -1223,6 +1223,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
+    logger.info(s"Processing feature ${feature.id} with crs ${feature.crs}, bbox ${feature.bbox}, date ${feature.nominalDate}, resolution ${feature.resolution}" )
+
     val rasterSources: Seq[Option[(RasterSource, Int)]] =
       resolver.getBandAssets(feature).map {
         case Some((link, bandIndex, bandName)) =>
