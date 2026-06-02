@@ -3,7 +3,7 @@ package org.openeo.geotrellis.layers.raster_source
 import breeze.numerics.log
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, DoubleConstantNoDataCellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile}
 import geotrellis.vector.Extent
 import org.openeo.geotrellis.GeneralUtils.toSigned
 import org.slf4j.LoggerFactory
@@ -64,8 +64,8 @@ class ValueOffsetRasterSource(val rasterSource: RasterSource,
       if (rasterSource.cellType.isFloatingPoint) {
         rasterSource.cellType
       } else {
-        logger.warn(s"Applying a pixel value scale of $pixelValueScale to a raster with cell type ${rasterSource.cellType} forces conversion to ${DoubleConstantNoDataCellType}.")
-        DoubleConstantNoDataCellType
+        logger.warn(s"Applying a pixel value scale of $pixelValueScale to a raster with cell type ${rasterSource.cellType} forces conversion to ${FloatConstantNoDataCellType}.")
+        FloatConstantNoDataCellType
       }
     }
     else {
@@ -82,8 +82,8 @@ class ValueOffsetRasterSource(val rasterSource: RasterSource,
           }
         }
         if (BigDecimal(math.abs(pixelValueOffset)).toBigInt.bitLength > cellType.bits) {
-          logger.warn(s"Applying a pixel value offset of $pixelValueOffset to a raster with cell type ${rasterSource.cellType} forces conversion to ${DoubleConstantNoDataCellType}.")
-          cellType = DoubleConstantNoDataCellType
+          logger.warn(s"Applying a pixel value offset of $pixelValueOffset to a raster with cell type ${rasterSource.cellType} forces conversion to ${FloatConstantNoDataCellType}.")
+          cellType = FloatConstantNoDataCellType
         }
       }
       cellType
