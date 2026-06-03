@@ -1,5 +1,278 @@
 [
   {
+    "id": "CLMS_NPP_GLOBAL_300M_10DAILY_V2",
+    "type": "Collection",
+    "bands": [
+      {
+        "name": "qflag",
+        "description": "Quality Flag on Net Primary Production"
+      },
+      {
+        "name": "npp",
+        "description": "Net Primary Production"
+      }
+    ],
+    "links": [
+      {
+        "rel": "items",
+        "type": "application/geo+json",
+        "href": "https://stac.dataspace.copernicus.eu/v1/collections/clms_npp_global_300m_10daily_v2_cog/items"
+      },
+      {
+        "rel": "parent",
+        "type": "application/json",
+        "href": "https://stac.dataspace.copernicus.eu/v1/"
+      },
+      {
+        "rel": "root",
+        "type": "application/json",
+        "href": "https://stac.dataspace.copernicus.eu/v1/"
+      },
+      {
+        "rel": "self",
+        "type": "application/json",
+        "href": "https://stac.dataspace.copernicus.eu/v1/collections/clms_npp_global_300m_10daily_v2_cog"
+      },
+      {
+        "rel": "license",
+        "href": "https://land.copernicus.eu/en/data-policy",
+        "type": "text/html",
+        "title": "Data policy for Copernicus Land Monitoring Service products and services"
+      },
+      {
+        "rel": "about",
+        "href": "https://land.copernicus.eu/en/products/vegetation/net-primary-production-v2-0-300m",
+        "type": "text/html",
+        "title": "Product page"
+      },
+      {
+        "rel": "http://www.opengis.net/def/rel/ogc/1.0/queryables",
+        "type": "application/schema+json",
+        "title": "Queryables",
+        "href": "https://stac.dataspace.copernicus.eu/v1/collections/clms_npp_global_300m_10daily_v2_cog/queryables"
+      }
+    ],
+    "title": "CLMS NPP Global 300m 10-daily V2 (COG)",
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -179.9999999,
+            -59.9985119,
+            179.9985119,
+            80.0014881
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2013-11-01T00:00:00.000Z",
+            null
+          ]
+        ]
+      }
+    },
+    "license": "other",
+    "contacts": [
+      {
+        "name": "Copernicus Land Monitoring Service",
+        "links": [
+          {
+            "rel": "about",
+            "href": "https://land.copernicus.eu/",
+            "type": "text/html",
+            "title": "Homepage of the Copernicus Land Monitoring Service"
+          }
+        ],
+        "roles": [
+          "producer"
+        ],
+        "emails": [
+          {
+            "roles": [
+              "contact point"
+            ],
+            "value": "copernicus@eea.europa.eu"
+          }
+        ],
+        "phones": [
+          {
+            "roles": [
+              "contact point"
+            ],
+            "value": "+4533367100"
+          }
+        ],
+        "organization": "European Environment Agency"
+      }
+    ],
+    "keywords": [
+      "Copernicus",
+      "CLMS",
+      "NPP",
+      "Net Primary Production",
+      "carbon flux",
+      "global",
+      "10-daily",
+      "300m",
+      "PROBA-V",
+      "Sentinel-3",
+      "OLCI"
+    ],
+    "providers": [
+      {
+        "url": "https://cloudferro.com/",
+        "name": "CloudFerro",
+        "roles": [
+          "host"
+        ]
+      },
+      {
+        "url": "https://land.copernicus.eu/",
+        "name": "European Environment Agency",
+        "roles": [
+          "producer"
+        ]
+      },
+      {
+        "url": "https://commission.europa.eu/",
+        "name": "European Commission",
+        "roles": [
+          "licensor"
+        ]
+      },
+      {
+        "url": "https://vito.be/",
+        "name": "VITO",
+        "roles": [
+          "processor"
+        ]
+      }
+    ],
+    "summaries": {
+      "gsd": [
+        300.0
+      ],
+      "platform": [
+        "proba-v"
+      ],
+      "proj:code": [
+        "EPSG:4326"
+      ],
+      "proj:shape": [
+        47040,
+        120960
+      ],
+      "instruments": [
+        "olci",
+        "probav"
+      ],
+      "product:type": [
+        "net-gross_primary_production"
+      ],
+      "constellation": [
+        "proba-1"
+      ],
+      "processing:level": [
+        "L3"
+      ],
+      "processing:version": [
+        "V2.0.1"
+      ],
+      "product:timeliness": [
+        "P2D"
+      ],
+      "product:timeliness_category": [
+        "NRT"
+      ],
+      "raster:bands": [
+        {
+          "name": "qflag",
+          "data_type": "float32"
+        },
+        {
+          "name": "npp",
+          "data_type": "float32"
+        }
+      ],
+      "eo:bands": [
+        {
+          "name": "qflag",
+          "description": "Quality Flag on Net Primary Production",
+          "gsd": 300.0,
+          "data_type": "float32"
+        },
+        {
+          "name": "npp",
+          "description": "Net Primary Production",
+          "gsd": 300.0,
+          "data_type": "float32"
+        }
+      ],
+      "bands": [
+        {
+          "name": "qflag",
+          "description": "Quality Flag on Net Primary Production",
+          "data_type": "float32",
+          "gsd": 300.0
+        },
+        {
+          "name": "npp",
+          "description": "Net Primary Production",
+          "data_type": "float32",
+          "gsd": 300.0
+        }
+      ]
+    },
+    "description": "Defined as the net amount of biomass, or carbon, produced by plants per unit area and time, expressed in gC/m\u00b2/day. It is equal to the difference between the Gross Primary Production (GPP), i.e. the total amount of carbon produced through photosynthesis, and the amount of energy used for plant respiration. Every 10-days estimates are available in near real time at global scale in the spatial resolution of about 300 m from January 2014 to the present.",
+    "stac_version": "1.1.0",
+    "stac_extensions": [
+      "https://stac-extensions.github.io/alternate-assets/v1.2.0/schema.json",
+      "https://stac-extensions.github.io/authentication/v1.1.0/schema.json",
+      "https://stac-extensions.github.io/processing/v1.2.0/schema.json",
+      "https://stac-extensions.github.io/product/v1.0.0/schema.json",
+      "https://stac-extensions.github.io/projection/v2.0.0/schema.json",
+      "https://stac-extensions.github.io/raster/v2.0.0/schema.json",
+      "https://stac-extensions.github.io/storage/v2.0.0/schema.json",
+      "https://stac-extensions.github.io/contacts/v1.0.0/schema.json",
+      "https://stac-extensions.github.io/classification/v2.0.0/schema.json"
+    ],
+    "experimental": true,
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.dataspace.copernicus.eu/v1/collections/clms_npp_global_300m_10daily_v2_cog",
+        "load_stac_feature_flags": {
+          "apply_raster_scale_and_offset": true
+        },
+        "enrich": false
+      }
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "qflag",
+          "npp"
+        ]
+      }
+    }
+  },
+  {
     "id": "CLMS_LSP_GLOBAL_300M_YEARLY_V2",
     "type": "Collection",
     "bands": [
