@@ -12,7 +12,74 @@ import java.nio.file.Paths
 
 case class RasterSourceDefinition(link: Link, bandIndex: Int, feature:Feature, rootPath:String, targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, featureExtentInLayout: Option[GridExtent[Long]], targetResolution: Option[CellSize], maxResolution: CellSize, datacubeParams: Option[DataCubeParameters], experimental: Boolean) {
 
-  lazy val dataPath: String = deriveFilePath(link.href)
+  lazy val dataPath: String = {
+    val dataPathArg = deriveFilePath(link.href)
+
+    import java.nio.file.Files
+    import java.nio.file.Paths
+    val dataPath1 = if (dataPathArg.startsWith("NETCDF:/") && dataPathArg.contains(":")) {
+      // ex: NETCDF:/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/20170110_3/c_gls_LAI300_201701100000_GLOBE_PROBAV_V1.0.1/c_gls_LAI300_201701100000_GLOBE_PROBAV_V1.0.1.nc:LAI
+      dataPathArg.replace("NETCDF:/", "/").split(":").head
+    } else {
+      dataPathArg
+    }
+    val dataPath2 = if (dataPath1.toLowerCase.startsWith("/data/")) {
+      val dataPathCopy = dataPath1.replace("/data/", "/dataCOPY/")
+      if (Files.exists(Paths.get(dataPathCopy))) {
+        dataPathCopy
+      } else if (Files.exists(Paths.get("/dataCOPY/"))
+        && Files.exists(Paths.get(dataPath1))) { // Don't attempt to copy "/bogus"
+        println("COPY dataPath: " + dataPathCopy)
+        Files.createDirectories(Paths.get(dataPathCopy).getParent)
+        val tmpBeforeAtomicMove = Paths.get(dataPathCopy + "_unconfirmed_download_" + java.util.UUID.randomUUID())
+        Files.copy(Paths.get(dataPath1), tmpBeforeAtomicMove)
+        Files.move(tmpBeforeAtomicMove, Paths.get(dataPathCopy))
+        dataPathCopy
+      } else {
+        dataPath1
+      }
+    } else {
+      dataPath1
+    }
+
+    val dataPath3 = dataPath2.replace("/vsis3/", "/").replace("s3://eodata/", "/eodata/")
+    val dataPath4 = if (dataPath3.toLowerCase.startsWith("/eodata/")) {
+      val eodataPathCopy = "/eodata_CACHE/eodata/" + dataPath3.substring("/eodata/".length)
+      if (Files.exists(Paths.get(eodataPathCopy))) {
+        eodataPathCopy
+      } else if (Files.exists(Paths.get(dataPath3))) {
+        dataPath3
+      } else if (Files.exists(Paths.get("/eodata_CACHE/eodata/"))) {
+        // fallback for nested buckets, or if S3 not mounted
+        val cmd = s"""s3cmd -c /home/emile/openeo/VITO/VITO2024/.s3cfg_dataspace_copernicus -r get s3://${dataPath3.replace("/eodata/", "EODATA/")} ${eodataPathCopy}""";
+        println("CMD: " + cmd)
+
+        sys.process.Process(cmd).!
+        eodataPathCopy
+      } else if (Files.exists(Paths.get("/eodata_CACHE/eodata/"))
+        && Files.exists(Paths.get(dataPath3))) { // Don't attempt to copy "/bogus"
+        println("COPY dataPath: " + eodataPathCopy)
+        Files.createDirectories(Paths.get(eodataPathCopy).getParent)
+        val tmpBeforeAtomicMove = Paths.get(eodataPathCopy + "_unconfirmed_download_" + java.util.UUID.randomUUID())
+        Files.copy(Paths.get(dataPath3), tmpBeforeAtomicMove)
+        Files.move(tmpBeforeAtomicMove, Paths.get(eodataPathCopy))
+        eodataPathCopy
+      } else {
+        dataPath2
+      }
+    } else if (dataPath3.startsWith("s3://HRVPP")) {
+      dataPath3.replace("s3://HRVPP", "/HRVPP")
+    } else {
+      dataPath2
+    }
+
+    val dataPath = if (dataPathArg.startsWith("NETCDF:/")) {
+      "NETCDF:" + dataPath4 + ":" + dataPathArg.split(":").last
+    } else {
+      dataPath4
+    }
+    dataPath
+  }
 
   lazy val cloudPath: Option[(String, String)] = for {
     cloudDataPath <- feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString)
