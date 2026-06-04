@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.layers.provider
 
-import geotrellis.raster.{CellType, ConvertTargetCellType, RasterSource}
+import geotrellis.raster.RasterSource
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import org.slf4j.{Logger, LoggerFactory}
 
