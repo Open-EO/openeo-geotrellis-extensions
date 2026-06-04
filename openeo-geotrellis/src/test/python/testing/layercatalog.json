@@ -51,7 +51,11 @@
               "rename": "grid:code",
               "value_mapping": "add-MGRS-prefix"
             }
-          }
+          },
+          "cellsize_override": [
+            10.0,
+            10.0
+          ]
         }
       }
     },
