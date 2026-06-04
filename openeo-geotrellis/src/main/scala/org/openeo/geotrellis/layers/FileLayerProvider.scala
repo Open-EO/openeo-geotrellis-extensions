@@ -295,7 +295,7 @@ object FileLayerProvider {
   }
 
 
-  private def productsToSpatialKeys(inputFeatures: Option[Seq[Feature]], metadata: TileLayerMetadata[SpaceTimeKey], sc: SparkContext) = {
+  private def productsToSpatialKeys(inputFeatures: Option[Seq[Feature]], metadata: TileLayerMetadata[SpaceTimeKey], sc: SparkContext): RDD[(SpatialKey, vector.Feature[Geometry, Feature])] = {
     inputFeatures.get.foreach(f => {
       val extent = f.geometry.getOrElse(f.bbox.toPolygon()).extent
       if (!checkLatLon(extent)) throw new IllegalArgumentException(s"Geometry or Bounding box provided by the catalog has to be in EPSG:4326, but got ${extent} for catalog entry ${f}")
@@ -304,8 +304,17 @@ object FileLayerProvider {
     //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
     val boundsLatLng = ProjectedExtent(metadata.extent, metadata.crs).reproject(LatLng).buffer(0.0001).toPolygon()
     val geometricFeatures = inputFeatures.get.map(f => geotrellis.vector.Feature(f.geometry.getOrElse(f.bbox.toPolygon()), f))
-    val keysForfeatures: RDD[(SpatialKey, vector.Feature[Geometry, Feature])] = clipWithErrorLogging(metadata, sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs)))
-    keysForfeatures
+    val polygonFeatureRDD = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs))
+    val clippingFunction: (Extent, vector.Feature[Geometry, Feature], ClipToGrid.Predicates) => Option[vector.Feature[Geometry, Feature]] = (e, f, p) => {
+      try {
+        clipFeatureToExtent[Geometry, Feature](e, f, p)
+      } catch {
+        case ex: Exception => throw new IOException(s"load_collection/load_stac: internal error while clipping input geometry ${f.geom} to extent ${e}. Original message: ${ex.getMessage} ", ex)
+      }
+
+    }
+    val clipped: RDD[(SpatialKey, vector.Feature[Geometry, Feature])] = ClipToGrid.apply[Geometry, Feature](rdd = polygonFeatureRDD, layout = metadata.layout, clipFeature = clippingFunction)
+    clipped
   }
 
   def convertNetcdfLinksToGDALFormat(link: Link, bandName: String, bandIndex: Int) = {
@@ -618,22 +627,21 @@ object FileLayerProvider {
 
     }else{
       val metadataCubePartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
-      val clippedFeaturesRDD: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = clipWithErrorLogging(metadata, clippedFeatures)
-      clippedFeaturesRDD.partitionBy(metadataCubePartitioner)
-    }
+      val features: RDD[vector.Feature[Geometry, (RasterSource, Feature)]] = clippedFeatures
+      val value: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = features.clipToGrid(metadata.layout)
 
-  }
-
-  private def clipWithErrorLogging(metadata: TileLayerMetadata[SpaceTimeKey], clippedFeatures: RDD[vector.Feature[Geometry, (RasterSource, Feature)]]) = {
-    val clippingFunction: (Extent, vector.Feature[MultiPolygon, Unit], ClipToGrid.Predicates) => Option[vector.Feature[Geometry, Unit]] = (e, f, p) => {
-      try {
-        clipFeatureToExtent[Geometry, (RasterSource, Feature)](e, f, p)
-      } catch {
-        case ex: Exception => throw new IOException(s"load_collection/load_stac: internal error while clipping input geometry ${f.geom} to extent ${e}. Original message: ${ex.getMessage} ", ex)
+      val clippingFunction: (Extent, vector.Feature[Geometry, (RasterSource, Feature)], ClipToGrid.Predicates) => Option[vector.Feature[Geometry, (RasterSource, Feature)]] = (e, f, p) => {
+        try {
+          val option: Option[vector.Feature[Geometry, (RasterSource, Feature)]] = clipFeatureToExtent[Geometry, (RasterSource, Feature)](e, f, p)
+          option
+        } catch {
+          case ex: Exception => throw new IOException(s"load_collection/load_stac: internal error while clipping input geometry ${f.geom} to extent ${e}. Original message: ${ex.getMessage} ", ex)
+        }
       }
+      val clipped: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = ClipToGrid.apply[Geometry, (RasterSource, Feature)](rdd = features, layout = metadata.layout, clipFeature = clippingFunction)
+      clipped.partitionBy(metadataCubePartitioner)
     }
-    val clipped = ClipToGrid.apply[Geometry, (RasterSource, Feature)](rdd = clippedFeatures, layout = metadata.layout, clipFeature = clippingFunction).mapValues(_.geom)
-    clipped
+
   }
 
   private val metadataCache =
@@ -987,7 +995,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   }
 
 
-  private def clipToGridWithErrorHandling(polygonsRDD: RDD[MultiPolygon], metadata: TileLayerMetadata[SpaceTimeKey]) = {
+  private def clipToGridWithErrorHandling(polygonsRDD: RDD[MultiPolygon], metadata: TileLayerMetadata[SpaceTimeKey]): RDD[(SpatialKey, Geometry)] = {
     // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
     val polygonFeatureRDD: RDD[vector.Feature[MultiPolygon, Unit]] = polygonsRDD.map(vector.Feature(_, ()))
     val clippingFunction: (Extent, vector.Feature[MultiPolygon, Unit], ClipToGrid.Predicates) => Option[vector.Feature[Geometry, Unit]] = (e, f, p) => {
@@ -998,7 +1006,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
 
     }
-    val clipped = ClipToGrid.apply[MultiPolygon, Unit](rdd = polygonFeatureRDD, layout = metadata.layout, clipFeature = clippingFunction).mapValues(_.geom)
+    val value: RDD[(SpatialKey, vector.Feature[Geometry, Unit])] = ClipToGrid.apply[MultiPolygon, Unit](rdd = polygonFeatureRDD, layout = metadata.layout, clipFeature = clippingFunction)
+    val clipped = value.mapValues(_.geom)
     clipped
   }
 
