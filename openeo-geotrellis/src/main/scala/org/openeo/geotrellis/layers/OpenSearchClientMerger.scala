@@ -31,7 +31,7 @@ object OpenSearchClientMerger {
           features.groupBy(f => (f.nominalDate, f.bbox)).map(f => {
             val f1 = f._2.head
             val links: Array[OpenSearchResponses.Link] = f._2.flatMap(_.links).groupBy(_.title).map(_._2.minBy(_.href)).toArray
-            OpenSearchResponses.Feature("merged", f1.bbox, f1.nominalDate, links, f1.resolution, f1.tileID, f1.geometry, f1.crs, f1.generalProperties, f1.rasterExtent, f1.deduplicationOrderValue, f1.cloudCover, f1.selfUrl)
+            OpenSearchResponses.Feature(f1.id, f1.bbox, f1.nominalDate, links, f1.resolution, f1.tileID, f1.geometry, f1.crs, f1.generalProperties, f1.rasterExtent, f1.deduplicationOrderValue, f1.cloudCover, f1.selfUrl)
           }).foreach(f => mergedFeatureClient.addFeature(f))
           mergedFeatureClient
         } else {
