@@ -117,10 +117,10 @@ object NetCDFCollection {
       })
     })
 
-    val first = features.first()
-    val cellType = first._2.cellType
-//    val cellTypes = features.map(_._2.cellType)
-//    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
+    val cellTypeOfFirst = features.first()._2.cellType
+    val cellTypes = features.map(_._2.cellType)
+    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
+    logger.info(s"NetCDFCollection: Cell type of first tile is ${cellTypeOfFirst}, but the union of all cell types is ${cellType}.")
 
     val extent = bboxWGS84.reproject(LatLng, crs(0))
     val layout = LayoutDefinition(RasterExtent(extent, CellSize(resolutions(0), resolutions(0))), 128)
