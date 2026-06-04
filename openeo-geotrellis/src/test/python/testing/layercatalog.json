@@ -1,5 +1,515 @@
 [
   {
+    "id": "TERRASCOPE_S2_FAPAR_V2",
+    "title": "Sentinel-2 Fraction of Absorbed Photosynthetically Active Radiation (FAPAR) (tiles) - V2",
+    "description": "FAPAR corresponds to the fraction of photosynthetically active radiation absorbed by the canopy. The FAPAR value results directly from the radiative transfer model in the canopy which is computed instantaneously. It depends on canopy structure, vegetation element optical properties and illumination conditions. FAPAR is very useful as input to a number of primary productivity models which run at the daily time step. Consequently, the product definition should correspond to the daily integrated FAPAR value that can be approached by computation of the clear sky daily integrated FAPAR values as well as the FAPAR value computed for diffuse conditions. The SENTINEL 2 FAPAR product corresponds to the instantaneous black-sky around 10:15 which is a close approximation of the daily integrated black-sky FAPAR value. The FAPAR refers only to the green parts of the canopy.FAPAR corresponds to the fraction of photosynthetically active radiation absorbed by the canopy.The FAPAR value results directly from the radiative transfer model in the canopy which is computed instantaneously. It depends on canopy structure, vegetation element optical properties and illumination conditions. FAPAR is very useful as input to a number of primary productivity models which run at the daily time step. Consequently, the product definition should correspond to the daily integrated FAPAR value that can be approached by computation of the clear sky daily integrated FAPAR values as well as the FAPAR value computed for diffuse conditions. The SENTINEL 2 FAPAR product corresponds to the instantaneous black-sky around 10:15 which is a close approximation of the daily integrated black-sky FAPAR value. The FAPAR refers only to the green parts of the canopy.",
+    "license": "other",
+    "providers": [
+      {
+        "name": "ESA",
+        "roles": [
+          "producer"
+        ],
+        "url": "https://earth.esa.int/"
+      },
+      {
+        "name": "VITO",
+        "roles": [
+          "processor",
+          "host"
+        ],
+        "url": "https://terrascope.be/"
+      }
+    ],
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -84,
+            180,
+            84
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2015-06-23T00:00:00Z",
+            null
+          ]
+        ]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.terrascope.be/collections/terrascope-s2-fapar-v2",
+        "load_stac_feature_flags": {
+          "property_filter_adaptations": {
+            "tileId": {
+              "rename": "grid:code",
+              "value_mapping": "add-MGRS-prefix"
+            }
+          }
+        }
+      }
+    },
+    "summaries": {
+      "bands": [
+        {
+          "name": "FAPAR",
+          "aliases": [
+            "FAPAR_10M"
+          ],
+          "raster:scale": 0.005,
+          "raster:offset": 0,
+          "gsd": 10
+        },
+        {
+          "name": "SCL",
+          "aliases": [
+            "SCENECLASSIFICATION_20M"
+          ],
+          "gsd": 20
+        }
+      ],
+      "constellation": [
+        "sentinel-2"
+      ],
+      "instruments": [
+        "msi"
+      ],
+      "gsd": [
+        10,
+        20
+      ],
+      "platform": [
+        "sentinel-2a",
+        "sentinel-2b",
+        "sentinel-2c"
+      ],
+      "product:type": [
+        "FAPAR"
+      ],
+      "sat:orbit_state": [
+        "ascending",
+        "descending"
+      ],
+      "sat:relative_orbit": {
+        "minimum": 1,
+        "maximum": 143
+      },
+      "raster:bands": [
+        {
+          "name": "FAPAR",
+          "scale": 0.005,
+          "offset": 0
+        },
+        {
+          "name": "SCL"
+        }
+      ],
+      "eo:bands": [
+        {
+          "name": "FAPAR",
+          "aliases": [
+            "FAPAR_10M"
+          ],
+          "gsd": 10
+        },
+        {
+          "name": "SCL",
+          "aliases": [
+            "SCENECLASSIFICATION_20M"
+          ],
+          "gsd": 20
+        }
+      ]
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "reference_system": {
+          "$schema": "https://proj.org/schemas/v0.2/projjson.schema.json",
+          "type": "GeodeticCRS",
+          "name": "AUTO 42001 (Universal Transverse Mercator)",
+          "datum": {
+            "type": "GeodeticReferenceFrame",
+            "name": "World Geodetic System 1984",
+            "ellipsoid": {
+              "name": "WGS 84",
+              "semi_major_axis": 6378137,
+              "inverse_flattening": 298.257223563
+            }
+          },
+          "coordinate_system": {
+            "subtype": "ellipsoidal",
+            "axis": [
+              {
+                "name": "Geodetic latitude",
+                "abbreviation": "Lat",
+                "direction": "north",
+                "unit": "degree"
+              },
+              {
+                "name": "Geodetic longitude",
+                "abbreviation": "Lon",
+                "direction": "east",
+                "unit": "degree"
+              }
+            ]
+          },
+          "area": "World",
+          "bbox": {
+            "south_latitude": -90,
+            "west_longitude": -180,
+            "north_latitude": 90,
+            "east_longitude": 180
+          },
+          "id": {
+            "authority": "OGC",
+            "version": "1.3",
+            "code": "Auto42001"
+          }
+        },
+        "step": 10
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "reference_system": {
+          "$schema": "https://proj.org/schemas/v0.2/projjson.schema.json",
+          "type": "GeodeticCRS",
+          "name": "AUTO 42001 (Universal Transverse Mercator)",
+          "datum": {
+            "type": "GeodeticReferenceFrame",
+            "name": "World Geodetic System 1984",
+            "ellipsoid": {
+              "name": "WGS 84",
+              "semi_major_axis": 6378137,
+              "inverse_flattening": 298.257223563
+            }
+          },
+          "coordinate_system": {
+            "subtype": "ellipsoidal",
+            "axis": [
+              {
+                "name": "Geodetic latitude",
+                "abbreviation": "Lat",
+                "direction": "north",
+                "unit": "degree"
+              },
+              {
+                "name": "Geodetic longitude",
+                "abbreviation": "Lon",
+                "direction": "east",
+                "unit": "degree"
+              }
+            ]
+          },
+          "area": "World",
+          "bbox": {
+            "south_latitude": -90,
+            "west_longitude": -180,
+            "north_latitude": 90,
+            "east_longitude": 180
+          },
+          "id": {
+            "authority": "OGC",
+            "version": "1.3",
+            "code": "Auto42001"
+          }
+        },
+        "step": 10
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "FAPAR",
+          "SCL"
+        ]
+      }
+    }
+  },
+  {
+    "id": "CLMS_NPP_GLOBAL_300M_10DAILY_V2",
+    "type": "Collection",
+    "bands": [
+      {
+        "name": "qflag",
+        "description": "Quality Flag on Net Primary Production"
+      },
+      {
+        "name": "npp",
+        "description": "Net Primary Production"
+      }
+    ],
+    "links": [
+      {
+        "rel": "items",
+        "type": "application/geo+json",
+        "href": "https://stac.dataspace.copernicus.eu/v1/collections/clms_npp_global_300m_10daily_v2_cog/items"
+      },
+      {
+        "rel": "parent",
+        "type": "application/json",
+        "href": "https://stac.dataspace.copernicus.eu/v1/"
+      },
+      {
+        "rel": "root",
+        "type": "application/json",
+        "href": "https://stac.dataspace.copernicus.eu/v1/"
+      },
+      {
+        "rel": "self",
+        "type": "application/json",
+        "href": "https://stac.dataspace.copernicus.eu/v1/collections/clms_npp_global_300m_10daily_v2_cog"
+      },
+      {
+        "rel": "license",
+        "href": "https://land.copernicus.eu/en/data-policy",
+        "type": "text/html",
+        "title": "Data policy for Copernicus Land Monitoring Service products and services"
+      },
+      {
+        "rel": "about",
+        "href": "https://land.copernicus.eu/en/products/vegetation/net-primary-production-v2-0-300m",
+        "type": "text/html",
+        "title": "Product page"
+      },
+      {
+        "rel": "http://www.opengis.net/def/rel/ogc/1.0/queryables",
+        "type": "application/schema+json",
+        "title": "Queryables",
+        "href": "https://stac.dataspace.copernicus.eu/v1/collections/clms_npp_global_300m_10daily_v2_cog/queryables"
+      }
+    ],
+    "title": "CLMS NPP Global 300m 10-daily V2 (COG)",
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -179.9999999,
+            -59.9985119,
+            179.9985119,
+            80.0014881
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2013-11-01T00:00:00.000Z",
+            null
+          ]
+        ]
+      }
+    },
+    "license": "other",
+    "contacts": [
+      {
+        "name": "Copernicus Land Monitoring Service",
+        "links": [
+          {
+            "rel": "about",
+            "href": "https://land.copernicus.eu/",
+            "type": "text/html",
+            "title": "Homepage of the Copernicus Land Monitoring Service"
+          }
+        ],
+        "roles": [
+          "producer"
+        ],
+        "emails": [
+          {
+            "roles": [
+              "contact point"
+            ],
+            "value": "copernicus@eea.europa.eu"
+          }
+        ],
+        "phones": [
+          {
+            "roles": [
+              "contact point"
+            ],
+            "value": "+4533367100"
+          }
+        ],
+        "organization": "European Environment Agency"
+      }
+    ],
+    "keywords": [
+      "Copernicus",
+      "CLMS",
+      "NPP",
+      "Net Primary Production",
+      "carbon flux",
+      "global",
+      "10-daily",
+      "300m",
+      "PROBA-V",
+      "Sentinel-3",
+      "OLCI"
+    ],
+    "providers": [
+      {
+        "url": "https://cloudferro.com/",
+        "name": "CloudFerro",
+        "roles": [
+          "host"
+        ]
+      },
+      {
+        "url": "https://land.copernicus.eu/",
+        "name": "European Environment Agency",
+        "roles": [
+          "producer"
+        ]
+      },
+      {
+        "url": "https://commission.europa.eu/",
+        "name": "European Commission",
+        "roles": [
+          "licensor"
+        ]
+      },
+      {
+        "url": "https://vito.be/",
+        "name": "VITO",
+        "roles": [
+          "processor"
+        ]
+      }
+    ],
+    "summaries": {
+      "gsd": [
+        300.0
+      ],
+      "platform": [
+        "proba-v"
+      ],
+      "proj:code": [
+        "EPSG:4326"
+      ],
+      "proj:shape": [
+        47040,
+        120960
+      ],
+      "instruments": [
+        "olci",
+        "probav"
+      ],
+      "product:type": [
+        "net-gross_primary_production"
+      ],
+      "constellation": [
+        "proba-1"
+      ],
+      "processing:level": [
+        "L3"
+      ],
+      "processing:version": [
+        "V2.0.1"
+      ],
+      "product:timeliness": [
+        "P2D"
+      ],
+      "product:timeliness_category": [
+        "NRT"
+      ],
+      "raster:bands": [
+        {
+          "name": "qflag",
+          "data_type": "float32"
+        },
+        {
+          "name": "npp",
+          "data_type": "float32"
+        }
+      ],
+      "eo:bands": [
+        {
+          "name": "qflag",
+          "description": "Quality Flag on Net Primary Production",
+          "gsd": 300.0,
+          "data_type": "float32"
+        },
+        {
+          "name": "npp",
+          "description": "Net Primary Production",
+          "gsd": 300.0,
+          "data_type": "float32"
+        }
+      ],
+      "bands": [
+        {
+          "name": "qflag",
+          "description": "Quality Flag on Net Primary Production",
+          "data_type": "float32",
+          "gsd": 300.0
+        },
+        {
+          "name": "npp",
+          "description": "Net Primary Production",
+          "data_type": "float32",
+          "gsd": 300.0
+        }
+      ]
+    },
+    "description": "Defined as the net amount of biomass, or carbon, produced by plants per unit area and time, expressed in gC/m\u00b2/day. It is equal to the difference between the Gross Primary Production (GPP), i.e. the total amount of carbon produced through photosynthesis, and the amount of energy used for plant respiration. Every 10-days estimates are available in near real time at global scale in the spatial resolution of about 300 m from January 2014 to the present.",
+    "stac_version": "1.1.0",
+    "stac_extensions": [
+      "https://stac-extensions.github.io/alternate-assets/v1.2.0/schema.json",
+      "https://stac-extensions.github.io/authentication/v1.1.0/schema.json",
+      "https://stac-extensions.github.io/processing/v1.2.0/schema.json",
+      "https://stac-extensions.github.io/product/v1.0.0/schema.json",
+      "https://stac-extensions.github.io/projection/v2.0.0/schema.json",
+      "https://stac-extensions.github.io/raster/v2.0.0/schema.json",
+      "https://stac-extensions.github.io/storage/v2.0.0/schema.json",
+      "https://stac-extensions.github.io/contacts/v1.0.0/schema.json",
+      "https://stac-extensions.github.io/classification/v2.0.0/schema.json"
+    ],
+    "experimental": true,
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.dataspace.copernicus.eu/v1/collections/clms_npp_global_300m_10daily_v2_cog",
+        "load_stac_feature_flags": {
+          "apply_raster_scale_and_offset": true
+        },
+        "enrich": false
+      }
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "qflag",
+          "npp"
+        ]
+      }
+    }
+  },
+  {
     "id": "CLMS_LSP_GLOBAL_300M_YEARLY_V2",
     "type": "Collection",
     "bands": [

@@ -49,7 +49,7 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
   val softErrors: Boolean = maxSoftErrorsRatio > 0.0
   val bandNames: Seq[String] = openSearchLinkTitles.toList
 
-  def getBandAssets(item: Feature): Seq[Option[(Link, Int)]] = {
+  def getBandAssets(item: Feature): Seq[Option[(Link, Int, String)]] = {
     if (fromLoadStac) {
       getBandAssetsByBandInfo(item)
     } else {
@@ -57,8 +57,8 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
     }
   }
 
-  private def getBandAssetsByBandInfo(item: Feature): Seq[Option[(Link, Int)]] = { // [Some((href, bandIndex))]
-    def getBandAsset(bandName: String): Option[(Link, Int)] = { // (href, bandIndex)
+  private def getBandAssetsByBandInfo(item: Feature): Seq[Option[(Link, Int, String)]] = { // [Some((href, bandIndex))]
+    def getBandAsset(bandName: String): Option[(Link, Int, String)] = { // (href, bandIndex, bandName)
       item.links
         .flatMap(link => link.bandNames match {
           case Some(assetBandNames) =>
@@ -79,7 +79,7 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
       .map(getBandAsset)
   }
 
-  private def getBandAssetsByLinkTitle(item: Feature): Seq[Option[(Link, Int)]] = for {
+  private def getBandAssetsByLinkTitle(item: Feature): Seq[Option[(Link, Int, String)]] = for {
     (title, bandIndex) <- openSearchLinkTitlesWithBandId.toList
     linkWithTitle = item.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase).orElse {
       logger.warn(s"asset with ID/title $title not found in feature ${item.id}; inserting NODATA band instead")
