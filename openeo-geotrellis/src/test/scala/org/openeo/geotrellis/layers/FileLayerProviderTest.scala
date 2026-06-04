@@ -1108,7 +1108,9 @@ class FileLayerProviderTest extends RasterMatchers {
           bandNames = Some(Seq("NDSI", "NDSI_Snow_Cover"))
         )
       ),
-      resolution = Some(0.1))
+      resolution = Some(0.1),
+      collectionId = "modis-terra-mod10a1",
+    )
 
     val openEOSearchClient = new FixedFeaturesOpenSearchClient()
     openEOSearchClient.addFeature(feature)

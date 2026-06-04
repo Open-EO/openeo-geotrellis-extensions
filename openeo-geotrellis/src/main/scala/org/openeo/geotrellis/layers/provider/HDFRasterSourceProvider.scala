@@ -16,11 +16,10 @@ class HDFRasterSourceProvider extends RasterSourceProvider {
 
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
     val bandName = definition.bandName
-    val title = definition.link.title.getOrElse(definition.link.href.toString)
-    val band = title match {
-      case "MODIS Terra Snow Cover Daily Global 500m" => s":MOD_Grid_Snow_500m:$bandName"
-      case _ => s":MOD_Grid_Snow_500m:$bandName"
-//      case _ => throw new NotImplementedError(s"Band name $bandName currently not supported for HDF files with title $title and datapath ${definition.dataPath}")
+    val collectionId = definition.feature.collectionId
+    val band = collectionId match {
+      case "modis-terra-mod10a1" => s":MOD_Grid_Snow_500m:$bandName"
+      case _ => throw new NotImplementedError(s"Collection with collection id $collectionId is currently not supported for HDF files with datapath ${definition.dataPath}")
     }
 
     val dataPath = s"HDF4_EOS:EOS_GRID:${definition.dataPath.replace("/vsis3/EODATA/", "/vsis3/eodata/").replace("https", "/vsicurl/https")}$band"
