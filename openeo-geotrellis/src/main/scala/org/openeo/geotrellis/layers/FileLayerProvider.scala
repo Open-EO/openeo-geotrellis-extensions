@@ -615,7 +615,7 @@ object FileLayerProvider {
         intersection.map(vector.Feature(_, data))
       }
 
-    if(maybeKeys.isDefined) {
+    if (maybeKeys.isDefined) {
       val transform = metadata.mapTransform
       val geometryToKey: RDD[vector.Feature[Polygon, SpatialKey]] = maybeKeys.get.keys.map(k=>{
         vector.Feature(transform.apply(k).toPolygon(),k)
@@ -625,11 +625,8 @@ object FileLayerProvider {
       val joined: RDD[(vector.Feature[Geometry, (RasterSource, Feature)], vector.Feature[Polygon, SpatialKey])] = VectorJoin(clippedFeatures,geometryToKey, (a, b)=>{a.intersects(b)})
       joined.map(t=>(t._2.data,t._1))
 
-    }else{
+    } else{
       val metadataCubePartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
-      val features: RDD[vector.Feature[Geometry, (RasterSource, Feature)]] = clippedFeatures
-      val value: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = features.clipToGrid(metadata.layout)
-
       val clippingFunction: (Extent, vector.Feature[Geometry, (RasterSource, Feature)], ClipToGrid.Predicates) => Option[vector.Feature[Geometry, (RasterSource, Feature)]] = (e, f, p) => {
         try {
           val option: Option[vector.Feature[Geometry, (RasterSource, Feature)]] = clipFeatureToExtent[Geometry, (RasterSource, Feature)](e, f, p)
@@ -638,7 +635,7 @@ object FileLayerProvider {
           case ex: Exception => throw new IOException(s"load_collection/load_stac: internal error while clipping input geometry ${f.geom} to extent ${e}. Original message: ${ex.getMessage} ", ex)
         }
       }
-      val clipped: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = ClipToGrid.apply[Geometry, (RasterSource, Feature)](rdd = features, layout = metadata.layout, clipFeature = clippingFunction)
+      val clipped: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = ClipToGrid.apply[Geometry, (RasterSource, Feature)](rdd = clippedFeatures, layout = metadata.layout, clipFeature = clippingFunction)
       clipped.partitionBy(metadataCubePartitioner)
     }
 
