@@ -122,7 +122,7 @@ object FileLayerProvider {
             bandIndices: Seq[Int] = Seq(), correlationId: String = "", experimental: Boolean = false,
             maxSoftErrorsRatio: Double = 0.0): FileLayerProvider = new FileLayerProvider(
     OpenSearchClientMerger.merge(openSearch), openSearchCollectionId, NonEmptyList.fromListUnsafe(openSearchLinkTitles.filterNot(s => s.equalsIgnoreCase("prob_class_25"))), rootPath, maxSpatialResolution, pathDateExtractor,
-    attributeValues, layoutScheme, bandIndices /*0Seq(0,1,2,3,4,5,6)*/, correlationId, experimental, maxSoftErrorsRatio,
+    attributeValues, layoutScheme, bandIndices, correlationId, experimental, maxSoftErrorsRatio,
     disambiguateConstructors = null
   )
 
@@ -304,8 +304,7 @@ object FileLayerProvider {
     //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
     val boundsLatLng = ProjectedExtent(metadata.extent, metadata.crs).reproject(LatLng).buffer(0.0001).toPolygon()
     val geometricFeatures = inputFeatures.get.map(f => geotrellis.vector.Feature(f.geometry.getOrElse(f.bbox.toPolygon()), f))
-    val keysForfeatures: RDD[(SpatialKey, vector.Feature[Geometry, Feature])] = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs))
-      .clipToGrid(metadata)
+    val keysForfeatures: RDD[(SpatialKey, vector.Feature[Geometry, Feature])] = clipWithErrorLogging(metadata, sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs)))
     keysForfeatures
   }
 
@@ -619,9 +618,22 @@ object FileLayerProvider {
 
     }else{
       val metadataCubePartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
-      clippedFeatures.clipToGrid(metadata.layout).partitionBy(metadataCubePartitioner)
+      val clippedFeaturesRDD: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = clipWithErrorLogging(metadata, clippedFeatures)
+      clippedFeaturesRDD.partitionBy(metadataCubePartitioner)
     }
 
+  }
+
+  private def clipWithErrorLogging(metadata: TileLayerMetadata[SpaceTimeKey], clippedFeatures: RDD[vector.Feature[Geometry, (RasterSource, Feature)]]) = {
+    val clippingFunction: (Extent, vector.Feature[MultiPolygon, Unit], ClipToGrid.Predicates) => Option[vector.Feature[Geometry, Unit]] = (e, f, p) => {
+      try {
+        clipFeatureToExtent[Geometry, (RasterSource, Feature)](e, f, p)
+      } catch {
+        case ex: Exception => throw new IOException(s"load_collection/load_stac: internal error while clipping input geometry ${f.geom} to extent ${e}. Original message: ${ex.getMessage} ", ex)
+      }
+    }
+    val clipped = ClipToGrid.apply[Geometry, (RasterSource, Feature)](rdd = clippedFeatures, layout = metadata.layout, clipFeature = clippingFunction).mapValues(_.geom)
+    clipped
   }
 
   private val metadataCache =
