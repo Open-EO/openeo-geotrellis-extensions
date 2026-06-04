@@ -720,7 +720,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def determineCelltype(overlappingRasterSources: Seq[(RasterSource, Feature)]): CellType = {
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
+      val CellTypeFirstSource = arbitraryRasterSource.cellType
       val commonCellType = overlappingRasterSources.foldLeft(BitCellType:CellType)((cumCellType, CurCellType) => cellTypeUnionWithNoData(cumCellType, CurCellType._1.cellType))
+
+      logger.info(s"Determined common cell type is $commonCellType based on first source cell type $CellTypeFirstSource ")
       commonCellType match {
         case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
         case _: NoNoData => commonCellType.withDefaultNoData()
