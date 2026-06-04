@@ -14,30 +14,26 @@ object OpenSearchClientMerger {
         val features: Seq[OpenSearchResponses.Feature] = client.getProducts(null, null, null)
         if (features.size > 1
         ) {
+          if (features.map(_.collectionId).distinct.size > 1) {
+            logger.debug(s"Multiple features with different collectionId found in OpenSearch client, cannot merge into single feature client")
+            return client
+          }
           if (features.map(_.crs).distinct.size > 1) {
-            logger.warn(s"Multiple features with different CRS found in OpenSearch client, cannot merge into single feature client")
+            logger.debug(s"Multiple features with different CRS found in OpenSearch client, cannot merge into single feature client")
             return client
           }
           if (features.map(_.resolution).distinct.size > 1) {
-            logger.warn(s"Multiple features with different resolution found in OpenSearch client, cannot merge into single feature client")
+            logger.debug(s"Multiple features with different resolution found in OpenSearch client, cannot merge into single feature client")
             return client
           }
-          if (features.map(_.bbox).distinct.size > 1) {
-            logger.warn(s"Multiple features with different bbox found in OpenSearch client, cannot merge into single feature client")
-            return client
-          }
-          if (features.map(_.geometry).distinct.size > 1) {
-            logger.warn(s"Multiple features with different geometry found in OpenSearch client, cannot merge into single feature client")
-            return client
-          }
-          logger.warn(s"Multiple features found in OpenSearch client, merging into single feature client with combined links")
-          val singleFeatureClient = new FixedFeaturesOpenSearchClient()
-          features.groupBy(_.nominalDate).map(dateFeature => {
-            val f1 = dateFeature._2.head
-            val links: Array[OpenSearchResponses.Link] = dateFeature._2.flatMap(_.links).toArray
+          logger.warn(s"Multiple compatible features found in OpenSearch client, merging into single feature client with combined links")
+          val mergedFeatureClient = new FixedFeaturesOpenSearchClient()
+          features.groupBy(f => (f.nominalDate, f.bbox)).map(f => {
+            val f1 = f._2.head
+            val links: Array[OpenSearchResponses.Link] = f._2.flatMap(_.links).groupBy(_.title).map(_._2.minBy(_.href)).toArray
             OpenSearchResponses.Feature("merged", f1.bbox, f1.nominalDate, links, f1.resolution, f1.tileID, f1.geometry, f1.crs, f1.generalProperties, f1.rasterExtent, f1.deduplicationOrderValue, f1.cloudCover, f1.selfUrl)
-          }).foreach(f => singleFeatureClient.addFeature(f))
-          singleFeatureClient
+          }).foreach(f => mergedFeatureClient.addFeature(f))
+          mergedFeatureClient
         } else {
           client
         }
