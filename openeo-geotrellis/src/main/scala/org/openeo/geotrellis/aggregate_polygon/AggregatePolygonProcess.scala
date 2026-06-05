@@ -241,6 +241,9 @@ class AggregatePolygonProcess {
   def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
     import org.apache.spark.storage.StorageLevel._
 
+    val cellType = datacube.metadata.cellType
+
+    logger.info(s"Starting aggregateSpatialGeneric with ${polygonsWithIndexMapping._1.size} polygons, bandCount: $bandCount,cell type: $cellType")
     val (polygons, indexMapping) = polygonsWithIndexMapping
 
     var index = -1
@@ -265,6 +268,7 @@ class AggregatePolygonProcess {
       combinedRDD.name = "aggregate_spatial: datacube masked with geometries"
       val pixelRDD: RDD[Row] = combinedRDD.flatMap{
         case (key: SpaceTimeKey,( tile: MultibandTile,zones: Tile)) => {
+          logger.info(s"Processing tile ${key} with ${tile.bandCount} bands, cell type: ${tile.cellType}, zones with cell type: ${zones.cellType}")
           val rows  = tile.rows
           val cols  = tile.cols
           val bands = checkTileBandCount(tile.bandCount, bandCount)
@@ -316,6 +320,7 @@ class AggregatePolygonProcess {
           result
         }
       }
+      logger.info(s"Completed processing tiles, now aggregating by date and polygon")
       val cellType = datacube.metadata.cellType
       val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
       pixelRDD.name = s"aggregate_spatial: all pixels by zone ${maybeLabels.map(_.mkString(",")).getOrElse("band labels unknown")} ${cellType.name}"
@@ -328,6 +333,7 @@ class AggregatePolygonProcess {
 
   private def aggregateByDateAndPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String, maybeBandLabels: Option[Seq[String]] = Option.empty[Seq[String]]) = {
     val session = SparkSession.builder().config(pixelRDD.sparkContext.getConf).getOrCreate()
+    logger.info(s"Starting aggregateByDateAndPolygon with bandCount: $bandCount, cell type: $cellType, outputPath: $outputPath")
     val dataType =
       if (cellType.isFloatingPoint) {
         DoubleType
@@ -374,6 +380,7 @@ class AggregatePolygonProcess {
     } else {
       aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
     }
+    logger.info(s"Finished writing output, now waiting until file is available at ${outputPath}")
 
     CreoS3Utils.waitTillPathAvailable(Paths.get(outputPath).resolve("_SUCCESS").toString)
   }
