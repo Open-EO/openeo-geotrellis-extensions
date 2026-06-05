@@ -2,14 +2,17 @@ package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
 import geotrellis.raster.CellSize
+import geotrellis.vector.Extent
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
 import org.openeo.geotrellis.layers.FileLayerProvider.convertNetcdfLinksToGDALFormat
-import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
+import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.net.URI
 import java.nio.file.{Path, Paths}
+import java.time.ZonedDateTime
+import scala.collection.immutable
 
 case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
                                  maxSpatialResolution: CellSize,
@@ -17,6 +20,43 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
                                  maxSoftErrorsRatio: Double) {
 
   private val logger: Logger = LoggerFactory.getLogger(classOf[BandAssetLinkResolver])
+
+  def mapping(openSearch: OpenSearchClient): Map[(String, String, Extent, ZonedDateTime), Feature] = {
+    openSearch match {
+      case client: FixedFeaturesOpenSearchClient => {
+        val features: Seq[OpenSearchResponses.Feature] = client.getProducts(null, null, null)
+        if (features.size > 1
+        ) {
+          if (features.map(_.collectionId).distinct.size > 1) {
+            logger.debug(s"Multiple features with different collectionId found in OpenSearch client, cannot merge into single feature client")
+            return immutable.Map.empty
+          }
+          if (features.map(_.crs).distinct.size > 1) {
+            logger.debug(s"Multiple features with different CRS found in OpenSearch client, cannot merge into single feature client")
+            return immutable.Map.empty
+          }
+          if (features.map(_.resolution).distinct.size > 1) {
+            logger.debug(s"Multiple features with different resolution found in OpenSearch client, cannot merge into single feature client")
+            return immutable.Map.empty
+          }
+          logger.warn(s"Multiple compatible features found in OpenSearch client, merging into single feature client with combined links")
+          val tupleToFeatures: Map[(ZonedDateTime, Extent), Seq[Feature]] = features.groupBy(f => (f.nominalDate, f.bbox))
+          tupleToFeatures.iterator.flatMap { case (_, features) => {
+            val f1 = features.head
+            val links: Array[Link] = features.flatMap(_.links).groupBy(_.bandNames).map(_._2.minBy(_.href)).toArray
+            val mergedFeature = OpenSearchResponses.Feature(f1.id, f1.bbox, f1.nominalDate, links, f1.resolution, f1.tileID, f1.geometry, f1.crs, f1.generalProperties, f1.rasterExtent, f1.deduplicationOrderValue, f1.cloudCover, f1.selfUrl)
+            features.map(fe => ((fe.collectionId, fe.id, fe.bbox, fe.nominalDate), mergedFeature))
+          }
+          }.toMap
+        } else {
+          immutable.Map.empty
+        }
+      }
+      case _ => immutable.Map.empty
+    }
+  }
+
+  val featureMapping: Map[(String, String, Extent, ZonedDateTime), Feature] = mapping(openSearch)
 
   val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     openSearch match {
@@ -51,7 +91,7 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
 
   def getBandAssets(item: Feature): Seq[Option[(Link, Int, String)]] = {
     if (fromLoadStac) {
-      getBandAssetsByBandInfo(item)
+      getBandAssetsByBandInfo(featureMapping.getOrElse((item.collectionId, item.id, item.bbox, item.nominalDate), item))
     } else {
       getBandAssetsByLinkTitle(item)
     }
@@ -59,7 +99,7 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
 
   private def getBandAssetsByBandInfo(item: Feature): Seq[Option[(Link, Int, String)]] = { // [Some((href, bandIndex))]
     def getBandAsset(bandName: String): Option[(Link, Int, String)] = { // (href, bandIndex, bandName)
-      item.links
+      val tuples: Array[(Link, Int, String)] = item.links
         .flatMap(link => link.bandNames match {
           case Some(assetBandNames) =>
             val bandIndex = assetBandNames.indexWhere(_ == bandName)
@@ -68,15 +108,16 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
             } else None
           case _ => None
         })
-        .headOption
+      tuples.headOption
         .orElse {
           logger.warn(s"asset with band name $bandName not found in feature ${item.id}; inserting NODATA band instead")
           None
         }
     }
 
-    bandNames
+    val maybeTuples = bandNames
       .map(getBandAsset)
+    maybeTuples
   }
 
   private def getBandAssetsByLinkTitle(item: Feature): Seq[Option[(Link, Int, String)]] = for {
