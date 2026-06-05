@@ -27,27 +27,30 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
         val features: Seq[OpenSearchResponses.Feature] = client.getProducts(null, null, null)
         if (features.size > 1
         ) {
-          if (features.map(_.collectionId).distinct.size > 1) {
-            logger.debug(s"Multiple features with different collectionId found in OpenSearch client, cannot merge into single feature client")
-            return immutable.Map.empty
+          val bandCount = features.flatMap(f => f.links.flatMap(l => l.bandNames.getOrElse(Seq()))).distinct.size
+          if (bandCount > 1 && features.map(_.links.flatMap(_.bandNames.getOrElse(Seq()))).forall(_.size != bandCount)) {
+            if (features.map(_.collectionId).distinct.size > 1) {
+              logger.debug(s"Multiple features with different collectionId found in OpenSearch client, cannot merge into single feature client")
+              return immutable.Map.empty
+            }
+            if (features.map(_.crs).distinct.size > 1) {
+              logger.debug(s"Multiple features with different CRS found in OpenSearch client, cannot merge into single feature client")
+              return immutable.Map.empty
+            }
+            if (features.map(_.resolution).distinct.size > 1) {
+              logger.debug(s"Multiple features with different resolution found in OpenSearch client, cannot merge into single feature client")
+              return immutable.Map.empty
+            }
+            logger.warn(s"Multiple incomplete features found in OpenSearch client, merging into single feature client with combined links")
+            val tupleToFeatures: Map[(ZonedDateTime, Extent), Seq[Feature]] = features.groupBy(f => (f.nominalDate, f.bbox))
+            tupleToFeatures.iterator.flatMap { case (_, features) => {
+              val links: Array[Link] = features.flatMap(_.links).groupBy(_.bandNames).map(_._2.minBy(_.href)).toArray
+              features.map(fe => ((fe.collectionId, fe.id, fe.bbox, fe.nominalDate), OpenSearchResponses.Feature(fe.id, fe.bbox, fe.nominalDate, links, fe.resolution, fe.tileID, fe.geometry, fe.crs, fe.generalProperties, fe.rasterExtent, fe.deduplicationOrderValue, fe.cloudCover, fe.selfUrl)))
+            }
+            }.toMap
+          } else {
+            immutable.Map.empty
           }
-          if (features.map(_.crs).distinct.size > 1) {
-            logger.debug(s"Multiple features with different CRS found in OpenSearch client, cannot merge into single feature client")
-            return immutable.Map.empty
-          }
-          if (features.map(_.resolution).distinct.size > 1) {
-            logger.debug(s"Multiple features with different resolution found in OpenSearch client, cannot merge into single feature client")
-            return immutable.Map.empty
-          }
-          logger.warn(s"Multiple compatible features found in OpenSearch client, merging into single feature client with combined links")
-          val tupleToFeatures: Map[(ZonedDateTime, Extent), Seq[Feature]] = features.groupBy(f => (f.nominalDate, f.bbox))
-          tupleToFeatures.iterator.flatMap { case (_, features) => {
-            val f1 = features.head
-            val links: Array[Link] = features.flatMap(_.links).groupBy(_.bandNames).map(_._2.minBy(_.href)).toArray
-            val mergedFeature = OpenSearchResponses.Feature(f1.id, f1.bbox, f1.nominalDate, links, f1.resolution, f1.tileID, f1.geometry, f1.crs, f1.generalProperties, f1.rasterExtent, f1.deduplicationOrderValue, f1.cloudCover, f1.selfUrl)
-            features.map(fe => ((fe.collectionId, fe.id, fe.bbox, fe.nominalDate), mergedFeature))
-          }
-          }.toMap
         } else {
           immutable.Map.empty
         }
@@ -91,7 +94,8 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
 
   def getBandAssets(item: Feature): Seq[Option[(Link, Int, String)]] = {
     if (fromLoadStac) {
-      getBandAssetsByBandInfo(featureMapping.getOrElse((item.collectionId, item.id, item.bbox, item.nominalDate), item))
+      val feature = featureMapping.getOrElse((item.collectionId, item.id, item.bbox, item.nominalDate), item)
+      getBandAssetsByBandInfo(feature)
     } else {
       getBandAssetsByLinkTitle(item)
     }
