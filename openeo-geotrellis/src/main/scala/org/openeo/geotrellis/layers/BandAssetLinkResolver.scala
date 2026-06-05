@@ -27,7 +27,7 @@ case class BandAssetLinkResolver(openSearch: OpenSearchClient, openSearchLinkTit
         val features: Seq[OpenSearchResponses.Feature] = client.getProducts(null, null, null)
         if (features.size > 1
         ) {
-          val bandCount = features.flatMap(f => f.links.flatMap(l => l.bandNames.get)).distinct.size
+          val bandCount = features.flatMap(f => f.links.flatMap(l => l.bandNames.getOrElse(Seq()))).distinct.size
           if (bandCount > 1 && features.map(_.links.flatMap(_.bandNames.getOrElse(Seq()))).forall(_.size != bandCount)) {
             if (features.map(_.collectionId).distinct.size > 1) {
               logger.debug(s"Multiple features with different collectionId found in OpenSearch client, cannot merge into single feature client")
