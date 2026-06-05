@@ -815,6 +815,8 @@ package object geotiff {
 
     preprocessedRdd.sparkContext.setJobDescription(s"Write geotiff ${preprocessedRdd.metadata.toRasterExtent()} of type ${preprocessedRdd.metadata.cellType}")
     val totalBandCount = preprocessedRdd.sparkContext.longAccumulator("TotalBandCount")
+    val bandCount = totalBandCount.value
+    logger.info(s"Total band count across all tiles: $bandCount")
     val typeAccumulator = new SetAccumulator[CellType]()
     preprocessedRdd.sparkContext.register(typeAccumulator, "CellType")
     val tiffs: collection.Map[Int, Array[Byte]] = preprocessedRdd.flatMap { case (key: K, multibandTile: MultibandTile) => {
