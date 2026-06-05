@@ -25,7 +25,6 @@ import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.GeneralUtils.cellTypeUnionWithNoData
 import org.openeo.geotrellis.layers.provider._
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, NoDataRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
@@ -121,7 +120,7 @@ object FileLayerProvider {
             maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
             bandIndices: Seq[Int] = Seq(), correlationId: String = "", experimental: Boolean = false,
             maxSoftErrorsRatio: Double = 0.0): FileLayerProvider = new FileLayerProvider(
-    OpenSearchClientMerger.merge(openSearch), openSearchCollectionId, NonEmptyList.fromListUnsafe(openSearchLinkTitles.filterNot(s => s.equalsIgnoreCase("prob_class_25"))), rootPath, maxSpatialResolution, pathDateExtractor,
+    openSearch, openSearchCollectionId, NonEmptyList.fromListUnsafe(openSearchLinkTitles.filterNot(s => s.equalsIgnoreCase("prob_class_25"))), rootPath, maxSpatialResolution, pathDateExtractor,
     attributeValues, layoutScheme, bandIndices /*0Seq(0,1,2,3,4,5,6)*/, correlationId, experimental, maxSoftErrorsRatio,
     disambiguateConstructors = null
   )
@@ -667,7 +666,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
            maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
            bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean = false,
-           maxSoftErrorsRatio: Double = 0.0) = this(OpenSearchClientMerger.merge(openSearch), openSearchCollectionId,
+           maxSoftErrorsRatio: Double = 0.0) = this(openSearch, openSearchCollectionId,
            openSearchLinkTitles = NonEmptyList.fromListUnsafe(for {
              (title, bandIndices) <- openSearchLinkTitles.toList.zipAll(bandIds, thisElem = "", thatElem = Seq(0))
              _ <- bandIndices
@@ -1040,7 +1039,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val rasterRegionContext = prepareRasterRegions(
       from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
     )
-    try {
+    try {1
       val cube = RasterTileLoader.loadRasterRegionsToTiles(
         rasterRegionContext.regions,
         rasterRegionContext.metadata,
