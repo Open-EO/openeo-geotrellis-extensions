@@ -87,7 +87,7 @@ object GeneralUtils {
         case _: UByteCells => ShortUserDefinedNoDataCellType(Short.MaxValue)
         case _: ShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
         case _: UShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
-        case _: IntCells => DoubleConstantNoDataCellType
+        case _: IntCells => FloatConstantNoDataCellType
         case _: FloatCells => DoubleConstantNoDataCellType
         case _: DoubleCells => DoubleConstantNoDataCellType
       }
