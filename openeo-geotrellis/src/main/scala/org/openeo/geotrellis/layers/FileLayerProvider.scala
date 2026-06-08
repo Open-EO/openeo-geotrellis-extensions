@@ -31,7 +31,7 @@ import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, Indexe
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
-import org.openeo.opensearch.OpenSearchResponses.{DoubleType, Feature, IntType, Link}
+import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.{IOException, Serializable}
@@ -1252,13 +1252,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           val nodata = link.nodata
 
           val cellTypeSTAC = if (dataType.isDefined){
-            val nodataDouble = nodata match {
-              case Some(i) if i.isInstanceOf[IntType] => Some(i.value().doubleValue())
-              case Some(d) if d.isInstanceOf[DoubleType] => Some(d.value().doubleValue())
-              case _ => None
-
-            }
-            Some(ConvertTargetCellType(dataType.get.withNoData(nodataDouble)))
+            Some(ConvertTargetCellType(dataType.get.withNoData(nodata)))
           }
           else None
           
