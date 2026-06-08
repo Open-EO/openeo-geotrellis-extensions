@@ -65,13 +65,13 @@ object CreoS3Utils {
   private def buildProxyS3Client(bucketName: String): S3Client = {
     val tokenFile = Path.of(sys.env.getOrElse("OPENEO_WEB_IDENTITY_TOKEN_FILE", "/opt/job_config/token"))
     if (!Files.isRegularFile(tokenFile) || !Files.isReadable(tokenFile)) {
-      logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: web identity token file is not readable: $tokenFile")
+      logger.info(s"Skip proxy S3 client for bucket $bucketName: web identity token file is not readable: $tokenFile")
       return null
     }
 
     val bucketConfigFile = Path.of(sys.env.getOrElse("OPENEO_BUCKET_CONFIG_FILE", "/opt/job_config/bucket_config.json"))
     if (!Files.isRegularFile(bucketConfigFile) || !Files.isReadable(bucketConfigFile)) {
-      logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config file is not readable: $bucketConfigFile")
+      logger.info(s"Skip proxy S3 client for bucket $bucketName: bucket config file is not readable: $bucketConfigFile")
       return null
     }
 
@@ -190,24 +190,26 @@ object CreoS3Utils {
     try {
       val bucketConfigRoot = objectMapper.readTree(bucketConfigFile.toFile)
       if (bucketConfigRoot == null || !bucketConfigRoot.isObject) {
-        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config file does not contain a JSON object: $bucketConfigFile")
+        logger.info(s"Skip proxy S3 client for bucket $bucketName: bucket config file does not contain a JSON object: $bucketConfigFile")
         return null
       }
 
       val bucketNode = bucketConfigRoot.path(bucketName)
       if (bucketNode.isMissingNode || !bucketNode.isObject) {
-        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config file has no object entry for this bucket: $bucketConfigFile")
+        logger.info(s"Skip proxy S3 client for bucket $bucketName: bucket config file has no object entry for this bucket: $bucketConfigFile")
         return null
       }
 
       val region = Option(bucketNode.path("region").asText(null)).map(_.trim).filter(_.nonEmpty).orNull
       if (region == null) {
+        //Warn because this should not happen
         logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config entry has no region: $bucketConfigFile")
         return null
       }
 
       val roleArn = Option(bucketNode.path("role_arn").asText(null)).map(_.trim).filter(_.nonEmpty).orNull
       if (roleArn == null) {
+        //Warn because this should not happen
         logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config entry has no role_arn: $bucketConfigFile")
         return null
       }

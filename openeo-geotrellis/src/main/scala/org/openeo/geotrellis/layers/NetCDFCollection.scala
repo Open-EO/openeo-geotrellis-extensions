@@ -117,8 +117,10 @@ object NetCDFCollection {
       })
     })
 
-    val cellTypes = features.map(_._2.cellType)
-    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
+    val first = features.first()
+    val cellType = first._2.cellType
+//    val cellTypes = features.map(_._2.cellType)
+//    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
 
     val extent = bboxWGS84.reproject(LatLng, crs(0))
     val layout = LayoutDefinition(RasterExtent(extent, CellSize(resolutions(0), resolutions(0))), 128)
