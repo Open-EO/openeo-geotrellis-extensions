@@ -25,13 +25,12 @@ import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.GeneralUtils.cellTypeUnionWithNoData
 import org.openeo.geotrellis.layers.provider._
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, NoDataRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
-import org.openeo.opensearch.OpenSearchResponses.{DoubleType, Feature, IntType, Link}
+import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.{IOException, Serializable}
@@ -322,8 +321,10 @@ object FileLayerProvider {
         }
       }
       val netCdfDatasetBandIndex = 0
-      Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex))
-    } else Some((link, bandIndex))
+      Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex, bandName))
+    } else if ((link.href.toString contains ".hdf") && !link.href.toString.startsWith("HDF4:")) {
+      Some((link, 0, bandName))
+    } else Some((link, bandIndex, bandName))
   }
 
   def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], filteredSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
@@ -635,6 +636,21 @@ object FileLayerProvider {
           Some(bbox, dates)
         }
       })
+
+  def fixIt(openSearch: OpenSearchClient): OpenSearchClient = {
+    openSearch match {
+      case client: FixedFeaturesOpenSearchClient =>
+        val features = client.getProducts(null, null, null)
+        if (features.size < 2) {
+          openSearch
+        } else {
+          openSearch
+        }
+      case _ =>
+        openSearch
+    }
+  }
+
 }
 
 class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
@@ -679,7 +695,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
       // dummy link to access the link parsing logic in the raster source providers
       val bandNameWithIdList: Seq[(String, Int)] = openSearchLinkTitles.map(bandName =>
-        (bandName, features.head.links.find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(new Link(new URI(""), Some(""), Some(""), Some(Seq()))).bandNames.get.indexOf(bandName))
+        (bandName, features.flatMap(f => f.links).find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(new Link(new URI(""), Some(""), Some(""), Some(Seq()))).bandNames.get.indexOf(bandName))
         ).toList
       bandNameWithIdList
     } else
@@ -1023,7 +1039,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val rasterRegionContext = prepareRasterRegions(
       from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
     )
-    try {
+    try {1
       val cube = RasterTileLoader.loadRasterRegionsToTiles(
         rasterRegionContext.regions,
         rasterRegionContext.metadata,
@@ -1221,9 +1237,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
+    logger.info(s"Processing feature ${feature.id} with crs ${feature.crs}, bbox ${feature.bbox}, date ${feature.nominalDate}, resolution ${feature.resolution}, collectionId ${feature.collectionId}" )
+
     val rasterSources: Seq[Option[(RasterSource, Int)]] =
       resolver.getBandAssets(feature).map {
-        case Some((link, bandIndex)) =>
+        case Some((link, bandIndex, bandName)) =>
           val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
@@ -1232,8 +1250,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
           val cellTypeSTAC = if (dataType.isDefined){
             val nodataDouble = nodata match {
-              case Some(i) if i.isInstanceOf[IntType] => Some(i.value().doubleValue())
-              case Some(d) if d.isInstanceOf[DoubleType] => Some(d.value().doubleValue())
               case _ => None
 
             }
@@ -1258,7 +1274,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
             case _ => None
           }
-          val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental)
+          val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental, bandName)
           val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
               _.canProcess(definition)
             ).map(

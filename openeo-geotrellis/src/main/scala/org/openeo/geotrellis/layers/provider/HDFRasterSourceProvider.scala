@@ -11,12 +11,19 @@ class HDFRasterSourceProvider extends RasterSourceProvider {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[HDFRasterSourceProvider])
 
   override def canProcess(definition: RasterSourceDefinition): Boolean = {
-    definition.dataPath.endsWith(".hdf")
+    definition.dataPath.contains(".hdf")
   }
 
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
-    val dataPath = definition.dataPath.replace("/vsis3/EODATA/", "/vsis3/eodata/").replace("https", "/vsicurl/https")
-    val warpOptions = GDALWarpOptions(cellSize = Some(definition.theResolution), targetCRS=Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod),te = Some(definition.targetExtent.extent))
+    val bandName = definition.bandName
+    val collectionId = definition.feature.collectionId
+    val band = collectionId match {
+      case "modis-terra-mod10a1" => s":MOD_Grid_Snow_500m:$bandName"
+      case _ => throw new NotImplementedError(s"HDFRasterSource: Collection with collection id $collectionId is currently not supported for HDF files with data path ${definition.dataPath}")
+    }
+
+    val dataPath = s"HDF4_EOS:EOS_GRID:${definition.dataPath.replace("/vsis3/EODATA/", "/vsis3/eodata/").replace("https", "/vsicurl/https")}$band"
+    val warpOptions = GDALWarpOptions(cellSize = Some(definition.theResolution), targetCRS = Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod),te = Some(definition.targetExtent.extent))
     GDALRasterSource(GDALPath(dataPath),options = warpOptions, targetCellType = definition.targetCellType)
   }
 }

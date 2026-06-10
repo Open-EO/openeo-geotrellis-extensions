@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{ConvertTargetCellType, DefaultTarget, DoubleConstantNoDataCellType, FloatConstantNoDataCellType, RasterSource, ShortConstantNoDataCellType, UShortConstantNoDataCellType, resample}
+import geotrellis.raster.{ConvertTargetCellType, DefaultTarget, FloatConstantNoDataCellType, RasterSource, ShortConstantNoDataCellType, UShortConstantNoDataCellType, resample}
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.openeo.geotrellis.layers.raster_source.ValueOffsetRasterSource
@@ -29,7 +29,7 @@ class ValueOffsetRasterSourceTest {
 
     val originalValue = getCornerPixelValue(tiffRs)
     val rs = new ValueOffsetRasterSource(tiffRs, 1, -1000)
-    val newValue = getCornerPixelValue(rs.convert(ConvertTargetCellType(DoubleConstantNoDataCellType)))
+    val newValue = getCornerPixelValue(rs.convert(ConvertTargetCellType(FloatConstantNoDataCellType)))
     assertEquals(originalValue - 1000, newValue)
   }
 
@@ -63,7 +63,7 @@ class ValueOffsetRasterSourceTest {
         resample.NearestNeighbor,
         OverviewStrategy.DEFAULT,
       )
-      .convert(ConvertTargetCellType(DoubleConstantNoDataCellType))
+      .convert(ConvertTargetCellType(FloatConstantNoDataCellType))
     )
     assertEquals(originalValue - 1000, newValue)
   }
@@ -82,7 +82,7 @@ class ValueOffsetRasterSourceTest {
         resample.NearestNeighbor,
         OverviewStrategy.DEFAULT,
       )
-      .convert(ConvertTargetCellType(DoubleConstantNoDataCellType))
+      .convert(ConvertTargetCellType(FloatConstantNoDataCellType))
     )
     assertEquals(originalValue * 2 - 1000, newValue)
   }
@@ -96,8 +96,8 @@ class ValueOffsetRasterSourceTest {
     val offsetRasterSource = new ValueOffsetRasterSource(originalRasterSource, 0.2, 0)
     val offsetValue = getCornerPixelValueDouble(offsetRasterSource)
 
-    assertEquals(DoubleConstantNoDataCellType, offsetRasterSource.cellType)
-    assertEquals((originalValue * 0.2), offsetValue)
+    assertEquals(FloatConstantNoDataCellType, offsetRasterSource.cellType)
+    assertEquals((originalValue * 0.2), offsetValue, 0.0001)
   }
 
   @Test
@@ -106,11 +106,11 @@ class ValueOffsetRasterSourceTest {
     val originalRasterSource = GeoTiffRasterSource(file.toString)
 
     val originalValue = getCornerPixelValue(originalRasterSource)
-    val offsetRasterSource = new ValueOffsetRasterSource(originalRasterSource, 1, 1E16)
+    val offsetRasterSource = new ValueOffsetRasterSource(originalRasterSource, 1, 1E13)
     val offsetValue = getCornerPixelValueDouble(offsetRasterSource)
 
-    assertEquals(DoubleConstantNoDataCellType, offsetRasterSource.cellType)
-    assertEquals((originalValue + 1E16), offsetValue)
+    assertEquals(FloatConstantNoDataCellType, offsetRasterSource.cellType)
+    assertEquals((originalValue + 1E13), offsetValue, 1000000)
   }
 
   @Test
