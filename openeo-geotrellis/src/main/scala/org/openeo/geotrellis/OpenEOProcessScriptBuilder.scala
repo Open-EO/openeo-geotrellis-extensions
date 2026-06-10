@@ -12,6 +12,7 @@ import org.apache.spark.ml
 import org.apache.spark.mllib.linalg
 import org.apache.spark.mllib.tree.model.RandomForestModel
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase, Modulo}
+import org.openeo.geotrellis.GeneralUtils.cellTypeUnion
 import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor

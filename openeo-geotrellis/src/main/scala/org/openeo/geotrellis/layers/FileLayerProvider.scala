@@ -8,7 +8,7 @@ import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{BitCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -120,8 +120,8 @@ object FileLayerProvider {
             maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
             bandIndices: Seq[Int] = Seq(), correlationId: String = "", experimental: Boolean = false,
             maxSoftErrorsRatio: Double = 0.0): FileLayerProvider = new FileLayerProvider(
-    openSearch, openSearchCollectionId, openSearchLinkTitles, rootPath, maxSpatialResolution, pathDateExtractor,
-    attributeValues, layoutScheme, bandIndices, correlationId, experimental, maxSoftErrorsRatio,
+    openSearch, openSearchCollectionId, NonEmptyList.fromListUnsafe(openSearchLinkTitles.filterNot(s => s.equalsIgnoreCase("prob_class_25"))), rootPath, maxSpatialResolution, pathDateExtractor,
+    attributeValues, layoutScheme, bandIndices /*0Seq(0,1,2,3,4,5,6)*/, correlationId, experimental, maxSoftErrorsRatio,
     disambiguateConstructors = null
   )
 
@@ -321,8 +321,10 @@ object FileLayerProvider {
         }
       }
       val netCdfDatasetBandIndex = 0
-      Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex))
-    } else Some((link, bandIndex))
+      Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex, bandName))
+    } else if ((link.href.toString contains ".hdf") && !link.href.toString.startsWith("HDF4:")) {
+      Some((link, 0, bandName))
+    } else Some((link, bandIndex, bandName))
   }
 
   def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], filteredSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
@@ -634,6 +636,21 @@ object FileLayerProvider {
           Some(bbox, dates)
         }
       })
+
+  def fixIt(openSearch: OpenSearchClient): OpenSearchClient = {
+    openSearch match {
+      case client: FixedFeaturesOpenSearchClient =>
+        val features = client.getProducts(null, null, null)
+        if (features.size < 2) {
+          openSearch
+        } else {
+          openSearch
+        }
+      case _ =>
+        openSearch
+    }
+  }
+
 }
 
 class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
@@ -671,7 +688,18 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private val rasterSourceProviderChain: Seq[RasterSourceProvider] = List(SyntheticDataRasterSourceProvider, SentinelXmlMetadataRasterSourceProvider, ZarrRasterSourceProvider, HDFRasterSourceProvider, NetCDFRasterSourceProvider, JPEGRasterSourceProvider, DefaultRasterSourceProvider)
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
-    if (bandIndices.nonEmpty) {
+    if (fromLoadStac) {
+      val features: Seq[Feature] = openSearch.asInstanceOf[FixedFeaturesOpenSearchClient].asInstanceOf[FixedFeaturesOpenSearchClient].getProducts(null, null, null)
+      if (features.isEmpty) {
+        throw new IllegalArgumentException(s"No features found for collection $openSearchCollectionId, cannot determine band indices for link titles.")
+      }
+      // dummy link to access the link parsing logic in the raster source providers
+      val bandNameWithIdList: Seq[(String, Int)] = openSearchLinkTitles.map(bandName =>
+        (bandName, features.flatMap(f => f.links).find(_.bandNames.getOrElse(Seq()).contains(bandName)).getOrElse(new Link(new URI(""), Some(""), Some(""), Some(Seq()))).bandNames.get.indexOf(bandName))
+        ).toList
+      bandNameWithIdList
+    } else
+      if (bandIndices.nonEmpty) {
       //case 1: PROBA-V, geotiff file containing multiple bands, bandids parameter is used to indicate which bands to load
       openSearchLinkTitles.toList zip bandIndices
     } else {
@@ -693,6 +721,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def determineCelltype(overlappingRasterSources: Seq[(RasterSource, Feature)]): CellType = {
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
+//      val commonCellType = overlappingRasterSources.foldLeft(BitCellType:CellType)((cumCellType, CurCellType) => cellTypeUnionWithNoData(cumCellType, CurCellType._1.cellType))
       val commonCellType = arbitraryRasterSource.cellType
       commonCellType match {
         case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
@@ -1010,7 +1039,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val rasterRegionContext = prepareRasterRegions(
       from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
     )
-    try {
+    try {1
       val cube = RasterTileLoader.loadRasterRegionsToTiles(
         rasterRegionContext.regions,
         rasterRegionContext.metadata,
@@ -1208,11 +1237,25 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
+    logger.info(s"Processing feature ${feature.id} with crs ${feature.crs}, bbox ${feature.bbox}, date ${feature.nominalDate}, resolution ${feature.resolution}, collectionId ${feature.collectionId}" )
+
     val rasterSources: Seq[Option[(RasterSource, Int)]] =
       resolver.getBandAssets(feature).map {
-        case Some((link, bandIndex)) =>
+        case Some((link, bandIndex, bandName)) =>
           val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
+
+          val dataType = link.datatype
+          val nodata = link.nodata
+
+          val cellTypeSTAC = if (dataType.isDefined){
+            val nodataDouble = nodata match {
+              case _ => None
+
+            }
+            Some(ConvertTargetCellType(dataType.get.withNoData(nodataDouble)))
+          }
+          else None
 
           //special case handling for data that does not declare nodata properly
           val targetCellType = link.title match {
@@ -1231,7 +1274,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
             case _ => None
           }
-          val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental)
+          val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental, bandName)
           val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
               _.canProcess(definition)
             ).map(

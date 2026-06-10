@@ -114,62 +114,6 @@ package object geotrellis {
     Region.of(regionName)
   }
 
-  def toSigned(cellType: CellType): CellType = {
-    cellType match {
-      case UByteCellType => ByteCellType
-      case UByteConstantNoDataCellType => ByteConstantNoDataCellType
-      case UByteUserDefinedNoDataCellType(noDataValue) => ByteUserDefinedNoDataCellType(noDataValue)
-      case UShortCellType => ShortCellType
-      case UShortConstantNoDataCellType => ShortConstantNoDataCellType
-      case UShortUserDefinedNoDataCellType(noDataValue) => ShortUserDefinedNoDataCellType(noDataValue)
-      case FloatConstantNoDataCellType => cellType
-      case ShortConstantNoDataCellType => cellType
-      case BitCellType => cellType
-      case ByteConstantNoDataCellType => cellType
-      case ByteCellType => cellType
-      case ByteUserDefinedNoDataCellType(_) => cellType
-      case ShortCellType => cellType
-      case ShortUserDefinedNoDataCellType(_) => cellType
-      case IntConstantNoDataCellType => cellType
-      case IntCellType => cellType
-      case IntUserDefinedNoDataCellType(_) => cellType
-      case FloatCellType => cellType
-      case FloatUserDefinedNoDataCellType(_) => cellType
-      case DoubleConstantNoDataCellType => cellType
-      case DoubleCellType => cellType
-      case DoubleUserDefinedNoDataCellType(_) => cellType
-      case _ => throw new IllegalArgumentException("Cannot convert to unsigned equivalent: '" + cellType.getClass.getName + "'.")
-    }
-  }
-
-  def cellTypeUnion(a:CellType,b:CellType):CellType = {
-    if (a.bits < b.bits)
-      b
-    else if (a.bits > b.bits)
-      a
-    else if (a.isFloatingPoint && !b.isFloatingPoint)
-      a
-    else if(isUnSigned(a) != isUnSigned(b) ) {
-      if(a.bits==8) {
-        ShortConstantNoDataCellType
-      }else if(a.isFloatingPoint || b.isFloatingPoint){
-        Seq(a,b).maxBy(_.bits)
-      }else{
-        IntConstantNoDataCellType
-      }
-    }
-    else
-      b
-  }
-
-  private def isUnSigned(a:CellType): Boolean = {
-    a match{
-      case x:UByteCells => true
-      case x:UShortCells => true
-      case _ => false
-    }
-  }
-
   /**
    * Inspired on 'Files.createTempFile', but does not create an empty file.
    * The default permissions of 'createTempFile' are a bit too strict too: 600, which is not accessible by other users.

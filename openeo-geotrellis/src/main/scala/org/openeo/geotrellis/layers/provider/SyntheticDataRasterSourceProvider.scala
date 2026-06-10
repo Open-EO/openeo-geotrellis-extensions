@@ -18,7 +18,7 @@ class SyntheticDataRasterSourceProvider extends RasterSourceProvider {
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
     val rasterExtent = RasterExtent(definition.targetExtent.extent, definition.theResolution)
     definition.datacubeParams.map(d => d.syntheticDataOverride.get) match {
-      case Some(SyntheticDataOverride(cellType, udf)) => SyntheticDataRasterSource(definition.feature.id, cellType, rasterExtent.toGridType, definition.targetExtent.crs, udf = udf)
+      case Some(SyntheticDataOverride(cellType, udf)) => SyntheticDataRasterSource(definition.link.href.toString, cellType, rasterExtent.toGridType, definition.targetExtent.crs, udf = udf)
       case None => throw new IllegalArgumentException()
     }
   }
