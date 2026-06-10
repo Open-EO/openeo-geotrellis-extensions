@@ -18,4 +18,4 @@ jobs:
           java-version: '21'
 
       - name: Build with Maven
-        run: mvn clean install -Dmaven.test.skip=true
+        run: mvn clean install --no-transfer-progress -Dmaven.test.skip=true
