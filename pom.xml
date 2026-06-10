@@ -7,7 +7,7 @@
     <packaging>pom</packaging>
     <name>openeo-geotrellis-extensions</name>
     <properties>
-        <gt-version>32.0</gt-version>
+        <gt-version>32.2</gt-version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
         <spark.version>4.0.1</spark.version>
@@ -72,10 +72,10 @@
             </activation>
             <modules>
                 <module>geotrellis-s3-extensions</module>
-                <module>geotrellis-sentinelhub</module>
+                <module>geotrellis-common</module>
+                <module>snap-integration</module>
                 <module>geotrellis-extensions</module>
                 <module>openeo-geotrellis</module>
-                <module>geotrellis-common</module>
                 <module>openeo-logging</module>
                 <module>geopyspark-geotrellis</module>
                 <module>openeo-dependencies</module>
@@ -187,6 +187,68 @@
                 </executions>
             </plugin>
         </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.1</version>
+                    <configuration>
+                        <source>21</source>
+                        <target>21</target>
+                        <encoding>UTF-8</encoding>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>net.alchim31.maven</groupId>
+                    <artifactId>scala-maven-plugin</artifactId>
+                    <version>3.2.2</version>
+                    <executions>
+                        <execution>
+                            <id>scala-compile-first</id>
+                            <phase>process-resources</phase>
+                            <goals>
+                                <goal>compile</goal>
+                                <goal>testCompile</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <scalaCompatVersion>${scala.binary.version}</scalaCompatVersion>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>2.22.2</version>
+                    <configuration>
+                        <parallel>classes</parallel>
+                        <threadCount>3</threadCount>
+                        <environmentVariables>
+                            <PATH>../venv/bin:${env.PATH}</PATH>
+                            <LD_LIBRARY_PATH>../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
+                            <PROJ_LIB>/usr/share/proj</PROJ_LIB>
+                            <SPARK_LOCAL_IP>127.0.0.1</SPARK_LOCAL_IP>
+                        </environmentVariables>
+                        <argLine>--add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED</argLine>
+                        <systemPropertyVariables>
+                            <software.amazon.awssdk.http.service.impl>software.amazon.awssdk.http.apache.ApacheSdkHttpService</software.amazon.awssdk.http.service.impl>
+                        </systemPropertyVariables>
+                        <reuseForks>false</reuseForks>
+                        <includes>
+                            <include>**/Test*.*</include>
+                            <include>**/*Test.*</include>
+                            <include>**/*Tests.*</include>
+                            <include>**/*TestCase.*</include>
+
+                            <include>**/Spec*.*</include>
+                            <include>**/*Spec.*</include>
+                            <include>**/*Specs.*</include>
+                        </includes>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
     <organization>
         <name>VITO</name>
