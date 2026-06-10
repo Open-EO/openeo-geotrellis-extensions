@@ -18,4 +18,4 @@ jobs:
           java-version: '21'
 
       - name: Build with Maven
-        run: JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64/ mvn clean install -Dmaven.test.skip=true
+        run: mvn clean install -Dmaven.test.skip=true
