@@ -19,6 +19,3 @@ jobs:
 
       - name: Build with Maven
         run: mvn clean install --no-transfer-progress -Dmaven.test.skip=true --settings .github/maven-settings.xml
-        env:
-          ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}
-          ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
