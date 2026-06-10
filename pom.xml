@@ -270,14 +270,6 @@
 
     <repositories>
         <repository>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-            <id>central</id>
-            <name>libs-release</name>
-            <url>https://artifactory.vgt.vito.be/artifactory/libs-release</url>
-        </repository>
-        <repository>
             <snapshots />
             <id>snapshots</id>
             <name>libs-snapshot</name>
@@ -304,6 +296,13 @@
         <repository>
             <id>akka</id>
             <url>https://repo.akka.io/maven</url>
+        </repository>
+        <repository>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+            <id>locationtech-releases</id>
+            <url>https://repo.locationtech.org/content/groups/releases/</url>
         </repository>
     </repositories>
 </project>
