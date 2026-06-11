@@ -393,15 +393,16 @@ class MergeCubesSpec {
     val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
     val band4 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
 
-    val tileLayout = TileLayout(2,2,16,16)
+    val tileLayout1 = TileLayout(1,1,32,32)
+    val tileLayout2 = TileLayout(2,2,16,16)
     val tile1 = MultibandTile(band1,band2)
     val tile2 = MultibandTile(band3,band4)
 
     val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
     val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
 
-    val cube1: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile1, extent1), tileLayout, LatLng)
-    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile2, extent2), tileLayout, LatLng)
+    val cube1: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile1, extent1), tileLayout1, LatLng)
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile2, extent2), tileLayout2, LatLng)
 
     val processes = new OpenEOProcesses()
     val merged: MultibandTileLayerRDD[SpatialKey] = processes.mergeSpatialCubes(cube1, cube2, "mean")
