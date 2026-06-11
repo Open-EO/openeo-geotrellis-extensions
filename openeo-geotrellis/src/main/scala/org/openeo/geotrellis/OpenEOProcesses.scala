@@ -975,6 +975,30 @@ class OpenEOProcesses extends Serializable {
     Some(new SparseSpaceTimePartitioner(indices,indexReduction,Some(spaceTimeKeys)))
   }
 
+  def constructCompatibleTargetPartitioner(dataPartitioner: Option[Partitioner], partitionerTarget: Option[Partitioner], dataMetadata: TileLayerMetadata[SpaceTimeKey], targetMetadata: TileLayerMetadata[SpaceTimeKey]): Option[Partitioner] = {
+    if(partitionerTarget.isDefined && partitionerTarget.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+      val index = partitionerTarget.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+      val theIndex = index match {
+        case partitioner: SparseSpaceTimePartitioner =>
+          dataPartitioner match {
+            case Some(dataPartitioner: SpacePartitioner[SpaceTimeKey]) =>
+              dataPartitioner.index match {
+                case dataIndex:SparseSpaceTimePartitioner => {
+                  transformSparseSpaceTimePartition(dataIndex.theKeys,dataMetadata,targetMetadata,partitioner.indexReduction).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
+                }
+                case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
+              }
+            case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
+          }
+        case _ =>
+          index
+      }
+      Some(SpacePartitioner[SpaceTimeKey](targetMetadata.bounds)(implicitly,implicitly,theIndex))
+    }else{
+      partitionerTarget
+    }
+  }
+
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
     if(target.metadata.crs.equals(data.metadata.crs) && target.metadata.layout.equals(data.metadata.layout)) {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
@@ -982,37 +1006,19 @@ class OpenEOProcesses extends Serializable {
     }else{
       logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
       //construct a partitioner that is compatible with data cube
-      val targetPartitioner =
-      if(target.partitioner.isDefined && target.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
-        val index = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-        val theIndex = index match {
-          case partitioner: SparseSpaceTimePartitioner =>
-            data.partitioner match {
-              case Some(dataPartitioner: SpacePartitioner[SpaceTimeKey]) =>
-                dataPartitioner.index match {
-                  case dataIndex:SparseSpaceTimePartitioner => {
-                    transformSparseSpaceTimePartition(dataIndex.theKeys,data.metadata,target.metadata,partitioner.indexReduction).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
-                  }
-                  case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
-                }
-              case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
-            }
-          case _ =>
-            index
-        }
-        Some(SpacePartitioner[SpaceTimeKey](target.metadata.bounds)(implicitly,implicitly,theIndex))
-      }else{
-        target.partitioner
-      }
-
-      var bufferSize = 16
-      if(method == NearestNeighbor && target.metadata.crs == data.metadata.crs && target.metadata.cellSize.resolution < data.metadata.cellSize.resolution) {
-        //bufferSize 0 is cheaper, but can only be used under strict conditions, the current selection is rather strict to be safe, potentially can be relaxed
-        bufferSize = 0
-      }
-      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, target.metadata.crs, Right(target.metadata.layout), bufferSize, method, targetPartitioner)
-      filterNegativeSpatialKeys(reprojected)
+      val targetPartitioner = constructCompatibleTargetPartitioner(data.partitioner, target.partitioner, data.metadata, target.metadata)
+      reprojectTileRDD(data, target.metadata, method, targetPartitioner)
     }
+  }
+
+  def reprojectTileRDD(data:MultibandTileLayerRDD[SpaceTimeKey],targetMetadata: TileLayerMetadata[SpaceTimeKey], method:ResampleMethod, targetPartitioner: Option[Partitioner]): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+    var bufferSize = 16
+    if(method == NearestNeighbor && targetMetadata.crs == data.metadata.crs && targetMetadata.cellSize.resolution < data.metadata.cellSize.resolution) {
+      //bufferSize 0 is cheaper, but can only be used under strict conditions, the current selection is rather strict to be safe, potentially can be relaxed
+      bufferSize = 0
+    }
+    val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, targetMetadata.crs, Right(targetMetadata.layout), bufferSize, method, targetPartitioner)
+    filterNegativeSpatialKeys(reprojected)
   }
 
   def resampleCubeSpatial_spacetime(data: MultibandTileLayerRDD[SpaceTimeKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
