@@ -1503,24 +1503,29 @@ package object geotiff {
     val outputBuffer = new StringBuilder
     val cerrBuffer = new StringBuilder
     val processLogger = ProcessLogger(
-      line => outputBuffer appendAll line + "\n",
-      line => cerrBuffer appendAll line + "\n",
+      fout = line => outputBuffer appendAll line + "\n",
+      ferr = line => cerrBuffer appendAll line + "\n",
     )
 
     val args = Seq("gdalinfo", rasterFilePath.toString, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL")
     val exitCode = args ! processLogger
 
-    if (cerrBuffer.nonEmpty) {
-      logger.info(s"gdalinfo warnings: ${cerrBuffer.toString()}") // Mostly harmless messages
-    }
     val outputBufferString = outputBuffer.toString().trim
-    if (exitCode == 0) {
+    val cerrBufferString = cerrBuffer.toString().trim
+
+    logger.debug(s"${args mkString " "} returned exit code $exitCode; stdout was: $outputBufferString; stderr was $cerrBufferString")
+
+    if (cerrBufferString.nonEmpty) {
+      logger.info(s"gdalinfo warnings: $cerrBufferString") // Mostly harmless messages
+    }
+
+    if (exitCode == 0) { // TODO: gdalinfo always seems to return exit code 0, even in the case of an error
       val gdalInfoPath = Path.of(rasterFilePath.toString + GDALINFO_SUFFIX)
       Files.write(gdalInfoPath, outputBufferString.getBytes(StandardCharsets.UTF_8))
       Some(gdalInfoPath)
     }
     else {
-      logger.warn(s"${args mkString " "} failed; output was: $outputBufferString")
+      logger.warn(s"${args mkString " "} failed; stdout was: $outputBufferString; stderr was $cerrBufferString")
       None
     }
   }
