@@ -1,7 +1,8 @@
 package org.openeo.geotrellis.udf
 
 import geotrellis.layer.{Bounds, KeyBounds, LayoutDefinition, SpaceTimeKey, SpatialKey, TemporalProjectedExtent, TileBounds}
-import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, MultibandTile, RasterExtent}
+import geotrellis.raster.resample.AggregateResample
+import geotrellis.raster.{ArrayMultibandTile, ArrayTile, ByteUserDefinedNoDataCellType, CellSize, CellType, FloatArrayTile, FloatRawArrayTile, HasNoData, MultibandRaster, MultibandTile, Raster, RasterExtent, SinglebandRaster, Tile, TileLayout}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import jep.{DirectNDArray, NDArray, SharedInterpreter}
@@ -10,12 +11,14 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.logger
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.slf4j.LoggerFactory
+import spire.syntax.cfor.cfor
 
-import java.nio.{ByteBuffer, ByteOrder, FloatBuffer}
+import java.nio.{ByteBuffer, ByteOrder, FloatBuffer, IntBuffer}
 import java.util
 import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
+import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
 
@@ -36,9 +39,6 @@ object Udf {
   private val logger = LoggerFactory.getLogger("Python-Jep-Udf")
 
   private val SIZE_OF_FLOAT = 4
-
-  private val gigaPattern: Regex = """^(\d+)(?:G|GB)$""".r
-  private val megaPattern: Regex = """^(\d+)(?:M|MB)$""".r
 
   private val DEFAULT_IMPORTS =
     """
@@ -634,5 +634,68 @@ object Udf {
     (ContextRDD(result, layer.metadata), bandNames)
   }
 
-  val DEFAULT_MAX_MEMORY_BYTES = 1024L * 1024L * 1024L
+  def runUserCodeSpatialWindowReduce[K: ClassTag](dataCube: MultibandTileLayerRDD[K], window: (Int, Int), code: String, context: util.HashMap[String, Any] = new util.HashMap[String, Any]()): MultibandTileLayerRDD[K] = {
+    val metadata = dataCube.metadata
+    val originalCols = metadata.layout.tileLayout.tileCols
+    val originalRows = metadata.layout.tileLayout.tileRows
+    val cols = originalCols / window._1
+    val rows = originalRows / window._2
+    val newLayout = LayoutDefinition(
+        RasterExtent(metadata.extent, CellSize(metadata.cellSize.width*window._1, metadata.cellSize.height*window._2)),
+        cols,
+        rows
+    )
+    val newMetadata = metadata.copy(layout = newLayout, extent = metadata.extent)
+    val newRDD: RDD[(K, MultibandTile)] = dataCube.mapValues(tile => {
+      val bandCount = tile.bandCount
+      val bufferElements = bandCount * originalCols * originalRows
+      val buffer = ByteBuffer.allocateDirect(bufferElements * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
+      cfor(0)(_ < bandCount, _ + 1) { b =>
+        val singleBandTile = tile.band(b)
+        val tileFloats: Array[Float] =  singleBandTile.toArrayDouble.map(_.toFloat)
+        buffer.put(tileFloats, 0, tileFloats.length)
+      }
+      val tileShape = List(bandCount, originalRows, originalCols)
+
+      val npCube = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
+      val interpreter: SharedInterpreter = SharedInterpreterFactory.create()
+
+      try {
+        interpreter.exec(defaultCodeBlock())
+        interpreter.set("npCube", npCube)
+        interpreter.exec(
+          """
+            |coords = {}
+            |dims = ('bands','y', 'x')
+            |data_array = xr.DataArray(npCube, coords=coords, dims=dims, name="openEODataChunk")
+            |""".stripMargin)
+        setContextInPython(interpreter, context)
+        interpreter.set("window_width", window._1)
+        interpreter.set("window_height", window._2)
+        interpreter.exec(code)
+        interpreter.exec(
+          f"""
+            |def custom_reduce(window, axis=None, **kwargs):
+            |  new_shape_list = list(window.shape)
+            |  for a in reversed(axis):
+            |    del new_shape_list[a]
+            |  return np.reshape(np.apply_over_axes(udf_reduce, window, axis), tuple(new_shape_list))
+            |""".stripMargin)
+        interpreter.exec("result=data_array.coarsen(x=window_width,y=window_height).reduce(custom_reduce).to_numpy()")
+        val pythonResult = interpreter.getValue("result")
+        val resultTile: MultibandTile = pythonResult match {
+          case a: NDArray[Array[Float]] =>
+            ArrayMultibandTile(
+            Range(0, bandCount).map(b => {
+              FloatRawArrayTile(a.getData.slice(b*rows*cols, (b+1)*rows*cols), cols, rows)
+            }).toArray)
+          case _ => throw new IllegalArgumentException("Expecting float results from the udf_reduce() method.")
+        }
+        resultTile
+      } finally {
+        if (interpreter != null) interpreter.close()
+      }
+    })
+    new ContextRDD(newRDD, newMetadata)
+  }
 }
