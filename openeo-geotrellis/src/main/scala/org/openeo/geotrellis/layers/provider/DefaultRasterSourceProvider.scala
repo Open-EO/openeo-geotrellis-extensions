@@ -53,10 +53,10 @@ class DefaultRasterSourceProvider extends RasterSourceProvider {
         val geotiffPath = GeoTiffPath(vsis3ToS3(definition.dataPath))
         if (definition.noResampleOnRead) {
           val tiffAlignment = alignmentFromDataPath(definition.dataPath, definition.targetExtent)
-          val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, tiffAlignment, definition.resampleMethod, OverviewStrategy.DEFAULT, targetCellType = definition.targetCellType)
+          val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, tiffAlignment, definition.resampleMethod, OverviewStrategy.DEFAULT, targetCellType = definition.targetCellType, errorThreshold = 0)
           new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, definition.theResolution)
         } else {
-          GeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, definition.alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, targetCellType = definition.targetCellType)
+          GeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, definition.alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, targetCellType = definition.targetCellType, errorThreshold = 0)
         }
       }
     }

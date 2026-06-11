@@ -93,12 +93,12 @@ class AgEra5FileLayerProviderTest extends LocalSparkContext {
 
     val histogram = spatialLayer.histogram()
 
-    assertEquals(27899.0,histogram(0).mean().get,1.0)
-    assertEquals(0.24366,histogram(1).mean().get,0.00001)
-    assertEquals(11426619,histogram(2).mean().get,1.0)
-    assertEquals(10087,histogram(0).totalCount())
-    assertEquals(11278,histogram(1).totalCount())
-    assertEquals(21913,histogram(2).totalCount())
+    assertEquals(27900.40472837022,histogram(0).mean().get,1.0)
+    assertEquals(0.24885946864656946,histogram(1).mean().get,0.00001)
+    assertEquals(11309877.661199689,histogram(2).mean().get,1.0)
+    assertEquals(9940,histogram(0).totalCount())
+    assertEquals(11179,histogram(1).totalCount())
+    assertEquals(21889,histogram(2).totalCount())
 
     assertEquals(FloatConstantNoDataCellType, spatialLayer.metadata.cellType)
     assertEquals(utm31, spatialLayer.metadata.crs)

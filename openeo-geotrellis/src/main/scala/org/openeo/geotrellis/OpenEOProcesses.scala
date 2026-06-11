@@ -25,13 +25,14 @@ import geotrellis.vector._
 import org.apache.commons.io.FileUtils
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
+import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext}
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -146,7 +147,8 @@ class OpenEOProcesses extends Serializable {
     "add" -> Add,
     "sum" -> Add,
     "subtract" -> Subtract,
-    "xor" -> Xor
+    "xor" -> Xor,
+    "mean" -> MeanIgnoreNoData
   )
 
   def wrapCube[K](datacube:MultibandTileLayerRDD[K]): OpenEORasterCube[K] = {
@@ -945,7 +947,12 @@ class OpenEOProcesses extends Serializable {
     val res = minKey.setComponent[SpatialKey](SpatialKey(math.max(0,minSpatial._1),math.max(0,minSpatial._2)))
     val newBounds = KeyBounds(res, data.metadata.bounds.get.maxKey)
     logger.info("Keybounds after preemptive filtering: " + newBounds)
-    ContextRDD(filtered,data.metadata.copy(bounds = newBounds))
+    val result = ContextRDD(filtered, data.metadata.copy(bounds = newBounds))
+    if (data.isInstanceOf[OpenEORasterCube[K]]) {
+      new OpenEORasterCube[K](result, result.metadata, data.asInstanceOf[OpenEORasterCube[K]].openEOMetadata)
+    } else {
+      result
+    }
   }
 
   def transformSparseSpaceTimePartition(keys: Option[Array[SpaceTimeKey]],
@@ -1124,6 +1131,7 @@ class OpenEOProcesses extends Serializable {
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
+  @org.openeo.geotrelliscommon.OpenEOProcess(id = "aspect", description = "Compute the aspect (orientation of steepest slope) for each pixel in a single-band DEM datacube.")
   def aspect(datacube: Object): Object = {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
@@ -1702,6 +1710,37 @@ class OpenEOProcesses extends Serializable {
       retiled.mapValues(x => onnx.predictOnnx(x,model)),
       retiled.metadata
     )
+  }
+
+
+  def checkPoint(cube: Object): Unit = {
+    cube match {
+      case rdd1 if cube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].checkpoint()
+      case rdd2 if cube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].checkpoint()
+      case _ => throw new IllegalArgumentException(s"Unsupported cube type for checkpoint: ${cube}")
+    }
+  }
+
+  def localCheckpoint(cube: Object): Object = {
+    cube match {
+      case rdd1 if cube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].withContext(_.localCheckpoint())
+      case rdd2 if cube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].withContext(_.localCheckpoint())
+      case _ => throw new IllegalArgumentException(s"Unsupported cube type for local checkpoint: ${cube}")
+    }
+  }
+
+  def withResources(cube: Object, resources: ResourceProfile): Object = {
+    cube match {
+      case rdd1 if cube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].withContext(_.withResources(resources))
+      case rdd2 if cube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].withContext(_.withResources(resources))
+      case _ => throw new IllegalArgumentException(s"Unsupported cube type for withResources: ${cube}")
+    }
   }
 
 }

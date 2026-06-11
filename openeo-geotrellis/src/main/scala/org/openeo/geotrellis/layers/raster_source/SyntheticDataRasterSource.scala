@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory
 
 object SyntheticDataRasterSource {
   private val logger = LoggerFactory.getLogger(SyntheticDataRasterSource.getClass)
-  private val supportedBandIndices: Seq[Int] = Seq(0)
 }
 
 case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridExtent: GridExtent[Long], override val crs: CRS, udf: Option[String] = None) extends RasterSource {
@@ -46,7 +45,6 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     logger.info(s"Loading synthetic data for ${itemId}")
-    require(bands == supportedBandIndices)
 
     extent.intersection(gridExtent.extent)
       .map { intersection =>
@@ -58,7 +56,6 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     logger.info(s"Loading synthetic data for ${itemId}")
-    require(bands == supportedBandIndices)
 
     bounds.intersection(gridExtent.dimensions)
       .map { intersection =>
@@ -70,16 +67,16 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
 
   private def syntheticDataTile(rows: Int, cols: Int): Tile = {
     cellTypeName match {
-      case "byte" | "int8" | "uint8" | "int8raw" | "uint8raw" => ArrayTile(syntheticData(cols, rows, new Array[Byte](rows*cols)), rows, cols)
-      case "short" | "int16" | "int16raw" | "uint16raw" => ArrayTile(syntheticData(cols, rows, new Array[Short](rows*cols)), rows, cols)
-      case "int" | "int32" => ArrayTile(syntheticData(cols, rows, new Array[Int](rows*cols)), rows, cols)
-      case "float" | "float32" | "float32raw" => ArrayTile(syntheticData(cols, rows, new Array[Float](rows*cols)), rows, cols)
-      case "double" | "float64" => ArrayTile(syntheticData(cols, rows, new Array[Double](rows*cols)), rows, cols)
+      case "byte" | "int8" | "uint8" | "int8raw" | "uint8raw" => ArrayTile(syntheticData(cols, rows, new Array[Byte](rows*cols), 1.toByte), rows, cols)
+      case "short" | "int16" | "int16raw" | "uint16raw" => ArrayTile(syntheticData(cols, rows, new Array[Short](rows*cols), 1.toShort), rows, cols)
+      case "int" | "int32" => ArrayTile(syntheticData(cols, rows, new Array[Int](rows*cols), 1), rows, cols)
+      case "float" | "float32" | "float32raw" => ArrayTile(syntheticData(cols, rows, new Array[Float](rows*cols), 1f), rows, cols)
+      case "double" | "float64" => ArrayTile(syntheticData(cols, rows, new Array[Double](rows*cols), 1d), rows, cols)
       case _ => throw new IllegalArgumentException("Unsupported CellType for synthetic data")
     }
   }
 
-  private def syntheticData[T <: AnyVal](cols: Int, rows: Int, arr: Array[T]): Array[T] = {
+  private def syntheticData[T <: AnyVal: scala.reflect.ClassTag](cols: Int, rows: Int, arr: Array[T], defaultValue: T): Array[T] = {
     val f = {
       if (udf.isDefined) {
         val ip = SharedInterpreterFactory.create()
@@ -97,8 +94,8 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
           }
         }
       } else {
-        logger.warn("No UDF defined for synthetic data override, using all 0's instead")
-        arr
+        logger.warn(s"No UDF defined for synthetic data override, using default value ($defaultValue) instead")
+        arr.map(_ => defaultValue)
       }
     }
     f
@@ -108,9 +105,9 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
   override def convert(targetCellType: TargetCellType): RasterSource =
     new SyntheticDataRasterSource(itemId, cellTypeName, gridExtent, crs, udf)
 
-  override def name: SourceName = toString
+  override def name: SourceName = itemId
 
-  override def bandCount: Int = supportedBandIndices.size
+  override def bandCount: Int = 1
 
   override def resolutions: List[CellSize] = List(gridExtent.cellSize)
 

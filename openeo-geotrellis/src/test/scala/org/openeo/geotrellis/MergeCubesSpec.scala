@@ -420,6 +420,43 @@ class MergeCubesSpec {
     }
   }
 
+  @Test def testMergeCubeFullOverlapMean(): Unit = {
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2: ByteArrayTile = ByteArrayTile.fill(4.toByte, 256, 256)
+    val band3: ByteArrayTile = ByteArrayTile.fill(6.toByte, 256, 256)
+    val band4: ByteArrayTile = ByteArrayTile.fill(8.toByte, 256, 256)
+    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val cube2: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band3, band4), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(cube1, cube2, "mean")
+    val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
+    assertEquals(2, mergedTimes.length)
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
+      assertEquals(2, item._2.bandCount)
+      // mean(2, 6) = 4, mean(4, 8) = 6
+      assertEquals(4, item._2.band(0).get(0, 0))
+      assertEquals(4, item._2.band(0).get(128, 128))
+      assertEquals(6, item._2.band(1).get(0, 0))
+      assertEquals(6, item._2.band(1).get(128, 128))
+    }
+  }
+
+  @Test def testMergeCubeMeanNoDataHandling(): Unit = {
+    // tile with NoData at (0, 1)
+    val tileWithNoData: MutableArrayTile = ByteArrayTile.fill(4.toByte, 256, 256)
+    tileWithNoData.set(0, 1, ByteConstantNoDataCellType.noDataValue)
+    val tileLayerRDD: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = tileToSpaceTimeDataCube(tileWithNoData)
+
+    val plainTile: MutableArrayTile = ByteArrayTile.fill(6.toByte, 256, 256)
+    val plainLayerRDD: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = tileToSpaceTimeDataCube(plainTile)
+
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(tileLayerRDD, plainLayerRDD, "mean")
+    val firstTile: MultibandTile = merged.toJavaRDD.take(1).get(0)._2
+    // mean(4, 6) = 5 for normal cells
+    assertEquals(5, firstTile.band(0).get(0, 0))
+    // when one value is NoData, return the other
+    assertEquals(6, firstTile.band(0).get(0, 1))
+  }
+
   @Test def testMergeCubeOverlapBandMismatch(): Unit = {
     val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
     val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)

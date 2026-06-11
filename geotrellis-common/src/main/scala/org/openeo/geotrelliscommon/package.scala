@@ -10,7 +10,7 @@ import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.time.{LocalTime, OffsetTime, ZonedDateTime}
+import java.time.{Duration, Instant, LocalTime, OffsetTime, ZonedDateTime}
 
 package object geotrelliscommon {
 
@@ -330,5 +330,13 @@ package object geotrelliscommon {
       } else until minusNanos 1
 
     (from, to)
+  }
+
+  def time[R](body: => R): (R, Duration) = {
+    val start = Instant.now()
+    val result = body
+    val end = Instant.now()
+
+    (result, Duration.between(start, end))
   }
 }

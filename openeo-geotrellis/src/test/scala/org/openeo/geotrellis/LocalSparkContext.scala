@@ -19,6 +19,9 @@ class LocalSparkContext {
         .set("spark.kryoserializer.buffer.max", "512m")
         .set("spark.rdd.compress", "true")
         .set("spark.ui.enabled", "true")
+        .set("spark.driver.bindAddress", "127.0.0.1")
+        .set("spark.driver.host", "127.0.0.1")
+        .set("spark.local.ip", "127.0.0.1")
         .set("spark.task.maxFailures", maxFailures.toString)
       val eventsDir = Paths.get("/tmp/spark-events") // Can be configured with "spark.eventLog.dir"
       if (Files.exists(eventsDir)) {

@@ -40,6 +40,11 @@
             <scope>compile</scope>
         </dependency>
         <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sts</artifactId>
+            <version>${awssdk.version}</version>
+        </dependency>
+        <dependency>
             <groupId>software.amazon.awssdk.crt</groupId>
             <artifactId>aws-crt</artifactId>
             <version>0.28.7</version>
@@ -207,8 +212,8 @@
         </dependency>
         <dependency>
             <groupId>edu.ucar</groupId>
-            <artifactId>cdm</artifactId>
-            <version>5.1.0</version>
+            <artifactId>cdm-core</artifactId>
+            <version>5.9.1</version>
         </dependency>
         <dependency>
             <groupId>org.typelevel</groupId>
@@ -224,7 +229,7 @@
         <dependency>
             <groupId>edu.ucar</groupId>
             <artifactId>netcdf4</artifactId>
-            <version>5.1.0</version>
+            <version>5.9.1</version>
         </dependency>
         <dependency>
             <groupId>black.ninia</groupId>
@@ -270,22 +275,32 @@
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk</artifactId>
-            <version>1.54.0</version>
+            <version>1.62.0</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk-metrics</artifactId>
-            <version>1.54.0</version>
+            <version>1.62.0</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
-            <version>1.54.0</version>
+            <version>1.62.0</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk-extension-autoconfigure</artifactId>
-            <version>1.54.0</version>
+            <version>1.62.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-logging</artifactId>
+            <version>1.62.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-prometheus</artifactId>
+            <version>1.62.0-alpha</version>
         </dependency>
         <dependency>
             <groupId>com.bc.zarr</groupId>

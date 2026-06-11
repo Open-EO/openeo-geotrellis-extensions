@@ -12,6 +12,7 @@ import org.apache.spark.ml
 import org.apache.spark.mllib.linalg
 import org.apache.spark.mllib.tree.model.RandomForestModel
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase, Modulo}
+import org.openeo.geotrellis.GeneralUtils.cellTypeUnion
 import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor
@@ -428,6 +429,20 @@ object OpenEOProcessScriptBuilder{
       else if( isNoData(z1) ) z2
       else if( isNoData(z2) ) z1
       else math.max(z1, z2)
+  }
+
+  object MeanIgnoreNoData extends LocalTileBinaryOp {
+    def combine(z1:Int,z2:Int) =
+      if( isNoData(z1) && isNoData(z2)) NODATA
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else (z1 + z2) / 2
+
+    def combine(z1:Double,z2:Double) =
+      if( isNoData(z1) && isNoData(z2)) NaN
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else (z1 + z2) / 2.0
   }
 
 
