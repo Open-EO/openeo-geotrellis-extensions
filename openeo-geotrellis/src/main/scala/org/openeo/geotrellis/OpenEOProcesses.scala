@@ -1113,11 +1113,18 @@ class OpenEOProcesses extends Serializable {
 
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
     leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands)")
-    val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,NearestNeighbor,leftCube.partitioner.orNull)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val joined = outerJoin(leftCube,resampled)
-    val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
-    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
+    val layoutLeft = leftCube.metadata.layout
+    val layoutRight = rightCube.metadata.layout
+    val combinedExtent = layoutLeft.extent.combine(layoutRight.extent)
+    val mappedLayout = layoutLeft.mapTransform.apply(combinedExtent)
+    val tileLayout = TileLayout(mappedLayout.width, mappedLayout.height, layoutLeft.tileCols, layoutLeft.tileRows)
+    val layoutDefinition = LayoutDefinition(combinedExtent, tileLayout)
+    val resampledRight = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,layoutDefinition,NearestNeighbor,leftCube.partitioner.orNull)._2
+    val resampledLeft = resampleCubeSpatial_spatial(leftCube,rightCube.metadata.crs,layoutDefinition,NearestNeighbor,rightCube.partitioner.orNull)._2
+    checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
+    val joined = outerJoin(resampledLeft,resampledRight)
+    val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
+    val updatedMetadata = resampledLeft.metadata.copy(bounds = joined.metadata,extent = combinedExtent,cellType = outputCellType)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
