@@ -1,5 +1,7 @@
 package org.openeo.geotrellis
 
+import org.openeo.geotrelliscommon.CubeProcessProvider
+
 /**
  * SPI provider that registers [[CroptypeInference]] with [[org.openeo.geotrelliscommon.CubeProcessRegistry]].
  *
