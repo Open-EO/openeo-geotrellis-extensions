@@ -134,7 +134,7 @@ class Sentinel3BinningTest {
 
     assertTrue(cube.df.count() > 0, "loadCollection produced empty datacube")
     assertEquals(4, cube.nside)
-    assertEquals(2, cube.bands.size)
+    assertEquals(1, cube.bands.size)
   }
 
   @Test
