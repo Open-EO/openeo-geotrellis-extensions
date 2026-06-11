@@ -1131,6 +1131,7 @@ class OpenEOProcesses extends Serializable {
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
+  @org.openeo.geotrelliscommon.OpenEOProcess(id = "aspect", description = "Compute the aspect (orientation of steepest slope) for each pixel in a single-band DEM datacube.")
   def aspect(datacube: Object): Object = {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>

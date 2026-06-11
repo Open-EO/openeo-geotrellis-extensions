@@ -1,6 +1,5 @@
 package org.openeo.geotrelliscommon
 
-import geotrellis.layer.SpaceTimeKey
 import geotrellis.spark.MultibandTileLayerRDD
 import org.slf4j.LoggerFactory
 
@@ -17,10 +16,12 @@ import scala.jdk.CollectionConverters._
  *
  * Every method registered here must:
  *  - Be annotated with [[OpenEOProcess]]
- *  - Declare exactly two parameters in this order:
- *    1. `datacube: MultibandTileLayerRDD[SpaceTimeKey]` — the input cube
- *    2. `context: Map[String, Any]`                    — process arguments
+ *  - Declare one or two parameters in this order:
+ *    1. `datacube: MultibandTileLayerRDD[SpaceTimeKey]` — the input cube  (required)
+ *    2. `context: Map[String, Any]`                    — process arguments (optional)
  *  - Return any value (the return is handed back to the caller as `AnyRef`)
+ *
+ *  Methods with only the datacube parameter are invoked without passing the context map.
  *
  * == Registration ==
  *
@@ -131,18 +132,22 @@ object CubeProcessRegistry {
    * @throws IllegalArgumentException if `processId` is not registered.
    */
   def invoke(
-    cube:      MultibandTileLayerRDD[SpaceTimeKey],
+    cube:      Object,
     processId: String,
     args:      java.util.Map[String, AnyRef]
   ): AnyRef = {
     ensureLoaded()
     val fb = bindings.getOrElse(processId,
       throw new IllegalArgumentException(
-        s"Unknown cube process: '$processId'. " +
+        s"Unknown process: '$processId'. " +
           s"Available: ${bindings.keys.mkString(", ")}"))
 
-    val scalaArgs: Map[String, Any] = args.asScala.toMap.asInstanceOf[Map[String, Any]]
-    fb.method.invoke(fb.instance, cube, scalaArgs)
+    if (fb.method.getParameterCount == 1)
+      fb.method.invoke(fb.instance, cube)
+    else {
+      val scalaArgs: Map[String, Any] = args.asScala.toMap.asInstanceOf[Map[String, Any]]
+      fb.method.invoke(fb.instance, cube, scalaArgs)
+    }
   }
 
   /** Returns true if `processId` has been registered. */
