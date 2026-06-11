@@ -1,6 +1,7 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.LayoutDefinition
+import geotrellis.proj4.CRS
 import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
 
 object GeneralUtils {
@@ -192,12 +193,13 @@ object GeneralUtils {
     }
   }
 
-  def layoutMerged(layoutLeft:LayoutDefinition, layoutRight:LayoutDefinition): LayoutDefinition = {
-    if (layoutLeft == layoutRight) layoutLeft
+  def layoutMerged(layoutLeft:LayoutDefinition, layoutRight:LayoutDefinition, crsLeft: CRS, crsRight: CRS): LayoutDefinition = {
+    if (layoutLeft == layoutRight & crsLeft == crsRight) layoutLeft
     else {
-      val combinedExtent = layoutLeft.extent.combine(layoutRight.extent)
-      val mappedLayout = layoutLeft.mapTransform.apply(combinedExtent)
-      val tileLayout = TileLayout(mappedLayout.width, mappedLayout.height, layoutLeft.tileCols, layoutLeft.tileRows)
+      val reprojectedLayoutLeft = layoutLeft.extent.reproject(crsLeft, crsRight)
+      val combinedExtent = reprojectedLayoutLeft.combine(layoutRight.extent)
+      val mappedLayout = layoutRight.mapTransform.apply(combinedExtent)
+      val tileLayout = TileLayout(mappedLayout.width, mappedLayout.height, layoutRight.tileCols, layoutRight.tileRows)
       LayoutDefinition(combinedExtent, tileLayout)
     }
   }
