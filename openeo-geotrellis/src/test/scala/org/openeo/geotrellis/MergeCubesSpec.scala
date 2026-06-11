@@ -1,12 +1,13 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.{SpaceTimeKey, _}
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster._
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.util.withGetComponentMethods
+import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotEquals, assertTrue, fail}
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
@@ -353,6 +354,64 @@ class MergeCubesSpec {
       assertEquals(2, item._2.bandCount)
       assertEquals(-3, item._2.band(0).get(0, 0))
       assertEquals(-5, item._2.band(1).get(0, 0))
+    }
+  }
+
+  @Test def testDifferenceExtent(): Unit = {
+    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+
+    val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band4 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+
+    val tileLayout = TileLayout(2,2,16,16)
+    val tile1 = MultibandTile(band1,band2)
+    val tile2 = MultibandTile(band3,band4)
+
+    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
+    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
+
+    val cube1: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile1, extent1), tileLayout, LatLng)
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile2, extent2), tileLayout, LatLng)
+
+    val processes = new OpenEOProcesses()
+    val merged: MultibandTileLayerRDD[SpatialKey] = processes.mergeSpatialCubes(cube1, cube2, "mean")
+
+    assertEquals(merged.metadata.layout, LayoutDefinition(extent1.combine(extent2),TileLayout(3,3,16,16)))
+    val collected = merged.collect()
+
+    for (item: (SpatialKey, MultibandTile) <- merged.collect) {
+      assertEquals(2, item._2.bandCount)
+      item match {
+        case (SpatialKey(0,0), tile) =>
+          assertEquals(0, tile.band(0).get(0, 0).toByte)
+          assertEquals(0, tile.band(1).get(0, 0).toByte)
+        case (SpatialKey(0,1), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(0,2), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(1,0), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(1,1), tile) =>
+          assertEquals(7, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(1,2), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(2,0), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(2,1), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(2,2), tile) =>
+          assertEquals(0, tile.band(0).get(0, 0).toByte)
+          assertEquals(0, tile.band(1).get(0, 0).toByte)
+        case _ => fail("Unexpected spatial key")
+      }
     }
   }
 
