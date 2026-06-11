@@ -1312,7 +1312,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       val sources = NonEmptyList.fromListUnsafe(rasterSources.toList)
         .map {
-          case Some(rasterSource) => rasterSource
+          case Some(rasterSource) => {
+            logger.info(s"The cellType of rasterSource ${rasterSource._2} with name ${rasterSource._1.name} has cellType ${rasterSource._1.cellType}")
+            rasterSource
+          }
           case _ => (NoDataRasterSource.instance(gridExtent, targetExtent.crs), 0)
         }
 

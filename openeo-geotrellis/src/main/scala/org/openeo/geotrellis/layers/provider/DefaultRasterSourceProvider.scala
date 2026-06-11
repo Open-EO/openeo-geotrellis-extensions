@@ -30,6 +30,8 @@ class DefaultRasterSourceProvider extends RasterSourceProvider {
       val tiffRe = RasterExtent(expandToCellSize(projectedExtent.extent, tiffCellSize), tiffCellSize)
       TargetRegion(tiffRe)
     }
+    logger.info(s"Creating RasterSource for dataPath: ${definition.dataPath}, targetExtent: ${definition.targetExtent}, targetCellType: ${definition.targetCellType}," +
+      s" theResolution: ${definition.theResolution}, resampleMethod: ${definition.resampleMethod}, noResampleOnRead: ${definition.noResampleOnRead}, experimental: ${definition.experimental}")
 
     if (definition.feature.crs.isDefined && definition.feature.crs.get != null && definition.feature.crs.get.equals(definition.targetExtent.crs)) {
       // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
