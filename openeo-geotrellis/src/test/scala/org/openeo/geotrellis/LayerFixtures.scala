@@ -191,6 +191,7 @@ object LayerFixtures {
   }
 
   def defaultExtent = Extent(xmin = 3.248235121238894, ymin = 50.9753557675801, xmax = 3.256396825072918, ymax = 50.98003212949561)
+  def defaultExtentEpsg32631 = Extent(517426.02294117736, 5647113.691848417, 518000.7789979682, 5647635.678245767)
 
 
   def sentinel1Sigma0LayerProviderUTM = {

@@ -98,13 +98,14 @@ class MergeCubesSpec {
     Files.createDirectories(Paths.get(path))
     val specialTile = MergeCubesSpec.getDebugTile
     // Avoid global extent to avoid errors when reprojecting
-    val tileLayerRDD = tileToSpaceTimeDataCube(specialTile, Some(LayerFixtures.defaultExtent))
+    val extentEpsg32631 = defaultExtentEpsg32631
+    val otherCrs = CRS.fromEpsgCode(32631)
+    val extentLatLng = extentEpsg32631.reproject(otherCrs, LatLng)
+    val tileLayerRDD = tileToSpaceTimeDataCube(specialTile, Some(extentLatLng))
     saveRDD(tileLayerRDD.toSpatial(tileLayerRDD.keys.collect().head.time), 1, path + "tileLayerRDD.tiff")
-    val newCrs = CRS.fromEpsgCode(32631)
     val extend = tileLayerRDD.metadata.layout.extent
-    val extend_reproject = extend.reproject(tileLayerRDD.metadata.crs, newCrs)
-    val ld = LayoutDefinition(RasterExtent(extend_reproject, CellSize(extend_reproject.width / specialTile.cols, extend_reproject.height / specialTile.rows)), specialTile.cols, specialTile.rows)
-    val tileLayerRDD_tiled = tileLayerRDD.reproject(newCrs, ld)._2
+    val ld = LayoutDefinition(RasterExtent(extentEpsg32631, CellSize(extentEpsg32631.width / specialTile.cols, extentEpsg32631.height / specialTile.rows)), specialTile.cols, specialTile.rows)
+    val tileLayerRDD_tiled = tileLayerRDD.reproject(otherCrs, ld)._2
     saveRDD(tileLayerRDD_tiled.toSpatial(tileLayerRDD_tiled.keys.collect().head.time), 1, path + "tileLayerRDD_tiled.tiff")
 
     val wrappedRDD = new OpenEORasterCube[SpaceTimeKey](tileLayerRDD.rdd, tileLayerRDD.metadata, new OpenEORasterCubeMetadata(Seq("B01", "B02")))
@@ -368,16 +369,17 @@ class MergeCubesSpec {
     val tile2 = MultibandTile(band3,band4)
 
     val crs = CRS.fromEpsgCode(32631)
-    val extent = Extent(3.00, 51.00, 3.10, 51.10)
-    val newExtent = extent.reproject(LatLng,crs)
+    val extent = Extent(500000.00, 5650000.00, 507000.00, 5660950.00)
+    val extentLatLng = extent.reproject(crs,LatLng)
 
-    val cube1: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile1, extent), tileLayout, LatLng)
-    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile2, newExtent), tileLayout, crs)
+    val cube1: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile1, extentLatLng), tileLayout, LatLng)
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile2, extent), tileLayout, crs)
     val processes = new OpenEOProcesses()
     val merged: MultibandTileLayerRDD[SpatialKey] = processes.mergeSpatialCubes(cube1, cube2, "mean")
 
-    assertEquals(merged.metadata.layoutExtent, newExtent)
-    assertEquals(merged.metadata.crs, crs)
+    val difference = extent.compare(merged.metadata.layoutExtent)
+    assertEquals(merged.metadata.extent, extentLatLng)
+    assertEquals(merged.metadata.crs, LatLng)
 
     for (item: (SpatialKey, MultibandTile) <- merged.collect) {
       assertEquals(2, item._2.bandCount)
@@ -393,8 +395,8 @@ class MergeCubesSpec {
     val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
     val band4 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
 
-    val tileLayout1 = TileLayout(1,1,32,32)
-    val tileLayout2 = TileLayout(2,2,16,16)
+    val tileLayout1 = TileLayout(2,2,16,16)
+    val tileLayout2 = TileLayout(1,1,32,32)
     val tile1 = MultibandTile(band1,band2)
     val tile2 = MultibandTile(band3,band4)
 

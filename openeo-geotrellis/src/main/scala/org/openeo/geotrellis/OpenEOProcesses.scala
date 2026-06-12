@@ -1000,25 +1000,25 @@ class OpenEOProcesses extends Serializable {
   }
 
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
-    if(target.metadata.crs.equals(data.metadata.crs) && target.metadata.layout.equals(data.metadata.layout)) {
+    resampleCubeSpatial(data, target.metadata, target.partitioner, method)
+  }
+
+  def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], targetMetadata: TileLayerMetadata[SpaceTimeKey], targetPartitioner: Option[Partitioner], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+    if(targetMetadata.crs.equals(data.metadata.crs) && targetMetadata.layout.equals(data.metadata.layout)) {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
       (0,data)
     }else{
       logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
       //construct a partitioner that is compatible with data cube
-      val targetPartitioner = constructCompatibleTargetPartitioner(data.partitioner, target.partitioner, data.metadata, target.metadata)
-      reprojectTileRDD(data, target.metadata, method, targetPartitioner)
+      val partitioner = constructCompatibleTargetPartitioner(data.partitioner, targetPartitioner, data.metadata, targetMetadata)
+      var bufferSize = 16
+      if(method == NearestNeighbor && targetMetadata.crs == data.metadata.crs && targetMetadata.cellSize.resolution < data.metadata.cellSize.resolution) {
+        //bufferSize 0 is cheaper, but can only be used under strict conditions, the current selection is rather strict to be safe, potentially can be relaxed
+        bufferSize = 0
+      }
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, targetMetadata.crs, Right(targetMetadata.layout), bufferSize, method, partitioner)
+      filterNegativeSpatialKeys(reprojected)
     }
-  }
-
-  def reprojectTileRDD(data:MultibandTileLayerRDD[SpaceTimeKey],targetMetadata: TileLayerMetadata[SpaceTimeKey], method:ResampleMethod, targetPartitioner: Option[Partitioner]): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
-    var bufferSize = 16
-    if(method == NearestNeighbor && targetMetadata.crs == data.metadata.crs && targetMetadata.cellSize.resolution < data.metadata.cellSize.resolution) {
-      //bufferSize 0 is cheaper, but can only be used under strict conditions, the current selection is rather strict to be safe, potentially can be relaxed
-      bufferSize = 0
-    }
-    val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, targetMetadata.crs, Right(targetMetadata.layout), bufferSize, method, targetPartitioner)
-    filterNegativeSpatialKeys(reprojected)
   }
 
   def resampleCubeSpatial_spacetime(data: MultibandTileLayerRDD[SpaceTimeKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
@@ -1120,8 +1120,8 @@ class OpenEOProcesses extends Serializable {
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
     leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands)")
     val layoutMerged = GeneralUtils.layoutMerged(leftCube.metadata.layout, rightCube.metadata.layout, leftCube.metadata.crs, rightCube.metadata.crs)
-    val resampledRight = resampleCubeSpatial_spatial(rightCube,rightCube.metadata.crs,layoutMerged,NearestNeighbor,leftCube.partitioner.orNull)._2
-    val resampledLeft = resampleCubeSpatial_spatial(leftCube,rightCube.metadata.crs,layoutMerged,NearestNeighbor,rightCube.partitioner.orNull)._2
+    val resampledRight = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,layoutMerged,NearestNeighbor,leftCube.partitioner.orNull)._2
+    val resampledLeft = resampleCubeSpatial_spatial(leftCube,leftCube.metadata.crs,layoutMerged,NearestNeighbor,leftCube.partitioner.orNull)._2
     checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
     val joined = outerJoin(resampledLeft,resampledRight)
     val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
@@ -1130,13 +1130,15 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val resampledRight = resampleCubeSpatial(rightCube,leftCube,NearestNeighbor)._2
-    val resampledLeft = resampleCubeSpatial(leftCube,resampledRight,NearestNeighbor)._2
+    val mergedLayout = GeneralUtils.layoutMerged(leftCube.metadata.layout, rightCube.metadata.layout, leftCube.metadata.crs, rightCube.metadata.crs)
+    val targetMetadata = leftCube.metadata.copy(layout = mergedLayout, extent = mergedLayout.extent)
+    val resampledRight = resampleCubeSpatial(rightCube,targetMetadata, leftCube.partitioner,NearestNeighbor)._2
+    val resampledLeft = resampleCubeSpatial(leftCube,targetMetadata, leftCube.partitioner,NearestNeighbor)._2
     checkMetadataCompatible(resampledLeft.metadata, resampledRight.metadata)
     val joined = outerJoin(resampledLeft,resampledRight)
     val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
 
-    val updatedMetadata = resampledLeft.metadata.copy(bounds = joined.metadata,extent = resampledLeft.metadata.extent,cellType = outputCellType)
+    val updatedMetadata = resampledLeft.metadata.copy(bounds = joined.metadata,extent = targetMetadata.extent,cellType = outputCellType)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 

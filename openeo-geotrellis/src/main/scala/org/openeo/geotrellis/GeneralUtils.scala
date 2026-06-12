@@ -196,10 +196,10 @@ object GeneralUtils {
   def layoutMerged(layoutLeft:LayoutDefinition, layoutRight:LayoutDefinition, crsLeft: CRS, crsRight: CRS): LayoutDefinition = {
     if (layoutLeft == layoutRight & crsLeft == crsRight) layoutLeft
     else {
-      val reprojectedLayoutLeft = layoutLeft.extent.reproject(crsLeft, crsRight)
-      val combinedExtent = reprojectedLayoutLeft.combine(layoutRight.extent)
-      val mappedLayout = layoutRight.mapTransform.apply(combinedExtent)
-      val tileLayout = TileLayout(mappedLayout.width, mappedLayout.height, layoutRight.tileCols, layoutRight.tileRows)
+      val reprojectedLayoutRight = layoutRight.extent.reproject(crsRight, crsLeft)
+      val combinedExtent = reprojectedLayoutRight.combine(layoutLeft.extent)
+      val mappedLayout = layoutLeft.mapTransform.apply(combinedExtent)
+      val tileLayout = TileLayout(mappedLayout.width, mappedLayout.height, layoutLeft.tileCols, layoutLeft.tileRows)
       LayoutDefinition(combinedExtent, tileLayout)
     }
   }
