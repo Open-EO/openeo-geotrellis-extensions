@@ -1075,13 +1075,16 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, resampled)
+    val mergedLayout = GeneralUtils.layoutMerged(leftCube.metadata.layout, rightCube.metadata.layout, leftCube.metadata.crs, rightCube.metadata.crs)
+    val targetMetadata = leftCube.metadata.copy(layout = mergedLayout, extent = mergedLayout.extent)
+    val resampledLeft = resampleCubeSpatial(leftCube,targetMetadata, leftCube.partitioner,NearestNeighbor)._2
+    val resampledRight = resampleCubeSpatial_spatial(rightCube,resampledLeft.metadata.crs,mergedLayout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
+    checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
+    val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](resampledLeft, resampledRight)
     if(operator == null) {
-      val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
+      val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
       //TODO: what if extent of joined cube is larger than left cube?
-      val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
+      val updatedMetadata = targetMetadata.copy(cellType = outputCellType)
       return new ContextRDD(rdd.mapValues({case (l,r) =>
         if(swapOperands) {
           MultibandTile( r.bands.map(t=>safeConvert(t,updatedMetadata.cellType))  ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
