@@ -1513,7 +1513,7 @@ package object geotiff {
     val outputBufferString = outputBuffer.toString().trim
     val cerrBufferString = cerrBuffer.toString().trim
 
-    logger.debug(s"${args mkString " "} returned exit code $exitCode; stdout was: $outputBufferString; stderr was $cerrBufferString")
+    logger.info(s"${args mkString " "} returned exit code $exitCode; stdout was: $outputBufferString; stderr was $cerrBufferString")
 
     if (cerrBufferString.nonEmpty) {
       logger.info(s"gdalinfo warnings: $cerrBufferString") // Mostly harmless messages
