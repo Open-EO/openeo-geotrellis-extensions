@@ -1081,6 +1081,7 @@ class OpenEOProcesses extends Serializable {
     val resampledRight = resampleCubeSpatial_spatial(rightCube,resampledLeft.metadata.crs,mergedLayout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
     checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
     val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](resampledLeft, resampledRight)
+    logger.info(s"merge_cubes: Merging cube spacetime spatial with operator: ${operator}, layout: ${mergedLayout}}")
     if(operator == null) {
       val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
       //TODO: what if extent of joined cube is larger than left cube?
@@ -1107,7 +1108,7 @@ class OpenEOProcesses extends Serializable {
           MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
         }
 
-      }), leftCube.metadata)
+      }), targetMetadata)
     }
   }
 
@@ -1128,7 +1129,8 @@ class OpenEOProcesses extends Serializable {
     checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
     val joined = outerJoin(resampledLeft,resampledRight)
     val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
-    val updatedMetadata = resampledLeft.metadata.copy(bounds = joined.metadata,extent = layoutMerged.extent,cellType = outputCellType)
+    val updatedMetadata = resampledLeft.metadata.copy(bounds = joined.metadata,extent = layoutMerged.extent,cellType = outputCellType, layout = layoutMerged)
+    logger.info(s"merge_cubes: Merging cubes spatial with layout: ${layoutMerged}, output cell type: ${outputCellType}")
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
@@ -1141,7 +1143,8 @@ class OpenEOProcesses extends Serializable {
     val joined = outerJoin(resampledLeft,resampledRight)
     val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
 
-    val updatedMetadata = resampledLeft.metadata.copy(bounds = joined.metadata,extent = targetMetadata.extent,cellType = outputCellType)
+    val updatedMetadata = targetMetadata.copy(bounds = joined.metadata,cellType = outputCellType)
+    logger.info(s"merge_cubes: Merging cubes spacetime with layout: ${mergedLayout}, output cell type: ${outputCellType}")
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
