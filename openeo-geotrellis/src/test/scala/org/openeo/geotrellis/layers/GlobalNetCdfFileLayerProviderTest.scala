@@ -15,6 +15,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.hadoop.fs.Path
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.condition.EnabledIf
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons}
@@ -203,7 +204,7 @@ class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
    * Test if fetching an UTM extent from a global LatLng feature works fine
    */
   @Test
-  def readDataCubeWithOpensearchClientUTM(): Unit = {
+  def readDataCubeWithOpensearchClientUTM(@TempDir tmpDir: java.nio.file.Path): Unit = {
     val date = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
     val point = (-86.30859375, 31.5)
     val boundingBoxLatLng = ProjectedExtent(Extent(point._1, point._2, point._1 + 0.01, point._2 + 0.01), LatLng)
@@ -220,16 +221,14 @@ class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
     val (_, arbitraryTile) = layer.first()
     assertEquals(2, arbitraryTile.bandCount)
 
-    Files.createDirectories(Paths.get("tmp/"))
-
     layer
       .toSpatial(date)
-      .writeGeoTiff("tmp/readDataCubeWithOpensearchClientUTM.tif")
+      .writeGeoTiff(s"$tmpDir/readDataCubeWithOpensearchClientUTM.tif")
 
     val refFile = Thread.currentThread().getContextClassLoader.getResource(
       "org/openeo/geotrellis/GlobalNetCdfFileLayerProviderTest/readDataCubeWithOpensearchClientUTM.tif")
     val refTiff = GeoTiff.readMultiband(refFile.getPath)
-    val geotiff = GeoTiff.readMultiband("tmp/readDataCubeWithOpensearchClientUTM.tif")
+    val geotiff = GeoTiff.readMultiband(s"$tmpDir/readDataCubeWithOpensearchClientUTM.tif")
 
     val mse = MergeCubesSpec.simpleMeanSquaredError(geotiff.tile.band(0), refTiff.tile.band(0))
     println("MSE = " + mse)
@@ -240,7 +239,7 @@ class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
    * Test if fetching an LAEA extent from a global LatLng feature works fine
    */
   @Test
-  def readDataCubeWithOpensearchClientLAEA(): Unit = {
+  def readDataCubeWithOpensearchClientLAEA(@TempDir tmpDir: java.nio.file.Path): Unit = {
     val date = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
     val boundingBox = ProjectedExtent(Extent(3778000, 2937000, 4078000, 3181000), CRS.fromName("EPSG:3035"))
     val parameters = new DataCubeParameters()
@@ -252,17 +251,14 @@ class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
 
     val (_, arbitraryTile) = layer.first()
     assertEquals(2, arbitraryTile.bandCount)
-
-    Files.createDirectories(Paths.get("tmp/"))
-
     layer
       .toSpatial(date)
-      .writeGeoTiff("tmp/readDataCubeWithOpensearchClientLAEA.tif")
+      .writeGeoTiff(s"$tmpDir/readDataCubeWithOpensearchClientLAEA.tif")
 
     val refFile = Thread.currentThread().getContextClassLoader.getResource(
       "org/openeo/geotrellis/GlobalNetCdfFileLayerProviderTest/readDataCubeWithOpensearchClientLAEA.tif")
     val refTiff = GeoTiff.readMultiband(refFile.getPath)
-    val geotiff = GeoTiff.readMultiband("tmp/readDataCubeWithOpensearchClientLAEA.tif")
+    val geotiff = GeoTiff.readMultiband(s"$tmpDir/readDataCubeWithOpensearchClientLAEA.tif")
 
     val mse = MergeCubesSpec.simpleMeanSquaredError(geotiff.tile.band(0), refTiff.tile.band(0))
     println("MSE = " + mse)
