@@ -1503,7 +1503,25 @@ object LayerFixtures {
     new ContextRDD(rdd.mapValues(t => MultibandTile(t)),rdd.metadata.copy(layout= rdd.metadata.layout.copy(extent=extent),extent = extent,crs=crs))
   }
 
-  def sentinel2B04Layer = {
+  def sentinel2B04SingleTimestampLayer: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val tiles = b04Raster.tile.bands
+    val timesteps = Array(0)
+    val startDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
+    val dates = timesteps.map(startDate.plusDays(_))
+
+    val timeseries: Array[(SpaceTimeKey, MultibandTile)] = dates.zip(tiles).map({ date_tile => {
+      (SpaceTimeKey(0, 0, date_tile._1), MultibandTile(date_tile._2.withNoData(Some(32767))))
+    }
+    })
+
+    val rdd = SparkContext.getOrCreate().parallelize(timeseries)
+    val layer = ContextRDD(rdd, TileLayerMetadata(timeseries(0)._2.cellType, LayoutDefinition(b04Raster.rasterExtent, tiles.head.cols,tiles.head.rows), b04Raster.extent, b04RasterSource.crs, KeyBounds[SpaceTimeKey](timeseries.head._1, timeseries.last._1)))
+    new ContextRDD(layer.partitionBy(new SpacePartitioner[SpaceTimeKey](layer.metadata.bounds)(implicitly,implicitly,new SparseSpaceTimePartitioner(Array(SparseSpaceTimePartitioner.toIndex(timeseries.head._1, 0)), 0, Some(Array(timeseries.head._1))))), layer.metadata)
+  }
+
+
+
+  def sentinel2B04Layer: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val tiles = b04Raster.tile.bands
     val timesteps = Array(0, 25, 35, 37, 55, 60, 67, 70, 80, 82, 85, 87, 90, 110, 112, 117, 122, 137, 140, 147, 152, 157, 160, 165, 167, 177, 180, 185, 190, 195, 210, 212, 215, 217, 222, 230, 232, 237, 240, 242, 265, 275, 280, 292, 302, 305, 312, 317, 325, 342, 350, 357, 360, 362, 367, 370, 372, 380, 382, 422, 425, 427, 430, 432, 435, 440, 442, 445, 447, 450, 452, 455, 457, 460, 462, 470, 472, 480, 482, 485, 490, 492, 495, 497, 515, 517, 520, 522, 532, 545, 547, 550, 552, 555, 557, 562, 565, 570, 572, 575, 587, 590, 600, 602, 605, 607, 610, 617, 637, 652, 667, 670, 697)
     val startDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")

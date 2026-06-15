@@ -39,8 +39,9 @@ import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener}
 import org.slf4j.{Logger, LoggerFactory}
-import ucar.nc2.NetcdfFile
 import ucar.nc2.util.CompareNetcdf2
+import ucar.nc2.util.CompareNetcdf2.ObjFilter
+import ucar.nc2.{Attribute, NetcdfFile, Variable}
 
 import java.io.{File, FileInputStream, FileOutputStream}
 import java.net.{URI, URL}
@@ -1815,7 +1816,15 @@ class FileLayerProviderTest extends RasterMatchers {
     val refFile = NetcdfFile.open(referenceFile)
 
     val formatter = new Formatter()
-    val areEqual = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile)
+    val areEqual = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile, new ObjFilter {
+      override def attCheckOk(v: Variable, att: Attribute): Boolean = {
+        if( v == null && att.getShortName == "_NCProperties") {
+          return false
+        }else{
+          return true
+        }
+      }
+    })
 
     assertTrue(areEqual, s"netCDF files are not equal:\n$formatter")
   }

@@ -89,6 +89,15 @@ object FileLayerProvider {
   private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
   private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("load_collection_read").build().gaugeBuilder("openeo_megapixel_per_second").build()
 
+  private val rasterSourceProviderChain: Seq[RasterSourceProvider] = {
+    import java.util.ServiceLoader
+    import scala.jdk.CollectionConverters._
+    val discovered = ServiceLoader.load(classOf[RasterSourceProvider]).asScala.toSeq
+    List(SyntheticDataRasterSourceProvider, SentinelXmlMetadataRasterSourceProvider) ++
+      discovered ++
+      List(ZarrRasterSourceProvider, HDFRasterSourceProvider, NetCDFRasterSourceProvider, JPEGRasterSourceProvider, DefaultRasterSourceProvider)
+  }
+
   {
     try {
       val gdaldatasetcachesize = Integer.valueOf(System.getenv().getOrDefault("GDAL_DATASET_CACHE_SIZE", "32"))
@@ -702,7 +711,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
   private val fromLoadStac = openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
   private val softErrors = maxSoftErrorsRatio > 0.0
-  private val rasterSourceProviderChain: Seq[RasterSourceProvider] = List(SyntheticDataRasterSourceProvider, SentinelXmlMetadataRasterSourceProvider, ZarrRasterSourceProvider, HDFRasterSourceProvider, NetCDFRasterSourceProvider, JPEGRasterSourceProvider, DefaultRasterSourceProvider)
+
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     if (fromLoadStac) {
