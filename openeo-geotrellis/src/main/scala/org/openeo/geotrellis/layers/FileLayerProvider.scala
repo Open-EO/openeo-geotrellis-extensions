@@ -89,6 +89,15 @@ object FileLayerProvider {
   private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
   private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("load_collection_read").build().gaugeBuilder("openeo_megapixel_per_second").build()
 
+  private val rasterSourceProviderChain: Seq[RasterSourceProvider] = {
+    import java.util.ServiceLoader
+    import scala.jdk.CollectionConverters._
+    val discovered = ServiceLoader.load(classOf[RasterSourceProvider]).asScala.toSeq
+    List(SyntheticDataRasterSourceProvider, SentinelXmlMetadataRasterSourceProvider) ++
+      discovered ++
+      List(ZarrRasterSourceProvider, HDFRasterSourceProvider, NetCDFRasterSourceProvider, JPEGRasterSourceProvider, DefaultRasterSourceProvider)
+  }
+
   {
     try {
       val gdaldatasetcachesize = Integer.valueOf(System.getenv().getOrDefault("GDAL_DATASET_CACHE_SIZE", "32"))
