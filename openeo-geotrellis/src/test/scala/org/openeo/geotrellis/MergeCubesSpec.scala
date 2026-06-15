@@ -617,7 +617,7 @@ class MergeCubesSpec {
     }
   }
 
-  @Test def testMergeCubeDiffentExtentSpaceTimeSpaceTime(): Unit = {
+  @Test def testMergeCubeDifferenceExtentSpaceTimeSpaceTime(): Unit = {
     val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
     val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
     val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
@@ -663,6 +663,35 @@ class MergeCubesSpec {
           assertEquals(0, tile.band(1).get(0, 0).toByte)
         case _ => fail("Unexpected spatial key")
       }
+    }
+  }
+
+  @Test def testMergeCubeDifferenceCRS_SpaceTimeSpaceTime(): Unit = {
+    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band4 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+
+    val tileLayout = TileLayout(2,2,16,16)
+    val tile1 = MultibandTile(band1,band2)
+    val tile2 = MultibandTile(band3,band4)
+
+    val crs = CRS.fromEpsgCode(32631)
+    val extent = Extent(500000.00, 5650000.00, 507000.00, 5660950.00)
+    val extentLatLng = extent.reproject(crs,LatLng)
+
+    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"), Some(extentLatLng), tilingFactor = 2)
+    val cube2: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band3, band4), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"), Some(extent), tilingFactor = 2, crs)
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(cube1, cube2, "mean")
+
+    val difference = extent.compare(merged.metadata.layoutExtent)
+    assertEquals(merged.metadata.extent, extentLatLng)
+    assertEquals(merged.metadata.crs, LatLng)
+
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
+      assertEquals(2, item._2.bandCount)
+      assertEquals(7, item._2.band(0).get(0, 0))
+      assertEquals(3, item._2.band(1).get(0, 0))
     }
   }
 

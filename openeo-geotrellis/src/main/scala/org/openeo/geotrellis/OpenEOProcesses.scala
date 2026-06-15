@@ -767,6 +767,8 @@ class OpenEOProcesses extends Serializable {
     val kbRight: Bounds[K] = rightCube.metadata.getComponent[Bounds[K]]
     val kb: Bounds[K] = kbLeft.combine(kbRight)
 
+    logger.info(s"Performing outer join on cubes with bounds: ${kbLeft} and ${kbRight}, resulting in bounds: ${kb}")
+    
     val leftCount = maybeBandCount(leftCube)
     val rightCount = maybeBandCount(rightCube)
     //fairly arbitrary heuristic if we're going to create a cube with a high number of bands
