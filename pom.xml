@@ -86,6 +86,7 @@
                 <module>geopyspark-geotrellis</module>
                 <module>openeo-dependencies</module>
                 <module>openeo-geotrellis-healpix</module>
+                <module>sar-terrain-correction</module>
             </modules>
         </profile>
     </profiles>
