@@ -4,24 +4,30 @@ import geotrellis.raster.{GridBounds, MultibandTile, Tile}
 import org.openeo.sar.backend.TerrainCorrectionBackend
 import org.openeo.sar.geom.{Ecef, RangeDoppler, Vec3}
 import org.openeo.sar.metadata.Polarisation
-import org.openeo.sar.{TerrainCorrectionProcessor, TileComputeContext}
+import org.openeo.sar.{BackscatterNormalization, TerrainCorrectionProcessor, TileComputeContext}
 
-/** Pure-Scala terrain correction. Operates on already-assembled inputs in
- *  `TileComputeContext`. */
+/** Pure-Scala terrain correction backend.
+ *
+ *  Computes sigma0 or gamma0_RTC backscatter with range-Doppler orthorectification.
+ *  Output band layout is determined by [[org.openeo.sar.SarProcessingConfig]] carried
+ *  on the [[TileComputeContext]]; see [[TerrainCorrectionBackend]] for the full
+ *  band index documentation. */
 final class NativeBackend extends TerrainCorrectionBackend {
   override val name = "native"
 
   override def compute(ctx: TileComputeContext): MultibandTile = {
-    val req = ctx.request
-    val meta = ctx.metadata
-    val pols = req.polarisations.toArray
+    val req    = ctx.request
+    val meta   = ctx.metadata
+    val config = req.config
+    val pols   = req.polarisations.toArray
 
-    val (sigmas, inc, mask) = TerrainCorrectionBackend.allocate(req.cols, req.rows, pols.length)
+    val (backscatter, ellipsInc, localInc, mask, shadowLayover) =
+      TerrainCorrectionBackend.allocate(req.cols, req.rows, pols.length, config)
 
     // 1. DEM window for the output tile, ellipsoidal heights (metres).
     val dem: Array[Array[Double]] = TerrainCorrectionProcessor.readDemEllipsoidal(ctx)
 
-    // 2. Pre-compute per-pixel (lon, lat) on the output grid.
+    // 2. Pre-compute per-pixel (lon, lat) in radians on the output grid.
     val lonLat: Array[Array[(Double, Double)]] = Array.tabulate(req.rows, req.cols) {
       (r, c) => TerrainCorrectionProcessor.pixelToLonLatRad(c, r, req)
     }
@@ -31,7 +37,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
 
     // 4. First pass: forward-geocode every output pixel to SAR (line, groundRangePx)
     //    and remember the bounding box so we issue ONE windowed read per polarisation.
-    case class SarCoord(line: Double, gr: Double, rSlant: Double, pSat: Vec3, pGnd: Vec3)
+    case class SarCoord(line: Double, gr: Double, pSat: Vec3, pGnd: Vec3)
     val sarCoords: Array[Array[SarCoord]] = Array.ofDim(req.rows, req.cols)
     var minLine = Int.MaxValue; var maxLine = Int.MinValue
     var minPx   = Int.MaxValue; var maxPx   = Int.MinValue
@@ -52,7 +58,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
           val srgr   = meta.polarisations(pols(0)).srgr.at(tAz)
           val grMetres = srgr.groundRangeFromSlant(rSlant, gSeed = math.max(0.0, rSlant - srgr.sr0))
           val grPx     = grMetres / meta.timing.rangePixelSpacing
-          sarCoords(r)(c) = SarCoord(azLine, grPx, rSlant, pSat, pGnd)
+          sarCoords(r)(c) = SarCoord(azLine, grPx, pSat, pGnd)
 
           if (azLine >= 0 && azLine <  meta.timing.numberOfLines &&
               grPx   >= 0 && grPx   <  meta.timing.numberOfPixels) {
@@ -67,27 +73,28 @@ final class NativeBackend extends TerrainCorrectionBackend {
       r += 1
     }
 
-    if (!anyValid) return TerrainCorrectionBackend.assemble(sigmas, inc, mask)
+    if (!anyValid)
+      return TerrainCorrectionBackend.assemble(backscatter, ellipsInc, localInc, mask, shadowLayover)
 
     // 5. Pad window by 1 pixel for bilinear sampling, clip to scene.
     val winMinLine = math.max(0, minLine - 1)
     val winMinPx   = math.max(0, minPx   - 1)
     val winMaxLine = math.min(meta.timing.numberOfLines  - 1, maxLine + 1)
     val winMaxPx   = math.min(meta.timing.numberOfPixels - 1, maxPx   + 1)
-    val winCols    = winMaxPx   - winMinPx   + 1
-    val winRows    = winMaxLine - winMinLine + 1
 
-    // 6. One windowed read per polarisation in SAR coords (Long-keyed GridBounds).
+    // 6. One windowed read per polarisation in SAR coords.
     val sarWindows: Map[Polarisation, Tile] = pols.map { pol =>
-      val rs = ctx.sarSources(pol)
       val gb = GridBounds[Long](winMinPx.toLong, winMinLine.toLong, winMaxPx.toLong, winMaxLine.toLong)
-      val tile = rs.read(gb).getOrElse(
+      val tile = ctx.sarSources(pol).read(gb).getOrElse(
         throw new IllegalStateException(s"SAR window read failed for ${pol.code}")
       ).tile.band(0)
       pol -> tile
     }.toMap
 
-    // 7. Second pass: sample, calibrate, fill incidence + mask.
+    val doGamma0 = config.normalization == BackscatterNormalization.Gamma0RTC
+    val doShadow = config.shadowLayoverMask
+
+    // 7. Second pass: sample, calibrate, fill angles + mask bands.
     r = 0
     while (r < req.rows) {
       var c = 0
@@ -100,36 +107,111 @@ final class NativeBackend extends TerrainCorrectionBackend {
           val winLine = sc.line - winMinLine
           val winPx   = sc.gr   - winMinPx
 
-          var p = 0
-          while (p < pols.length) {
-            val pol = pols(p)
-            val polMeta = meta.polarisations(pol)
-            val dn = bilinear(sarWindows(pol), winPx, winLine)
-            if (!java.lang.Double.isNaN(dn)) {
-              val sigmaLut = polMeta.sigmaLut(sc.line, sc.gr)
-              val noiseLut = polMeta.noiseLut(sc.line, sc.gr)
-              val num = Math.fma( dn, dn, - noiseLut)
-              val sigma0 = if (sigmaLut > 0) num / (sigmaLut * sigmaLut) else Float.NaN
-              sigmas(p).setDouble(c, r, sigma0)
-            }
-            p += 1
+          // ---- Angles -------------------------------------------------------
+          // Ellipsoidal incidence angle: look vs. smooth WGS84 ellipsoid normal.
+          val ellipsoidNorm = Ecef.ellipsoidalNormal(sc.pGnd)
+          val thetaEl       = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, ellipsoidNorm)
+
+          // Terrain surface normal via finite differences on the DEM/lonLat arrays.
+          val terrainNorm = terrainSurfaceNormal(dem, lonLat, r, c, req.rows, req.cols)
+          val thetaLoc    = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, terrainNorm)
+
+          ellipsInc.setDouble(c, r, math.toDegrees(thetaEl))
+          localInc.setDouble( c, r, math.toDegrees(thetaLoc))
+
+          // ---- Shadow / layover classification ------------------------------
+          // The look direction (sat→ground): positive dot with terrain normal
+          // means the normal points away from the satellite → shadow.
+          // thetaLoc > π/2 also indicates shadow; we use the dot-product sign
+          // which is numerically cleaner.
+          val look      = (sc.pGnd - sc.pSat).normalize
+          val dotLook   = look.dot(terrainNorm)  // >0 = shadow, <0 = lit
+          // Layover: happens when the ground point is geometrically "ahead" of
+          // the satellite wavefront, indicated by negative slant-range cosine
+          // w.r.t. the flight direction. Practical proxy: θ_local < 0 (masked
+          // out by the geometry) — we detect it as dotLook < -1 (impossible) or
+          // by thetaEl > thetaLoc (ground is steeper than look angle).
+          val isLayover = thetaLoc < 0.0 || thetaEl > math.Pi / 2.0
+          val isShadow  = dotLook  > 0.0
+
+          if (doShadow) {
+            shadowLayover.get.setDouble(c, r,
+              if (isLayover) 1.0f
+              else if (isShadow) 2.0f
+              else 0.0f)
           }
 
-          val normal = Ecef.ellipsoidalNormal(sc.pGnd)
-          val incRad = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, normal)
-          inc.setDouble(c, r, math.toDegrees(incRad))
-          mask.setDouble(c, r, 1.0)
+          // ---- Backscatter --------------------------------------------------
+          if (!isLayover && !isShadow) {
+            // RTC factor (angle-ratio method).  Clamp sin(θ_local) to avoid
+            // divide-by-zero near 0° or 180° grazing.
+            val sinLocal = math.sin(thetaLoc)
+            val rtcFactor =
+              if (doGamma0 && sinLocal > 0.01)
+                math.sin(thetaEl) / sinLocal
+              else if (doGamma0)
+                Double.NaN  // grazing — mark invalid
+              else
+                1.0
+
+            var p = 0
+            while (p < pols.length) {
+              val polMeta = meta.polarisations(pols(p))
+              val dn = bilinear(sarWindows(pols(p)), winPx, winLine)
+              if (!java.lang.Double.isNaN(dn)) {
+                val sigmaLut = polMeta.sigmaLut(sc.line, sc.gr)
+                val noiseLut = polMeta.noiseLut(sc.line, sc.gr)
+                val num      = Math.fma(dn, dn, -noiseLut)
+                val sigma0   = if (sigmaLut > 0) num / (sigmaLut * sigmaLut) else Float.NaN
+                backscatter(p).setDouble(c, r, sigma0 * rtcFactor)
+              }
+              p += 1
+            }
+            mask.setDouble(c, r, 1.0)
+          }
+          // shadow/layover pixels: backscatter stays NaN, mask stays 0
         }
         c += 1
       }
       r += 1
     }
 
-    TerrainCorrectionBackend.assemble(sigmas, inc, mask)
+    TerrainCorrectionBackend.assemble(backscatter, ellipsInc, localInc, mask, shadowLayover)
   }
 
-  /** Bilinear DN sample at fractional (col, row) on a `Tile`. Returns NaN
-   *  if the four neighbours fall outside the tile. */
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  /** Outward terrain surface normal at grid position (col, row) in ECEF,
+   *  derived from centred finite differences of the DEM heights.
+   *  At boundary pixels falls back to the ellipsoidal normal. */
+  private def terrainSurfaceNormal(dem: Array[Array[Double]],
+                                   lonLat: Array[Array[(Double, Double)]],
+                                   row: Int, col: Int,
+                                   rows: Int, cols: Int): Vec3 = {
+    if (row == 0 || row == rows - 1 || col == 0 || col == cols - 1) {
+      val (lon, lat) = lonLat(row)(col)
+      return Ecef.ellipsoidalNormal(Ecef.fromGeodetic(lon, lat, dem(row)(col)))
+    }
+
+    val (lonE, latE) = lonLat(row)(col + 1); val pE = Ecef.fromGeodetic(lonE, latE, dem(row)(col + 1))
+    val (lonW, latW) = lonLat(row)(col - 1); val pW = Ecef.fromGeodetic(lonW, latW, dem(row)(col - 1))
+    val (lonN, latN) = lonLat(row - 1)(col); val pN = Ecef.fromGeodetic(lonN, latN, dem(row - 1)(col))
+    val (lonS, latS) = lonLat(row + 1)(col); val pS = Ecef.fromGeodetic(lonS, latS, dem(row + 1)(col))
+
+    // Two tangent vectors spanning the local surface patch.
+    val east  = pE - pW   // column direction (×2 spacing, direction only)
+    val north = pN - pS   // row direction (×2 spacing, pointing "up" in image)
+
+    // Cross product: north × east gives an outward-pointing normal for a
+    // right-handed East-North-Up coordinate frame on the WGS84 ellipsoid.
+    val n = north.cross(east)
+    if (n.norm < 1e-6) Ecef.ellipsoidalNormal(pE) else n.normalize
+  }
+
+  /** Bilinear DN sample at fractional (col, row) on a [[Tile]].
+   *  Returns NaN if any neighbour falls outside the tile. */
   private def bilinear(tile: Tile, col: Double, row: Double): Double = {
     val c0 = math.floor(col).toInt; val c1 = c0 + 1
     val r0 = math.floor(row).toInt; val r1 = r0 + 1

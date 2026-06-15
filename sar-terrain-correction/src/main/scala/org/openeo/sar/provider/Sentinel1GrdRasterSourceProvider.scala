@@ -9,7 +9,7 @@ import org.openeo.geotrellis.layers.provider.{RasterSourceDefinition, RasterSour
 import org.openeo.sar.backend.nativ.NativeBackend
 import org.openeo.sar.metadata.Polarisation
 import org.openeo.sar.raster.S1GrdRasterSource
-import org.openeo.sar.{SceneContext, TerrainCorrectionProcessor}
+import org.openeo.sar.{BackscatterNormalization, SarProcessingConfig, SceneContext, TerrainCorrectionProcessor}
 import org.slf4j.LoggerFactory
 
 import java.net.URI
@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit
  * */
 class Sentinel1GrdRasterSourceProvider(
   val processor: TerrainCorrectionProcessor,
+  val processingConfig: SarProcessingConfig = SarProcessingConfig.default,
   val sceneContextCacheSize: Int = 16
 ) extends RasterSourceProvider {
 
@@ -56,7 +57,7 @@ class Sentinel1GrdRasterSourceProvider(
     val safeRoot: URI = deriveSafeRoot(definition)
     val stacItemUrl: Option[URI] = definition.feature.selfUrl
 
-    val cacheKey = SceneCacheKey(safeRoot, crs, cellSize)
+    val cacheKey = SceneCacheKey(safeRoot, crs, cellSize, processingConfig)
 
     val scene = sceneCache.get(cacheKey, (_: SceneCacheKey) => {
       val pols = derivePolarisations(definition)
@@ -64,10 +65,8 @@ class Sentinel1GrdRasterSourceProvider(
 
       stacItemUrl match {
         case Some(url) =>
-          processor.openScene(url, cellSize, crs, pols)
+          processor.openScene(url, cellSize, crs, pols, processingConfig)
         case None =>
-          // Reconstruct a minimal STAC-like item from SAFE asset paths derived
-          // from the feature links and the known SAFE directory structure.
           openSceneFromSafeRoot(safeRoot, pols, cellSize, crs)
       }
     })
@@ -146,15 +145,14 @@ class Sentinel1GrdRasterSourceProvider(
 object Sentinel1GrdRasterSourceProvider {
   /** Convenience factory: NativeBackend + Copernicus DEM (COG via HTTPS). */
   def withCopernicusDem(
-    geoidTiffUri: Option[URI] = None
+    geoidTiffUri: Option[URI] = None,
+    config: SarProcessingConfig = SarProcessingConfig.default
   ): Sentinel1GrdRasterSourceProvider = {
     val demFactory: Extent => RasterSource = extent => {
       val lon0 = math.floor(extent.xmin).toInt
       val lat0 = math.floor(extent.ymin).toInt
       val lon1 = math.ceil(extent.xmax).toInt
       val lat1 = math.ceil(extent.ymax).toInt
-      // Use the 30m Copernicus DEM COGs hosted on AWS:
-      // https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_{lat}_{lon}_DEM.tif
       val urls = for {
         lat <- lat0 until lat1
         lon <- lon0 until lon1
@@ -162,8 +160,6 @@ object Sentinel1GrdRasterSourceProvider {
         lonStr = f"${if (lon >= 0) "E" else "W"}${math.abs(lon)}%03d"
         url = s"s3://eodata/auxdata/CopDEM_COG/copernicus-dem-30m/Copernicus_DSM_COG_10_${latStr}_00_${lonStr}_00_DEM/Copernicus_DSM_COG_10_${latStr}_00_${lonStr}_00_DEM.tif"
       } yield url
-
-      //TODO multi dem support??
       urls.map(GeoTiffRasterSource(_)).head
     }
 
@@ -171,18 +167,30 @@ object Sentinel1GrdRasterSourceProvider {
       case Some(g) => TerrainCorrectionProcessor.withDemAndGeoid(new NativeBackend, demFactory, g)
       case None    => new TerrainCorrectionProcessor(new NativeBackend, demFactory)
     }
-    new Sentinel1GrdRasterSourceProvider(processor)
+    new Sentinel1GrdRasterSourceProvider(processor, config)
   }
 }
 
 /** Default no-arg service provider loaded via [[java.util.ServiceLoader]].
- *  Uses [[NativeBackend]] and Copernicus 30 m DEM tiles from AWS HTTPS.
- *  Set env var `S1_GEOID_TIFF_URI` to a GeoTIFF URI to enable geoid correction. */
+ *  Uses [[NativeBackend]] and Copernicus 30 m DEM tiles from CDSE S3.
+ *
+ *  Environment variable overrides:
+ *    S1_GEOID_TIFF_URI      – URI of a geoid undulation GeoTIFF (optional)
+ *    S1_NORMALIZATION       – "sigma0" (default) or "gamma0rtc"
+ *    S1_SHADOW_LAYOVER_MASK – "true" to add shadow/layover band */
 class DefaultSentinel1GrdRasterSourceProvider
   extends Sentinel1GrdRasterSourceProvider(
     processor = {
       val geoidUri = Option(System.getenv("S1_GEOID_TIFF_URI")).map(URI.create)
       Sentinel1GrdRasterSourceProvider.withCopernicusDem(geoidUri).processor
+    },
+    processingConfig = {
+      val norm = Option(System.getenv("S1_NORMALIZATION")).map(_.toLowerCase) match {
+        case Some("gamma0rtc") => BackscatterNormalization.Gamma0RTC
+        case _                 => BackscatterNormalization.Sigma0
+      }
+      val shadow = Option(System.getenv("S1_SHADOW_LAYOVER_MASK")).exists(_.equalsIgnoreCase("true"))
+      SarProcessingConfig(norm, shadow)
     }
   )
-private final case class SceneCacheKey(safeRoot: URI, crs: CRS, cellSize: CellSize)
+private final case class SceneCacheKey(safeRoot: URI, crs: CRS, cellSize: CellSize, config: SarProcessingConfig)

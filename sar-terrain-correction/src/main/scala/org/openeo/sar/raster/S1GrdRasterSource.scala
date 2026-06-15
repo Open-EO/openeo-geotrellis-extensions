@@ -9,12 +9,16 @@ import org.openeo.sar.{SceneContext, TerrainCorrectionProcessor}
 import org.slf4j.LoggerFactory
 
 /** A [[RasterSource]] whose pixels are produced by SAR terrain correction
- *  (sigma0 calibration + range-Doppler orthorectification).
+ *  (calibration + range-Doppler orthorectification).
  *
- *  Band layout (Float32, NaN/0 outside swath):
- *    0 .. nPols-1 → sigma0 per polarisation (linear power)
- *    nPols        → local incidence angle (degrees)
- *    nPols+1      → validity mask (1.0 = valid)
+ *  Band layout is controlled by [[SarProcessingConfig]] stored in the [[SceneContext]].
+ *  See [[org.openeo.sar.backend.TerrainCorrectionBackend]] for the full band index table.
+ *  Default layout (sigma0, no shadow/layover mask):
+ *    0 .. nPols-1 → backscatter (sigma0 or gamma0_RTC) per polarisation
+ *    nPols        → ellipsoidal incidence angle (degrees)
+ *    nPols+1      → local terrain incidence angle (degrees)
+ *    nPols+2      → validity mask (1.0 valid, 0.0 outside swath)
+ *   [nPols+3]     → shadow/layover mask (optional, 0=ok, 1=layover, 2=shadow)
  *
  *  All expensive state (orbit, LUTs, open RasterSources) lives in the
  *  [[SceneContext]] which is built once and shared across all reads.
@@ -33,7 +37,7 @@ final class S1GrdRasterSource(
 
   override def metadata: RasterMetadata = this
 
-  override def bandCount: Int = sceneContext.polarisations.size + 2
+  override def bandCount: Int = sceneContext.config.bandCount(sceneContext.polarisations.size)
 
   override def cellType: CellType =
     targetCellType.map(_.cellType).getOrElse(FloatConstantNoDataCellType)

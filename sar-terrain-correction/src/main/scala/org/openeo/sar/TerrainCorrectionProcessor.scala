@@ -41,7 +41,8 @@ final class TerrainCorrectionProcessor(
   def openScene(stacItemUrl: URI,
                 cellSize: CellSize,
                 crs: CRS,
-                polarisations: Seq[Polarisation]): SceneContext = {
+                polarisations: Seq[Polarisation],
+                config: SarProcessingConfig = SarProcessingConfig.default): SceneContext = {
 
     val assets: StacAssets = StacItemLoader.load(stacItemUrl)
 
@@ -64,7 +65,7 @@ final class TerrainCorrectionProcessor(
     val demSource   = demSourceFactory(sceneBboxWgs84)
     val geoidSource = geoidSourceFactory.map(_(sceneBboxWgs84))
 
-    SceneContext(meta, sarSources, demSource, geoidSource, cellSize, crs, polarisations)
+    SceneContext(meta, sarSources, demSource, geoidSource, cellSize, crs, polarisations, config)
   }
 
   // -------------------------------------------------------------------------
@@ -73,21 +74,16 @@ final class TerrainCorrectionProcessor(
 
   /** Compute an output [[Raster]] for every extent in `extents`.
    *
-   *  `bands` selects which output bands to include (0-based):
-   *    0 .. nPols-1 → sigma0 per polarisation
-   *    nPols        → local incidence angle (degrees)
-   *    nPols+1      → validity mask
-   *
-   *  This matches the [[RasterSource.readExtents]] contract so that a
-   *  [[TerrainCorrectionRasterSource]] wrapper can delegate here without any
-   *  additional logic.
+   *  `bands` selects which output bands to include (0-based).
+   *  The full band layout is determined by [[SarProcessingConfig]]; see
+   *  [[org.openeo.sar.backend.TerrainCorrectionBackend]] for the index table.
    *
    *  Only per-tile windowed I/O and geometry happen inside this iterator;
    *  the scene-level [[SceneContext]] is closed over by reference. */
   def readExtents(scene: SceneContext,
                   extents: Traversable[Extent],
                   bands: Seq[Int]): Iterator[Raster[MultibandTile]] = {
-    val totalBands = scene.polarisations.size + 2
+    val totalBands = scene.config.bandCount(scene.polarisations.size)
     val effectiveBands = if (bands.isEmpty) (0 until totalBands) else bands
     extents.toIterator.map { extent =>
       val ctx  = scene.tileContext(extent)
@@ -107,7 +103,7 @@ final class TerrainCorrectionProcessor(
   // -------------------------------------------------------------------------
 
   def computeTile(stacItemUrl: URI, request: TileRequest): MultibandTile = {
-    val scene = openScene(stacItemUrl, request.cellSize, request.crs, request.polarisations)
+    val scene = openScene(stacItemUrl, request.cellSize, request.crs, request.polarisations, request.config)
     readExtents(scene, List(request.extent)).next().tile
   }
 }

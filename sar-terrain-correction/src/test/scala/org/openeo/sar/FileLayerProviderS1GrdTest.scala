@@ -154,14 +154,14 @@ class FileLayerProviderS1GrdTest {
 
     assertFalse(cube.isEmpty, "Result RDD must not be empty")
 
-    // S1GrdRasterSource always returns nPols+2 bands: VV, VH, incidence_angle, validity_mask.
-    val expectedBandCount = 4
+    // Default config: nPols+3 bands = VV, VH, ellipsoidal_inc, local_inc, validity.
+    val expectedBandCount = SarProcessingConfig.default.bandCount(2)
     val tiles = cube.values.collect()
     assertTrue(tiles.nonEmpty, "Must have at least one output tile")
-    /*tiles.foreach { tile =>
+    tiles.foreach { tile =>
       assertEquals(expectedBandCount, tile.bandCount,
-        s"Each tile must carry $expectedBandCount bands (sigma0_VV, sigma0_VH, incidence_angle, validity)")
-    }*/
+        s"Each tile must carry $expectedBandCount bands")
+    }
 
     // Save output GeoTIFF for visual inspection.
     saveRDDTemporal(cube, "/tmp/s1grd-filelayerprovider-test/", cropBounds = Some(outputExtent))
