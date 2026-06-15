@@ -1291,6 +1291,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             )
             .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
           if (maybeSource.isDefined) {
+            logger.info(s"maybeSource has celltype: ${maybeSource.get.cellType}, and metadata has cellType ${maybeSource.get.metadata.cellType}")
             if (bandIndex > 0) {
               Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
             } else {
