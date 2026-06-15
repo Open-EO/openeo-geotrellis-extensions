@@ -444,6 +444,8 @@ case class RasterTileLoader() {
           case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
         }
 
+      logger.info(s"Rasters are now converted to cell type $cellType, source: ${source.name.toString}")
+
       val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
       val paddedRasters = allRasters.zipWithIndex.flatMap { case (raster, index) => {
         val intersection = intersections(index)

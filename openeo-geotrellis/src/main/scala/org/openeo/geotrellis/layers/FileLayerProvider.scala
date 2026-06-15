@@ -722,9 +722,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
       val CellTypeFirstSource = arbitraryRasterSource.cellType
-      val commonCellType = overlappingRasterSources.foldLeft(BitCellType:CellType)((cumCellType, CurCellType) => {
-        val unioncellType = GeneralUtils.cellTypeUnionWithNoData(cumCellType, CurCellType._1.cellType)
-        logger.info(s"taking union of cell types: $cumCellType and ${CurCellType._1.cellType} from ${CurCellType._2.id} and ${CurCellType._2.tileID.getOrElse("no tile id")} gives $unioncellType")
+      val commonCellType = overlappingRasterSources.foldLeft(BitCellType:CellType)((cumCellType, curCellType) => {
+        val unioncellType = GeneralUtils.cellTypeUnionWithNoData(cumCellType, curCellType._1.cellType)
+        logger.info(s"taking union of cell types: $cumCellType and ${curCellType._1.cellType} from ${curCellType._2.id} and ${curCellType._2.tileID.getOrElse("no tile id")} gives $unioncellType")
         unioncellType
       })
 
