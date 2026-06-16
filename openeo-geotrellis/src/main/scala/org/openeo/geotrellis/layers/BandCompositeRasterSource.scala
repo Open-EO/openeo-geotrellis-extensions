@@ -7,7 +7,7 @@ import geotrellis.raster.{CellType, CropOptions, CroppedTile, GridBounds, GridEx
 import geotrellis.vector.Extent
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
-import org.openeo.geotrellis.GeneralUtils.cellTypeUnion
+import org.openeo.geotrellis.GeneralUtils.cellTypeUnionWithNoData
 import org.openeo.geotrelliscommon.ResampledTile
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
@@ -96,7 +96,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
   }
 
-  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => cellTypeUnion(a, b))
+  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => cellTypeUnionWithNoData(a, b))
 
   override def name: SourceName = sources.head.name
 

@@ -1323,7 +1323,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
-      logger.info(s"Sources now have cellTypes: ${sources.map(_._1.cellType.toString().mkString(", "))}")
+      logger.info(s"Sources now have cellTypes: ${sources.map(_._1.cellType.toString())}")
       if (byLinkTitle && bandIndices.isEmpty) {
         val actualNumberOfBands = rasterSources.size
 
