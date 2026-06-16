@@ -367,9 +367,12 @@ object CroptypeInference {
     rows:        Int,
     T:           Int,
     B:           Int
-  ): Array[Float] = {
+  ): java.nio.FloatBuffer = {
 
-    val x = new Array[Float](B * T * NUM_PRESTO_BANDS)
+    val x = ByteBuffer
+      .allocateDirect(B * T * NUM_PRESTO_BANDS * java.lang.Float.BYTES)
+      .order(ByteOrder.nativeOrder())
+      .asFloatBuffer()
 
     for (t <- 0 until T) {
       val tile = sortedTiles(t)._2
@@ -381,33 +384,33 @@ object CroptypeInference {
         def raw(band: Int): Float = tile.band(band).getDouble(col, row).toFloat
 
         // S2 — reflectance × 10 000; BANDS_DIV divides by 10 000
-        x(base + P_B2)  = normalizeBand(P_B2,  raw(IN_B2))
-        x(base + P_B3)  = normalizeBand(P_B3,  raw(IN_B3))
-        x(base + P_B4)  = normalizeBand(P_B4,  raw(IN_B4))
-        x(base + P_B5)  = normalizeBand(P_B5,  raw(IN_B5))
-        x(base + P_B6)  = normalizeBand(P_B6,  raw(IN_B6))
-        x(base + P_B7)  = normalizeBand(P_B7,  raw(IN_B7))
-        x(base + P_B8)  = normalizeBand(P_B8,  raw(IN_B8))
-        x(base + P_B8A) = normalizeBand(P_B8A, raw(IN_B8A))
-        x(base + P_B11) = normalizeBand(P_B11, raw(IN_B11))
-        x(base + P_B12) = normalizeBand(P_B12, raw(IN_B12))
+        x.put(base + P_B2,  normalizeBand(P_B2,  raw(IN_B2)))
+        x.put(base + P_B3,  normalizeBand(P_B3,  raw(IN_B3)))
+        x.put(base + P_B4,  normalizeBand(P_B4,  raw(IN_B4)))
+        x.put(base + P_B5,  normalizeBand(P_B5,  raw(IN_B5)))
+        x.put(base + P_B6,  normalizeBand(P_B6,  raw(IN_B6)))
+        x.put(base + P_B7,  normalizeBand(P_B7,  raw(IN_B7)))
+        x.put(base + P_B8,  normalizeBand(P_B8,  raw(IN_B8)))
+        x.put(base + P_B8A, normalizeBand(P_B8A, raw(IN_B8A)))
+        x.put(base + P_B11, normalizeBand(P_B11, raw(IN_B11)))
+        x.put(base + P_B12, normalizeBand(P_B12, raw(IN_B12)))
 
         // S1 — convert raw DN to dB first, then normalise
-        x(base + P_VV)  = normalizeBand(P_VV, rescaleS1(raw(IN_VV)))
-        x(base + P_VH)  = normalizeBand(P_VH, rescaleS1(raw(IN_VH)))
+        x.put(base + P_VV, normalizeBand(P_VV, rescaleS1(raw(IN_VV))))
+        x.put(base + P_VH, normalizeBand(P_VH, rescaleS1(raw(IN_VH))))
 
         // Meteo — scale to physical units first, then normalise
-        x(base + P_TEMP)   = normalizeBand(P_TEMP,   rescaleTemperature(raw(IN_TEMP)))
-        x(base + P_PRECIP) = normalizeBand(P_PRECIP, rescalePrecipitation(raw(IN_PRECIP)))
+        x.put(base + P_TEMP,   normalizeBand(P_TEMP,   rescaleTemperature(raw(IN_TEMP))))
+        x.put(base + P_PRECIP, normalizeBand(P_PRECIP, rescalePrecipitation(raw(IN_PRECIP))))
 
         // DEM elevation in metres — normalise directly
-        x(base + P_ELEV)  = normalizeBand(P_ELEV, raw(IN_ELEV))
+        x.put(base + P_ELEV,  normalizeBand(P_ELEV, raw(IN_ELEV)))
 
         // Slope — not available; BANDS_DIV(P_SLOPE)=50 so normalised zero stays zero
-        x(base + P_SLOPE) = 0f
+        x.put(base + P_SLOPE, 0f)
 
         // NDVI — derived from already-normalised B8 and B4
-        x(base + P_NDVI) = computeNdvi(x(base + P_B8), x(base + P_B4))
+        x.put(base + P_NDVI, computeNdvi(x.get(base + P_B8), x.get(base + P_B4)))
       }
     }
     x
@@ -434,9 +437,12 @@ object CroptypeInference {
     rows:        Int,
     T:           Int,
     B:           Int
-  ): Array[Long] = {
+  ): java.nio.LongBuffer = {
 
-    val mask = new Array[Long](B * T * NUM_PRESTO_BANDS)
+    val mask = ByteBuffer
+      .allocateDirect(B * T * NUM_PRESTO_BANDS * java.lang.Long.BYTES)
+      .order(ByteOrder.nativeOrder())
+      .asLongBuffer()
 
     // Mapping from (input band index, Presto band index) for non-derived bands
     val bandPairs = Array(
@@ -457,17 +463,17 @@ object CroptypeInference {
 
         for ((inBand, pBand) <- bandPairs) {
           val v = tile.band(inBand).getDouble(col, row).toFloat
-          if (isNodata(v)) mask(base + pBand) = 1L
+          if (isNodata(v)) mask.put(base + pBand, 1L)
         }
 
         // NDVI masked when either B8 or B4 is nodata or their sum is zero
         val b8 = tile.band(IN_B8).getDouble(col, row).toFloat
         val b4 = tile.band(IN_B4).getDouble(col, row).toFloat
         if (isNodata(b8) || isNodata(b4) || (b8 + b4) == 0f)
-          mask(base + P_NDVI) = 1L
+          mask.put(base + P_NDVI, 1L)
 
         // Slope: always valid (synthetic zero)
-        mask(base + P_SLOPE) = 0L
+        mask.put(base + P_SLOPE, 0L)
       }
     }
     mask
@@ -481,10 +487,17 @@ object CroptypeInference {
    * [[DYNAMIC_WORLD_UNKNOWN]] (9), which is the "no-data / unknown" class
    * and is excluded from the attention mask inside the encoder.
    *
-   * @return Flat int64 array of length B × T, every element equal to 9.
+   * @return Direct LongBuffer of length B × T, every element equal to 9.
    */
-  def buildDynamicWorldTensor(B: Int, T: Int): Array[Long] =
-    Array.fill(B * T)(DYNAMIC_WORLD_UNKNOWN)
+  def buildDynamicWorldTensor(B: Int, T: Int): java.nio.LongBuffer = {
+    val buf = ByteBuffer
+      .allocateDirect(B * T * java.lang.Long.BYTES)
+      .order(ByteOrder.nativeOrder())
+      .asLongBuffer()
+    var i = 0
+    while (i < B * T) { buf.put(i, DYNAMIC_WORLD_UNKNOWN); i += 1 }
+    buf
+  }
 
   /**
    * Build the lat/lon tensor of shape [B, 2] (flat, row-major).
@@ -496,18 +509,21 @@ object CroptypeInference {
    * @param crs         Datacube CRS.
    * @param cols        Tile width in pixels.
    * @param rows        Tile height in pixels.
-   * @return            Flat float32 array of length B × 2.
+   * @return            Direct FloatBuffer of length B × 2.
    */
   def buildLatlonTensor(
     tileExtent: Extent,
     crs:        CRS,
     cols:       Int,
     rows:       Int
-  ): Array[Float] = {
+  ): java.nio.FloatBuffer = {
 
     val wgs84     = CRS.fromEpsgCode(4326)
     val transform = Transform(crs, wgs84)
-    val latlon    = new Array[Float](rows * cols * 2)
+    val latlon    = ByteBuffer
+      .allocateDirect(rows * cols * 2 * java.lang.Float.BYTES)
+      .order(ByteOrder.nativeOrder())
+      .asFloatBuffer()
 
     val cellWidth  = tileExtent.width  / cols
     val cellHeight = tileExtent.height / rows
@@ -517,8 +533,8 @@ object CroptypeInference {
       val xCtr = tileExtent.xmin + (col + 0.5) * cellWidth
       val yCtr = tileExtent.ymax - (row + 0.5) * cellHeight
       val (lon, lat) = transform(xCtr, yCtr)   // GeoTrellis Transform returns (lon, lat)
-      latlon(p * 2)     = lat.toFloat
-      latlon(p * 2 + 1) = lon.toFloat
+      latlon.put(p * 2,     lat.toFloat)
+      latlon.put(p * 2 + 1, lon.toFloat)
     }
     latlon
   }
@@ -533,18 +549,21 @@ object CroptypeInference {
    * @param sortedTiles  Tiles sorted chronologically.
    * @param B            Total pixels (rows × cols).
    * @param T            Number of timesteps.
-   * @return             Flat int64 array of length B × T.
+   * @return             Direct LongBuffer of length B × T.
    */
   def buildMonthTensor(
     sortedTiles: Seq[(SpaceTimeKey, MultibandTile)],
     B:           Int,
     T:           Int
-  ): Array[Long] = {
+  ): java.nio.LongBuffer = {
 
-    val month = new Array[Long](B * T)
+    val month = ByteBuffer
+      .allocateDirect(B * T * java.lang.Long.BYTES)
+      .order(ByteOrder.nativeOrder())
+      .asLongBuffer()
     for (t <- 0 until T) {
       val m = (sortedTiles(t)._1.time.getMonthValue - 1).toLong  // 0-indexed
-      for (p <- 0 until B) month(p * T + t) = m
+      for (p <- 0 until B) month.put(p * T + t, m)
     }
     month
   }
@@ -564,11 +583,11 @@ object CroptypeInference {
    */
   private def runOnnx(
     modelPath:    String,
-    xTensor:      Array[Float],
-    dwTensor:     Array[Long],
-    latlonTensor: Array[Float],
-    maskTensor:   Array[Long],
-    monthTensor:  Array[Long],
+    xTensor:      java.nio.FloatBuffer,
+    dwTensor:     java.nio.LongBuffer,
+    latlonTensor: java.nio.FloatBuffer,
+    maskTensor:   java.nio.LongBuffer,
+    monthTensor:  java.nio.LongBuffer,
     B:            Int,
     T:            Int
   ): Seq[Array[Float]] = {
@@ -594,15 +613,15 @@ object CroptypeInference {
         s"ONNX model must have exactly 5 inputs, got ${inputNames.length}: " +
           inputNames.mkString(", "))
 
-      val xOnnx = OnnxTensor.createTensor(env, floatBuffer(xTensor),
+      val xOnnx = OnnxTensor.createTensor(env, xTensor,
         Array[Long](B, T, NUM_PRESTO_BANDS))
-      val dwOnnx = OnnxTensor.createTensor(env, longBuffer(dwTensor),
+      val dwOnnx = OnnxTensor.createTensor(env, dwTensor,
         Array[Long](B, T))
-      val llOnnx = OnnxTensor.createTensor(env, floatBuffer(latlonTensor),
+      val llOnnx = OnnxTensor.createTensor(env, latlonTensor,
         Array[Long](B, 2))
-      val maskOnnx = OnnxTensor.createTensor(env, longBuffer(maskTensor),
+      val maskOnnx = OnnxTensor.createTensor(env, maskTensor,
         Array[Long](B, T, NUM_PRESTO_BANDS))
-      val monOnnx = OnnxTensor.createTensor(env, longBuffer(monthTensor),
+      val monOnnx = OnnxTensor.createTensor(env, monthTensor,
         Array[Long](B, T))
 
       val inputs = java.util.Map.of(
@@ -815,34 +834,6 @@ object CroptypeInference {
 
   /** True when a pixel value represents nodata or is NaN. */
   private def isNodata(v: Float): Boolean = v == NODATA || v.isNaN
-
-  /**
-   * Wrap a float array in a direct NIO FloatBuffer for zero-copy ONNX tensor creation.
-   * The buffer is positioned at 0 and ready to read.
-   */
-  private def floatBuffer(arr: Array[Float]): java.nio.FloatBuffer = {
-    val buf = ByteBuffer
-      .allocateDirect(arr.length * java.lang.Float.BYTES)
-      .order(ByteOrder.nativeOrder())
-      .asFloatBuffer()
-    buf.put(arr)
-    buf.rewind()
-    buf
-  }
-
-  /**
-   * Wrap a long array in a direct NIO LongBuffer for zero-copy ONNX tensor creation.
-   * The buffer is positioned at 0 and ready to read.
-   */
-  private def longBuffer(arr: Array[Long]): java.nio.LongBuffer = {
-    val buf = ByteBuffer
-      .allocateDirect(arr.length * java.lang.Long.BYTES)
-      .order(ByteOrder.nativeOrder())
-      .asLongBuffer()
-    buf.put(arr)
-    buf.rewind()
-    buf
-  }
 
   /**
    * Load an ONNX model as raw bytes from a classpath resource, filesystem path,
