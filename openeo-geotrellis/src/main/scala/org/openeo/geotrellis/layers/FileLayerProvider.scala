@@ -102,6 +102,7 @@ object FileLayerProvider {
     try {
       val gdaldatasetcachesize = Integer.valueOf(System.getenv().getOrDefault("GDAL_DATASET_CACHE_SIZE", "32"))
       GDALWarp.init(gdaldatasetcachesize)
+      logger.debug(s"Initialized GDAL ${GDALWarp.get_version_info("VERSION_NUM")}")
     } catch {
       case e: java.lang.UnsatisfiedLinkError =>
         // Error message probably looks like this:
