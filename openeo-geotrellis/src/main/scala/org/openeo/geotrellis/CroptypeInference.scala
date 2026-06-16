@@ -239,12 +239,13 @@ object CroptypeInference {
     val processes = new OpenEOProcesses()
     val resultRDD = processes.transformTimeDimension[SpatialKey](
       datacube, applyToTimeseries, reduce = true
-    )
+    ).map({ case (spatialKey, tile) => (SpaceTimeKey(spatialKey, meta.bounds.get.minKey.temporalKey), tile) })
 
-    val newBounds = meta.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial
+    val oldBounds = meta.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]]
+    val newBounds = KeyBounds(oldBounds.minKey,SpaceTimeKey(oldBounds.maxKey.spatialKey,oldBounds.minKey.temporalKey))
     ContextRDD(
       resultRDD,
-      new TileLayerMetadata[SpatialKey](
+      new TileLayerMetadata[SpaceTimeKey](
         cellType = FloatConstantNoDataCellType,
         layout   = layout,
         extent   = meta.extent,
