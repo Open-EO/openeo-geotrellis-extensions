@@ -30,6 +30,7 @@ class DefaultRasterSourceProvider extends RasterSourceProvider {
       val tiffRe = RasterExtent(expandToCellSize(projectedExtent.extent, tiffCellSize), tiffCellSize)
       TargetRegion(tiffRe)
     }
+
     if (definition.feature.crs.isDefined && definition.feature.crs.get != null && definition.feature.crs.get.equals(definition.targetExtent.crs)) {
       // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
       if (definition.experimental) {
