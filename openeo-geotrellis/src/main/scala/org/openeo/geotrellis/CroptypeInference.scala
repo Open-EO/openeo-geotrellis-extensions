@@ -7,7 +7,6 @@ import geotrellis.proj4.{CRS, Transform}
 import geotrellis.raster._
 import geotrellis.spark._
 import geotrellis.vector.Extent
-import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrelliscommon.OpenEOProcess
@@ -566,7 +565,7 @@ object CroptypeInference {
     T:            Int
   ): Seq[Array[Float]] = {
 
-    val modelFile = resolveModel(modelPath)
+    val modelBytes = loadModelBytes(modelPath)
     val env = OrtEnvironment.getEnvironment()
     val options = new OrtSession.SessionOptions()
     options.setCPUArenaAllocator(false)
@@ -574,7 +573,7 @@ object CroptypeInference {
     options.setInterOpNumThreads(1)
     options.setMemoryPatternOptimization(true)
     options.setExecutionMode(ExecutionMode.SEQUENTIAL)
-    val session = env.createSession(modelFile, options)
+    val session = env.createSession(modelBytes, options)
 
     try {
       val inputNames = session.getInputNames.toArray.map(_.asInstanceOf[String])
@@ -835,20 +834,23 @@ object CroptypeInference {
   }
 
   /**
-   * Resolve an ONNX model path or HTTP(S) URL to a local filesystem path string.
-   * Remote URLs are downloaded to a temporary file on first access.
+   * Load an ONNX model as raw bytes from a classpath resource, filesystem path,
+   * or HTTP(S) URL — in that order of preference.  Loading via an InputStream
+   * means the model can live inside a JAR without needing to be extracted first.
    */
-  private def resolveModel(model: String): String = {
-    val path = Paths.get(model)
-    val resource = Thread.currentThread().getContextClassLoader.getResource(model)
-    if(resource != null) {
-      Paths.get(resource.toURI).toString
-    } else if (Files.exists(path)) {
-      model
+  private def loadModelBytes(model: String): Array[Byte] = {
+    val stream = Thread.currentThread().getContextClassLoader.getResourceAsStream(model)
+    if (stream != null) {
+      try stream.readAllBytes() finally stream.close()
     } else {
-      val tmp = Files.createTempFile(null, ".onnx")
-      FileUtils.copyURLToFile(new URL(model), tmp.toFile)
-      tmp.toString
+      val path = Paths.get(model)
+      if (Files.exists(path)) {
+        Files.readAllBytes(path)
+      } else {
+        new URL(model).openStream() match {
+          case s => try s.readAllBytes() finally s.close()
+        }
+      }
     }
   }
 }
