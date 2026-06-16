@@ -722,10 +722,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
       val CellTypeFirstSource = arbitraryRasterSource.cellType
-      val commonCellType = overlappingRasterSources.foldLeft(BitCellType:CellType)((cumCellType, curCellType) => {
-        val unioncellType = GeneralUtils.cellTypeUnionWithNoData(cumCellType, curCellType._1.cellType)
-        logger.info(s"taking union of cell types: $cumCellType and ${curCellType._1.cellType} from ${curCellType._2.id} and ${curCellType._2.tileID.getOrElse("no tile id")} gives $unioncellType, celltype in metadata is ${curCellType._1.metadata.cellType}")
-        unioncellType
+      val cellTypes = overlappingRasterSources.map(_._1.cellType)
+      val commonCellType = cellTypes.reduceLeft((cumCellType, curCellType) => {
+        GeneralUtils.cellTypeUnionWithNoData(cumCellType, curCellType)
       })
 
       logger.info(s"Determined common cell type is $commonCellType based on first source cell type $CellTypeFirstSource ")
@@ -782,7 +781,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")} initial layout: ${worldLayout}")
 
     var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(ProjectedExtent(alignedExtent.extent,reprojectedBoundingBox.crs), from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
-    logger.info(s"overlappingRasterSources have celltypes: ${overlappingRasterSources.map(_._1.cellType).mkString(",")}")
 
     val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC"))).distinct
 
@@ -1260,8 +1258,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           }
           else None
 
-          logger.info(s"the STAC cell type for link ${link.title.getOrElse("")} is ${cellTypeSTAC.map(_.cellType).getOrElse("undefined")}")
-
           //special case handling for data that does not declare nodata properly
           val targetCellType = link.title match {
             // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
@@ -1292,7 +1288,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             )
             .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
           if (maybeSource.isDefined) {
-            logger.info(s"maybeSource has celltype: ${maybeSource.get.cellType}, and metadata has cellType ${maybeSource.get.metadata.cellType}")
             if (bandIndex > 0) {
               Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
             } else {
@@ -1323,7 +1318,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
-      logger.info(s"Sources now have cellTypes: ${sources.map(_._1.cellType.toString())}")
       if (byLinkTitle && bandIndices.isEmpty) {
         val actualNumberOfBands = rasterSources.size
 
@@ -1332,13 +1326,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           return None
         }
 
-        val result = Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
-        logger.info(s"Created BandCompositeRasterSource1 with cellType ${result.get._1.cellType} and metadata cellType ${result.get._1.metadata.cellType}")
-        result
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
       } else if (sources.forall { case(_, idx) => idx == 0}) {
-        val result = Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
-        logger.info(s"Created BandCompositeRasterSource2 with cellType ${result.get._1.cellType} and metadata cellType ${result.get._1.metadata.cellType}")
-        result
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
       } else {
         logger.warn("Unexpected use of MultibandCompositeRasterSource")
         Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))

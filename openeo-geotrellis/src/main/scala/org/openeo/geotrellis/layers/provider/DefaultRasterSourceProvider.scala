@@ -30,10 +30,7 @@ class DefaultRasterSourceProvider extends RasterSourceProvider {
       val tiffRe = RasterExtent(expandToCellSize(projectedExtent.extent, tiffCellSize), tiffCellSize)
       TargetRegion(tiffRe)
     }
-    logger.info(s"Creating RasterSource for dataPath: ${definition.dataPath}, targetExtent: ${definition.targetExtent}, targetCellType: ${definition.targetCellType}," +
-      s" theResolution: ${definition.theResolution}, resampleMethod: ${definition.resampleMethod}, noResampleOnRead: ${definition.noResampleOnRead}, experimental: ${definition.experimental}")
-
-    val result = if (definition.feature.crs.isDefined && definition.feature.crs.get != null && definition.feature.crs.get.equals(definition.targetExtent.crs)) {
+    if (definition.feature.crs.isDefined && definition.feature.crs.get != null && definition.feature.crs.get.equals(definition.targetExtent.crs)) {
       // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
       if (definition.experimental) {
         GDALRasterSource(definition.dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(definition.theResolution), resampleMethod = Some(definition.resampleMethod)), targetCellType = definition.targetCellType)
@@ -62,8 +59,6 @@ class DefaultRasterSourceProvider extends RasterSourceProvider {
         }
       }
     }
-    logger.info(s"result of the DefaultRasterSourceProvider rasterSource has metadata celltype: ${result.metadata.cellType}, and cellType of the result RasterSource is ${result.cellType}")
-    result
   }
 
   private def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
