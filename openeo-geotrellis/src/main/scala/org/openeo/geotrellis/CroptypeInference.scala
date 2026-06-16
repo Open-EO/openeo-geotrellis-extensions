@@ -242,7 +242,7 @@ object CroptypeInference {
       val size = context.get("tile_size").asInstanceOf[Int]
       processes.retileGeneric(datacube,size,size,0,0)
     }else{
-      datacube
+      processes.retileGeneric(datacube,16,16,0,0)
     }
 
     val resultRDD: RDD[(SpaceTimeKey, MultibandTile)] = processes.transformTimeDimension[SpatialKey](
