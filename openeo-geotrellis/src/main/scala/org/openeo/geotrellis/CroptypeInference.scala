@@ -9,6 +9,7 @@ import geotrellis.spark._
 import geotrellis.vector.Extent
 import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
 import org.openeo.geotrelliscommon.OpenEOProcess
 import org.slf4j.LoggerFactory
 
@@ -191,7 +192,7 @@ object CroptypeInference {
   def run(
     datacube: MultibandTileLayerRDD[SpaceTimeKey],
     context:  java.util.Map[String, Any]
-  ): MultibandTileLayerRDD[SpatialKey] = {
+  ): MultibandTileLayerRDD[SpaceTimeKey] = {
 
     val scalaContext = context.asScala
     val onnxModelPath    = scalaContext.getOrElse("onnx_model_path", "org/openeo/geotrellis/prometheo/prometheo_global.onnx").asInstanceOf[String]
@@ -237,7 +238,7 @@ object CroptypeInference {
 
     // Reuse the spatial-grouping + partitioning logic from OpenEOProcesses.
     val processes = new OpenEOProcesses()
-    val resultRDD = processes.transformTimeDimension[SpatialKey](
+    val resultRDD: RDD[(SpaceTimeKey, MultibandTile)] = processes.transformTimeDimension[SpatialKey](
       datacube, applyToTimeseries, reduce = true
     ).map({ case (spatialKey, tile) => (SpaceTimeKey(spatialKey, meta.bounds.get.minKey.temporalKey), tile) })
 
