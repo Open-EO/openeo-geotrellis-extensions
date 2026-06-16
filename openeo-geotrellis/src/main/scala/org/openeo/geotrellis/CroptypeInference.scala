@@ -237,8 +237,16 @@ object CroptypeInference {
 
     // Reuse the spatial-grouping + partitioning logic from OpenEOProcesses.
     val processes = new OpenEOProcesses()
+    val retiled =
+    if( context.containsKey("tile_size") ) {
+      val size = context.get("tile_size").asInstanceOf[Int]
+      processes.retileGeneric(datacube,size,size,0,0)
+    }else{
+      datacube
+    }
+
     val resultRDD: RDD[(SpaceTimeKey, MultibandTile)] = processes.transformTimeDimension[SpatialKey](
-      datacube, applyToTimeseries, reduce = true
+      retiled, applyToTimeseries, reduce = true
     ).map({ case (spatialKey, tile) => (SpaceTimeKey(spatialKey, meta.bounds.get.minKey.temporalKey), tile) })
 
     val oldBounds = meta.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]]
