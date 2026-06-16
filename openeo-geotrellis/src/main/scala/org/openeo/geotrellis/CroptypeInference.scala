@@ -569,10 +569,13 @@ object CroptypeInference {
     val env = OrtEnvironment.getEnvironment()
     val options = new OrtSession.SessionOptions()
     options.setCPUArenaAllocator(false)
-    options.setInterOpNumThreads(2)
     options.setInterOpNumThreads(1)
-    options.setMemoryPatternOptimization(true)
+    options.setIntraOpNumThreads(1)
+    options.setMemoryPatternOptimization(false)
     options.setExecutionMode(ExecutionMode.SEQUENTIAL)
+    options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
+    options.addConfigEntry("session.disable_prepacking", "1")
+    options.addConfigEntry("session.use_ort_model_bytes_directly", "1")
     val session = env.createSession(modelBytes, options)
 
     try {
