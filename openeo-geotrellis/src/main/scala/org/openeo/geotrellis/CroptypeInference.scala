@@ -158,6 +158,31 @@ object CroptypeInference {
   private val P_TEMP   = 12; private val P_PRECIP = 13
   private val P_ELEV   = 14; private val P_SLOPE  = 15; private val P_NDVI  = 16
 
+  // In the companion object:
+  private val sessionCache =
+    new java.util.concurrent.ConcurrentHashMap[String, OrtSession]()
+
+  Runtime.getRuntime.addShutdownHook(new Thread(() =>
+    sessionCache.values().forEach(s => scala.util.Try(s.close()))
+  ))
+
+  private def getOrCreateSession(modelPath: String): OrtSession = {
+    sessionCache.computeIfAbsent(modelPath, mp => {
+      val bytes   = loadModelBytes(mp)
+      val env     = OrtEnvironment.getEnvironment()
+      val options = new OrtSession.SessionOptions()
+      options.setCPUArenaAllocator(false)
+      options.setInterOpNumThreads(1)
+      options.setIntraOpNumThreads(1)
+      options.setMemoryPatternOptimization(false)
+      options.setExecutionMode(ExecutionMode.SEQUENTIAL)
+      options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
+      options.addConfigEntry("session.disable_prepacking", "1")
+      options.addConfigEntry("session.use_ort_model_bytes_directly", "1")
+      env.createSession(bytes, options)
+    })
+  }
+
   // ── Public entry point ───────────────────────────────────────────────────────
 
   /**
@@ -240,9 +265,10 @@ object CroptypeInference {
     val retiled =
     if( context.containsKey("tile_size") ) {
       val size = context.get("tile_size").asInstanceOf[Int]
+      logger.info("CroptypeInference: Retiling datacube to tile_size = " + size)
       processes.retileGeneric(datacube,size,size,0,0)
     }else{
-      processes.retileGeneric(datacube,16,16,0,0)
+      processes.retileGeneric(datacube,32,32,0,0)
     }
 
     val resultRDD: RDD[(SpaceTimeKey, MultibandTile)] = processes.transformTimeDimension[SpatialKey](
@@ -592,18 +618,8 @@ object CroptypeInference {
     T:            Int
   ): Seq[Array[Float]] = {
 
-    val modelBytes = loadModelBytes(modelPath)
     val env = OrtEnvironment.getEnvironment()
-    val options = new OrtSession.SessionOptions()
-    options.setCPUArenaAllocator(false)
-    options.setInterOpNumThreads(1)
-    options.setIntraOpNumThreads(1)
-    options.setMemoryPatternOptimization(false)
-    options.setExecutionMode(ExecutionMode.SEQUENTIAL)
-    options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
-    options.addConfigEntry("session.disable_prepacking", "1")
-    options.addConfigEntry("session.use_ort_model_bytes_directly", "1")
-    val session = env.createSession(modelBytes, options)
+    val session = getOrCreateSession(modelPath)
 
     try {
       val inputNames = session.getInputNames.toArray.map(_.asInstanceOf[String])
