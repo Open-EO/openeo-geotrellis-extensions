@@ -621,40 +621,37 @@ object CroptypeInference {
     val env = OrtEnvironment.getEnvironment()
     val session = getOrCreateSession(modelPath)
 
-    try {
-      val inputNames = session.getInputNames.toArray.map(_.asInstanceOf[String])
-      val outputNames = session.getOutputNames.toArray.map(_.asInstanceOf[String])
+    val inputNames = session.getInputNames.toArray.map(_.asInstanceOf[String])
+    val outputNames = session.getOutputNames.toArray.map(_.asInstanceOf[String])
 
-      require(inputNames.length == 5,
-        s"ONNX model must have exactly 5 inputs, got ${inputNames.length}: " +
-          inputNames.mkString(", "))
+    require(inputNames.length == 5,
+      s"ONNX model must have exactly 5 inputs, got ${inputNames.length}: " +
+        inputNames.mkString(", "))
 
-      val xOnnx = OnnxTensor.createTensor(env, xTensor,
-        Array[Long](B, T, NUM_PRESTO_BANDS))
-      val dwOnnx = OnnxTensor.createTensor(env, dwTensor,
-        Array[Long](B, T))
-      val llOnnx = OnnxTensor.createTensor(env, latlonTensor,
-        Array[Long](B, 2))
-      val maskOnnx = OnnxTensor.createTensor(env, maskTensor,
-        Array[Long](B, T, NUM_PRESTO_BANDS))
-      val monOnnx = OnnxTensor.createTensor(env, monthTensor,
-        Array[Long](B, T))
+    val xOnnx = OnnxTensor.createTensor(env, xTensor,
+      Array[Long](B, T, NUM_PRESTO_BANDS))
+    val dwOnnx = OnnxTensor.createTensor(env, dwTensor,
+      Array[Long](B, T))
+    val llOnnx = OnnxTensor.createTensor(env, latlonTensor,
+      Array[Long](B, 2))
+    val maskOnnx = OnnxTensor.createTensor(env, maskTensor,
+      Array[Long](B, T, NUM_PRESTO_BANDS))
+    val monOnnx = OnnxTensor.createTensor(env, monthTensor,
+      Array[Long](B, T))
 
-      val inputs = java.util.Map.of(
-        inputNames(0), xOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
-        inputNames(1), dwOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
-        inputNames(2), llOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
-        inputNames(3), maskOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
-        inputNames(4), monOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike]
-      )
+    val inputs = java.util.Map.of(
+      inputNames(0), xOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
+      inputNames(1), dwOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
+      inputNames(2), llOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
+      inputNames(3), maskOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
+      inputNames(4), monOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike]
+    )
 
-      val result = session.run(inputs)
-      (0 until outputNames.length).map { i =>
-        result.get(i).getValue.asInstanceOf[Array[Array[Float]]].flatten
-      }
-    } finally {
-      session.close()
+    val result = session.run(inputs)
+    (0 until outputNames.length).map { i =>
+      result.get(i).getValue.asInstanceOf[Array[Array[Float]]].flatten
     }
+
   }
 
   // ── Output construction ──────────────────────────────────────────────────────
