@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- S3Proxy support for object storage integration ([#756](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/756))
+- Add HDF raster source provider for MODIS data ([#758](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/758))
 - Support OpenTelemetry Prometheus exporter for metrics scraping ([#717](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/717), [#750](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/750))
 - `merge_cubes`: add `mean` as a supported overlap resolver ([#741](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/741))
 - Support `mod` process ([#698](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/698))
@@ -20,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Upgrade GDAL in build environments to 3.11.x (including Jenkins image updates)
+- Improve logging by reducing noise and making S3Proxy logs more user friendly ([#717](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/717), [#762](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/762))
+- `CellType` handling: introduce union-with-NODATA behavior and remove `IntType`/`DoubleType` usage in OpenSearch responses ([#739](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/739))
 - Upgrade Geotrellis library to 3.8.0+9-dbaac792-SNAPSHOT. This may impact code using kernels (e.g. in SCL dilation masks) in a positive way (more accurate).
   Cfr. Geotrellis [changelog](https://github.com/locationtech/geotrellis/blob/master/CHANGELOG.md)
 - aggregate_temporal: performance improvement for 2 cases. This tries to avoid empty or small partitions, 
@@ -37,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix rasterization issues with multiple features ([#775](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/775))
+- `load_stac`: support multiple multiband assets correctly ([#764](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/764))
+- OpenSearch client: merge features when required to avoid incomplete feature sets ([#768](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/768))
+- Scale/offset: promote values to float instead of double where appropriate ([#769](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/769))
+- Use GDAL format path for raster source provider configuration ([#759](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/759))
 - `IndexedRasterSource`: fix incorrect `bandCount` (was returning total bands; now correctly returns 1) ([#751](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/751))
 - `ValueOffsetRasterSource`: convert `CellType` when needed before applying scale and offset to prevent type mismatch errors ([#754](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/754))
 - `GeoTiffReprojectRasterSource`: use accurate reprojection to avoid spatial drift ([#732](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/732))
