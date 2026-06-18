@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory
 import java.net.URL
 import java.nio.file.{Files, Paths}
 import java.nio.{ByteBuffer, ByteOrder}
+import scala.collection.mutable.ArrayBuffer
 import scala.jdk.CollectionConverters.MapHasAsScala
 
 /**
@@ -220,7 +221,7 @@ object CroptypeInference {
   ): MultibandTileLayerRDD[SpaceTimeKey] = {
 
     val scalaContext = context.asScala
-    val onnxModelPath    = scalaContext.getOrElse("onnx_model_path", "org/openeo/geotrellis/prometheo/prometheo_global.onnx").asInstanceOf[String]
+    val onnxModelPath    = scalaContext.getOrElse("onnx_model_path", "org/openeo/geotrellis/prometheo/presto_global_shorts.int8.dynamic.onnx").asInstanceOf[String]
     val outputMode       = scalaContext.getOrElse("output_mode", "embeddings").asInstanceOf[String]
     require(outputMode == "classification" || outputMode == "embeddings",
       s"output_mode must be 'classification' or 'embeddings', got: $outputMode")
@@ -231,6 +232,7 @@ object CroptypeInference {
       .getOrElse("cropland_class_indices", Seq(1, 2))
       .asInstanceOf[Seq[Int]]
       .toSet
+    val batchSize = scalaContext.getOrElse("batch_size", 22*22).asInstanceOf[Int]
 
     val meta   = datacube.metadata
     val layout = meta.layout
@@ -256,24 +258,24 @@ object CroptypeInference {
           numLcClasses     = numLcClasses,
           numCtClasses     = numCtClasses,
           maskCropland     = maskCropland,
-          croplandClassSet = croplandClassSet
+          croplandClassSet = croplandClassSet,
+          batchSize        = batchSize
         )
         Map(spatialKey -> result)
     }
 
-    // Reuse the spatial-grouping + partitioning logic from OpenEOProcesses.
     val processes = new OpenEOProcesses()
-    val retiled =
-    if( context.containsKey("tile_size") ) {
-      val size = context.get("tile_size").asInstanceOf[Int]
-      logger.info("CroptypeInference: Retiling datacube to tile_size = " + size)
-      processes.retileGeneric(datacube,size,size,0,0)
-    }else{
-      processes.retileGeneric(datacube,32,32,0,0)
-    }
+    val input =
+      if (context.containsKey("tile_size")) {
+        val size = context.get("tile_size").asInstanceOf[Int]
+        logger.info("CroptypeInference: Retiling datacube to tile_size = " + size)
+        processes.retileGeneric(datacube, size, size, 0, 0)
+      } else {
+        datacube
+      }
 
     val resultRDD: RDD[(SpaceTimeKey, MultibandTile)] = processes.transformTimeDimension[SpatialKey](
-      retiled, applyToTimeseries, reduce = true
+      input, applyToTimeseries, reduce = true
     ).map({ case (spatialKey, tile) => (SpaceTimeKey(spatialKey, meta.bounds.get.minKey.temporalKey), tile) })
 
     val oldBounds = meta.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]]
@@ -301,7 +303,8 @@ object CroptypeInference {
     numLcClasses:     Int,
     numCtClasses:     Int,
     maskCropland:     Boolean,
-    croplandClassSet: Set[Int]
+    croplandClassSet: Set[Int],
+    batchSize:        Int
   ): MultibandTile = {
 
     val sorted  = sortByTime(tiles)
@@ -309,21 +312,144 @@ object CroptypeInference {
     val refTile = sorted.head._2
     val cols    = refTile.cols
     val rows    = refTile.rows
-    val B       = rows * cols   // total pixels
+    val B       = rows * cols
 
     require(T > 0, "No timesteps found for spatial key")
     require(refTile.bandCount >= 15,
       s"Expected at least 15 input bands, got ${refTile.bandCount}")
 
-    val xTensor     = buildBandTensor(sorted, cols, rows, T, B)
-    val dwTensor    = buildDynamicWorldTensor(B, T)
-    val latlonTensor = buildLatlonTensor(tileExtent, crs, cols, rows)
-    val maskTensor  = buildMaskTensor(sorted, cols, rows, T, B)
-    val monthTensor = buildMonthTensor(sorted, B, T)
+    val session     = getOrCreateSession(onnxModelPath)
+    val env         = OrtEnvironment.getEnvironment()
+    val inputNames  = session.getInputNames.toArray.map(_.asInstanceOf[String])
+    val outputNames = session.getOutputNames.toArray.map(_.asInstanceOf[String])
 
-    val outputs = runOnnx(
-      onnxModelPath, xTensor, dwTensor, latlonTensor, maskTensor, monthTensor, B, T
-    )
+    require(inputNames.length == 5,
+      s"ONNX model must have exactly 5 inputs, got ${inputNames.length}: ${inputNames.mkString(", ")}")
+
+    // Pre-compute per-timestep month values (0-indexed) — same for every pixel
+    val monthValues = Array.tabulate(T)(t => (sorted(t)._1.time.getMonthValue - 1).toLong)
+
+    // Lat/lon projection parameters
+    val wgs84      = CRS.fromEpsgCode(4326)
+    val xform      = Transform(crs, wgs84)
+    val cellWidth  = tileExtent.width  / cols
+    val cellHeight = tileExtent.height / rows
+
+    // Allocate fixed-size direct buffers once; reused across all batches
+    val bsz       = math.min(batchSize, B)
+    val xBuf      = ByteBuffer.allocateDirect(bsz * T * NUM_PRESTO_BANDS * java.lang.Float.BYTES).order(ByteOrder.nativeOrder()).asFloatBuffer()
+    val maskBuf   = ByteBuffer.allocateDirect(bsz * T * NUM_PRESTO_BANDS * java.lang.Long.BYTES).order(ByteOrder.nativeOrder()).asLongBuffer()
+    val latlonBuf = ByteBuffer.allocateDirect(bsz * 2 * java.lang.Float.BYTES).order(ByteOrder.nativeOrder()).asFloatBuffer()
+    val monthBuf  = ByteBuffer.allocateDirect(bsz * T * java.lang.Long.BYTES).order(ByteOrder.nativeOrder()).asLongBuffer()
+    val dwBuf     = ByteBuffer.allocateDirect(bsz * T * java.lang.Long.BYTES).order(ByteOrder.nativeOrder()).asLongBuffer()
+
+    // DW is constant — fill once for the full buffer capacity
+    var i = 0; while (i < bsz * T) { dwBuf.put(i, DYNAMIC_WORLD_UNKNOWN); i += 1 }
+
+    // Accumulate per-output flat results across batches
+    val outputAccum = Array.fill(outputNames.length)(new ArrayBuffer[Float]())
+
+    var pStart = 0
+    while (pStart < B) {
+      val pEnd   = math.min(pStart + bsz, B)
+      val batchB = pEnd - pStart
+
+      // ── Fill xBuf and maskBuf ─────────────────────────────────────────────
+      // Both filled in a single pass per pixel to avoid reading raster data twice.
+      // Mask always written explicitly (0L or 1L) so buffer reuse is safe.
+      for (t <- 0 until T) {
+        val tile = sorted(t)._2
+        var pi   = 0
+        while (pi < batchB) {
+          val p     = pStart + pi
+          val row   = p / cols
+          val col   = p % cols
+          val base  = (pi * T + t) * NUM_PRESTO_BANDS
+
+          def raw(band: Int): Float = tile.band(band).getDouble(col, row).toFloat
+
+          val rawB2  = raw(IN_B2);  xBuf.put(base + P_B2,  normalizeBand(P_B2,  rawB2));  maskBuf.put(base + P_B2,  if (isNodata(rawB2))  1L else 0L)
+          val rawB3  = raw(IN_B3);  xBuf.put(base + P_B3,  normalizeBand(P_B3,  rawB3));  maskBuf.put(base + P_B3,  if (isNodata(rawB3))  1L else 0L)
+          val rawB4  = raw(IN_B4);  xBuf.put(base + P_B4,  normalizeBand(P_B4,  rawB4));  maskBuf.put(base + P_B4,  if (isNodata(rawB4))  1L else 0L)
+          val rawB5  = raw(IN_B5);  xBuf.put(base + P_B5,  normalizeBand(P_B5,  rawB5));  maskBuf.put(base + P_B5,  if (isNodata(rawB5))  1L else 0L)
+          val rawB6  = raw(IN_B6);  xBuf.put(base + P_B6,  normalizeBand(P_B6,  rawB6));  maskBuf.put(base + P_B6,  if (isNodata(rawB6))  1L else 0L)
+          val rawB7  = raw(IN_B7);  xBuf.put(base + P_B7,  normalizeBand(P_B7,  rawB7));  maskBuf.put(base + P_B7,  if (isNodata(rawB7))  1L else 0L)
+          val rawB8  = raw(IN_B8);  xBuf.put(base + P_B8,  normalizeBand(P_B8,  rawB8));  maskBuf.put(base + P_B8,  if (isNodata(rawB8))  1L else 0L)
+          val rawB8A = raw(IN_B8A); xBuf.put(base + P_B8A, normalizeBand(P_B8A, rawB8A)); maskBuf.put(base + P_B8A, if (isNodata(rawB8A)) 1L else 0L)
+          val rawB11 = raw(IN_B11); xBuf.put(base + P_B11, normalizeBand(P_B11, rawB11)); maskBuf.put(base + P_B11, if (isNodata(rawB11)) 1L else 0L)
+          val rawB12 = raw(IN_B12); xBuf.put(base + P_B12, normalizeBand(P_B12, rawB12)); maskBuf.put(base + P_B12, if (isNodata(rawB12)) 1L else 0L)
+          val rawVV  = raw(IN_VV);  xBuf.put(base + P_VV,  normalizeBand(P_VV,  rescaleS1(rawVV)));  maskBuf.put(base + P_VV,  if (isNodata(rawVV))  1L else 0L)
+          val rawVH  = raw(IN_VH);  xBuf.put(base + P_VH,  normalizeBand(P_VH,  rescaleS1(rawVH)));  maskBuf.put(base + P_VH,  if (isNodata(rawVH))  1L else 0L)
+          val rawTmp = raw(IN_TEMP);   xBuf.put(base + P_TEMP,   normalizeBand(P_TEMP,   rescaleTemperature(rawTmp)));   maskBuf.put(base + P_TEMP,   if (isNodata(rawTmp)) 1L else 0L)
+          val rawPrc = raw(IN_PRECIP); xBuf.put(base + P_PRECIP, normalizeBand(P_PRECIP, rescalePrecipitation(rawPrc))); maskBuf.put(base + P_PRECIP, if (isNodata(rawPrc)) 1L else 0L)
+          val rawElv = raw(IN_ELEV);   xBuf.put(base + P_ELEV,   normalizeBand(P_ELEV,   rawElv));   maskBuf.put(base + P_ELEV,   if (isNodata(rawElv)) 1L else 0L)
+          xBuf.put(base + P_SLOPE, 0f); maskBuf.put(base + P_SLOPE, 0L)
+          xBuf.put(base + P_NDVI, computeNdvi(xBuf.get(base + P_B8), xBuf.get(base + P_B4)))
+          maskBuf.put(base + P_NDVI, if (isNodata(rawB8) || isNodata(rawB4) || (rawB8 + rawB4) == 0f) 1L else 0L)
+
+          pi += 1
+        }
+
+        // Month: same value broadcast to all pixels in this batch for timestep t
+        val m = monthValues(t)
+        var pi2 = 0; while (pi2 < batchB) { monthBuf.put(pi2 * T + t, m); pi2 += 1 }
+      }
+
+      // ── Fill latlonBuf ────────────────────────────────────────────────────
+      var pi = 0
+      while (pi < batchB) {
+        val p    = pStart + pi
+        val col  = p % cols
+        val row  = p / cols
+        val xCtr = tileExtent.xmin + (col + 0.5) * cellWidth
+        val yCtr = tileExtent.ymax - (row + 0.5) * cellHeight
+        val (lon, lat) = xform(xCtr, yCtr)
+        latlonBuf.put(pi * 2,     lat.toFloat)
+        latlonBuf.put(pi * 2 + 1, lon.toFloat)
+        pi += 1
+      }
+
+      // ── Run ONNX for this batch ───────────────────────────────────────────
+      // ORT requires buffer.remaining() == shape.product exactly.
+      // Set each buffer's limit to the actual element count for this batch
+      // before wrapping in OnnxTensor; puts above are already complete.
+      xBuf.limit(batchB * T * NUM_PRESTO_BANDS)
+      maskBuf.limit(batchB * T * NUM_PRESTO_BANDS)
+      latlonBuf.limit(batchB * 2)
+      monthBuf.limit(batchB * T)
+      dwBuf.limit(batchB * T)
+
+      val xOnnx    = OnnxTensor.createTensor(env, xBuf,      Array[Long](batchB, T, NUM_PRESTO_BANDS))
+      val dwOnnx   = OnnxTensor.createTensor(env, dwBuf,     Array[Long](batchB, T))
+      val llOnnx   = OnnxTensor.createTensor(env, latlonBuf, Array[Long](batchB, 2))
+      val maskOnnx = OnnxTensor.createTensor(env, maskBuf,   Array[Long](batchB, T, NUM_PRESTO_BANDS))
+      val monOnnx  = OnnxTensor.createTensor(env, monthBuf,  Array[Long](batchB, T))
+
+      val inputs = java.util.Map.of(
+        inputNames(0), xOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
+        inputNames(1), dwOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
+        inputNames(2), llOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
+        inputNames(3), maskOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
+        inputNames(4), monOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike]
+      )
+
+      val result = session.run(inputs)
+      for (oi <- 0 until outputNames.length) {
+        val flat = result.get(oi).getValue.asInstanceOf[Array[Array[Float]]].flatten
+        outputAccum(oi) ++= flat
+      }
+
+      // Restore limits to full capacity so absolute puts in the next batch are unrestricted
+      xBuf.limit(xBuf.capacity())
+      maskBuf.limit(maskBuf.capacity())
+      latlonBuf.limit(latlonBuf.capacity())
+      monthBuf.limit(monthBuf.capacity())
+      dwBuf.limit(dwBuf.capacity())
+
+      pStart = pEnd
+    }
+
+    val outputs = outputAccum.map(_.toArray).toSeq
 
     outputMode match {
       case "embeddings" =>
@@ -593,66 +719,6 @@ object CroptypeInference {
       for (p <- 0 until B) month.put(p * T + t, m)
     }
     month
-  }
-
-  // ── ONNX inference ───────────────────────────────────────────────────────────
-
-  /**
-   * Run the ONNX model and return raw logits.
-   *
-   * Inputs are passed to the model in positional order (0–4) as documented in
-   * the class-level contract; the actual ONNX input names are read from the
-   * session and used as keys so renaming in the ONNX export has no effect here.
-   *
-   * @return One flat float32 array per ONNX output, in output-index order.
-   *         Each inner array is row-major with shape [B × C_i] where C_i is the
-   *         number of classes/dimensions in that output.
-   */
-  private def runOnnx(
-    modelPath:    String,
-    xTensor:      java.nio.FloatBuffer,
-    dwTensor:     java.nio.LongBuffer,
-    latlonTensor: java.nio.FloatBuffer,
-    maskTensor:   java.nio.LongBuffer,
-    monthTensor:  java.nio.LongBuffer,
-    B:            Int,
-    T:            Int
-  ): Seq[Array[Float]] = {
-
-    val env = OrtEnvironment.getEnvironment()
-    val session = getOrCreateSession(modelPath)
-
-    val inputNames = session.getInputNames.toArray.map(_.asInstanceOf[String])
-    val outputNames = session.getOutputNames.toArray.map(_.asInstanceOf[String])
-
-    require(inputNames.length == 5,
-      s"ONNX model must have exactly 5 inputs, got ${inputNames.length}: " +
-        inputNames.mkString(", "))
-
-    val xOnnx = OnnxTensor.createTensor(env, xTensor,
-      Array[Long](B, T, NUM_PRESTO_BANDS))
-    val dwOnnx = OnnxTensor.createTensor(env, dwTensor,
-      Array[Long](B, T))
-    val llOnnx = OnnxTensor.createTensor(env, latlonTensor,
-      Array[Long](B, 2))
-    val maskOnnx = OnnxTensor.createTensor(env, maskTensor,
-      Array[Long](B, T, NUM_PRESTO_BANDS))
-    val monOnnx = OnnxTensor.createTensor(env, monthTensor,
-      Array[Long](B, T))
-
-    val inputs = java.util.Map.of(
-      inputNames(0), xOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
-      inputNames(1), dwOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
-      inputNames(2), llOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
-      inputNames(3), maskOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike],
-      inputNames(4), monOnnx.asInstanceOf[ai.onnxruntime.OnnxTensorLike]
-    )
-
-    val result = session.run(inputs)
-    (0 until outputNames.length).map { i =>
-      result.get(i).getValue.asInstanceOf[Array[Array[Float]]].flatten
-    }
-
   }
 
   // ── Output construction ──────────────────────────────────────────────────────
