@@ -103,6 +103,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       return //happens when all polygons are empty
     }
 
+    logger.debug(s"Computing generic timeseries from datacube with ${splitPolygons._1.size} polygons")
     val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
     computeStatsGeotrellis.aggregateSpatialGeneric(scriptBuilder, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
 
