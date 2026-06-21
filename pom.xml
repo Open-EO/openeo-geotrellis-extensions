@@ -61,6 +61,11 @@
                 <version>2.0.7</version>
                 <scope>provided</scope>
             </dependency>
+            <dependency>
+                <groupId>com.github.ben-manes.caffeine</groupId>
+                <artifactId>caffeine</artifactId>
+                <version>3.2.2</version> <!-- workaround for what looks like a typo in Geotrellis' dependencies -->
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
