@@ -13,7 +13,7 @@
         <spark.version>4.0.1</spark.version>
         <scala.binary.version>2.13</scala.binary.version>
         <scala.version>2.13.16</scala.version>
-        <geotrellis.version>3.8.0+28-c2ed4c7f-SNAPSHOT</geotrellis.version>
+        <geotrellis.version>3.8.0+30-2fb0b5a9-SNAPSHOT</geotrellis.version>
         <gdal-bindings.version>3.8.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
         <openeo-opensearch-client.version>2.0.1-SNAPSHOT</openeo-opensearch-client.version>
@@ -60,11 +60,6 @@
                 <artifactId>slf4j-api</artifactId>
                 <version>2.0.7</version>
                 <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>com.github.ben-manes.caffeine</groupId>
-                <artifactId>caffeine</artifactId>
-                <version>3.2.2</version> <!-- workaround for what looks like a typo in Geotrellis' dependencies -->
             </dependency>
         </dependencies>
     </dependencyManagement>
