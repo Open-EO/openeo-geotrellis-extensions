@@ -358,7 +358,7 @@ package object intern {
 
 
   private def computeHistogramTimeSeries(maskedRdd: MultibandTileLayerRDD[SpaceTimeKey], multiPolygons: Array[MultiPolygon], crs: CRS, sc: SparkContext): Array[RDD[(TemporalKey, Array[Histogram[Double]])]] = {
-    logger.debug(s"Computing histogram time series for ${multiPolygons.length} polygons")
+    logger.debug(s"Computing histogram time series private")
     if (multiPolygons.length > 1) {
       maskedRdd.cache
     }
