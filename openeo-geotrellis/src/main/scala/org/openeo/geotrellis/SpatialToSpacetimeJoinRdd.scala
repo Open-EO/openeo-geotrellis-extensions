@@ -22,6 +22,7 @@ class SpatialToSpacetimeJoinRdd[T : ClassTag](spacetimeRDD: MultibandTileLayerRD
       logger.debug(s"Using SpacePartitioner to spatially partition the spacetime RDD, as it is not already partitioned by a SpacePartitioner. Using the bounds ${spacetimeRDD.metadata.bounds.get} to create the partitioner.")
       spacetimeRDD.withContext{_.partitionBy( SpacePartitioner(spacetimeRDD.metadata.bounds.get)) }
     }else{
+      logger.debug(s"Spacetime RDD is already partitioned by a SpacePartitioner, so we can use it directly without repartitioning.")
       spacetimeRDD
     }
   }
