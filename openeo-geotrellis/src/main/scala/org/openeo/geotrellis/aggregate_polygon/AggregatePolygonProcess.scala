@@ -264,6 +264,7 @@ class AggregatePolygonProcess {
       val polygonMappingBC = sc.broadcast(invertedMapping)
       val spatiallyPartitionedIndexMaskLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = ContextRDD(byIndexMask.persist(MEMORY_ONLY_2), byIndexMask.metadata)
       val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, spatiallyPartitionedIndexMaskLayer)
+      logger.debug(s"Combined RDD created, now processing pixels. The new RDD has ${combinedRDD.partitioner.get.numPartitions} partitions.")
       combinedRDD.name = "aggregate_spatial: datacube masked with geometries"
       val pixelRDD: RDD[Row] = combinedRDD.flatMap{
         case (key: SpaceTimeKey,( tile: MultibandTile,zones: Tile)) => {
