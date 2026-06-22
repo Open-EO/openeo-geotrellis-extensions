@@ -47,6 +47,7 @@ class Sentinel1GrdRasterSourceProvider(
 
   override def canProcess(definition: RasterSourceDefinition): Boolean = {
     val path = definition.dataPath
+    logger.debug(s"Checking if Sentinel1GrdRasterSourceProvider can process $path")
     isS1GrdMeasurementTiff(path) || isS1SafePath(path) || isS1GrdStacItem(definition)
   }
 
