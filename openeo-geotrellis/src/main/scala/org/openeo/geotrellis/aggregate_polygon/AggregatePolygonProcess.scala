@@ -241,7 +241,7 @@ class AggregatePolygonProcess {
 
   def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
     import org.apache.spark.storage.StorageLevel._
-    logger.debug("Aggregate spatial generic)
+    logger.debug("Aggregate spatial generic")
 
     val (polygons, indexMapping) = polygonsWithIndexMapping
 
