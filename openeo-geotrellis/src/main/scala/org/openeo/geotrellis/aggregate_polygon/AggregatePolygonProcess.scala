@@ -164,7 +164,7 @@ class AggregatePolygonProcess {
                                                  datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
                                                  crs: CRS, bandCount: Int, outputPath: String): Unit = {
     val sc = datacube.sparkContext
-    logger.debug("Aggregate spatial for geometry with spatial cube, number of geometries: " + geometries.size + " and datacube metadata: " + datacube.metadata)
+    logger.debug("Aggregate spatial for geometry with spatial cube")
 
     // each polygon becomes a feature with a value that's equal to its position in the array
     val indexedFeatures = geometries
@@ -241,7 +241,7 @@ class AggregatePolygonProcess {
 
   def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
     import org.apache.spark.storage.StorageLevel._
-    logger.debug("Aggregate spatial generic, number of polygons: " + polygonsWithIndexMapping._1.size + " and datacube metadata: " + datacube.metadata)
+    logger.debug("Aggregate spatial generic)
 
     val (polygons, indexMapping) = polygonsWithIndexMapping
 

@@ -310,6 +310,7 @@ package object intern {
   }
 
   def computeHistogramTimeSeries(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, statisticsCallback: StatisticsCallback[_ >: Seq[Histogram[Double]]], cancellationContext: CancellationContext, sc: SparkContext): Unit = {
+    logger.debug(s"Computing histogram time series")
     val boundingBox = ProjectedExtent(polygons.toSeq.extent, crs)
     val exceeds = exceedsTreshold(boundingBox, datacube.metadata, sc)
 

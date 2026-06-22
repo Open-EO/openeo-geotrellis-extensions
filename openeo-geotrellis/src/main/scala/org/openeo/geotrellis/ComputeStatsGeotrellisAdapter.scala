@@ -83,6 +83,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
    * Writes means to an UTF-8 encoded JSON file.
    */
   def compute_generic_timeseries_from_datacube(reducer:String, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit = {
+    logger.debug(s"Computing generic timeseries from datacube 1")
     val builder = new SparkAggregateScriptBuilder
     builder.expressionEnd(reducer,new util.HashMap[String,Object]())
     this.compute_generic_timeseries_from_datacube(builder,datacube, polygons, output_file)
@@ -92,6 +93,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
    * Writes means to an UTF-8 encoded JSON file.
    */
   def compute_generic_timeseries_from_datacube(scriptBuilder:SparkAggregateScriptBuilder, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit = {
+    logger.debug(s"Computing generic timeseries from datacube 2")
     val computeStatsGeotrellis = new AggregatePolygonProcess()
 
     if(polygons.polygons.isEmpty) {
@@ -154,6 +156,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   def compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
                                                    from_date: String, to_date: String, band_index: Int
                                                   ): JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> band -> value/count
+    logger.debug(s"Computing histograms time series from datacube")
     val histogramsCollector = new MultibandHistogramsCollector
     _compute_histograms_time_series_from_datacube(datacube, polygons, from_date, to_date, band_index, histogramsCollector)
     histogramsCollector.results
