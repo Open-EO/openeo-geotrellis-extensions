@@ -6,12 +6,12 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{CRSWorldExtent, FloatingLayoutScheme, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
-import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
+import geotrellis.raster.io.geotiff.{BigTiff, GeoTiff, MultibandGeoTiff, Tiff, TiffType, Tiled}
 import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
 import geotrellis.raster.resample.Min
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{BitCellType, ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, ColorMaps, IntArrayTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, UByteCellType, isData}
+import geotrellis.raster.{BitCellType, ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, ColorMaps, IntArrayTile, IntConstantTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, UByteCellType, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
@@ -20,6 +20,8 @@ import org.apache.spark.{SparkConf, SparkContext, SparkEnv}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNull, assertTrue}
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
@@ -30,6 +32,7 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
+import java.util.stream.{Stream => JStream}
 import java.util.zip.Deflater._
 import scala.io.Source
 import scala.jdk.CollectionConverters._
@@ -58,6 +61,11 @@ object WriteRDDToGeotiffTest{
 
   @AfterAll
   def tearDownSpark(): Unit = sc.stop()
+
+  def tiffTypeParams(): JStream[Arguments] = JStream.of(
+    Arguments.of(false, Tiff),
+    Arguments.of(true, BigTiff),
+  )
 }
 
 class WriteRDDToGeotiffTest extends RasterMatchers {
@@ -1194,4 +1202,21 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     assertEquals(64,tile.overviews(3).tile.rows)
   }
 
+  @ParameterizedTest
+  @MethodSource(Array("tiffTypeParams"))
+  def tiffType(isBigTiff: Boolean, expectedTiffType: TiffType, @TempDir tempDir: Path): Unit = {
+    val multibandTile = MultibandTile(IntConstantTile(123, cols = 4, rows = 4))
+    val tileLayout = TileLayout(layoutCols = 4, layoutRows = 4, tileCols = multibandTile.cols, tileRows = multibandTile.rows)
+    val rdd = TileLayerRDDBuilders.createMultibandTileLayerRDD(multibandTile, tileLayout)(WriteRDDToGeotiffTest.sc)
+
+    val outputFile = tempDir.resolve("tiffType.tif").toString
+
+    val formatOptions = new GTiffOptions
+    formatOptions.isBigTiff = isBigTiff
+
+    saveRDDAllowAssetPerBand(rdd, multibandTile.bandCount, outputFile, formatOptions = formatOptions)
+
+    val actual = MultibandGeoTiff(outputFile)
+    assertEquals(expectedTiffType, actual.options.tiffType)
+   }
 }
