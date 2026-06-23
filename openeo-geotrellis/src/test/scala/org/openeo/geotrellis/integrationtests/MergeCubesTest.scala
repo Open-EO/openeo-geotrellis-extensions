@@ -44,17 +44,10 @@ class MergeCubesTest {
     val to_date = from_date
 
     val datacubeParams = new DataCubeParameters()
+    datacubeParams.setLoadPerProduct(true)
+    datacubeParams.setRetainNoDataTiles(true)
     datacubeParams.layoutScheme="FloatingLayoutScheme"
     datacubeParams.globalExtent = Some(projected_polygons.extent)
-    val Seq((_, sigma0Asc)) = sigma0PyramidFactory.datacube_seq(
-      projected_polygons,
-      from_date,
-      to_date,
-      util.Collections.emptyMap[String, Any](),
-      "correlationid",
-      datacubeParams
-    )
-
     val Seq((_, fapar)) = faparPyramidFactory.datacube_seq(
       projected_polygons,
       from_date,
@@ -64,11 +57,21 @@ class MergeCubesTest {
       datacubeParams
     )
 
+    val Seq((_, sigma0Asc)) = sigma0PyramidFactory.datacube_seq(
+      projected_polygons,
+      from_date,
+      to_date,
+      util.Collections.emptyMap[String, Any](),
+      "correlationid",
+      datacubeParams
+    )
+
+
     //global bounds mechanism ensures that keys are aligned
-    assertEquals(0, fapar.metadata.bounds.get.minKey.col)
-    assertEquals(0, fapar.metadata.bounds.get.minKey.row)
-    assertEquals(0, sigma0Asc.metadata.bounds.get.maxKey.col)
-    assertEquals(0, sigma0Asc.metadata.bounds.get.maxKey.row)
+    assertEquals(fapar.metadata.bounds.get.minKey.col, sigma0Asc.metadata.bounds.get.minKey.col)
+    assertEquals(fapar.metadata.bounds.get.minKey.row, sigma0Asc.metadata.bounds.get.minKey.row)
+    assertEquals(fapar.metadata.bounds.get.maxKey.col, sigma0Asc.metadata.bounds.get.maxKey.col)
+    assertEquals(fapar.metadata.bounds.get.maxKey.row, sigma0Asc.metadata.bounds.get.maxKey.row)
 
     val merged = new OpenEOProcesses().mergeCubes(sigma0Asc, fapar, operator = null)
 
@@ -103,8 +106,6 @@ class MergeCubesTest {
         |  }""".stripMargin
     ).features.foreach(feature => client.addFeature(feature))
 
-
-    val openSearchClient = OpenSearchClient(new URL(openSearchEndpoint), isUTM = true)
     new PyramidFactory(
       client,
       openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
@@ -131,7 +132,6 @@ class MergeCubesTest {
         |  }""".stripMargin
     ).features.foreach(feature => client.addFeature(feature))
 
-    val openSearchClient = OpenSearchClient(new URL(openSearchEndpoint), isUTM = true)
     new PyramidFactory(
       client,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",

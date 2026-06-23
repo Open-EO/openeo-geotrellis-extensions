@@ -27,7 +27,7 @@ object DatacubeSupport {
    * @param boundingBox
    * @return
    */
-  def bestCRS(boundingBox: ProjectedExtent,layoutScheme:LayoutScheme):CRS = {
+  def bestCRS(boundingBox: ProjectedExtent, layoutScheme: LayoutScheme): CRS = {
     layoutScheme match {
       case scheme: ZoomedLayoutScheme => scheme.crs
       case scheme: FloatingLayoutScheme => boundingBox.crs //TODO determine native CRS based on collection metadata, not bbox?
@@ -105,7 +105,7 @@ object DatacubeSupport {
   }
 
   def layerMetadata(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, cellType: CellType,
-                    layoutScheme:LayoutScheme, maxSpatialResoluton: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty, multiple_polygons_flag: Boolean = false) = {
+                    layoutScheme: LayoutScheme, maxSpatialResoluton: CellSize, globalBounds: Option[ProjectedExtent] = Option.empty, multiple_polygons_flag: Boolean = false) = {
 
     val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(layoutScheme, boundingBox, zoom, maxSpatialResoluton, globalBounds = globalBounds, multiple_polygons_flag = multiple_polygons_flag)
 
@@ -128,18 +128,18 @@ object DatacubeSupport {
   }
 
   def optimizeChunkSize(metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], datacubeParams: Option[DataCubeParameters], spatialKeyCount: Long) = {
-
     val criterium = {
-      if(polygons.length>1) {
+      if (polygons.length > 1) {
         spatialKeyCount <= 1.1 * polygons.length
-      }else{
+      } else {
         metadata.extent.width < metadata.layout.extent.width / 2.0 || metadata.extent.height < metadata.layout.extent.height / 2.0
       }
     }
-    if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && criterium && metadata.tileRows == 256) {
+    if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && criterium && metadata.tileRows > 16) {
       //it seems that polygons fit entirely within chunks, so chunks are too large
-      logger.info(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to 128.")
-      val newLayout = LayoutDefinition(metadata, 128)
+      val newTileSize = metadata.tileRows / 2
+      logger.info(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to $newTileSize.")
+      val newLayout = LayoutDefinition(metadata, newTileSize)
 
       //spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
       val gridBounds = newLayout.mapTransform.extentToBounds(metadata.extent)
@@ -177,11 +177,11 @@ object DatacubeSupport {
       val spatialBounds = metadata.bounds.get.toSpatial
       val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
 
-      if(maxKeys > 4) {
+      if (maxKeys > 4) {
 
         if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution == "ByMonth") {
           new ConfigurableSpaceTimePartitioner(reduction, SfCurveZSpaceTimeKeyIndex.byMonth(null))
-        }else{
+        } else {
           val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
           val isSparse: Boolean = spatialCount < 0.5 * maxKeys
           logger.info(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
@@ -192,7 +192,7 @@ object DatacubeSupport {
               val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
               new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
             } else {
-              val (indexReduction, indices) =  optimalReductionForSparseKeys(keys,datacubeParams.map(_.maxPartitionSize.getOrElse(64)).getOrElse(64),metadata.tileCols,metadata.cellType.bits, bandCount)
+              val (indexReduction, indices) = optimalReductionForSparseKeys(keys, datacubeParams.map(_.maxPartitionSize.getOrElse(64)).getOrElse(64), metadata.tileCols, metadata.cellType.bits, bandCount)
               new SparseSpaceTimePartitioner(indices, indexReduction, theKeys = Some(keys))
             }
           } else {
@@ -205,7 +205,7 @@ object DatacubeSupport {
           }
         }
 
-      }else{
+      } else {
         new ConfigurableSpaceTimePartitioner(reduction)
       }
 
@@ -217,27 +217,27 @@ object DatacubeSupport {
 
 
   def rasterMaskGeneric[K: Boundable : PartitionerIndex : ClassTag, M: GetComponent[*, Bounds[K]]]
-  (datacube: RDD[(K, MultibandTile)] with Metadata[M],
-   mask: RDD[(K, MultibandTile)] with Metadata[M],
-   replacement: java.lang.Double,
-   ignoreKeysWithoutMask: Boolean = false,
-  ): RDD[(K, MultibandTile)] with Metadata[M] = {
+                       (datacube: RDD[(K, MultibandTile)] with Metadata[M],
+                        mask: RDD[(K, MultibandTile)] with Metadata[M],
+                        replacement: java.lang.Double,
+                        ignoreKeysWithoutMask: Boolean = false,
+                       ): RDD[(K, MultibandTile)] with Metadata[M] = {
     val joined = if (ignoreKeysWithoutMask) {
       //inner join, try to preserve partitioner
       val tmpRdd: RDD[(K, (MultibandTile, Option[MultibandTile]))] =
-        if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[K]]){
-            val part = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
-            new CoGroupedRDD[K](List(datacube, part(mask)), part)
-              .flatMapValues { case Array(l, r) =>
-                if (l.isEmpty) {
-                  Seq.empty[(MultibandTile, Option[MultibandTile])]
-                }
-                else if (r.isEmpty)
-                  Seq.empty[(MultibandTile, Option[MultibandTile])]
-                else
-                  for (v <- l.iterator; w <- r.iterator) yield (v, Some(w))
-              }.asInstanceOf[RDD[(K, (MultibandTile, Option[MultibandTile]))]]
-        }else{
+        if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[K]]) {
+          val part = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
+          new CoGroupedRDD[K](List(datacube, part(mask)), part)
+            .flatMapValues { case Array(l, r) =>
+              if (l.isEmpty) {
+                Seq.empty[(MultibandTile, Option[MultibandTile])]
+              }
+              else if (r.isEmpty)
+                Seq.empty[(MultibandTile, Option[MultibandTile])]
+              else
+                for (v <- l.iterator; w <- r.iterator) yield (v, Some(w))
+            }.asInstanceOf[RDD[(K, (MultibandTile, Option[MultibandTile]))]]
+        } else {
           SpatialJoin.join(datacube, mask).mapValues(v => (v._1, Option(v._2)))
         }
 
@@ -323,7 +323,7 @@ object DatacubeSupport {
     filtered
   }
 
-  def maybePartitionerIndex[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): Option[PartitionerIndex[K]] = {
+  def maybePartitionerIndex[K: SpatialComponent : ClassTag](datacube: MultibandTileLayerRDD[K]): Option[PartitionerIndex[K]] = {
     if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[K]]) {
       Some(datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]].index)
     } else {
@@ -333,7 +333,7 @@ object DatacubeSupport {
 
   def optimalReductionForSparseKeys(sparseKeys: Seq[SpaceTimeKey], maxPartitionSizeInMb: Int, tileSize: Int, cellTypeBits: Int, bandCount: Int) = {
     val tileSizeInMb: Double = (bandCount * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
-    val maxRecordsPerPartition: Double = math.min(math.min(maxPartitionSizeInMb / tileSizeInMb, 1024),sparseKeys.length)
+    val maxRecordsPerPartition: Double = math.min(math.min(maxPartitionSizeInMb / tileSizeInMb, 1024), sparseKeys.length)
     var indexReduction = math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
 
     def computeIndices(cartesian: Seq[SpaceTimeKey], indexReduction: Int): (Array[BigInt], Int) = {
@@ -368,7 +368,7 @@ object DatacubeSupport {
     if (cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount > 0) {
       val labels = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bands
       return Some(labels)
-    }else{
+    } else {
       return None
     }
   }
