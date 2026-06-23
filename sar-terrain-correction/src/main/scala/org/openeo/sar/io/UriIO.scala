@@ -25,6 +25,7 @@ object UriIO {
 
   private implicit val logger: Logger = LoggerFactory.getLogger(UriIO.getClass)
   @transient lazy val s3Endpoint = sys.env.getOrElse("AWS_S3_ENDPOINT", "https://eodata.dataspace.copernicus.eu")
+  @transient lazy val s3Https = sys.env.getOrElse("AWS_HTTPS","NO").toUpperCase.equals("YES")
 
   /** Open an `InputStream` for the given URI. Caller is responsible for closing. */
   def openInputStream(uri: URI): InputStream = {
@@ -35,7 +36,11 @@ object UriIO {
         val s3Uri  = new AmazonS3URI(uri)
         val endpoint =
         if(new URI(s3Endpoint).getScheme == null) {
-          URI.create("https://" + s3Endpoint)
+          if(s3Https) {
+            URI.create("https://" + uri.toString)
+          }else{
+            URI.create("http://" + uri.toString)
+          }
         }else{
           URI.create(s3Endpoint)
         }
