@@ -116,7 +116,7 @@ class GTiffOptions extends Serializable {
     })
   }
 
-  def setBigTiff(value: Boolean): Unit = isBigTiff = value
+  def setBigTiff(enabled: Boolean): Unit = isBigTiff = enabled
 
   def addHeadTag(tagName: String, value: String): Unit = {
     tags = tags.copy(headTags = tags.headTags + (tagName -> value))

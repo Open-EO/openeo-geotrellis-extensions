@@ -988,23 +988,20 @@ package object geotiff {
     logger.info(s"Writing geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
     val tiffTile: GeoTiffMultibandTile = toTiff(tiffs, gridBounds, tileLayout, compression, cellType, detectedBandCount, segmentCount)
 
-    val options =
-      if (formatOptions.isBigTiff) GeoTiffOptions.DEFAULT.copy(tiffType = BigTiff)
-      else GeoTiffOptions.DEFAULT
-
-    val optionsWithColor = formatOptions.colorMap match {
+    val options = formatOptions.colorMap match {
       case Some(colorMap) =>
-        options.copy(colorMap = Some(IndexedColorMap.fromColorMap(colorMap)), colorSpace = ColorSpace.Palette)
+        GeoTiffOptions.DEFAULT.copy(colorMap = Some(IndexedColorMap.fromColorMap(colorMap)), colorSpace = ColorSpace.Palette)
       case _ =>
         val theColorspace =
           if (detectedBandCount == 3) ColorSpace.RGB
           else ColorSpace.BlackIsZero
 
-        options.copy(colorSpace = theColorspace)
+        GeoTiffOptions.DEFAULT.copy(colorSpace = theColorspace)
     }
 
-    val theGeoTiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs, formatOptions.tags, optionsWithColor, overviews = overviews.map(o => MultibandGeoTiff(o, croppedExtent, crs, options = optionsWithColor.copy(subfileType = Some(ReducedImage)))))
+    val theGeoTiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs, formatOptions.tags, options, overviews = overviews.map(o => MultibandGeoTiff(o, croppedExtent, crs, options = options.copy(subfileType = Some(ReducedImage)))))
       .withCompression(formatOptions)
+      .withTiffType(if (formatOptions.isBigTiff) BigTiff else Tiff)
 
     writeGeoTiff(theGeoTiff, path, Some(formatOptions))
   }
