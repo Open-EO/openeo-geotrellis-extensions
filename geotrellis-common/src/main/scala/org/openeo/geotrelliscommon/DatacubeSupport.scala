@@ -192,8 +192,8 @@ object DatacubeSupport {
               val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
               new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
             } else {
-              logger.info(s"reduction metadata might need to consider tileCols ${metadata.tileCols} and tileRows ${metadata.tileRows}")
-              val (indexReduction, indices) =  optimalReductionForSparseKeys(keys,datacubeParams.map(_.maxPartitionSize.getOrElse(64)).getOrElse(64),metadata.tileCols,metadata.cellType.bits, bandCount)
+              val tileSize = metadata.tileCols * metadata.tileRows
+              val (indexReduction, indices) =  optimalReductionForSparseKeys(keys,datacubeParams.map(_.maxPartitionSize.getOrElse(500)).getOrElse(500) ,tileSize, metadata.cellType.bits, bandCount)
               new SparseSpaceTimePartitioner(indices, indexReduction, theKeys = Some(keys))
             }
           } else {
