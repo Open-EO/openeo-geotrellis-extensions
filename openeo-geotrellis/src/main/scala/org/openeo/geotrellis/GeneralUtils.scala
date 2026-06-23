@@ -1,6 +1,7 @@
 package org.openeo.geotrellis
 
 import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.vector.Extent
 
 object GeneralUtils {
 
@@ -189,6 +190,26 @@ object GeneralUtils {
       case x:UShortCells => true
       case _ => false
     }
+  }
+    
+  // returns an extent that is cropped to the world extent if the input extent is larger than the world extent
+  // the bbox has to be CRS EPSG:4326
+  def cropBboxLargerThanWorld(bbox: Extent): Extent = {
+    Extent(
+      math.max(bbox.xmin, -180),
+      math.max(bbox.ymin, -90),
+      math.min(bbox.xmax, 180),
+      math.min(bbox.ymax, 90)
+    )
+  }
+
+  def cropBboxLargerThanWorld(xmin:Double, ymin:Double, xmax:Double, ymax:Double): Extent = {
+    Extent(
+      math.max(xmin, -180),
+      math.max(ymin, -90),
+      math.min(xmax, 180),
+      math.min(ymax, 90)
+    )
   }
 
 }
