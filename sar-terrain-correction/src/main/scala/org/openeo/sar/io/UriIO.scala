@@ -24,6 +24,7 @@ import scala.xml.{Elem, XML}
 object UriIO {
 
   private implicit val logger: Logger = LoggerFactory.getLogger(UriIO.getClass)
+  @transient lazy val s3Endpoint = sys.env.getOrElse("AWS_S3_ENDPOINT", "https://eodata.dataspace.copernicus.eu")
 
   /** Open an `InputStream` for the given URI. Caller is responsible for closing. */
   def openInputStream(uri: URI): InputStream = {
@@ -32,7 +33,13 @@ object UriIO {
 
       case "s3" =>
         val s3Uri  = new AmazonS3URI(uri)
-        val client = s3Client(Region.of("RegionOne"), URI.create("https://eodata.dataspace.copernicus.eu"))
+        val endpoint =
+        if(new URI(s3Endpoint).getScheme == null) {
+          URI.create("https://" + s3Endpoint)
+        }else{
+          URI.create(s3Endpoint)
+        }
+        val client = s3Client(Region.of("RegionOne"), endpoint)
         val key    = stripLeading('/', s3Uri.getKey)
         val req    = GetObjectRequest.builder().bucket(s3Uri.getBucket).key(key).build()
         val resp: ResponseInputStream[GetObjectResponse] = client.getObject(req)
