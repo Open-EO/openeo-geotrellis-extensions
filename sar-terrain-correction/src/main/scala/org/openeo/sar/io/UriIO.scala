@@ -37,9 +37,9 @@ object UriIO {
         val endpoint =
         if(new URI(s3Endpoint).getScheme == null) {
           if(s3Https) {
-            URI.create("https://" + uri.toString)
+            URI.create("https://" + s3Endpoint)
           }else{
-            URI.create("http://" + uri.toString)
+            URI.create("http://" + s3Endpoint)
           }
         }else{
           URI.create(s3Endpoint)
