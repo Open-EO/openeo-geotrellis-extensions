@@ -1196,6 +1196,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       val dates = sources.map(_._2.nominalDate).distinct
       val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
       val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
+      logger.info(s"Creating sparse partitioner with ${allKeys.size} keys, ${indices.length} indices, bounds ${metadata.bounds} and index reduction ${reduction}.")
       Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(allKeys.toArray))))
     }
   }
