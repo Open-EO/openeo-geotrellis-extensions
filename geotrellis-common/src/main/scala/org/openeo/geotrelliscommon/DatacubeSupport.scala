@@ -332,9 +332,10 @@ object DatacubeSupport {
   }
 
   def optimalReductionForSparseKeys(sparseKeys: Seq[SpaceTimeKey], maxPartitionSizeInMb: Int, tileSize: Int, cellTypeBits: Int, bandCount: Int) = {
-    val tileSizeInMb: Double = (bandCount * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
+    val temporalSteps = sparseKeys.map(_.time).distinct.length
+    val tileSizeInMb: Double = (bandCount * tileSize * cellTypeBits * temporalSteps).toDouble / (8 * 1024 * 1024)
     val maxRecordsPerPartition: Double = math.min(math.min(maxPartitionSizeInMb / tileSizeInMb, 1024),sparseKeys.length)
-    logger.info(s"Computing optimal reduction for ${sparseKeys.length} sparse keys, maxPartitionSizeInMb $maxPartitionSizeInMb, tilSizeInMb $tileSizeInMb, maxRecordsPerPartition $maxRecordsPerPartition .")
+    logger.info(s"Computing optimal reduction for ${sparseKeys.length} sparse keys and $temporalSteps, maxPartitionSizeInMb $maxPartitionSizeInMb, tilSizeInMb $tileSizeInMb, maxRecordsPerPartition $maxRecordsPerPartition .")
     var indexReduction = math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
 
     def computeIndices(cartesian: Seq[SpaceTimeKey], indexReduction: Int): (Array[BigInt], Int) = {
