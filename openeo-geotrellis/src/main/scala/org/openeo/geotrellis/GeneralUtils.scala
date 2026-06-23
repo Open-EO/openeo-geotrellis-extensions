@@ -191,24 +191,30 @@ object GeneralUtils {
       case _ => false
     }
   }
-    
-  // returns an extent that is cropped to the world extent if the input extent is larger than the world extent
-  // the bbox has to be CRS EPSG:4326
-  def cropBboxLargerThanWorld(bbox: Extent): Extent = {
-    Extent(
-      math.max(bbox.xmin, -180),
-      math.max(bbox.ymin, -90),
-      math.min(bbox.xmax, 180),
-      math.min(bbox.ymax, 90)
-    )
+
+  private def hasOverlapXDimension(bbox: Extent): Boolean = {
+    bbox.xmin < -180 || bbox.xmax > 180
   }
 
-  def cropBboxLargerThanWorld(xmin:Double, ymin:Double, xmax:Double, ymax:Double): Extent = {
+  def fixBboxLargerThanWorld(bbox: Extent): Extent = {
+    if (hasOverlapXDimension(bbox)) {
+      if (bbox.width>360) {
+        cropXDimensionBboxLargerThanWorld(bbox)
+      } else {
+        bbox
+      }
+    } else {
+      bbox
+    }
+  }
+  // returns an extent that is cropped to the world extent if the input extent is larger than the world extent
+  // the bbox has to be CRS EPSG:4326
+  def cropXDimensionBboxLargerThanWorld(bbox: Extent): Extent = {
     Extent(
-      math.max(xmin, -180),
-      math.max(ymin, -90),
-      math.min(xmax, 180),
-      math.min(ymax, 90)
+      math.max(bbox.xmin, -180),
+      bbox.ymin,
+      math.min(bbox.xmax, 180),
+      bbox.ymax
     )
   }
 

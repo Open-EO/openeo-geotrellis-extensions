@@ -23,7 +23,7 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.apache.spark.{Partitioner, SparkContext, TaskContext}
 import org.openeo.geotrellis
-import org.openeo.geotrellis.GeneralUtils.cropBboxLargerThanWorld
+import org.openeo.geotrellis.GeneralUtils.fixBboxLargerThanWorld
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.{Asset, Item, STACItem}
@@ -423,7 +423,7 @@ package object geotiff {
           }
           .toMap
         val croppedBbox =
-          if (preprocessedRdd.metadata.crs == LatLng) cropBboxLargerThanWorld(croppedExtent)
+          if (preprocessedRdd.metadata.crs == LatLng) fixBboxLargerThanWorld(croppedExtent)
           else croppedExtent
         Item(id = s"${UUID.randomUUID()}_$timestamp", datetime = timestamp, bbox = croppedBbox, assets.asJava)
       }
@@ -569,7 +569,7 @@ package object geotiff {
         s"${bandNames mkString "_"}" -> Asset(path, bandIndices, assetMetadata)
       }.toMap.asJava
       val croppedBbox =
-        if (rdd.metadata.crs == LatLng) cropBboxLargerThanWorld(extent)
+        if (rdd.metadata.crs == LatLng) fixBboxLargerThanWorld(extent)
         else extent
       Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = croppedBbox, assets))
       // TODO: restore asset ordering?
@@ -577,7 +577,7 @@ package object geotiff {
       val (tiffPath, extent, assetMetadata) = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
       val assets = Collections.singletonMap("openEO", Asset(tiffPath, (0 until bandCount).asJava, metadata = assetMetadata))
       val croppedBbox =
-        if (rdd.metadata.crs == LatLng) cropBboxLargerThanWorld(extent)
+        if (rdd.metadata.crs == LatLng) fixBboxLargerThanWorld(extent)
         else extent
       Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = croppedBbox, assets))
     }
@@ -895,7 +895,7 @@ package object geotiff {
     if (!bands.isEmpty) assetMetadata.put("bands", bands)
 
     val croppedBbox =
-      if (crs == LatLng) cropBboxLargerThanWorld(bbox)
+      if (crs == LatLng) fixBboxLargerThanWorld(bbox)
       else bbox
     assetMetadata.put("proj:bbox",Array(croppedBbox.xmin, croppedBbox.ymin, croppedBbox.xmax, croppedBbox.ymax))
     crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
@@ -1095,7 +1095,7 @@ package object geotiff {
     writeGeoTiff(geoTiff, path, gtiffOptions = formatOptions)
     val assetMetadata = setupAssetMetadata(List(), adjusted.extent, contextRDD.metadata.crs, Array(adjusted.rows,adjusted.cols))
     val croppedBbox =
-      if (contextRDD.metadata.crs == LatLng) cropBboxLargerThanWorld(adjusted.extent)
+      if (contextRDD.metadata.crs == LatLng) fixBboxLargerThanWorld(adjusted.extent)
       else adjusted.extent
     Item(id = UUID.randomUUID().toString, datetime = null, bbox = croppedBbox,
       Collections.singletonMap("openEO", Asset(path, metadata = assetMetadata)))
@@ -1159,7 +1159,7 @@ package object geotiff {
     val items = res.map { case (path, tileId, extent) =>
       val assetMetadata = setupAssetMetadata(List(), extent, crs, Array(layout.rows.toInt,layout.cols.toInt))
       val croppedBbox =
-        if (crs == LatLng) cropBboxLargerThanWorld(extent)
+        if (crs == LatLng) fixBboxLargerThanWorld(extent)
         else extent
       Item(id = s"${UUID.randomUUID()}_$tileId", datetime = null, bbox = croppedBbox,
         assets = Collections.singletonMap("openEO", Asset(path, metadata= assetMetadata)))
@@ -1390,7 +1390,7 @@ package object geotiff {
         val assetMetadata = setupAssetMetadata(List(), croppedExtent.getOrElse(geometry.extent), crs, Array(layout.rows.toInt,layout.cols.toInt))
 
         val croppedBbox =
-          if (crs == LatLng) cropBboxLargerThanWorld(croppedExtent.getOrElse(geometry.extent))
+          if (crs == LatLng) fixBboxLargerThanWorld(croppedExtent.getOrElse(geometry.extent))
           else croppedExtent.getOrElse(geometry.extent)
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression, formatOptions).correctPath,
           timestamp, croppedBbox, name, assetMetadata)
@@ -1435,7 +1435,7 @@ package object geotiff {
         val filePath = Paths.get(path).resolve(filename).toString
         val assetMetadata = setupAssetMetadata(List(), croppedExtent.getOrElse(geometry.extent), crs, Array(layout.rows.toInt,layout.cols.toInt))
         val croppedBbox =
-          if (crs == LatLng) cropBboxLargerThanWorld(geometry.extent)
+          if (crs == LatLng) fixBboxLargerThanWorld(geometry.extent)
           else geometry.extent
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression, formatOptions).correctPath,
           croppedBbox, assetMetadata)

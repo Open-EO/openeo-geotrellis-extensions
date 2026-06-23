@@ -14,7 +14,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkContext, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, cropBboxLargerThanWorld}
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, fixBboxLargerThanWorld}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.geotiff.preProcess
 import org.openeo.geotrellis.stac.{Asset, Item}
@@ -311,7 +311,7 @@ object NetCDFRDDWriter {
       }
 
     val croppedBbox =
-      if (rdd.metadata.crs == LatLng) cropBboxLargerThanWorld(cropBounds.getOrElse(extent))
+      if (rdd.metadata.crs == LatLng) fixBboxLargerThanWorld(cropBounds.getOrElse(extent))
       else cropBounds.getOrElse(extent)
     val item = Item(id = UUID.randomUUID().toString, bbox = croppedBbox, datetime = null,
       assets = Collections.singletonMap("openEO", Asset(finalPath,metadata = assetsMetadata)))
@@ -543,7 +543,7 @@ object NetCDFRDDWriter {
         }
 
         val croppedBbox =
-          if (crs == LatLng) cropBboxLargerThanWorld(tiles.head._3)
+          if (crs == LatLng) fixBboxLargerThanWorld(tiles.head._3)
           else tiles.head._3
         Item(id = UUID.randomUUID().toString, datetime = null , bbox = croppedBbox,
           assets = Collections.singletonMap("openEO", Asset(path = assetPath,metadata = assetsMetadata)))
@@ -633,7 +633,7 @@ object NetCDFRDDWriter {
           case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
         val bbox =
-          if (crs == LatLng) cropBboxLargerThanWorld(extent.extent)
+          if (crs == LatLng) fixBboxLargerThanWorld(extent.extent)
           else extent.extent
         Item(id = UUID.randomUUID().toString, datetime = null, bbox = bbox,
           assets = Collections.singletonMap("openEO", Asset(assetPath, metadata = assetMetadata)))
@@ -929,7 +929,7 @@ object NetCDFRDDWriter {
     }
     assetMetadata.put("bands", bands)
     val croppedBbox =
-      if (metadata.crs == LatLng) cropBboxLargerThanWorld(bbox)
+      if (metadata.crs == LatLng) fixBboxLargerThanWorld(bbox)
       else bbox
     assetMetadata.put("proj:bbox", Array(croppedBbox.xmin, croppedBbox.ymin, croppedBbox.xmax, croppedBbox.ymax))
     metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
@@ -955,7 +955,7 @@ object NetCDFRDDWriter {
     }
     assetMetadata.put("bands", bands)
     val bbox =
-      if (metadata.crs == LatLng) cropBboxLargerThanWorld(rasters.head.extent)
+      if (metadata.crs == LatLng) fixBboxLargerThanWorld(rasters.head.extent)
       else rasters.head.extent
     assetMetadata.put("proj:bbox",Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
     metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
