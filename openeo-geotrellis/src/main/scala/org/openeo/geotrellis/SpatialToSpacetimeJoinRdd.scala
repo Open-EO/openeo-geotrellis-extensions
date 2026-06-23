@@ -8,21 +8,16 @@ import geotrellis.store.index.zcurve.Z3
 import org.apache.spark._
 import org.apache.spark.rdd.{RDD, ShuffledRDD}
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
-import org.slf4j.LoggerFactory
 
 import scala.reflect._
 
 
 class SpatialToSpacetimeJoinRdd[T : ClassTag](spacetimeRDD: MultibandTileLayerRDD[SpaceTimeKey], spatialRdd: RDD[(SpatialKey,T)]) extends RDD[(SpaceTimeKey, (MultibandTile,T))](spacetimeRDD.context,Nil) {
 
-  private val logger = LoggerFactory.getLogger(classOf[SpatialToSpacetimeJoinRdd[T]])
-
   val spatiallyPartitionedRdd: MultibandTileLayerRDD[SpaceTimeKey] =  {
     if(spacetimeRDD.partitioner.isEmpty || !spacetimeRDD.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]){
-      logger.info(s"Using SpacePartitioner to spatially partition the spacetime RDD, as it is not already partitioned by a SpacePartitioner. Using the bounds ${spacetimeRDD.metadata.bounds.get} to create the partitioner.")
       spacetimeRDD.withContext{_.partitionBy( SpacePartitioner(spacetimeRDD.metadata.bounds.get)) }
     }else{
-      logger.info(s"Spacetime RDD is already partitioned by a SpacePartitioner ${spacetimeRDD.toString()}, so we can use it directly without repartitioning.")
       spacetimeRDD
     }
   }

@@ -1188,7 +1188,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   ): Option[SpacePartitioner[SpaceTimeKey]] = {
     val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
     if (maxKeys > 4) {
-      logger.info(s"Creating partitioner with datacubeParams ${datacubeParams} and bounds ${metadata.bounds}.")
       DatacubeSupport.createPartitioner(datacubeParams, spaceTimeKeys, metadata)
     } else {
       //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
@@ -1197,7 +1196,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       val dates = sources.map(_._2.nominalDate).distinct
       val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
       val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
-      logger.info(s"Creating sparse partitioner with ${allKeys.size} keys, ${indices.length} indices, bounds ${metadata.bounds} and index reduction ${reduction}.")
       Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(allKeys.toArray))))
     }
   }

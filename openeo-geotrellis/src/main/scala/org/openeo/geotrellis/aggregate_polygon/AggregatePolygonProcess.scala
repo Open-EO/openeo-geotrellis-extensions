@@ -164,7 +164,6 @@ class AggregatePolygonProcess {
                                                  datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
                                                  crs: CRS, bandCount: Int, outputPath: String): Unit = {
     val sc = datacube.sparkContext
-    logger.info("Aggregate spatial for geometry with spatial cube")
 
     // each polygon becomes a feature with a value that's equal to its position in the array
     val indexedFeatures = geometries
@@ -241,7 +240,6 @@ class AggregatePolygonProcess {
 
   def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
     import org.apache.spark.storage.StorageLevel._
-    logger.info("Aggregate spatial generic")
 
     val (polygons, indexMapping) = polygonsWithIndexMapping
 
@@ -264,7 +262,6 @@ class AggregatePolygonProcess {
       val polygonMappingBC = sc.broadcast(invertedMapping)
       val spatiallyPartitionedIndexMaskLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = ContextRDD(byIndexMask.persist(MEMORY_ONLY_2), byIndexMask.metadata)
       val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, spatiallyPartitionedIndexMaskLayer)
-      logger.info(s"Combined RDD created, now processing pixels. The new RDD has ${combinedRDD.partitioner.get.numPartitions} partitions.")
       combinedRDD.name = "aggregate_spatial: datacube masked with geometries"
       val pixelRDD: RDD[Row] = combinedRDD.flatMap{
         case (key: SpaceTimeKey,( tile: MultibandTile,zones: Tile)) => {
