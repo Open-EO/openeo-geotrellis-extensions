@@ -13,9 +13,12 @@ import org.openeo.sar.{BackscatterNormalization, TerrainCorrectionProcessor, Til
  *  on the [[TileComputeContext]]; see [[TerrainCorrectionBackend]] for the full
  *  band index documentation. */
 final class NativeBackend extends TerrainCorrectionBackend {
+  private val logger = org.slf4j.LoggerFactory.getLogger(getClass)
+
   override val name = "native"
 
   override def compute(ctx: TileComputeContext): MultibandTile = {
+    logger.debug(s"sar_backscatter ${ctx.request.extent} ${ctx.request.cellSize}")
     val req    = ctx.request
     val meta   = ctx.metadata
     val config = req.config
@@ -129,7 +132,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
           // Layover: happens when the ground point is geometrically "ahead" of
           // the satellite wavefront, indicated by negative slant-range cosine
           // w.r.t. the flight direction. Practical proxy: θ_local < 0 (masked
-          // out by the geometry) — we detect it as dotLook < -1 (impossible) or
+          // out by the geometry) —S1GrdRasterSource we detect it as dotLook < -1 (impossible) or
           // by thetaEl > thetaLoc (ground is steeper than look angle).
           val isLayover = thetaLoc < 0.0 || thetaEl > math.Pi / 2.0
           val isShadow  = dotLook  > 0.0
