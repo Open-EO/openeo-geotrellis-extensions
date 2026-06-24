@@ -13,7 +13,7 @@ import org.openeo.sar.{BackscatterNormalization, TerrainCorrectionProcessor, Til
  *  on the [[TileComputeContext]]; see [[TerrainCorrectionBackend]] for the full
  *  band index documentation. */
 final class NativeBackend extends TerrainCorrectionBackend {
-  private val logger = org.slf4j.LoggerFactory.getLogger(getClass)
+  private val logger = org.slf4j.LoggerFactory.getLogger(classOf[NativeBackend])
 
   override val name = "native"
 
