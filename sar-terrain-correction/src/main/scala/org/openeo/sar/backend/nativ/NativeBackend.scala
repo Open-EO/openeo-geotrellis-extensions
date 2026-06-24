@@ -5,7 +5,11 @@ import org.openeo.sar.backend.TerrainCorrectionBackend
 import org.openeo.sar.geom.{Ecef, RangeDoppler, Vec3}
 import org.openeo.sar.metadata.Polarisation
 import org.openeo.sar.{BackscatterNormalization, TerrainCorrectionProcessor, TileComputeContext}
+import org.slf4j.{Logger, LoggerFactory}
 
+object NativeBackend {
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[NativeBackend])
+}
 /** Pure-Scala terrain correction backend.
  *
  *  Computes sigma0 or gamma0_RTC backscatter with range-Doppler orthorectification.
@@ -13,7 +17,8 @@ import org.openeo.sar.{BackscatterNormalization, TerrainCorrectionProcessor, Til
  *  on the [[TileComputeContext]]; see [[TerrainCorrectionBackend]] for the full
  *  band index documentation. */
 final class NativeBackend extends TerrainCorrectionBackend {
-  private val logger = org.slf4j.LoggerFactory.getLogger(classOf[NativeBackend])
+
+  import NativeBackend._
 
   override val name = "native"
 
