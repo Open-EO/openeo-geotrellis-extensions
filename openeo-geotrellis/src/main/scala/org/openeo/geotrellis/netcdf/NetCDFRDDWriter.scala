@@ -932,6 +932,7 @@ object NetCDFRDDWriter {
     val croppedBbox =
       if (metadata.crs == LatLng) fixBboxLargerThanWorld(bbox)
       else bbox
+    logger.info(s"Cropped bbox: ${croppedBbox}")
     assetMetadata.put("proj:bbox", Array(croppedBbox.xmin, croppedBbox.ymin, croppedBbox.xmax, croppedBbox.ymax))
     metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
     assetMetadata.put("proj:shape", Array(gridBounds.height, gridBounds.width))

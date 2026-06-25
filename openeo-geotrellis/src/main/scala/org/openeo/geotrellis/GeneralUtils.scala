@@ -2,8 +2,11 @@ package org.openeo.geotrellis
 
 import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.vector.Extent
+import org.slf4j.LoggerFactory
 
 object GeneralUtils {
+
+  val logger = LoggerFactory.getLogger(GeneralUtils.getClass)
 
   def toSigned(cellType: CellType): CellType = {
     cellType match {
@@ -198,12 +201,16 @@ object GeneralUtils {
 
   def fixBboxLargerThanWorld(bbox: Extent): Extent = {
     if (hasOverlapXDimension(bbox)) {
+      logger.info(s"The bbox ${bbox} is larger than the world extent in the x dimension. Cropping to world extent.")
       if (bbox.width>360) {
+        logger.info(s"The bbox ${bbox} is larger than 360 cropping the extent.")
         cropXDimensionBboxLargerThanWorld(bbox)
       } else {
+        logger.info(s"The bbox ${bbox} has a width of ${bbox.width}, no cropping the extent.")
         bbox
       }
     } else {
+      logger.info(s"The bbox has no bbox to large.")
       bbox
     }
   }
