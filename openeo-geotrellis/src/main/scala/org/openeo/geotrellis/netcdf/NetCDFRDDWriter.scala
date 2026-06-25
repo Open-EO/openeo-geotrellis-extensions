@@ -928,6 +928,7 @@ object NetCDFRDDWriter {
       maps
     }
     assetMetadata.put("bands", bands)
+    logger.info(s"checking if crs is LatLng: ${metadata.crs == LatLng}, crs: ${metadata.crs}, extent: ${bbox}")
     val croppedBbox =
       if (metadata.crs == LatLng) fixBboxLargerThanWorld(bbox)
       else bbox
@@ -954,6 +955,7 @@ object NetCDFRDDWriter {
       maps
     }
     assetMetadata.put("bands", bands)
+    logger.info(s"checking if crs is latlng: ${metadata.crs == LatLng}, crs: ${metadata.crs}, extent: ${rasters.head.extent}")
     val bbox =
       if (metadata.crs == LatLng) fixBboxLargerThanWorld(rasters.head.extent)
       else rasters.head.extent
