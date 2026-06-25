@@ -313,6 +313,7 @@ object NetCDFRDDWriter {
     val croppedBbox =
       if (rdd.metadata.crs == LatLng) fixBboxLargerThanWorld(cropBounds.getOrElse(extent))
       else cropBounds.getOrElse(extent)
+    logger.info(s"Written netCDF to ${finalPath} with bbox ${croppedBbox}.")
     val item = Item(id = UUID.randomUUID().toString, bbox = croppedBbox, datetime = null,
       assets = Collections.singletonMap("openEO", Asset(finalPath,metadata = assetsMetadata)))
 
