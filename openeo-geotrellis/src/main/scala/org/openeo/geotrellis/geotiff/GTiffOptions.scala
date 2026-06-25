@@ -21,6 +21,7 @@ class GTiffOptions extends Serializable {
   var compressionMethod = "deflate"
   var compressionLevel = 6
   var compressionPredictor = 1
+  var isBigTiff = false
 
   def setFilenamePrefix(name: String): Unit = {
     assertSafeToUseInFilePath(name)
@@ -114,6 +115,8 @@ class GTiffOptions extends Serializable {
       case _ => colors
     })
   }
+
+  def setBigTiff(enabled: Boolean): Unit = isBigTiff = enabled
 
   def addHeadTag(tagName: String, value: String): Unit = {
     tags = tags.copy(headTags = tags.headTags + (tagName -> value))
