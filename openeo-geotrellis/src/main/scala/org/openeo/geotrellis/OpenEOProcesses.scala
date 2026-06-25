@@ -203,7 +203,9 @@ class OpenEOProcesses extends Serializable {
     val index: Option[PartitionerIndex[SpaceTimeKey]] = maybePartitionerIndex(datacube)
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val rdd: RDD[(SpaceTimeKey, MultibandTile)] =
-      if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner] || index.get.isInstanceOf[ByTileSpacetimePartitioner] )) {
+      if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner]
+        || index.get.isInstanceOf[ByTileSpacetimePartitioner]
+        || datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time)) {
         datacube
       } else {
         val keys: Option[Array[SpatialKey]] = findPartitionerSpatialKeys(datacube)
@@ -1145,6 +1147,7 @@ class OpenEOProcesses extends Serializable {
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
+  @org.openeo.geotrelliscommon.OpenEOProcess(id = "aspect", description = "Compute the aspect (orientation of steepest slope) for each pixel in a single-band DEM datacube.")
   def aspect(datacube: Object): Object = {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
@@ -1342,7 +1345,8 @@ class OpenEOProcesses extends Serializable {
         if (l.get.bandCount != r.get.bandCount) {
           throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.get.bandCount, r.get.bandCount))
         }
-        MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
+        val tile = MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
+        tile
       }
     }), updatedMetadata)
   }

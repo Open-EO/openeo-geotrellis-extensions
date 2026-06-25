@@ -2,7 +2,7 @@ package org.openeo.geotrellis.netcdf
 
 import cats.data.NonEmptyList
 import com.azavea.gdal.GDALWarp
-import geotrellis.layer.{KeyBounds, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
+import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.geotiff.GeoTiffRasterSource
@@ -513,7 +513,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     assertEquals(1024, b04.getShape(2))
 
     assertEquals("uint", b04.getDataType.toString)
-    assertEquals(4, b04.getElementSize)
+    assertEquals(2, b04.getElementSize)
 
 
     val layerChosen = LayerFixtures.aSpacetimeTileLayerRddShortFillValue(20, 20, fillValue = 9)
@@ -553,7 +553,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     assertEquals(1024, b04Chosen.getShape(2))
 
     assertEquals("uint", b04Chosen.getDataType.toString)
-    assertEquals(4, b04Chosen.getElementSize)
+    assertEquals(2, b04Chosen.getElementSize)
 
   }
 
