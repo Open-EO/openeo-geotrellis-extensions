@@ -313,7 +313,6 @@ object NetCDFRDDWriter {
     val croppedBbox =
       if (rdd.metadata.crs == LatLng) fixBboxLargerThanWorld(cropBounds.getOrElse(extent))
       else cropBounds.getOrElse(extent)
-    logger.info(s"Written netCDF to ${finalPath} with bbox ${croppedBbox}.")
     val item = Item(id = UUID.randomUUID().toString, bbox = croppedBbox, datetime = null,
       assets = Collections.singletonMap("openEO", Asset(finalPath,metadata = assetsMetadata)))
 
@@ -929,11 +928,9 @@ object NetCDFRDDWriter {
       maps
     }
     assetMetadata.put("bands", bands)
-    logger.info(s"checking if crs is LatLng: ${metadata.crs == LatLng}, crs: ${metadata.crs}, extent: ${bbox}")
     val croppedBbox =
       if (metadata.crs == LatLng) fixBboxLargerThanWorld(bbox)
       else bbox
-    logger.info(s"Cropped bbox: ${croppedBbox}")
     assetMetadata.put("proj:bbox", Array(croppedBbox.xmin, croppedBbox.ymin, croppedBbox.xmax, croppedBbox.ymax))
     metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
     assetMetadata.put("proj:shape", Array(gridBounds.height, gridBounds.width))
@@ -957,7 +954,6 @@ object NetCDFRDDWriter {
       maps
     }
     assetMetadata.put("bands", bands)
-    logger.info(s"checking if crs is latlng: ${metadata.crs == LatLng}, crs: ${metadata.crs}, extent: ${rasters.head.extent}")
     val bbox =
       if (metadata.crs == LatLng) fixBboxLargerThanWorld(rasters.head.extent)
       else rasters.head.extent

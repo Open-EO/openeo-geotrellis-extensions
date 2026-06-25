@@ -195,22 +195,18 @@ object GeneralUtils {
     }
   }
 
-  private def hasOverlapXDimension(bbox: Extent): Boolean = {
+  private def crossesAntimeridian(bbox: Extent): Boolean = {
     bbox.xmin < -180 || bbox.xmax > 180
   }
 
   def fixBboxLargerThanWorld(bbox: Extent): Extent = {
-    if (hasOverlapXDimension(bbox)) {
-      logger.info(s"The bbox ${bbox} is larger than the world extent in the x dimension. Cropping to world extent.")
+    if (crossesAntimeridian(bbox)) {
       if (bbox.width>360) {
-        logger.info(s"The bbox ${bbox} is larger than 360 cropping the extent.")
         cropXDimensionBboxLargerThanWorld(bbox)
       } else {
-        logger.info(s"The bbox ${bbox} has a width of ${bbox.width}, no cropping the extent.")
         bbox
       }
     } else {
-      logger.info(s"The bbox has no bbox to large.")
       bbox
     }
   }
