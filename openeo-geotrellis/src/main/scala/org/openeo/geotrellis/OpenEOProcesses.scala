@@ -767,8 +767,6 @@ class OpenEOProcesses extends Serializable {
     val kbRight: Bounds[K] = rightCube.metadata.getComponent[Bounds[K]]
     val kb: Bounds[K] = kbLeft.combine(kbRight)
 
-    logger.info(s"Performing outer join on cubes with bounds: ${kbLeft} and ${kbRight}, resulting in bounds: ${kb}")
-    
     val leftCount = maybeBandCount(leftCube)
     val rightCount = maybeBandCount(rightCube)
     //fairly arbitrary heuristic if we're going to create a cube with a high number of bands
@@ -1083,7 +1081,6 @@ class OpenEOProcesses extends Serializable {
     val resampledRight = resampleCubeSpatial_spatial(rightCube,resampledLeft.metadata.crs,mergedLayout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
     checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
     val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](resampledLeft, resampledRight)
-    logger.info(s"merge_cubes: Merging cube spacetime spatial with operator: ${operator}, layout: ${mergedLayout}}")
     if(operator == null) {
       val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
       //TODO: what if extent of joined cube is larger than left cube?
@@ -1132,7 +1129,6 @@ class OpenEOProcesses extends Serializable {
     val joined = outerJoin(resampledLeft,resampledRight)
     val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
     val updatedMetadata = resampledLeft.metadata.copy(bounds = joined.metadata,extent = layoutMerged.extent,cellType = outputCellType, layout = layoutMerged)
-    logger.info(s"merge_cubes: Merging cubes spatial with layout: ${layoutMerged}, output cell type: ${outputCellType}")
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
@@ -1146,7 +1142,6 @@ class OpenEOProcesses extends Serializable {
     val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
 
     val updatedMetadata = targetMetadata.copy(bounds = joined.metadata,cellType = outputCellType)
-    logger.info(s"merge_cubes: Merging cubes spacetime with layout: ${updatedMetadata.layout}, extent: ${updatedMetadata.extent}, bounds: ${updatedMetadata.bounds}, output cell type: ${updatedMetadata.cellType}, crs: ${updatedMetadata.crs}")
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
