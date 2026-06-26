@@ -1,5 +1,93 @@
 [
   {
+    "id": "CGLS_SWI_V1_EUROPE",
+    "title": "Copernicus Land Soil Water Index product V1 over Europe, 1km resolution, daily",
+    "description": "Soil Water Index at 1km resolution over Europe, daily. The Soil Water Index quantifies the moisture condition at various depths in the soil. It is mainly driven by the precipitation via the process of infiltration. Soil moisture is a very heterogeneous variable and varies on small scales with soil properties and drainage patterns. Satellite measurements integrate over relative large-scale areas, with the presence of vegetation adding complexity to the interpretation.",
+    "_vito": {
+      "data_source": {
+        "type": "file-cgls2",
+        "data_glob": "/data/MTDA/BIOPAR/BioPar_SWI1km_V1_Global/*/*/c_gls_SWI1km_*/*.nc",
+        "date_regex": ".+_(\\d{4})(\\d{2})(\\d{2})1200_.+",
+        "realign": true
+      }
+    },
+    "license": "free",
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "extent": [
+          -11.0,
+          50.0
+        ],
+        "step": 0.00297619047619,
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "extent": [
+          35.0,
+          72.0
+        ],
+        "step": 0.00297619047619,
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "SSF",
+          "SWI_002",
+          "QFLAG_002",
+          "SWI_005",
+          "QFLAG_005",
+          "SWI_010",
+          "QFLAG_010",
+          "SWI_015",
+          "QFLAG_015",
+          "SWI_020",
+          "QFLAG_020",
+          "SWI_040",
+          "QFLAG_040",
+          "SWI_060",
+          "QFLAG_060",
+          "SWI_100",
+          "QFLAG_100"
+        ]
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -11.0,
+            35.0,
+            50.0,
+            72.0
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2015-01-01",
+            null
+          ]
+        ]
+      }
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://land.copernicus.eu/global/products/swi",
+        "title": "Product web page."
+      }
+    ]
+  },
+  {
     "id": "TERRASCOPE_S2_FAPAR_V2",
     "title": "Sentinel-2 Fraction of Absorbed Photosynthetically Active Radiation (FAPAR) (tiles) - V2",
     "description": "FAPAR corresponds to the fraction of photosynthetically active radiation absorbed by the canopy. The FAPAR value results directly from the radiative transfer model in the canopy which is computed instantaneously. It depends on canopy structure, vegetation element optical properties and illumination conditions. FAPAR is very useful as input to a number of primary productivity models which run at the daily time step. Consequently, the product definition should correspond to the daily integrated FAPAR value that can be approached by computation of the clear sky daily integrated FAPAR values as well as the FAPAR value computed for diffuse conditions. The SENTINEL 2 FAPAR product corresponds to the instantaneous black-sky around 10:15 which is a close approximation of the daily integrated black-sky FAPAR value. The FAPAR refers only to the green parts of the canopy.FAPAR corresponds to the fraction of photosynthetically active radiation absorbed by the canopy.The FAPAR value results directly from the radiative transfer model in the canopy which is computed instantaneously. It depends on canopy structure, vegetation element optical properties and illumination conditions. FAPAR is very useful as input to a number of primary productivity models which run at the daily time step. Consequently, the product definition should correspond to the daily integrated FAPAR value that can be approached by computation of the clear sky daily integrated FAPAR values as well as the FAPAR value computed for diffuse conditions. The SENTINEL 2 FAPAR product corresponds to the instantaneous black-sky around 10:15 which is a close approximation of the daily integrated black-sky FAPAR value. The FAPAR refers only to the green parts of the canopy.",
