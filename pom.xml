@@ -21,7 +21,7 @@
         <awssdk.version>2.23.19</awssdk.version>
         <jaxb.api.version>2.3.0</jaxb.api.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <revision>2.6.2_2.13-SNAPSHOT</revision>
+        <revision>2.6.3_2.13-SNAPSHOT</revision>
         <junit.version>5.14.1</junit.version>
         <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
     </properties>
