@@ -1084,7 +1084,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
         if (path.startsWith("http")) path
         else getClass.getResource(path).getPath
       val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tileSize, tileSize))
-      val resultCube = new OpenEOProcesses().predictONNXGeneric(datacube,model)
+      val resultCube = new OpenEOProcesses().predictONNXModel(datacube,model)
       assertEquals(expectedType, resultCube.metadata.cellType)
       val theResultTile = resultCube.stitch().tile
       assertEquals(expectedNBands,theResultTile.bandCount)
@@ -1184,7 +1184,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       val model =
         if (path.startsWith("http")) path
        else getClass.getResource(path).getPath
-      val resultCube = new OpenEOProcesses().predictONNXGeneric(datacube,model)
+      val resultCube = new OpenEOProcesses().predictONNXModel(datacube,model)
       assertEquals(expectedType, resultCube.metadata.cellType)
 
       val results = resultCube.toSpatial(date)
