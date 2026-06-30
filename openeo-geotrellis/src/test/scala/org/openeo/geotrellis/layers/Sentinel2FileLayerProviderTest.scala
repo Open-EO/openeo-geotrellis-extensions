@@ -10,7 +10,7 @@ import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayTile, CellSize, FloatConstantNoDataArrayTile, MultibandTile, PaddedTile, ShortUserDefinedNoDataCellType}
+import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, PaddedTile, ShortUserDefinedNoDataCellType}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
@@ -584,7 +584,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testToSclDilationMaskOnS2TileEdge(@TempDir tempDir: java.nio.file.Path): Unit = {
-    val ref = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/toscldilationmask_masked_ref.tif"
+    val ref = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/toscldilationmask_masked_ref_v220.tif"
     val actual = tempDir.resolve("toscldilationmask_masked_actual.tif")
 
     // Create spatialLayer.
@@ -613,8 +613,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val mask1Values = util.Arrays.asList(2, 4, 5, 6, 7)
     val mask2Values = util.Arrays.asList(3, 8, 9, 10, 11)
     val erosionKernelSize = 0
-    val kernel1Size = 17
-    val kernel2Size = 201
+    val kernel1Size = 201
+    val kernel2Size = 17
     val mask: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().toSclDilationMask(sclCube, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
 
     dataCubeParameters.setMaskingCube(mask)
