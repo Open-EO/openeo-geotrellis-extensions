@@ -1067,7 +1067,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val rasterRegionContext = prepareRasterRegions(
       from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
     )
-    try {1
+    try {
       val cube = RasterTileLoader.loadRasterRegionsToTiles(
         rasterRegionContext.regions,
         rasterRegionContext.metadata,
