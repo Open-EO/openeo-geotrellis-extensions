@@ -985,7 +985,9 @@ package object geotiff {
                         detectedBandCount: Double, segmentCount: Int,
                         formatOptions: GTiffOptions = new GTiffOptions, overviews: List[GeoTiffMultibandTile] = Nil
                        ): GeoTiffResultObject = {
-    logger.info(s"Writing geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
+    val tiffType = if (formatOptions.isBigTiff) BigTiff else Tiff
+
+    logger.info(s"Writing $tiffType geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
     val tiffTile: GeoTiffMultibandTile = toTiff(tiffs, gridBounds, tileLayout, compression, cellType, detectedBandCount, segmentCount)
 
     val options = formatOptions.colorMap match {
@@ -1001,7 +1003,7 @@ package object geotiff {
 
     val theGeoTiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs, formatOptions.tags, options, overviews = overviews.map(o => MultibandGeoTiff(o, croppedExtent, crs, options = options.copy(subfileType = Some(ReducedImage)))))
       .withCompression(formatOptions)
-      .withTiffType(if (formatOptions.isBigTiff) BigTiff else Tiff)
+      .withTiffType(tiffType)
 
     writeGeoTiff(theGeoTiff, path, Some(formatOptions))
   }
