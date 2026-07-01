@@ -62,21 +62,6 @@ pipeline {
                 }
             }
         }
-
-        stage("Trigger geopyspark driver master build") {
-            when {
-                expression {
-                    ["master", "develop"].contains(env.BRANCH_NAME)
-                }
-            }
-            steps {
-                script {
-                    build(job: "openEO/openeo-geopyspark-driver/master", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
-                }
-            }
-        }
-
-
         stage('Input') {
             when {
                 expression {
@@ -92,8 +77,6 @@ pipeline {
             }
 
         }
-
-
         stage('Releasing') {
             when {
                 expression {
@@ -129,7 +112,18 @@ pipeline {
                 }
             }
         }
-
+        stage("Trigger geopyspark driver master build") {
+            when {
+                expression {
+                    ["master", "develop"].contains(env.BRANCH_NAME)
+                }
+            }
+            steps {
+                script {
+                    build(job: "openEO/openeo-geopyspark-driver/master", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
+                }
+            }
+        }
     }
     post {
         always {
