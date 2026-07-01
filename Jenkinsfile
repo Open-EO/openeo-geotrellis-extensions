@@ -63,7 +63,7 @@ pipeline {
             }
         }
 
-        stage("trigger integrationtests") {
+        stage("Trigger geopyspark driver master build") {
             when {
                 expression {
                     ["master", "develop"].contains(env.BRANCH_NAME)
@@ -71,7 +71,7 @@ pipeline {
             }
             steps {
                 script {
-                    build(job: "openEO/openeo-integrationtests", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
+                    build(job: "openEO/openeo-geopyspark-driver/master", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
                 }
             }
         }
