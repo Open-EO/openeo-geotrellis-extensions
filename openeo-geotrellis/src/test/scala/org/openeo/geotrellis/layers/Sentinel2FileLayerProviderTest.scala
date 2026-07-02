@@ -111,8 +111,8 @@ object Sentinel2FileLayerProviderTest {
   }
 
   def maskingParams: Stream[Arguments] = Arrays.stream(Array(
-    arguments(Collections.singletonMap("method", "mask_scl_dilation"),"https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/dilation_masked.tif"),
-    arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/masked_erosion.tif")
+    arguments(Collections.singletonMap("method", "mask_scl_dilation"),"https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/dilation_masked_v220.tif"),
+    arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/masked_erosion_v220.tif")
   ))
 
   def datacubeParams: Stream[Arguments] = Arrays.stream(Array(
