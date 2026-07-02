@@ -205,7 +205,7 @@ class OpenEOProcesses extends Serializable {
     val rdd: RDD[(SpaceTimeKey, MultibandTile)] =
       if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner]
         || index.get.isInstanceOf[ByTileSpacetimePartitioner]
-        || datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time)) {
+        || (!datacube.getBounds.isEmpty && datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time))) {
         datacube
       } else {
         val keys: Option[Array[SpatialKey]] = findPartitionerSpatialKeys(datacube)
@@ -977,42 +977,48 @@ class OpenEOProcesses extends Serializable {
     Some(new SparseSpaceTimePartitioner(indices,indexReduction,Some(spaceTimeKeys)))
   }
 
+  def constructCompatibleTargetPartitioner(dataPartitioner: Option[Partitioner], partitionerTarget: Option[Partitioner], dataMetadata: TileLayerMetadata[SpaceTimeKey], targetMetadata: TileLayerMetadata[SpaceTimeKey]): Option[Partitioner] = {
+    if(partitionerTarget.isDefined && partitionerTarget.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+      val index = partitionerTarget.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+      val theIndex = index match {
+        case partitioner: SparseSpaceTimePartitioner =>
+          dataPartitioner match {
+            case Some(dataPartitioner: SpacePartitioner[SpaceTimeKey]) =>
+              dataPartitioner.index match {
+                case dataIndex:SparseSpaceTimePartitioner => {
+                  transformSparseSpaceTimePartition(dataIndex.theKeys,dataMetadata,targetMetadata,partitioner.indexReduction).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
+                }
+                case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
+              }
+            case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
+          }
+        case _ =>
+          index
+      }
+      Some(SpacePartitioner[SpaceTimeKey](targetMetadata.bounds)(implicitly,implicitly,theIndex))
+    }else{
+      partitionerTarget
+    }
+  }
+
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
-    if(target.metadata.crs.equals(data.metadata.crs) && target.metadata.layout.equals(data.metadata.layout)) {
+    resampleCubeSpatial(data, target.metadata, target.partitioner, method)
+  }
+
+  def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], targetMetadata: TileLayerMetadata[SpaceTimeKey], targetPartitioner: Option[Partitioner], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+    if(targetMetadata.crs.equals(data.metadata.crs) && targetMetadata.layout.equals(data.metadata.layout)) {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
       (0,data)
     }else{
       logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
       //construct a partitioner that is compatible with data cube
-      val targetPartitioner =
-      if(target.partitioner.isDefined && target.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
-        val index = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-        val theIndex = index match {
-          case partitioner: SparseSpaceTimePartitioner =>
-            data.partitioner match {
-              case Some(dataPartitioner: SpacePartitioner[SpaceTimeKey]) =>
-                dataPartitioner.index match {
-                  case dataIndex:SparseSpaceTimePartitioner => {
-                    transformSparseSpaceTimePartition(dataIndex.theKeys,data.metadata,target.metadata,partitioner.indexReduction).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
-                  }
-                  case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
-                }
-              case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
-            }
-          case _ =>
-            index
-        }
-        Some(SpacePartitioner[SpaceTimeKey](target.metadata.bounds)(implicitly,implicitly,theIndex))
-      }else{
-        target.partitioner
-      }
-
+      val partitioner = constructCompatibleTargetPartitioner(data.partitioner, targetPartitioner, data.metadata, targetMetadata)
       var bufferSize = 16
-      if(method == NearestNeighbor && target.metadata.crs == data.metadata.crs && target.metadata.cellSize.resolution < data.metadata.cellSize.resolution) {
+      if(method == NearestNeighbor && targetMetadata.crs == data.metadata.crs && targetMetadata.cellSize.resolution < data.metadata.cellSize.resolution) {
         //bufferSize 0 is cheaper, but can only be used under strict conditions, the current selection is rather strict to be safe, potentially can be relaxed
         bufferSize = 0
       }
-      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, target.metadata.crs, Right(target.metadata.layout), bufferSize, method, targetPartitioner)
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, targetMetadata.crs, Right(targetMetadata.layout), bufferSize, method, partitioner)
       filterNegativeSpatialKeys(reprojected)
     }
   }
@@ -1071,13 +1077,16 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, resampled)
+    val mergedLayout = GeneralUtils.layoutMerged(leftCube.metadata.layout, rightCube.metadata.layout, leftCube.metadata.crs, rightCube.metadata.crs)
+    val targetMetadata = leftCube.metadata.copy(layout = mergedLayout, extent = mergedLayout.extent)
+    val resampledLeft = resampleCubeSpatial(leftCube,targetMetadata, leftCube.partitioner,NearestNeighbor)._2
+    val resampledRight = resampleCubeSpatial_spatial(rightCube,resampledLeft.metadata.crs,mergedLayout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
+    checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
+    val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](resampledLeft, resampledRight)
     if(operator == null) {
-      val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
+      val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
       //TODO: what if extent of joined cube is larger than left cube?
-      val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
+      val updatedMetadata = targetMetadata.copy(cellType = outputCellType)
       return new ContextRDD(rdd.mapValues({case (l,r) =>
         if(swapOperands) {
           MultibandTile( r.bands.map(t=>safeConvert(t,updatedMetadata.cellType))  ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
@@ -1100,7 +1109,7 @@ class OpenEOProcesses extends Serializable {
           MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
         }
 
-      }), leftCube.metadata)
+      }), targetMetadata)
     }
   }
 
@@ -1115,21 +1124,26 @@ class OpenEOProcesses extends Serializable {
 
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
     leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands)")
-    val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,NearestNeighbor,leftCube.partitioner.orNull)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val joined = outerJoin(leftCube,resampled)
-    val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
-    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
+    val layoutMerged = GeneralUtils.layoutMerged(leftCube.metadata.layout, rightCube.metadata.layout, leftCube.metadata.crs, rightCube.metadata.crs)
+    val resampledRight = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,layoutMerged,NearestNeighbor,leftCube.partitioner.orNull)._2
+    val resampledLeft = resampleCubeSpatial_spatial(leftCube,leftCube.metadata.crs,layoutMerged,NearestNeighbor,leftCube.partitioner.orNull)._2
+    checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
+    val joined = outerJoin(resampledLeft,resampledRight)
+    val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
+    val updatedMetadata = resampledLeft.metadata.copy(bounds = joined.metadata,extent = layoutMerged.extent,cellType = outputCellType, layout = layoutMerged)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val resampled = resampleCubeSpatial(rightCube,leftCube,NearestNeighbor)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val joined = outerJoin(leftCube,resampled)
-    val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
+    val mergedLayout = GeneralUtils.layoutMerged(leftCube.metadata.layout, rightCube.metadata.layout, leftCube.metadata.crs, rightCube.metadata.crs)
+    val targetMetadata = leftCube.metadata.copy(layout = mergedLayout, extent = mergedLayout.extent)
+    val resampledRight = resampleCubeSpatial(rightCube,targetMetadata, leftCube.partitioner,NearestNeighbor)._2
+    val resampledLeft = resampleCubeSpatial(leftCube,targetMetadata, leftCube.partitioner,NearestNeighbor)._2
+    checkMetadataCompatible(resampledLeft.metadata, resampledRight.metadata)
+    val joined = outerJoin(resampledLeft,resampledRight)
+    val outputCellType = resampledLeft.metadata.cellType.union(resampledRight.metadata.cellType)
 
-    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
+    val updatedMetadata = targetMetadata.copy(bounds = joined.metadata,cellType = outputCellType)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 

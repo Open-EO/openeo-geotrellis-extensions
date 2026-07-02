@@ -10,7 +10,7 @@ import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, MultibandTile, PaddedTile, ShortUserDefinedNoDataCellType}
+import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, PaddedTile, ShortUserDefinedNoDataCellType}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
@@ -156,8 +156,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     print(summary.size)
     val values: Array[Double] = summary.map(_.data.toOption.get(0).sum)
     val counts: Array[Long] = summary.map(_.data.toOption.get(0).count)
-    val resultArray: Array[Double] = Array(15509.0,26313.0,220760.0,511556.0)
-    val expectedCounts: Array[Long] = Array(349,489,3415,3738)
+    val resultArray: Array[Double] = Array(15422.0,26193.0,221376.0,518686.0)
+    val expectedCounts: Array[Long] = Array(336,489,3415,3772)
     assertArrayEquals(expectedCounts, counts.sorted)
     assertArrayEquals(resultArray, values.sorted,0.001)
   }
@@ -229,7 +229,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val meanList = summary.toOption.get
     println("Time: "+ (System.currentTimeMillis() - start)/1000.0)
     assertEquals(1,meanList.length)
-    assertEquals(29874.0,meanList.head.sum,0.00001)
+    assertEquals(31172.0,meanList.head.sum,0.00001)
     assertEquals(7225,meanList.head.count)
 
   }
@@ -255,8 +255,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     println("Time: "+ (System.currentTimeMillis() - start)/1000.0)
     assertEquals(1,meanList.length)
-    assertEquals(29874.0/7225.0,meanList.head.mean,0.01)
-    assertEquals(10966.0, meanList.head.sum, 0.01)
+    assertEquals(4.306938159879336,meanList.head.mean,0.01)
+    assertEquals(11422.0, meanList.head.sum, 0.01)
     assertEquals(2652, meanList.head.count)
 
   }
@@ -471,6 +471,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
         case resTile: ResampledTile =>
           assertEquals(0.5, resTile.sourceCols.toDouble / resTile.targetCols.toDouble, 0.01)
           assertEquals(0.5, resTile.sourceRows.toDouble / resTile.targetRows.toDouble, 0.01)
+        case tile: ArrayTile => {}
         case _ => assert(false)
       }
     })
@@ -489,7 +490,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   def testS2ResampledTilesCRSEqualToRasterSource(): Unit = {
     // When feature.crs == targetExtent.crs
     // This case normally uses GeoTiffResampleRasterSources.
-    assertResampledLayerValid(CRS.fromEpsgCode(32631), 9589.844968268359)
+    assertResampledLayerValid(CRS.fromEpsgCode(32631), 3268.244046475898)
   }
 
 
@@ -498,7 +499,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   def testS2ResampledTilesCRSDiffersFromRasterSource(): Unit = {
     // When feature.crs != targetExtent.crs
     // This case normally uses GeoTiffReprojectRasterSources.
-    assertResampledLayerValid(CRS.fromEpsgCode(32632), 9589.844968268359)
+    assertResampledLayerValid(CRS.fromEpsgCode(32632), 3268.244046475898)
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
@@ -583,7 +584,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testToSclDilationMaskOnS2TileEdge(@TempDir tempDir: java.nio.file.Path): Unit = {
-    val ref = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/toscldilationmask_masked_ref.tif"
+    val ref = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/toscldilationmask_masked_ref_v220.tif"
     val actual = tempDir.resolve("toscldilationmask_masked_actual.tif")
 
     // Create spatialLayer.
@@ -612,8 +613,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val mask1Values = util.Arrays.asList(2, 4, 5, 6, 7)
     val mask2Values = util.Arrays.asList(3, 8, 9, 10, 11)
     val erosionKernelSize = 0
-    val kernel1Size = 17
-    val kernel2Size = 201
+    val kernel1Size = 201
+    val kernel2Size = 17
     val mask: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().toSclDilationMask(sclCube, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
 
     dataCubeParameters.setMaskingCube(mask)

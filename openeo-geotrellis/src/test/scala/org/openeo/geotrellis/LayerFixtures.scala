@@ -59,12 +59,12 @@ object LayerFixtures {
     layer
   }
 
-  def buildSpatioTemporalDataCube(tiles: java.util.List[_ <: Tile], dates: Seq[String], extent: Option[Extent] = None, tilingFactor:Int=1): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  def buildSpatioTemporalDataCube(tiles: java.util.List[_ <: Tile], dates: Seq[String], extent: Option[Extent] = None, tilingFactor:Int=1, crs:CRS = LatLng): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val mbTile = ArrayMultibandTile(tiles.asScala)
     val raster = Raster[MultibandTile](mbTile, extent.getOrElse(TileLayerRDDBuilders.defaultCRS.worldExtent))
     val tileLayout = new TileLayout(tilingFactor, tilingFactor, (raster.cols / tilingFactor).asInstanceOf[Integer], (raster.rows / tilingFactor).asInstanceOf[Integer])
     val cubeXYB: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] =
-      TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, raster, tileLayout).asInstanceOf[ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]]]
+      TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, raster, tileLayout, crs).asInstanceOf[ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]]]
     val times: Seq[ZonedDateTime] = dates.map(ZonedDateTime.parse(_))
     val cubeXYTB: RDD[(SpaceTimeKey,MultibandTile)] = cubeXYB.flatMap((pair: Tuple2[SpatialKey, MultibandTile]) => {
       times.map((time: ZonedDateTime) => (SpaceTimeKey(pair._1, TemporalKey(time)), pair._2))
@@ -191,6 +191,7 @@ object LayerFixtures {
   }
 
   def defaultExtent = Extent(xmin = 3.248235121238894, ymin = 50.9753557675801, xmax = 3.256396825072918, ymax = 50.98003212949561)
+  def defaultExtentEpsg32631 = Extent(517426.02294117736, 5647113.691848417, 518000.7789979682, 5647635.678245767)
 
 
   def sentinel1Sigma0LayerProviderUTM = {
@@ -1392,19 +1393,10 @@ object LayerFixtures {
 
   def sentinel2TocLayerProviderUTMMultiResolution = {
     val client = new FixedFeaturesOpenSearchClient
+    val source: BufferedSource = Source.fromResource("org/openeo/geotrellis/sentinel2TocLayerProviderUTMMultiResolution_features.json")
     FeatureCollection.parse(
-    """{
-      |    "features": [
-      |        {
-      |            "type": "Feature",
-      |            "id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20190307T105021_31UFS_TOC_V220",
-      |            "geometry": {"type":"Polygon","coordinates":[[[5.9661361,50.6178099],[6.017025,51.4123427],[4.4388768,51.4423523],[4.4087151,50.4552722],[5.8706478,50.4278544],[5.9209417,50.5282026],[5.9661361,50.6178099]]]},
-      |            "bbox": [4.4087151,50.4278544,6.017025,51.4423523],
-      |            "properties":
-      |            	{"date":"2019-03-07T10:50:21.024Z","updated":"2024-08-29T20:56:18.311Z","available":"2024-08-29T20:56:19Z","published":"2024-08-29T20:56:19Z","status":"ARCHIVED","parentIdentifier":"urn:eop:VITO:TERRASCOPE_S2_TOC_V2","title":"S2A_20190307T105021_31UFS_TOC_V220","identifier":"urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20190307T105021_31UFS_TOC_V220","acquisitionInformation":[{"platform":{"platformShortName":"Sentinel-2","platformSerialIdentifier":"S2A"},"acquisitionParameters":{"acquisitionType":"NOMINAL","orbitNumber":19353,"relativeOrbitNumber":51,"beginningDateTime":"2019-03-07T10:50:21.024Z","endingDateTime":"2019-03-07T10:50:21.024Z","tileId":"31UFS"}}],"productInformation":{"cloudCover":65.155,"productType":"TOC","availabilityTime":"2024-08-29T20:56:19Z","productVersion":"V220","processingCenter":"VITO","processingDate":"2024-08-29T20:56:18.311Z"},"links":{"previews":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC_QUICKLOOK_V220.tif","type":"image/tiff","length":690840,"category":"QUICKLOOK"},{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S2_RADIOMETRY&TIME=2019-03-07&BBOX=490775.91998461616,6520705.059840585,669812.159090397,6699916.902160429&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","bandNames":["WMS"],"category":"QUICKLOOK"}],"alternates":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC_V220.xml","type":"application/vnd.iso.19139+xml","length":39919,"title":"Inspire metadata"}],"related":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_AOT_60M_V220.tif","type":"image/tiff","length":264436,"title":"AOT_60M","bandNames":["AOT_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_RAA_60M_V220.tif","type":"image/tiff","length":697729,"title":"RAA_60M","bandNames":["RAA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_SCENECLASSIFICATION_20M_V220.tif","type":"image/tiff","length":3564702,"title":"SCENECLASSIFICATION_20M","bandNames":["SCENECLASSIFICATION_20M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_SZA_60M_V220.tif","type":"image/tiff","length":104208,"title":"SZA_60M","bandNames":["SZA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_VZA_60M_V220.tif","type":"image/tiff","length":249921,"title":"VZA_60M","bandNames":["VZA_60M"],"category":"QUALITY"},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_WVP_60M_V220.tif","type":"image/tiff","length":1264428,"title":"WVP_60M","bandNames":["WVP_60M"],"category":"QUALITY"}],"data":[{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B01_60M_V220.tif","type":"image/tiff","length":5194210,"title":"TOC-B01_60M","bandNames":["TOC-B01_60M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B02_10M_V220.tif","type":"image/tiff","length":153420639,"title":"TOC-B02_10M","bandNames":["TOC-B02_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B03_10M_V220.tif","type":"image/tiff","length":153176609,"title":"TOC-B03_10M","bandNames":["TOC-B03_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B04_10M_V220.tif","type":"image/tiff","length":153745636,"title":"TOC-B04_10M","bandNames":["TOC-B04_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B05_20M_V220.tif","type":"image/tiff","length":44348382,"title":"TOC-B05_20M","bandNames":["TOC-B05_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B06_20M_V220.tif","type":"image/tiff","length":45026998,"title":"TOC-B06_20M","bandNames":["TOC-B06_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B07_20M_V220.tif","type":"image/tiff","length":45100810,"title":"TOC-B07_20M","bandNames":["TOC-B07_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B08_10M_V220.tif","type":"image/tiff","length":154204434,"title":"TOC-B08_10M","bandNames":["TOC-B08_10M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B11_20M_V220.tif","type":"image/tiff","length":43110909,"title":"TOC-B11_20M","bandNames":["TOC-B11_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B12_20M_V220.tif","type":"image/tiff","length":42636808,"title":"TOC-B12_20M","bandNames":["TOC-B12_20M"]},{"href":"file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/03/07/S2A_20190307T105021_31UFS_TOC_V220/S2A_20190307T105021_31UFS_TOC-B8A_20M_V220.tif","type":"image/tiff","length":45116369,"title":"TOC-B8A_20M","bandNames":["TOC-B8A_20M"]}]}}
-      |         }
-      |    ]
-      |  }""".stripMargin).features.foreach(feature => client.addFeature(feature))
+      source.getLines().mkString("")
+    ).features.foreach(feature => client.addFeature(feature))
 
     FileLayerProvider(
       client,
