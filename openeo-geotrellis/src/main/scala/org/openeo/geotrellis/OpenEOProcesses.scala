@@ -1799,6 +1799,28 @@ class OpenEOProcesses extends Serializable {
           retiled.mapValues(x => onnx.predictOnnx(x, modelUrl)),
           retiled.metadata
         )
+      case 4 =>
+        if (inputDimOrder(0) != "batch")
+          throw new IllegalArgumentException(s"ONNX: input dim order does not have 'batch' as the first dimension, but got ${inputDimOrder(0)}.")
+        if (inputDimOrder(1) != "bands")
+          logger.warn(s"ONNX: input dim order does not have 'bands' as the second dimension, but got ${inputDimOrder(1)}.")
+        if (inputDimOrder(2) != "height")
+          logger.warn(s"ONNX: input dim order does not have 'height' as the third dimension, but got ${inputDimOrder(2)}.")
+        if (inputDimOrder(3) != "width")
+          logger.warn(s"ONNX: input dim order does not have 'width' as the fourth dimension, but got ${inputDimOrder(3)}.")
+        if (inputShape(0) != 1){
+            throw new IllegalArgumentException(s"ONNX: only supports models with batch size of 1, but got ${inputShape(0)}.")
+        }
+        val tileCols = datacube.metadata.tileLayout.tileCols
+        val tileRows = datacube.metadata.tileLayout.tileRows
+        val retiled = if (tileCols != inputShape(3) || tileRows != inputShape(2)) {
+          logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(3)},${inputShape(2)})")
+          retileGeneric(datacube, inputShape(2).toInt, inputShape(3).toInt, 0, 0)
+        } else datacube
+        ContextRDD(
+          retiled.mapValues(x => onnx.predictOnnx(x, modelUrl)),
+          retiled.metadata
+        )
       case _ =>
         throw new IllegalArgumentException(s"ONNX: only supports models with 3 or less dimensions, but got ${inputShape.length}.")
     }

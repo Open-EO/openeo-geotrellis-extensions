@@ -1085,7 +1085,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       val model =
         if (path.startsWith("http")) path
         else getClass.getResource(path).getPath
-      val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tileSize, tileSize))
+      val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tile.cols/layoutCols, tile.rows/layoutRows))
       val resultCube = new OpenEOProcesses().predictONNXModel(datacube,model)
       assertEquals(expectedType, resultCube.metadata.cellType)
       val theResultTile = resultCube.stitch().tile
@@ -1271,14 +1271,14 @@ class OpenEOProcessesSpec extends RasterMatchers {
   def testPredictONNXSpatialSTAC(): Unit = {
     val layoutCols = 3
     val layoutRows = 2
-    val tileSize = 4
+    val tileSize = 256
 
     def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
-      val modelPath = IOUtils.toString(getClass.getResource(path))
+      val modelPath = IOUtils.toString(getClass.getResource(path), "UTF-8")
       val model = new ObjectMapper().readValue(modelPath, classOf[util.Map[String, Any]])
       val modelString = new ObjectMapper().writeValueAsString(model)
 
-      val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tileSize, tileSize))
+      val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tile.cols/layoutCols, tile.rows/layoutRows))
       val resultCube = new OpenEOProcesses().predictONNXSTAC(datacube,modelString)
       assertEquals(expectedType, resultCube.metadata.cellType)
       val theResultTile = resultCube.stitch().tile
@@ -1288,12 +1288,21 @@ class OpenEOProcessesSpec extends RasterMatchers {
         assertArrayEquals(expectedBands(n), theResultTile.band(n).toArray())
       }
     }
-    // test where the ONNX model is downloaded and sums the values of the bands
-    val tileDouble = (i:Float) => DoubleArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    val tileFloat = (i:Float) => FloatArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    val tileDouble = (i:Double) =>  DoubleArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     val resultArray = (i:Int) =>  Array.fill(layoutCols * tileSize * layoutRows * tileSize)(i)
+
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_double.json",
+      new ArrayMultibandTile(Array(tileDouble(1),tileDouble(2),tileDouble(3))),
+      Seq(resultArray(3),resultArray(1)), DoubleConstantNoDataCellType, 2
+    )
+    // test where the ONNX model is downloaded and sums the values of the bands
+    val tileSizeSmall = 4
+    val tileDoubleSmall = (i:Float) => DoubleArrayTile.fill(i,layoutCols * tileSizeSmall, layoutRows * tileSizeSmall)
+    val resultArraySmall = (i:Int) =>  Array.fill(layoutCols * tileSizeSmall * layoutRows * tileSizeSmall)(i)
     runONNX("/org/openeo/geotrellis/onnx/testModelSumStac.json",
-      new ArrayMultibandTile(Array(tileDouble(1),tileDouble(1),tileDouble(1))),
-      Seq(resultArray(3)), DoubleConstantNoDataCellType
+      new ArrayMultibandTile(Array(tileDoubleSmall(1),tileDoubleSmall(1),tileDoubleSmall(1))),
+      Seq(resultArraySmall(3)), DoubleConstantNoDataCellType
     )
 
   }

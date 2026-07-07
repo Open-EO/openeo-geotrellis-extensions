@@ -130,8 +130,14 @@ object StacModelParser {
         .filter(_.isArray)
         .map(arr => (0 until arr.size()).map(i => arr.get(i).asText()).toSet)
         .getOrElse(Set.empty[String])
-      if (roles.exists(modelRoles.contains))
-        return requireTextField(asset, "href", s"asset '${entry.getKey}' must have an 'href'")
+      if (roles.exists(modelRoles.contains)) {
+        val href = requireTextField(asset, "href", s"asset '${entry.getKey}' must have an 'href'")
+        if (href.startsWith("http")) return href
+        else {
+          val resource = getClass.getResource(href) // Only for testing purposes, in production this should be a proper URI resolution
+          return resource.toString
+        }
+      }
     }
     throw new IllegalArgumentException(
       "No model asset found in 'assets'. Expected an asset with role 'mlm:model'."
