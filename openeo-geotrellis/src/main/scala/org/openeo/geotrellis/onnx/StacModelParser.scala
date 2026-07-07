@@ -8,7 +8,7 @@ case class TensorSpec(
                        name: String,
                        dataType: String,
                        shape: Seq[Long],
-                       axes: Seq[String] = Seq.empty
+                       dimOrder: Seq[String] = Seq.empty
                      )
 
 /** * A class descriptor for output classification. * * @param value Numeric class index. * @param name  Human-readable class label. */
@@ -109,12 +109,12 @@ object StacModelParser {
         }
         .getOrElse(Seq.empty)
 
-      val axes: Seq[String] = Option(t.get("axes"))
+      val dimOrder: Seq[String] = Option(t.get("dim_order"))
         .filter(_.isArray)
         .map(arr => (0 until arr.size()).map(j => arr.get(j).asText()).toSeq)
         .getOrElse(Seq.empty)
 
-      TensorSpec(name = name, dataType = dataType, shape = shape, axes = axes)
+      TensorSpec(name = name, dataType = dataType, shape = shape, dimOrder = dimOrder)
     }.toSeq
   }
 

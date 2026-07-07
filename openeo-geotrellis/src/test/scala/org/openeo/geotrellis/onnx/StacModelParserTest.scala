@@ -24,7 +24,7 @@ class StacModelParserTest {
       |        "name": "input",
       |        "data_type": "float32",
       |        "shape": [25, 3, 64, 64],
-      |        "axes": ["batch", "bands", "height", "width"]
+      |        "dim_order": ["batch", "bands", "height", "width"]
       |      }
       |    ],
       |    "mlm:output": [
@@ -75,7 +75,7 @@ class StacModelParserTest {
     assertEquals("input", input.name)
     assertEquals("float32", input.dataType)
     assertEquals(Seq(25L, 3L, 64L, 64L), input.shape)
-    assertEquals(Seq("batch", "bands", "height", "width"), input.axes)
+    assertEquals(Seq("batch", "bands", "height", "width"), input.dimOrder)
   }
 
   @Test

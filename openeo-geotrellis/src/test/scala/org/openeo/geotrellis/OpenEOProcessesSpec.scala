@@ -1,5 +1,7 @@
 package org.openeo.geotrellis
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.apache.commons.io.IOUtils
 import geotrellis.layer.{SpaceTimeKey, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.ResampleMethods.NearestNeighbor
@@ -1263,6 +1265,37 @@ class OpenEOProcessesSpec extends RasterMatchers {
       datacubeOneBand(biggerTileFloat(1), biggerTileSize),
       Seq(biggerResultArray(2)), FloatConstantNoDataCellType
     )
+  }
+
+  @Test
+  def testPredictONNXSpatialSTAC(): Unit = {
+    val layoutCols = 3
+    val layoutRows = 2
+    val tileSize = 4
+
+    def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
+      val modelPath = IOUtils.toString(getClass.getResource(path))
+      val model = new ObjectMapper().readValue(modelPath, classOf[util.Map[String, Any]])
+      val modelString = new ObjectMapper().writeValueAsString(model)
+
+      val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tileSize, tileSize))
+      val resultCube = new OpenEOProcesses().predictONNXSTAC(datacube,modelString)
+      assertEquals(expectedType, resultCube.metadata.cellType)
+      val theResultTile = resultCube.stitch().tile
+      resultCube.collect()
+      assertEquals(expectedNBands,theResultTile.bandCount)
+      (0 until expectedNBands).foreach {n =>
+        assertArrayEquals(expectedBands(n), theResultTile.band(n).toArray())
+      }
+    }
+    // test where the ONNX model is downloaded and sums the values of the bands
+    val tileDouble = (i:Float) => DoubleArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    val resultArray = (i:Int) =>  Array.fill(layoutCols * tileSize * layoutRows * tileSize)(i)
+    runONNX("/org/openeo/geotrellis/onnx/testModelSumStac.json",
+      new ArrayMultibandTile(Array(tileDouble(1),tileDouble(1),tileDouble(1))),
+      Seq(resultArray(3)), DoubleConstantNoDataCellType
+    )
+
   }
 
   @Test
