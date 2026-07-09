@@ -21,6 +21,12 @@ class SentinelXmlMetadataRasterSourceProvider extends RasterSourceProvider {
       case Some(featureExtentInLayoutGet) =>
         Some(ProjectedExtent(featureExtentInLayoutGet.extent, definition.targetExtent.crs))
     }
-    SentinelXMLMetadataRasterSource.forAngleBand(definition.dataPath, definition.bandIndex, targetProjectedExtent, Some(definition.theResolution))
+    SentinelXMLMetadataRasterSource.forAngleBand(
+      definition.dataPath,
+      definition.bandIndex,
+      targetProjectedExtent,
+      Some(definition.theResolution),
+      definition.softErrors,
+    )
   }
 }

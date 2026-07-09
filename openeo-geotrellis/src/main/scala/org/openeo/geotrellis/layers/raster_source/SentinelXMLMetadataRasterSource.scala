@@ -17,10 +17,11 @@ object SentinelXMLMetadataRasterSource {
   def forAngleBand(xlmPath: String,
                    angleBandIndex: Int,
                    targetProjectedExtent: Option[ProjectedExtent] = None,
-                   cellSize: Option[CellSize] = None
+                   cellSize: Option[CellSize] = None,
+                   softErrors: Boolean = false,
                   ): SentinelXMLMetadataRasterSource = {
     // TODO: write forAngleBands in terms of forAngleBand instead
-    forAngleBands(xlmPath, Seq(angleBandIndex), targetProjectedExtent, cellSize).head
+    forAngleBands(xlmPath, Seq(angleBandIndex), targetProjectedExtent, cellSize, softErrors).head
   }
 
   /**
@@ -29,16 +30,25 @@ object SentinelXMLMetadataRasterSource {
   def forAngleBands(xlmPath: String,
                     angleBandIndices: Seq[Int] = Seq(0, 1, 2, 3), // SAA, SZA, VAA, VZA
                     targetProjectedExtent: Option[ProjectedExtent] = None,
-                    cellSize: Option[CellSize] = None
+                    cellSize: Option[CellSize] = None,
+                    softErrors: Boolean = false,
                    ): Seq[SentinelXMLMetadataRasterSource] = {
     require(angleBandIndices.forall(index => index >= 0 && index <= 3))
 
     val theResolution = cellSize.getOrElse(CellSize(10, 10))
 
     val path = CreoFeatureCollection.loadMetadata(xlmPath)
-    if (path == null) {
-      throw new Exception("Could not load metadata file for angle bands: " + xlmPath)
+    if (path == null) { // unrecoverable error: the file does not exist
+      val e = new Exception(s"Could not load metadata file for angle bands: $xlmPath")
+
+      if (softErrors) {
+        logger.warn(s"Ignoring soft error $e", e)
+        return angleBandIndices.map { _ => null }
+      }
+
+      throw e
     }
+
     val xmlDoc = XML.load(path)
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"
