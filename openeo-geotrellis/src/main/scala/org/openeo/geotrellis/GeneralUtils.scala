@@ -204,7 +204,9 @@ object GeneralUtils {
       val combinedExtent = reprojectedLayoutRight.combine(layoutLeft.extent)
       val mappedLayout = layoutLeft.mapTransform.apply(combinedExtent)
       val tileLayout = TileLayout(mappedLayout.width, mappedLayout.height, layoutLeft.tileCols, layoutLeft.tileRows)
-      LayoutDefinition(combinedExtent, tileLayout)
+      val result = LayoutDefinition(combinedExtent, tileLayout)
+      logger.info(s"layoutMerged: layoutLeft=$layoutLeft, layoutRight=$layoutRight, crsLeft=$crsLeft, crsRight=$crsRight, result layout =$result")
+      result
     }
   }
 
