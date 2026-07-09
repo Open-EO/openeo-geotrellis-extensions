@@ -3,8 +3,12 @@ package org.openeo.geotrellis
 import geotrellis.layer.LayoutDefinition
 import geotrellis.proj4.CRS
 import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.vector.Extent
+import org.slf4j.LoggerFactory
 
 object GeneralUtils {
+
+  val logger = LoggerFactory.getLogger(GeneralUtils.getClass)
 
   def toSigned(cellType: CellType): CellType = {
     cellType match {
@@ -202,6 +206,32 @@ object GeneralUtils {
       val tileLayout = TileLayout(mappedLayout.width, mappedLayout.height, layoutLeft.tileCols, layoutLeft.tileRows)
       LayoutDefinition(combinedExtent, tileLayout)
     }
+  }
+
+  private def crossesAntimeridian(bbox: Extent): Boolean = {
+    bbox.xmin < -180 || bbox.xmax > 180
+  }
+
+  def fixBboxLargerThanWorld(bbox: Extent): Extent = {
+    if (crossesAntimeridian(bbox)) {
+      if (bbox.width>360) {
+        cropXDimensionBboxLargerThanWorld(bbox)
+      } else {
+        bbox
+      }
+    } else {
+      bbox
+    }
+  }
+  // returns an extent that is cropped to the world extent if the input extent is larger than the world extent
+  // the bbox has to be CRS EPSG:4326
+  def cropXDimensionBboxLargerThanWorld(bbox: Extent): Extent = {
+    Extent(
+      math.max(bbox.xmin, -180),
+      bbox.ymin,
+      math.min(bbox.xmax, 180),
+      bbox.ymax
+    )
   }
 
 }

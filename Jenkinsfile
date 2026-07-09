@@ -62,21 +62,6 @@ pipeline {
                 }
             }
         }
-
-        stage("trigger integrationtests") {
-            when {
-                expression {
-                    ["master", "develop"].contains(env.BRANCH_NAME)
-                }
-            }
-            steps {
-                script {
-                    build(job: "openEO/openeo-integrationtests", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
-                }
-            }
-        }
-
-
         stage('Input') {
             when {
                 expression {
@@ -92,8 +77,6 @@ pipeline {
             }
 
         }
-
-
         stage('Releasing') {
             when {
                 expression {
@@ -129,7 +112,18 @@ pipeline {
                 }
             }
         }
-
+        stage("Trigger geopyspark driver master build") {
+            when {
+                expression {
+                    ["master", "develop"].contains(env.BRANCH_NAME)
+                }
+            }
+            steps {
+                script {
+                    build(job: "openEO/openeo-geopyspark-driver/master", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
+                }
+            }
+        }
     }
     post {
         always {
@@ -221,7 +215,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                         [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
                         [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
                 ]) {
-                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts,integrationtests -U clean install' + rtMaven.opts
+                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts -U clean install' + rtMaven.opts
                     try {
                         if (rtMaven.deployer.deployArtifacts)
                             server.publishBuildInfo buildInfo
