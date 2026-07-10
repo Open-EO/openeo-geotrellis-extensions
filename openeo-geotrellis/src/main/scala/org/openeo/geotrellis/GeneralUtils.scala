@@ -213,14 +213,14 @@ object GeneralUtils {
     val ratioWidth = combinedExtent.width / layoutLeft.extent.width
     val ratioTileWidth = ratioWidth*layoutLeft.layoutCols
     val newLayoutCols = Math.ceil(ratioTileWidth)
-    val xMax = if (ratioTileWidth % 1 != 0){
+    val xMax = if (math.abs(ratioTileWidth - math.round(ratioTileWidth)) > 1e-6){
       combinedExtent.xmin + newLayoutCols/layoutLeft.layoutCols * layoutLeft.extent.width
     } else combinedExtent.xmax
 
     val ratioHeight = combinedExtent.height / layoutLeft.extent.height
     val ratioTileHeight = ratioHeight*layoutLeft.layoutRows
     val newLayoutRows = Math.ceil(ratioTileHeight)
-    val yMax = if (ratioTileHeight % 1 != 0){
+    val yMax = if (math.abs(ratioTileHeight - math.round(ratioTileHeight)) > 1e-6){
       combinedExtent.ymin + newLayoutRows/layoutLeft.layoutRows * layoutLeft.extent.height
     } else combinedExtent.ymax
 
