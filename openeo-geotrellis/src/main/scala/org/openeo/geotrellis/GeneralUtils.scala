@@ -212,20 +212,20 @@ object GeneralUtils {
     
     val ratioWidth = combinedExtent.width / layoutLeft.extent.width
     val ratioTileWidth = ratioWidth*layoutLeft.layoutCols
-    val newLayoutCols = Math.ceil(ratioTileWidth).toInt
+    val newLayoutCols = Math.ceil(ratioTileWidth)
     val xMax = if (ratioTileWidth % 1 != 0){
-      combinedExtent.extent.xmin + newLayoutCols/layoutLeft.layoutCols * layoutLeft.extent.width
+      combinedExtent.xmin + newLayoutCols/layoutLeft.layoutCols * layoutLeft.extent.width
     } else combinedExtent.xmax
 
     val ratioHeight = combinedExtent.height / layoutLeft.extent.height
     val ratioTileHeight = ratioHeight*layoutLeft.layoutRows
-    val newLayoutRows = Math.ceil(ratioTileHeight).toInt
+    val newLayoutRows = Math.ceil(ratioTileHeight)
     val yMax = if (ratioTileHeight % 1 != 0){
-      layoutLeft.extent.ymin + newLayoutRows/layoutLeft.layoutRows * layoutLeft.extent.height
+      combinedExtent.ymin + newLayoutRows/layoutLeft.layoutRows * layoutLeft.extent.height
     } else combinedExtent.ymax
 
 
-    val tileLayout = TileLayout(newLayoutCols, newLayoutRows, layoutLeft.tileCols, layoutLeft.tileRows)
+    val tileLayout = TileLayout(newLayoutCols.toInt, newLayoutRows.toInt, layoutLeft.tileCols, layoutLeft.tileRows)
     LayoutDefinition(Extent(combinedExtent.xmin,combinedExtent.ymin,xMax, yMax), tileLayout)
   }
 
