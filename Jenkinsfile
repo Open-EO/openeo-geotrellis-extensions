@@ -57,7 +57,7 @@ pipeline {
             steps {
                 script {
                     rel_version = getMavenVersion()
-                    build(skipTests = params.skip_tests, skipSentinelHubTests = params.skip_sentinelhub_tests)
+                    buildIt(skipTests = params.skip_tests, skipSentinelHubTests = params.skip_sentinelhub_tests)
                     utils.setWorkspacePermissions()
                 }
             }
@@ -93,7 +93,7 @@ pipeline {
                         sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
                     }
                     echo "releasing version ${rel_version}"
-                    build(skipTests = true)
+                    buildIt(skipTests = true)
 
                     withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
                         withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'BobDeBouwer', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
@@ -178,7 +178,7 @@ String updateMavenVersion(){
     return v_snapshot
 }
 
-void build(skipTests = false, skipSentinelHubTests = false){
+void buildIt(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-21-openjdk" ]

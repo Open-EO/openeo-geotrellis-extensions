@@ -318,6 +318,11 @@
             <artifactId>onnxruntime</artifactId>
             <version>1.23.2</version>
         </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-compiler</artifactId>
+            <version>${scala.version}</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
