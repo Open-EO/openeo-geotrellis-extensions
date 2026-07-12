@@ -86,10 +86,10 @@ pipeline {
             steps {
                 script {
                     checkout scm
-                    sed -i 's#<gdal-bindings.version>[^<]*</gdal-bindings.version>#<gdal-bindings.version>3.8.0</gdal-bindings.version>#' pom.xml
                     rel_version = getReleaseVersion()
                     rel_version = rel_version.replaceAll("-SNAPSHOT", "38-SNAPSHOT")
                     withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
+                        sed -i 's#<gdal-bindings.version>[^<]*</gdal-bindings.version>#<gdal-bindings.version>3.8.0</gdal-bindings.version>#' pom.xml
                         sh "mvn versions:use-releases -DgenerateBackupPoms=false -DfailIfNotReplaced=true"
                         echo "Removing SNAPSHOT from version for release"
                         sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
