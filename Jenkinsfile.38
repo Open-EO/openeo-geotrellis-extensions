@@ -199,7 +199,7 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
             }
             rtMaven.deployer server: server, releaseRepo: releaseRepo, snapshotRepo: snapshotRepo
             rtMaven.tool = maven
-            rtMaven.opts += ' gdal-bindings.version=3.8.0'
+            rtMaven.opts += ' -Dgdal-bindings.version=3.8.0'
             if (skipTests) {
                 print "Maven will skip all tests"
                 rtMaven.opts += ' -DskipTests=true -DskipSentinelHubTests=true'
