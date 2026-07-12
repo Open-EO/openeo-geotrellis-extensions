@@ -1,3 +1,4 @@
 FROM vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:latest
+RUN dnf install -y maven git dnf-plugins-core
 RUN export JAVA_HOME=$(which java)
 USER jenkins
