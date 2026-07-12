@@ -1,6 +1,9 @@
 package org.openeo.geotrellis
 
-import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, ShortCellType, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, UByteCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortUserDefinedNoDataCellType}
+import geotrellis.layer.LayoutDefinition
+import geotrellis.proj4.CRS
+import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, ShortCellType, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, TileLayout, UByteCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortUserDefinedNoDataCellType}
+import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrowsExactly, assertTrue}
 import org.junit.jupiter.api.Test
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, cellTypeUnionWithNoData, toSigned}
@@ -120,6 +123,39 @@ class TestGeneralUtils {
     assertEquals(ShortUserDefinedNoDataCellType(Short.MaxValue), cellTypeUnionWithNoData(ByteUserDefinedNoDataCellType(5), UByteUserDefinedNoDataCellType(256.toByte)))
 
   }
+
+  @Test
+  def testLayoutMergedSimple(): Unit = {
+    val extent1 = Extent(0, 0, 3, 3)
+    val tileLayout1 = TileLayout(3, 3, 128, 128)
+    val layoutDefinition1= LayoutDefinition(extent1, tileLayout1)
+    val extent2 = Extent(0, 0, 4, 4)
+    val tileLayout2 = TileLayout(2, 2, 256, 256)
+    val layoutDefinition2= LayoutDefinition(extent2, tileLayout2)
+
+    val crs = CRS.fromEpsgCode(32631)
+    val merged = GeneralUtils.layoutMerged(layoutDefinition1, layoutDefinition2, crs, crs)
+    assertEquals(TileLayout(4, 4, 128, 128), merged.tileLayout)
+    assertEquals(layoutDefinition1.cellSize, merged.cellSize)
+    assertEquals(Extent(0, 0, 4, 4), merged.extent)
+  }
+
+  @Test
+  def testLayoutMergedNeedsBiggerExtent(): Unit = {
+    val extent1 = Extent(663810.0, 5610650.0, 665090.0, 5611930.0)
+    val tileLayout1 = TileLayout(2, 1, 128, 128)
+    val layoutDefinition1= LayoutDefinition(extent1, tileLayout1)
+    val extent2 = Extent(663800.0, 5606820.0, 668900.0, 5611940.0)
+    val tileLayout2 = TileLayout(1, 2, 256, 256)
+    val layoutDefinition2= LayoutDefinition(extent2, tileLayout2)
+
+    val crs = CRS.fromEpsgCode(32631)
+    val merged = GeneralUtils.layoutMerged(layoutDefinition1, layoutDefinition2, crs, crs)
+    assertEquals(layoutDefinition1.cellSize, merged.cellSize)
+    assertEquals(TileLayout(8, 4, 128, 128), merged.tileLayout)
+    assertEquals(Extent(663800.0, 5606820.0, 668920.0, 5611940.0), merged.extent)
+  }
+
 
 
 }
