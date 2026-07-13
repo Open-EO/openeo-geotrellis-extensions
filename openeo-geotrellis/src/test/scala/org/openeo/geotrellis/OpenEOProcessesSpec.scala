@@ -1290,12 +1290,65 @@ class OpenEOProcessesSpec extends RasterMatchers {
     }
     val tileFloat = (i:Float) => FloatArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     val tileDouble = (i:Double) =>  DoubleArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    val tileInt = (i:Int) => IntArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
+    val tileShort = (i:Short) => ShortArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     val resultArray = (i:Int) =>  Array.fill(layoutCols * tileSize * layoutRows * tileSize)(i)
+
+
+
+    // test where the ONNX model doubles the values
+    runONNX("/org/openeo/geotrellis/onnx/test_model_float.json",
+      new ArrayMultibandTile(Array(tileFloat(1))),
+      Seq(resultArray(2)), FloatConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_double.json",
+      new ArrayMultibandTile(Array(tileDouble(2))),
+      Seq(resultArray(4)), DoubleConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_int.json",
+      new ArrayMultibandTile(Array(tileInt(5))),
+      Seq(resultArray(10)), IntConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_short.json",
+      new ArrayMultibandTile(Array(tileShort(4))),
+      Seq(resultArray(8)), ShortConstantNoDataCellType
+    )
+    // test where the ONNX model sums the values of the bands
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_float.json",
+      new ArrayMultibandTile(Array[Tile](tileFloat(1),tileFloat(2),tileFloat(3))),
+      Seq(resultArray(6)),FloatConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_double.json",
+      new ArrayMultibandTile(Array[Tile](tileDouble(1),tileDouble(1),tileDouble(2))),
+      Seq(resultArray(4)),DoubleConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_int.json",
+      new ArrayMultibandTile(Array[Tile](tileInt(3),tileInt(5),tileInt(7))),
+      Seq(resultArray(15)),IntConstantNoDataCellType
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_sum_short.json",
+      new ArrayMultibandTile(Array[Tile](tileShort(10),tileShort(1),tileShort(15))),
+      Seq(resultArray(26)),ShortConstantNoDataCellType
+    )
+    // test where the ONNX model reorganize bands from [0,1,2] to [2,0]
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_float.json",
+      new ArrayMultibandTile(Array[Tile](tileFloat(1),tileFloat(2),tileFloat(3))),
+      Seq(resultArray(3),resultArray(1)),FloatConstantNoDataCellType, 2
+    )
 
     runONNX("/org/openeo/geotrellis/onnx/test_model_gather_double.json",
       new ArrayMultibandTile(Array(tileDouble(1),tileDouble(2),tileDouble(3))),
       Seq(resultArray(3),resultArray(1)), DoubleConstantNoDataCellType, 2
     )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_int.json",
+      new ArrayMultibandTile(Array[Tile](tileInt(1),tileInt(2),tileInt(3))),
+      Seq(resultArray(3),resultArray(1)),IntConstantNoDataCellType, 2
+    )
+    runONNX("/org/openeo/geotrellis/onnx/test_model_gather_short.json",
+      new ArrayMultibandTile(Array[Tile](tileShort(1),tileShort(2),tileShort(3))),
+      Seq(resultArray(3),resultArray(1)),ShortConstantNoDataCellType, 2
+    )
+
     // test where the ONNX model is downloaded and sums the values of the bands
     val tileSizeSmall = 4
     val tileDoubleSmall = (i:Float) => DoubleArrayTile.fill(i,layoutCols * tileSizeSmall, layoutRows * tileSizeSmall)
