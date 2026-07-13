@@ -200,12 +200,33 @@ object GeneralUtils {
   def layoutMerged(layoutLeft:LayoutDefinition, layoutRight:LayoutDefinition, crsLeft: CRS, crsRight: CRS): LayoutDefinition = {
     if (layoutLeft == layoutRight & crsLeft == crsRight) layoutLeft
     else {
-      val reprojectedLayoutRight = layoutRight.extent.reproject(crsRight, crsLeft)
-      val combinedExtent = reprojectedLayoutRight.combine(layoutLeft.extent)
-      val mappedLayout = layoutLeft.mapTransform.apply(combinedExtent)
-      val tileLayout = TileLayout(mappedLayout.width, mappedLayout.height, layoutLeft.tileCols, layoutLeft.tileRows)
-      LayoutDefinition(combinedExtent, tileLayout)
+      val reprojectedExtentRight = layoutRight.extent.reproject(crsRight, crsLeft)
+      val result = layoutDefinitionMergeWithEqualCellSize(layoutLeft, reprojectedExtentRight)
+      logger.info(s"layoutMerged: layoutLeft=$layoutLeft, layoutRight=$layoutRight, crsLeft=$crsLeft, crsRight=$crsRight, result layout =$result")
+      result
     }
+  }
+
+  private def layoutDefinitionMergeWithEqualCellSize(layoutLeft:LayoutDefinition, extentRight:Extent): LayoutDefinition = {
+    val combinedExtent = extentRight.extent.combine(layoutLeft.extent)
+    
+    val ratioWidth = combinedExtent.width / layoutLeft.extent.width
+    val ratioTileWidth = ratioWidth*layoutLeft.layoutCols
+    val newLayoutCols = Math.ceil(ratioTileWidth)
+    val xMax = if (math.abs(ratioTileWidth - math.round(ratioTileWidth)) > 1e-6){
+      combinedExtent.xmin + newLayoutCols/layoutLeft.layoutCols * layoutLeft.extent.width
+    } else combinedExtent.xmax
+
+    val ratioHeight = combinedExtent.height / layoutLeft.extent.height
+    val ratioTileHeight = ratioHeight*layoutLeft.layoutRows
+    val newLayoutRows = Math.ceil(ratioTileHeight)
+    val yMax = if (math.abs(ratioTileHeight - math.round(ratioTileHeight)) > 1e-6){
+      combinedExtent.ymin + newLayoutRows/layoutLeft.layoutRows * layoutLeft.extent.height
+    } else combinedExtent.ymax
+
+
+    val tileLayout = TileLayout(newLayoutCols.toInt, newLayoutRows.toInt, layoutLeft.tileCols, layoutLeft.tileRows)
+    LayoutDefinition(Extent(combinedExtent.xmin,combinedExtent.ymin,xMax, yMax), tileLayout)
   }
 
   private def crossesAntimeridian(bbox: Extent): Boolean = {
