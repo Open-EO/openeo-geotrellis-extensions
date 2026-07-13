@@ -42,7 +42,7 @@ class StacModelParserTest {
       |  "links": [],
       |  "assets": {
       |    "model": {
-      |      "href": "roadMapSegmentationModel.onnx",
+      |      "href": "https://roadMapSegmentationModel.onnx",
       |      "type": "application/x-onnx",
       |      "roles": ["mlm:model"]
       |    }
@@ -99,7 +99,7 @@ class StacModelParserTest {
   @Test
   def testParseModelAssetHref(): Unit = {
     val desc = StacModelParser.parse(validStac)
-    assertEquals("roadMapSegmentationModel.onnx", desc.modelAssetHref)
+    assertEquals("https://roadMapSegmentationModel.onnx", desc.modelAssetHref)
   }
 
   @Test
