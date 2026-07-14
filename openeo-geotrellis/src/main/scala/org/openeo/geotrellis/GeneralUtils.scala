@@ -198,42 +198,15 @@ object GeneralUtils {
   }
 
 
-  def saveConvertTile(tile:Tile, newType: CellType): Tile = {
-    if (tile.isInstanceOf[ConstantTile]){
-      val constantTile = tile.asInstanceOf[ConstantTile]
-      if (constantTile.isNoDataTile) {
-        newType match {
-          case BitCellType => BitConstantTile(0, tile.cols, tile.rows)
-          case ByteCellType => ByteConstantTile(byteNODATA, tile.cols, tile.rows)
-          case UByteCellType => UByteConstantTile(ubyteNODATA, tile.cols, tile.rows)
-          case ShortCellType => ShortConstantTile(shortNODATA, tile.cols, tile.rows)
-          case UShortCellType => UShortConstantTile(ushortNODATA, tile.cols, tile.rows)
-          case IntCellType => IntConstantTile(NODATA, tile.cols, tile.rows)
-          case FloatCellType => FloatConstantTile(floatNODATA, tile.cols, tile.rows)
-          case DoubleCellType => DoubleConstantTile(doubleNODATA, tile.cols, tile.rows)
-          case ByteConstantNoDataCellType => ByteConstantTile(byteNODATA, tile.cols, tile.rows)
-          case UByteConstantNoDataCellType => UByteConstantTile(ubyteNODATA, tile.cols, tile.rows)
-          case ShortConstantNoDataCellType => ShortConstantTile(shortNODATA, tile.cols, tile.rows)
-          case UShortConstantNoDataCellType => UShortConstantTile(ushortNODATA, tile.cols, tile.rows)
-          case IntConstantNoDataCellType => IntConstantTile(NODATA, tile.cols, tile.rows)
-          case FloatConstantNoDataCellType => FloatConstantTile(floatNODATA, tile.cols, tile.rows)
-          case DoubleConstantNoDataCellType => DoubleConstantTile(doubleNODATA, tile.cols, tile.rows)
-          case ct: ByteUserDefinedNoDataCellType => ByteConstantTile(ct.noDataValue, tile.cols, tile.rows, ct)
-          case ct: UByteUserDefinedNoDataCellType => UByteConstantTile(ct.noDataValue, tile.cols, tile.rows, ct)
-          case ct: ShortUserDefinedNoDataCellType => ShortConstantTile(ct.noDataValue, tile.cols, tile.rows, ct)
-          case ct: UShortUserDefinedNoDataCellType => UShortConstantTile(ct.noDataValue, tile.cols, tile.rows, ct)
-          case ct: IntUserDefinedNoDataCellType => IntConstantTile(ct.noDataValue, tile.cols, tile.rows, ct)
-          case ct: FloatUserDefinedNoDataCellType => FloatConstantTile(ct.noDataValue, tile.cols, tile.rows, ct)
-          case ct: DoubleUserDefinedNoDataCellType => DoubleConstantTile(ct.noDataValue, tile.cols, tile.rows, ct)
-          case _ => throw new IllegalArgumentException("Cannot convert to unsigned equivalent: '" + newType.getClass.getName + "'.")
-        }
-      }
-      else {
-        constantTile.convert(newType)
-      }
-    }
-    else {
-      tile.convert(newType)
+  /**
+   * Works around geotrellis issue.
+   * https://github.com/locationtech/geotrellis/issues/3525
+   */
+  def safeConvert(tile: Tile,ct:CellType): Tile = {
+    if(tile.isInstanceOf[ConstantTile] && tile.getDouble(0,0).isNaN ){
+      EmptyMultibandTile.empty(ct, tile.cols, tile.rows)
+    }else{
+      tile.convert(ct)
     }
   }
 

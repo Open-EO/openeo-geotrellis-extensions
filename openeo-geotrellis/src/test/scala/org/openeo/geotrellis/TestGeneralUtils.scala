@@ -144,7 +144,7 @@ class TestGeneralUtils {
     }
 
     def checkValuesInt(array: Tile, newCellType: CellType, noData: Option[(Int,Int)] = None): Unit = {
-      val result = GeneralUtils.saveConvertTile(array, newCellType)
+      val result = GeneralUtils.safeConvert(array, newCellType)
       assertEquals(newCellType, result.cellType)
       assertEquals(array.isNoDataTile, result.isNoDataTile)
 
@@ -173,7 +173,7 @@ class TestGeneralUtils {
       }
     }
     def checkValuesDouble(array: Tile, newCellType: CellType, noData: Option[(Double, Double)] = None): Unit = {
-      val result = GeneralUtils.saveConvertTile(array, newCellType)
+      val result = GeneralUtils.safeConvert(array, newCellType)
       assertEquals(newCellType, result.cellType)
       assertEquals(array.isNoDataTile, result.isNoDataTile)
 
