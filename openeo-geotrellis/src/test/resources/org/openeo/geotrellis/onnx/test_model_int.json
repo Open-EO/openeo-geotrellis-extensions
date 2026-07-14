@@ -1,0 +1,57 @@
+{
+  "stac_version": "1.0.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"
+  ],
+  "type": "Feature",
+  "id": "test_model_int",
+  "bbox": [-180.0, -90.0, 180.0, 90.0],
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [[-180.0, -90.0], [180.0, -90.0], [180.0, 90.0], [-180.0, 90.0], [-180.0, -90.0]]
+    ]
+  },
+  "properties": {
+    "datetime": "2026-06-29T00:00:00Z",
+    "mlm:name": "test model int",
+    "mlm:description": "ONNX model for testing",
+    "mlm:architecture": "UNSPECIFIED",
+    "mlm:learning_approach": "supervised",
+    "mlm:framework": [
+      {
+        "name": "onnx",
+        "version": "1.15.0"
+      }
+    ],
+    "mlm:input": [
+      {
+        "name": "input",
+        "description": "Input image tensor with named dimensions",
+        "data_type": "int32",
+        "shape": [1, 1, 256, 256],
+        "dim_order": ["batch", "bands", "height", "width"]
+      }
+    ],
+    "mlm:output": [
+      {
+        "name": "output",
+        "description": "Output image tensor",
+        "data_type": "int32",
+        "shape": [1, 256, 256],
+        "dim_order": ["bands", "height", "width"]
+      }
+    ]
+  },
+  "links": [],
+  "assets": {
+    "model": {
+      "href": "test_model_int.onnx",
+      "type": "application/x-onnx",
+      "title": "ONNX test Model int",
+      "roles": ["ml-model:checkpoint", "mlm:model"]
+    }
+  },
+  "collection": "ml-models"
+}
+
