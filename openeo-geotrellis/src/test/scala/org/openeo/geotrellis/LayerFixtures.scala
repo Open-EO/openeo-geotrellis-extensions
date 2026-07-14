@@ -1968,4 +1968,41 @@ for p in l:
       maxSpatialResolution = CellSize(resolution, resolution),
     )
   }
+
+  def stacMissingAngleBandsFileCollection: PyramidFactory = {
+    // TODO: add features but point SZA to a non-existing file
+
+    val openSearchClient = new FixedFeaturesOpenSearchClient
+    val resolution = 10
+    val bandNames = util.Arrays.asList("B04", "granule_metadata##0", "granule_metadata##1")
+
+    openSearchClient.addFeature( // S2A feature
+      OpenSearchResponses.featureBuilder()
+        .withId("S2A_MSIL2A_20260203T105211_N0511_R051_T31UFS_20260203T123310")
+        .withNominalDate("2026-02-03T10:52:11.024000Z")
+        .withBBox(4.408715109637645, 50.427909835442705, 6.017025008525815, 51.44235231685392)
+        .addLink(
+          href = "/eodata/Sentinel-2/MSI/L2A/2026/02/03/S2A_MSIL2A_20260203T105211_N0511_R051_T31UFS_20260203T123310.SAFE/GRANULE/L2A_T31UFS_A055461_20260203T105206/IMG_DATA/R10m/T31UFS_20260203T105211_B04_10m.jp2",
+          title = "B04",
+          bandNames = singletonList("B04"),
+        )
+        .addLink(
+          href = "/eodata/Sentinel-2/MSI/L2A/2026/02/03/S2A_MSIL2A_20260203T105211_N0511_R051_T31UFS_20260203T123310.SAFE/GRANULE/L2A_T31UFS_A055461_20260203T105206/MTD_TL.xml",
+          title = "granule_metadata",
+          bandNames = util.Arrays.asList("granule_metadata##0", "granule_metadata##1"),
+        )
+        .withCRS("EPSG:32631")
+        .withRasterExtent(600000, 5590200, 709800, 5700000)
+        .withResolution(resolution)
+        .build
+    )
+
+    new PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = "https://stac.openeo.vito.be",
+      openSearchLinkTitles = bandNames,
+      rootPath = null,
+      maxSpatialResolution = CellSize(resolution, resolution),
+    )
+  }
 }
