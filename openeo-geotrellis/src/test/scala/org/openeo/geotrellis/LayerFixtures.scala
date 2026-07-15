@@ -1997,6 +1997,27 @@ for p in l:
         .build
     )
 
+    openSearchClient.addFeature( // S2B feature
+      OpenSearchResponses.featureBuilder()
+        .withId("S2B_MSIL2A_20260203T105139_N0511_R051_T31UFS_20260203T131950")
+        .withNominalDate("2026-02-03T10:51:39.025000Z")
+        .withBBox(4.408715109637645, 50.42783451343534, 6.017025008525815, 51.44235231685392)
+        .addLink(
+          href = "/eodata/Sentinel-2/MSI/L2A/2026/02/03/S2B_MSIL2A_20260203T105139_N0511_R051_T31UFS_20260203T131950.SAFE/GRANULE/L2A_T31UFS_A046552_20260203T105140/IMG_DATA/R10m/T31UFS_20260203T105139_B04_10m.jp2",
+          title = "B04",
+          bandNames = singletonList("B04"),
+        )
+        .addLink(
+          href = "/eodata/Sentinel-2/MSI/L2A/2026/02/03/S2B_MSIL2A_20260203T105139_N0511_R051_T31UFS_20260203T131950.SAFE/GRANULE/L2A_T31UFS_A046552_20260203T105140/MTD_TL.xml",
+          title = "granule_metadata",
+          bandNames = util.Arrays.asList("granule_metadata##0", "granule_metadata##1"),
+        )
+        .withCRS("EPSG:32631")
+        .withRasterExtent(600000, 5590200, 709800, 5700000)
+        .withResolution(resolution)
+        .build
+    )
+
     new PyramidFactory(
       openSearchClient,
       openSearchCollectionId = "https://stac.openeo.vito.be",

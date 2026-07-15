@@ -90,7 +90,6 @@ case class SentinelXMLMetadataRasterSource(
                                             gridExtent: GridExtent[Long],
                                             sourcePathName: OpenEoSourcePath,
                                           ) extends RasterSource {
-
   val targetCellType: Option[TargetCellType] = None
 
   override def metadata: RasterMetadata = this

@@ -4,12 +4,12 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.{GDALIOException, GDALRasterSource}
-import geotrellis.raster.io.geotiff.GeoTiff
+import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
 import geotrellis.raster.resample.{Bilinear, CubicConvolution, ResampleMethod}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource, ShortConstantNoDataCellType, isNoData}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, Raster, RasterSource, ShortConstantNoDataCellType, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
@@ -1813,14 +1813,25 @@ class FileLayerProviderTest extends RasterMatchers {
 
     baseLayer.cache()
 
-     // baseLayer.toSpatial().writeGeoTiff("/tmp/testAngleBandsFileNotFoundIsSoftError.tif")
+    val Raster(multibandTile, extent) = baseLayer
+      .toSpatial()
+      .crop(projectedPolygons.extent.extent)
+      .stitch()
+
+    MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs).write(s"/tmp/testAngleBandsFileNotFoundIsSoftError_$loadPerProduct.tif")
+
+    assertEquals(2, baseLayer.count()) // tiles for overlapping features/spatial keys are merged (S2A gets precedence)
+
+    val uniqueDates = baseLayer.keys.map(_.temporalKey.time).distinct().collect()
+    assertEquals(1, uniqueDates.length)
+
     val multibandTiles = baseLayer.values.collect()
 
     for (multibandTile <- multibandTiles) {
       val Vector(b04, saa, sza) = multibandTile.bands
       assertFalse(b04.isNoDataTile)
-      assertEquals(165, saa.getDouble(0, 0), 1.0)
-      assertEquals(68, sza.getDouble(0, 0), 1.0)
+      assertEquals(165.638, saa.getDouble(0, 0), 0.001)
+      assertEquals(68.481, sza.getDouble(0, 0), 0.001)
     }
 
     // TODO: point angle band hrefs to non-existing file
