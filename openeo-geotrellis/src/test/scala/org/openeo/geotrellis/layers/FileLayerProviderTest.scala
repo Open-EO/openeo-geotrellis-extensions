@@ -19,7 +19,7 @@ import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInp
 import org.apache.commons.io.FileUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotSame, assertSame, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api._
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
@@ -1830,11 +1830,12 @@ class FileLayerProviderTest extends RasterMatchers {
     for (multibandTile <- multibandTiles) {
       val Vector(b04, saa, sza) = multibandTile.bands
       assertFalse(b04.isNoDataTile)
-      assertEquals(165.638, saa.getDouble(0, 0), 0.001)
-      assertEquals(68.481, sza.getDouble(0, 0), 0.001)
-    }
+      assertNotEquals(165.638, b04.getDouble(0, 0), 0.001) // SAA value
+      assertNotEquals(68.481, b04.getDouble(0, 0), 0.001) // SZA value
 
-    // TODO: point angle band hrefs to non-existing file
+      assertTrue(saa.isNoDataTile, s"SAA should have been NODATA but was ${saa.getDouble(0, 0)}")
+      assertTrue(sza.isNoDataTile, s"SZA should have been NODATA but was ${sza.getDouble(0, 0)}")
+    }
   }
 
   @Test

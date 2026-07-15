@@ -1987,7 +1987,7 @@ for p in l:
           bandNames = singletonList("B04"),
         )
         .addLink(
-          href = "/eodata/Sentinel-2/MSI/L2A/2026/02/03/S2A_MSIL2A_20260203T105211_N0511_R051_T31UFS_20260203T123310.SAFE/GRANULE/L2A_T31UFS_A055461_20260203T105206/MTD_TL.xml",
+          href = "/eodata/Sentinel-2/MSI/L2A/2026/02/03/S2A_MSIL2A_20260203T105211_N0511_R051_T31UFS_20260203T123310.SAFE/GRANULE/L2A_T31UFS_A055461_20260203T105206_does_not_exist/MTD_TL.xml",
           title = "granule_metadata",
           bandNames = util.Arrays.asList("granule_metadata##0", "granule_metadata##1"),
         )
@@ -2008,7 +2008,7 @@ for p in l:
           bandNames = singletonList("B04"),
         )
         .addLink(
-          href = "/eodata/Sentinel-2/MSI/L2A/2026/02/03/S2B_MSIL2A_20260203T105139_N0511_R051_T31UFS_20260203T131950.SAFE/GRANULE/L2A_T31UFS_A046552_20260203T105140/MTD_TL.xml",
+          href = "/eodata/Sentinel-2/MSI/L2A/2026/02/03/S2B_MSIL2A_20260203T105139_N0511_R051_T31UFS_20260203T131950.SAFE/GRANULE/L2A_T31UFS_A046552_20260203T105140_does_not_exist/MTD_TL.xml",
           title = "granule_metadata",
           bandNames = util.Arrays.asList("granule_metadata##0", "granule_metadata##1"),
         )
@@ -2024,6 +2024,7 @@ for p in l:
       openSearchLinkTitles = bandNames,
       rootPath = null,
       maxSpatialResolution = CellSize(resolution, resolution),
+      maxSoftErrorsRatio = 0.1,
     )
   }
 }
