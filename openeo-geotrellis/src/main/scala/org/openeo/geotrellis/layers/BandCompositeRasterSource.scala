@@ -7,7 +7,7 @@ import geotrellis.raster.{CellType, CropOptions, CroppedTile, GridBounds, GridEx
 import geotrellis.vector.Extent
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
-import org.openeo.geotrellis.GeneralUtils.cellTypeUnionWithNoData
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrelliscommon.ResampledTile
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException

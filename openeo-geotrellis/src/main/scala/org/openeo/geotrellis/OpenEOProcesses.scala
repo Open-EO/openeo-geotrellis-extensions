@@ -27,10 +27,12 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext}
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
+import org.openeo.geotrellis.GeneralUtils.safeConvert
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
+import org.openeo.geotrellis.onnx.StacModelParser
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
@@ -58,7 +60,7 @@ object OpenEOProcesses{
   private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)],cellType: CellType) = {
     MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)).map( t => {
       if(t.cellType != cellType){
-        t.convert(cellType)
+        safeConvert(t, cellType)
       }else{
         t
       }
@@ -205,7 +207,7 @@ class OpenEOProcesses extends Serializable {
     val rdd: RDD[(SpaceTimeKey, MultibandTile)] =
       if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner]
         || index.get.isInstanceOf[ByTileSpacetimePartitioner]
-        || datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time)) {
+        || (!datacube.getBounds.isEmpty && datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time))) {
         datacube
       } else {
         val keys: Option[Array[SpatialKey]] = findPartitionerSpatialKeys(datacube)
@@ -1674,14 +1676,18 @@ class OpenEOProcesses extends Serializable {
   def predictONNX(datacube: Object, model: String): Object = {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
-        predictONNXGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+        if (model.endsWith(".onnx")) predictONNXModel(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+        else if (model.startsWith("{")) predictONNXSTAC(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+        else throw new IllegalArgumentException(s"ONNX: Only supports models with .onnx extension, but got $model.")
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
-        predictONNXGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        if (model.endsWith(".onnx")) predictONNXModel(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        else if (model.startsWith("{")) predictONNXSTAC(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        else throw new IllegalArgumentException(s"ONNX: Only supports models with .onnx extension, but got $model.")
       case _ => throw new IllegalArgumentException(s"Unsupported rdd type for predict_onnx: $datacube")
     }
   }
 
-  def predictONNXGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
+  def predictONNXModel[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
     val modelPath = Paths.get(model)
     val (modelFile, isTemp) = if (Files.exists(modelPath)) {
       (modelPath,false)
@@ -1727,6 +1733,98 @@ class OpenEOProcesses extends Serializable {
       retiled.mapValues(x => onnx.predictOnnx(x,model)),
       retiled.metadata
     )
+  }
+  
+  def predictONNXSTAC[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
+    val parsedModel = StacModelParser.parse(model)
+    val modelName = parsedModel.modelName
+    val modelUrl = parsedModel.modelAssetHref
+    val modelPath = Paths.get(modelUrl)
+    val inputs = parsedModel.inputs
+    if (inputs.length > 1)
+      throw new IllegalArgumentException(s"ONNX: Only supports one input, but got ${inputs.length}.")
+    val outputs = parsedModel.outputs
+    if (outputs.length > 1)
+      throw new IllegalArgumentException(s"ONNX: Only supports one output, but got ${outputs.length}.")
+
+    val input = inputs.head
+    val inputDataType = input.dataType
+    val output = outputs.head
+    val outputDataType = output.dataType
+
+    if (inputDataType != outputDataType)
+      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputDataType and output type $outputDataType.")
+
+    val inputDimOrder = input.dimOrder
+    val inputShape = input.shape
+    if (inputShape.length != inputDimOrder.length)
+      throw new IllegalArgumentException(s"ONNX: input shape length (${inputShape.length}) does not match input dim order length (${inputDimOrder.length}), shape is $inputShape and dim order is $inputDimOrder.")
+    val outputDimOrder = output.dimOrder
+    val outputShape = output.shape
+    if (outputShape.length != outputDimOrder.length)
+      throw new IllegalArgumentException(s"ONNX: output shape length (${outputShape.length}) does not match output dim order length (${outputDimOrder.length}), shape is $outputShape and dim order is $outputDimOrder.")
+    inputShape.length match {
+      case 1 =>
+        throw new IllegalArgumentException(s"ONNX: only supports models with 2 or more dimensions, but got ${inputShape.length}.")
+      case 2 =>
+        if (inputDimOrder(0) != "height")
+          logger.warn(s"ONNX: input dim order does not have 'height' as the first dimension, but got ${inputDimOrder(0)}.")
+        if (inputDimOrder(1) != "width")
+          logger.warn(s"ONNX: input dim order does not have 'width' as the second dimension, but got ${inputDimOrder(1)}.")
+
+        val tileCols = datacube.metadata.tileLayout.tileCols
+        val tileRows = datacube.metadata.tileLayout.tileRows
+        val retiled = if (tileCols != inputShape(1) || tileRows != inputShape(0)) {
+          logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(1)},${inputShape(0)})")
+          retileGeneric(datacube, inputShape(0).toInt, inputShape(1).toInt, 0, 0)
+        } else datacube
+        ContextRDD(
+          retiled.mapValues(x => onnx.predictOnnx(x, modelUrl)),
+          retiled.metadata
+        )
+      case 3 =>
+        if (inputDimOrder(0) != "bands")
+          logger.warn(s"ONNX: input dim order does not have 'bands' as the first dimension, but got ${inputDimOrder(0)}.")
+        if (inputDimOrder(1) != "height")
+          logger.warn(s"ONNX: input dim order does not have 'height' as the second dimension, but got ${inputDimOrder(1)}.")
+        if (inputDimOrder(2) != "width")
+          logger.warn(s"ONNX: input dim order does not have 'width' as the third dimension, but got ${inputDimOrder(2)}.")
+
+        val tileCols = datacube.metadata.tileLayout.tileCols
+        val tileRows = datacube.metadata.tileLayout.tileRows
+        val retiled = if (tileCols != inputShape(2) || tileRows != inputShape(1)) {
+          logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(2)},${inputShape(1)})")
+          retileGeneric(datacube, inputShape(1).toInt, inputShape(2).toInt, 0, 0)
+        } else datacube
+        ContextRDD(
+          retiled.mapValues(x => onnx.predictOnnx(x, modelUrl)),
+          retiled.metadata
+        )
+      case 4 =>
+        if (inputDimOrder(0) != "batch")
+          throw new IllegalArgumentException(s"ONNX: input dim order does not have 'batch' as the first dimension, but got ${inputDimOrder(0)}.")
+        if (inputDimOrder(1) != "bands")
+          logger.warn(s"ONNX: input dim order does not have 'bands' as the second dimension, but got ${inputDimOrder(1)}.")
+        if (inputDimOrder(2) != "height")
+          logger.warn(s"ONNX: input dim order does not have 'height' as the third dimension, but got ${inputDimOrder(2)}.")
+        if (inputDimOrder(3) != "width")
+          logger.warn(s"ONNX: input dim order does not have 'width' as the fourth dimension, but got ${inputDimOrder(3)}.")
+        if (inputShape(0) != 1){
+            throw new IllegalArgumentException(s"ONNX: only supports models with batch size of 1, but got ${inputShape(0)}.")
+        }
+        val tileCols = datacube.metadata.tileLayout.tileCols
+        val tileRows = datacube.metadata.tileLayout.tileRows
+        val retiled = if (tileCols != inputShape(3) || tileRows != inputShape(2)) {
+          logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(3)},${inputShape(2)})")
+          retileGeneric(datacube, inputShape(2).toInt, inputShape(3).toInt, 0, 0)
+        } else datacube
+        ContextRDD(
+          retiled.mapValues(x => onnx.predictOnnx(x, modelUrl)),
+          retiled.metadata
+        )
+      case _ =>
+        throw new IllegalArgumentException(s"ONNX: only supports models with 3 or less dimensions, but got ${inputShape.length}.")
+    }
   }
 
 

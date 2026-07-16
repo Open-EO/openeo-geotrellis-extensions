@@ -1072,7 +1072,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val rasterRegionContext = prepareRasterRegions(
       from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
     )
-    try {1
+    try {
       val cube = RasterTileLoader.loadRasterRegionsToTiles(
         rasterRegionContext.regions,
         rasterRegionContext.metadata,
@@ -1436,8 +1436,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           .getOrDefault("erosion_kernel_size", 0.asInstanceOf[Object]).asInstanceOf[Integer]) * 1.0
         val pixelBuffer = (math.max(p, dcp.pixelBufferX), math.max(p, dcp.pixelBufferY))
         tmp = Extent(
-          tmp.xmin - re.cols * pixelBuffer._1, tmp.ymin - re.rows * pixelBuffer._2,
-          tmp.xmax + re.cols * pixelBuffer._1, tmp.ymax + re.rows * pixelBuffer._2,
+          tmp.xmin - re.cellwidth * pixelBuffer._1, tmp.ymin - re.cellheight * pixelBuffer._2,
+          tmp.xmax + re.cellwidth * pixelBuffer._1, tmp.ymax + re.cellheight * pixelBuffer._2,
         )
         healthCheckExtentWarn(ProjectedExtent(tmp, targetExtent.crs), s"Item extent (${item.id}) should be valid in target CRS: ")
         re.createAlignedRasterExtent(tmp)
