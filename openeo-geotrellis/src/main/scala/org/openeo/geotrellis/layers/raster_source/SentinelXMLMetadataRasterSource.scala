@@ -8,6 +8,7 @@ import org.openeo.geotrellis.layers.raster_source.SentinelXMLMetadataRasterSourc
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 import org.slf4j.LoggerFactory
 
+import java.io.FileNotFoundException
 import scala.language.postfixOps
 import scala.xml.XML
 
@@ -18,10 +19,9 @@ object SentinelXMLMetadataRasterSource {
                    angleBandIndex: Int,
                    targetProjectedExtent: Option[ProjectedExtent] = None,
                    cellSize: Option[CellSize] = None,
-                   softErrors: Boolean = false,
                   ): SentinelXMLMetadataRasterSource = {
     // TODO: write forAngleBands in terms of forAngleBand instead
-    forAngleBands(xlmPath, Seq(angleBandIndex), targetProjectedExtent, cellSize, softErrors).head
+    forAngleBands(xlmPath, Seq(angleBandIndex), targetProjectedExtent, cellSize).head
   }
 
   /**
@@ -31,23 +31,13 @@ object SentinelXMLMetadataRasterSource {
                     angleBandIndices: Seq[Int] = Seq(0, 1, 2, 3), // SAA, SZA, VAA, VZA
                     targetProjectedExtent: Option[ProjectedExtent] = None,
                     cellSize: Option[CellSize] = None,
-                    softErrors: Boolean = false,
                    ): Seq[SentinelXMLMetadataRasterSource] = {
     require(angleBandIndices.forall(index => index >= 0 && index <= 3))
 
     val theResolution = cellSize.getOrElse(CellSize(10, 10))
 
     val path = CreoFeatureCollection.loadMetadata(xlmPath)
-    if (path == null) { // unrecoverable error: the file does not exist
-      val e = new Exception(s"Could not load metadata file for angle bands: $xlmPath") // TODO: improve exception
-
-      if (softErrors) { // TODO: move logic to SentinelXmlMetadataRasterSourceProvider?
-        logger.warn(s"Ignoring soft error $e", e)
-        return angleBandIndices.map { _ => null }
-      }
-
-      throw e
-    }
+    if (path == null) throw new FileNotFoundException(s"metadata file for angle bands $xlmPath does not exist")
 
     val xmlDoc = XML.load(path)
     val angles = xmlDoc \\ "Tile_Angles"
