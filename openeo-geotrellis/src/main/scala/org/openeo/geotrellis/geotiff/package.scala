@@ -23,7 +23,7 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.apache.spark.{Partitioner, SparkContext, TaskContext}
 import org.openeo.geotrellis
-import org.openeo.geotrellis.GeneralUtils.fixBboxLargerThanWorld
+import org.openeo.geotrellis.GeneralUtils.{fixBboxLargerThanWorld, safeConvert}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.{Asset, Item, STACItem}
@@ -336,7 +336,7 @@ package object geotiff {
           val bandSegmentOffset = bandSegmentCount * (if (formatOptions.separateAssetPerBand) 0 else bandIndex)
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
           // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
-          val tileToWrite = if (tile.cellType == BitCellType) tile.convert(UByteCellType) else tile
+          val tileToWrite = if (tile.cellType == BitCellType) safeConvert(tile, UByteCellType) else tile
           //tiff format seems to require that we provide 'full' tiles
           val bytes = raster.CroppedTile(tileToWrite, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
           val compressedBytes = theCompressor.compress(bytes, 0)
@@ -847,7 +847,7 @@ package object geotiff {
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
 
           // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
-          val tileToWrite = if (tile.cellType == BitCellType) tile.convert(UByteCellType) else tile
+          val tileToWrite = if (tile.cellType == BitCellType) safeConvert(tile, UByteCellType) else tile
 
           val bytes =
             if (cols != tileToWrite.cols || rows != tileToWrite.rows) {
@@ -965,7 +965,7 @@ package object geotiff {
               val bandSegmentOffset = bandSegmentCount * bandIndex
               val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
               // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
-              val tileToWrite = if (tile.cellType == BitCellType) tile.convert(UByteCellType) else tile
+              val tileToWrite = if (tile.cellType == BitCellType) safeConvert(tile, UByteCellType) else tile
               //tiff format seems to require that we provide 'full' tiles
               val bytes = raster.CroppedTile(tileToWrite, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
               val compressedBytes = theCompressor.compress(bytes, 0)

@@ -14,7 +14,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkContext, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, fixBboxLargerThanWorld}
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, fixBboxLargerThanWorld, safeConvert}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.geotiff.preProcess
 import org.openeo.geotrellis.stac.{Asset, Item}
@@ -257,7 +257,7 @@ object NetCDFRDDWriter {
 
             var tile = multibandTile.band(bandIndex)
             if (tile.cellType != cellType) {
-              tile = tile.convert(cellType)
+              tile = safeConvert(tile, cellType)
             }
 
             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){

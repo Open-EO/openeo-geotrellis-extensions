@@ -1,11 +1,11 @@
 package org.openeo.geotrellis.water_vapor
 
 import java.util.concurrent.Callable
-
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.raster.{FloatConstantNoDataCellType, MultibandTile, Tile, doubleNODATA}
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
+import org.openeo.geotrellis.GeneralUtils.safeConvert
 import org.openeo.geotrellis.icor.{AtmosphericCorrection, CorrectionDescriptor, ICorCorrectionDescriptor, LookupTable, LookupTableIO}
 
 class CWVProvider() extends Serializable {
@@ -45,9 +45,9 @@ class CWVProvider() extends Serializable {
     val wvCalc = new AbdaWaterVaporCalculator()
     wvCalc.prepare(cd,wvBandId,r0BandId,r1BandId)
             
-    val wvTile= multibandtile._2.band(findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)
-    val r0Tile= multibandtile._2.band(findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)
-    val r1Tile= multibandtile._2.band(findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)
+    val wvTile= safeConvert(multibandtile._2.band(findIndexOf(bandIds,wvBandId)), FloatConstantNoDataCellType)
+    val r0Tile= safeConvert(multibandtile._2.band(findIndexOf(bandIds,r0BandId)), FloatConstantNoDataCellType)
+    val r1Tile= safeConvert(multibandtile._2.band(findIndexOf(bandIds,r1BandId)), FloatConstantNoDataCellType)
                         
     // try to get at least 1 valid value on 60m resolution
     val mbtresult : Tile = try { 
@@ -56,7 +56,7 @@ class CWVProvider() extends Serializable {
           szaTile, 
           vzaTile, 
           raaTile,
-          elevationTile.convert(FloatConstantNoDataCellType), 
+          safeConvert(elevationTile, FloatConstantNoDataCellType), 
     // AOT overriden                      aotTile.convert(FloatConstantNoDataCellType), 
           wvTile, 
           r0Tile, 
@@ -74,7 +74,7 @@ class CWVProvider() extends Serializable {
       case e: IllegalArgumentException => wvTile
     }
     
-    mbtresult.convert(FloatConstantNoDataCellType)
+    safeConvert(mbtresult, FloatConstantNoDataCellType)
    
  }
   

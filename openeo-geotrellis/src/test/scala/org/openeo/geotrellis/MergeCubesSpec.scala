@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Assertions.{assertEquals, assertNotEquals, assertTr
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
+import org.openeo.geotrellis.GeneralUtils.safeConvert
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, OpenEORasterCube, OpenEORasterCubeMetadata, SparseSpaceTimePartitioner, SpatialKeysProvider}
@@ -62,7 +63,7 @@ object MergeCubesSpec {
   }
 
   def simpleMeanSquaredError(tileA: Tile, tileB: Tile): Double = {
-    val diff = tileA.convert(DoubleConstantNoDataCellType).localSubtract(tileB.convert(DoubleConstantNoDataCellType))
+    val diff = safeConvert(tileA, DoubleConstantNoDataCellType).localSubtract(safeConvert(tileB,DoubleConstantNoDataCellType))
     // The geotrellis .map() fills the tile with '0' values instead of 'noDataValue', so avoid.
     val diffArr = diff.toArrayDouble().filter(!isNoData(_))
     val squared = diffArr.map(v => v * v)

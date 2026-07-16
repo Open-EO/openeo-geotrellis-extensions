@@ -27,7 +27,8 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext}
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
+import org.openeo.geotrellis.GeneralUtils.safeConvert
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
@@ -59,7 +60,7 @@ object OpenEOProcesses{
   private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)],cellType: CellType) = {
     MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)).map( t => {
       if(t.cellType != cellType){
-        t.convert(cellType)
+        safeConvert(t, cellType)
       }else{
         t
       }
