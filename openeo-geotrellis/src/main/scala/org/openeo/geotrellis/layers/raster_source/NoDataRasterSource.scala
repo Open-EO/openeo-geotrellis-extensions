@@ -6,6 +6,8 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile, UByteConstantNoDataCellType, UByteConstantTile, ubyteNODATA}
 import geotrellis.vector.Extent
 
+import java.util.concurrent.atomic.AtomicInteger
+
 object NoDataRasterSource {
   private val supportedBandIndices: Seq[Int] = Seq(0)
 
@@ -14,6 +16,8 @@ object NoDataRasterSource {
 
   def instance: NoDataRasterSource =
     instance(GridExtent(LatLng.worldExtent, cols = 10, rows = 10), LatLng)
+
+  private val counter = new AtomicInteger
 }
 
 class NoDataRasterSource(override val cellType: CellType, override val gridExtent: GridExtent[Long], override val crs: CRS) extends RasterSource {
@@ -56,7 +60,7 @@ class NoDataRasterSource(override val cellType: CellType, override val gridExten
   override def convert(targetCellType: TargetCellType): RasterSource =
     new NoDataRasterSource(targetCellType.cellType, gridExtent, crs)
 
-  override def name: SourceName = toString
+  override val name: SourceName = s"${this}_${counter.getAndIncrement()}"
 
   override def bandCount: Int = supportedBandIndices.size
 
