@@ -39,9 +39,9 @@ object SentinelXMLMetadataRasterSource {
 
     val path = CreoFeatureCollection.loadMetadata(xlmPath)
     if (path == null) { // unrecoverable error: the file does not exist
-      val e = new Exception(s"Could not load metadata file for angle bands: $xlmPath")
+      val e = new Exception(s"Could not load metadata file for angle bands: $xlmPath") // TODO: improve exception
 
-      if (softErrors) {
+      if (softErrors) { // TODO: move logic to SentinelXmlMetadataRasterSourceProvider?
         logger.warn(s"Ignoring soft error $e", e)
         return angleBandIndices.map { _ => null }
       }
