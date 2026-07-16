@@ -1787,6 +1787,7 @@ class FileLayerProviderTest extends RasterMatchers {
     )
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasEodataData")
   @ParameterizedTest
   @ValueSource(booleans = Array(false, true))
   def testAngleBandsFileNotFoundIsSoftError(loadPerProduct: Boolean): Unit = {
