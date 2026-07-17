@@ -5,12 +5,12 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.function.Consumer
-
 import geotrellis.layer.{LayoutDefinition, SpaceTimeKey}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.{FloatConstantNoDataCellType, Tile}
 import geotrellis.vector._
+import org.openeo.geotrellis.GeneralUtils.safeConvert
 
 object AOTProvider{
 
@@ -61,7 +61,7 @@ class AOTProvider(basePath:String = "/data/MEP/ECMWF/cams/aod550/%1$tY/%1$tm/CAM
     val rasterSource = GeoTiffRasterSource(bestAOTProduct.toAbsolutePath.toString)
 
     val raster = rasterSource.reprojectToRegion(targetCRS,layoutDefinition.toRasterExtent()).read(targetExtent)
-    raster.get.tile.band(0).convert(FloatConstantNoDataCellType).localMultiply(0.0001)
+    safeConvert(raster.get.tile.band(0),FloatConstantNoDataCellType).localMultiply(0.0001)
 
   }
 
