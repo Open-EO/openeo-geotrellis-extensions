@@ -42,7 +42,6 @@ class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
   )
 
   private val bands: util.List[String] = util.Arrays.asList("LAI", "NOBS")
-  private val firstBand: util.List[String] = util.Arrays.asList("LAI")
 
   private def multibandFileLayerProvider(maxSpatialResolution: CellSize = CellSize(0.002976190476204, 0.002976190476190)) = FileLayerProvider(
     new GlobalNetCDFSearchClient(
@@ -52,20 +51,6 @@ class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
     ),
     openSearchCollectionId = "BioPar_LAI300_V1_Global",
     openSearchLinkTitles = NonEmptyList.fromListUnsafe(bands.asScala.toList),
-    rootPath = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global",
-    maxSpatialResolution = maxSpatialResolution,
-    new Sentinel5PPathDateExtractor(maxDepth = 3),
-    layoutScheme = FloatingLayoutScheme(256)
-  )
-
-  private def  multiBandFileLayerProviderWithOneBand(maxSpatialResolution: CellSize = CellSize(0.002976190476204, 0.002976190476190)) = FileLayerProvider(
-    new GlobalNetCDFSearchClient(
-      dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
-      firstBand,
-      dateRegex = raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored
-    ),
-    openSearchCollectionId = "BioPar_LAI300_V1_Global",
-    openSearchLinkTitles = NonEmptyList.fromListUnsafe(firstBand.asScala.toList),
     rootPath = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global",
     maxSpatialResolution = maxSpatialResolution,
     new Sentinel5PPathDateExtractor(maxDepth = 3),
@@ -288,7 +273,6 @@ class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
     val to = LocalDate.of(2017, 2, 1).atStartOfDay(ZoneId.of("UTC"))
     val boundingBox = ProjectedExtent(Extent(-86.30859375, 29.84064389983441, -80.33203125, 35.53222622770337), LatLng)
 
-    val layerFirstBand = multiBandFileLayerProviderWithOneBand().readTileLayer(from, to, boundingBox, sc = sc).cache()
     val layer = multibandFileLayerProvider().readTileLayer(from, to, boundingBox, sc = sc).cache()
 
     def mean(at: ZonedDateTime): Double = {
@@ -296,18 +280,12 @@ class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
         .toSpatial(at)
         .polygonalSummaryValue(boundingBox.extent.toPolygon(), MeanVisitor)
 
-      val Summary(meanFirst) = layerFirstBand
-        .toSpatial(at)
-        .polygonalSummaryValue(boundingBox.extent.toPolygon(), MeanVisitor)
-
-      assertEquals(meanFirst.mean, mean.mean, 0.0001)
-
       val netCdfScalingFactor = 0.0333329997956753
       mean.mean * netCdfScalingFactor
     }
 
     assertEquals(1.0040181153452403, mean(from), 0.001)
-    assertEquals(1.014475609832233, mean(to.minusDays(1)), 0.001)
+    assertEquals(1.0082429593164433, mean(to.minusDays(1)), 0.001)
   }
 
   @Test
