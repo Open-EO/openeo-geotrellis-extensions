@@ -1819,7 +1819,7 @@ class FileLayerProviderTest extends RasterMatchers {
       .crop(projectedPolygons.extent.extent)
       .stitch()
 
-    MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs).write(s"/tmp/testAngleBandsFileNotFoundIsSoftError_$loadPerProduct.tif")
+    // MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs).write(s"/tmp/testAngleBandsFileNotFoundIsSoftError_$loadPerProduct.tif")
 
     assertEquals(2, baseLayer.count()) // tiles for overlapping features/spatial keys are merged (S2A gets precedence)
 
