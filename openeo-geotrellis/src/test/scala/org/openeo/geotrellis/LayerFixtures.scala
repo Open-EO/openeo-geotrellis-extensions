@@ -1970,8 +1970,6 @@ for p in l:
   }
 
   def stacMissingAngleBandsFileCollection: PyramidFactory = {
-    // TODO: add features but point SZA to a non-existing file
-
     val openSearchClient = new FixedFeaturesOpenSearchClient
     val resolution = 10
     val bandNames = util.Arrays.asList("B04", "granule_metadata##0", "granule_metadata##1")
