@@ -39,6 +39,11 @@ object TestConditions {
     folder.exists && folder.isDirectory && folder.list() != null && !folder.list().isEmpty
   }
 
+  def hasEodataData(): Boolean = {
+    val folder = Path.of("/eodata").toFile
+    folder.exists && folder.isDirectory && folder.list() != null && !folder.list().isEmpty
+  }
+
   def hasHttpCredentials: Boolean = {
     val credentialsFile = Path.of(Option(System.getProperty("http.credentials.file")).getOrElse("./http_credentials.json")).toFile
     credentialsFile.isFile && credentialsFile.exists
