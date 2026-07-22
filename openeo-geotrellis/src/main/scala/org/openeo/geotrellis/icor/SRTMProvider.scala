@@ -1,9 +1,7 @@
 package org.openeo.geotrellis.icor
 
 import java.nio.file.Paths
-
 import scala.collection.mutable.ListBuffer
-
 import geotrellis.layer.LayoutDefinition
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.CRS
@@ -11,6 +9,7 @@ import geotrellis.raster.FloatConstantNoDataCellType
 import geotrellis.raster.Tile
 import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.vector.Extent
+import org.openeo.geotrellis.GeneralUtils.safeConvert
 
 object SRTMProvider{
   
@@ -52,7 +51,7 @@ class SRTMProvider(basePath:String = "/eodata/auxdata/SRTMGL1/dem") extends Elev
     )
 
     // convert to km and extract the tile
-    val mergedTile=mergedRasters.tile.band(0).convert(FloatConstantNoDataCellType).localMultiply(0.001)
+    val mergedTile = safeConvert(mergedRasters.tile.band(0), FloatConstantNoDataCellType).localMultiply(0.001)
     
 //    // write reference test data - don't forget to re-comment when not needed
 //    MultibandGeoTiff( MultibandTile(mergedTile), targetExtent, targetCRS).write("test_srtm_tile_%d_%d.tif".format(key.col,key.row))

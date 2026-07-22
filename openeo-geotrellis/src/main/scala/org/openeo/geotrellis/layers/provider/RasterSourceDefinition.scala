@@ -10,7 +10,20 @@ import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import java.net.URI
 import java.nio.file.Paths
 
-case class RasterSourceDefinition(link: Link, bandIndex: Int, feature:Feature, rootPath:String, targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, featureExtentInLayout: Option[GridExtent[Long]], targetResolution: Option[CellSize], maxResolution: CellSize, datacubeParams: Option[DataCubeParameters], experimental: Boolean, bandName: String) {
+case class RasterSourceDefinition(
+                                   link: Link,
+                                   bandIndex: Int,
+                                   feature: Feature,
+                                   rootPath: String,
+                                   targetCellType: Option[TargetCellType],
+                                   targetExtent: ProjectedExtent,
+                                   featureExtentInLayout: Option[GridExtent[Long]],
+                                   targetResolution: Option[CellSize],
+                                   maxResolution: CellSize,
+                                   datacubeParams: Option[DataCubeParameters],
+                                   experimental: Boolean,
+                                   bandName: String,
+                                   softErrors: Boolean) {
 
   lazy val dataPath: String = deriveFilePath(link.href)
 

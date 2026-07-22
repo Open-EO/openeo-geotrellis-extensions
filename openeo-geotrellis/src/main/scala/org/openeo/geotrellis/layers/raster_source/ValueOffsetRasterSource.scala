@@ -5,7 +5,7 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile}
 import geotrellis.vector.Extent
-import org.openeo.geotrellis.GeneralUtils.toSigned
+import org.openeo.geotrellis.GeneralUtils.{safeConvert, toSigned}
 import org.slf4j.LoggerFactory
 
 /**
@@ -42,9 +42,9 @@ class ValueOffsetRasterSource(val rasterSource: RasterSource,
     if (pixelValueScale == 1.0 && pixelValueOffset == 0) {
       bandTile
     } else if (cellType.isFloatingPoint) {
-      bandTile.convert(cellType).mapIfSetDouble(x => pixelValueScale*x + pixelValueOffset)
+      safeConvert(bandTile, cellType).mapIfSetDouble(x => pixelValueScale*x + pixelValueOffset)
     } else {
-      bandTile.convert(cellType).mapIfSet(i => (i * pixelValueScale + pixelValueOffset).toInt)
+      safeConvert(bandTile, cellType).mapIfSet(i => (i * pixelValueScale + pixelValueOffset).toInt)
     }
   }
 

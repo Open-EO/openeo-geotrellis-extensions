@@ -339,4 +339,9 @@ package object geotrelliscommon {
 
     (result, Duration.between(start, end))
   }
+
+  object UdfLanguage extends Enumeration {
+    type UdfLanguage = Value
+    val Python, Scala = Value
+  }
 }
