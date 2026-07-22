@@ -140,7 +140,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
           // out by the geometry) —S1GrdRasterSource we detect it as dotLook < -1 (impossible) or
           // by thetaEl > thetaLoc (ground is steeper than look angle).
           val isLayover = thetaLoc < 0.0 || thetaEl > math.Pi / 2.0
-          val isShadow  = dotLook  > 0.0
+          val isShadow  = thetaLoc > math.Pi / 2.0
 
           if (doShadow) {
             shadowLayover.get.setDouble(c, r,
