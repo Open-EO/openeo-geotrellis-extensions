@@ -11,6 +11,7 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.runners.Parameterized.Parameters
@@ -41,7 +42,10 @@ object ComputeStatsGeotrellisAdapterTest {
   def setUpSpark(): Unit = {
     sc = {
 
-      val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
+      val conf = new SparkConf()
+        .set("spark.driver.bindAddress", "127.0.0.1")
+        .set("spark.driver.host", "127.0.0.1")
+        .set("spark.local.ip", "127.0.0.1")
       SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, conf)
     }
   }
@@ -225,8 +229,8 @@ class ComputeStatsGeotrellisAdapterTest() {
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def compute_median_ndvi_timeseries_on_accumulo_datacube(): Unit = {
-    val minDateString = "2017-11-01T00:00:00Z"
-    val maxDateString = "2017-11-16T02:00:00Z"
+    val minDateString = "2017-12-01T00:00:00Z"
+    val maxDateString = "2017-12-16T00:00:00Z"
     val minDate = ZonedDateTime.parse(minDateString)
 
     val maxDate = ZonedDateTime.parse(maxDateString)
@@ -251,9 +255,6 @@ class ComputeStatsGeotrellisAdapterTest() {
     val maxDateString = "2017-12-16T00:00:00Z"
 
     val polygons = Seq(polygon1, polygon2, polygon4).map(_.reproject(LatLng,CRS.fromEpsgCode(32631)))
-    val srs = "EPSG:4326"
-    val band = 0
-
 
     val datacube = LayerFixtures.s2_fapar(minDateString, maxDateString,polygons,"EPSG:32631")
 
