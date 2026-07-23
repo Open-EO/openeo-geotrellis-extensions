@@ -156,4 +156,50 @@ package object onnx {
     flattenedResult
   }
 
+  def predictOnnxBatch(tiles: Seq[MultibandTile], model: String): Seq[MultibandTile] = {
+    val modelPath = Paths.get(model)
+    val (modelFile, isTemp) = if (Files.exists(modelPath)) {
+      (modelPath,false)
+    } else {
+      val tempFileName = Files.createTempFile(null, ".onnx")
+      FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
+      (tempFileName,true)
+    }
+    val tile = tiles.head
+    val bandCount = tile.bandCount
+    val env = OrtEnvironment.getEnvironment()
+    val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
+    val inputNames = session.getInputNames
+    val outputNames = session.getOutputNames
+
+    val inputName = inputNames.toArray()(0).asInstanceOf[String]
+    val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
+    val outputName = outputNames.toArray()(0).asInstanceOf[String]
+    val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
+
+    val inputType = inputInfo.`type`
+    val outputType = outputInfo.`type`
+    val inputShape = inputInfo.getShape
+    val outputShape = outputInfo.getShape
+
+    val errorMessageInput = checkShape(inputShape, tile.cols, tile.rows, Some(bandCount))
+    if (errorMessageInput.nonEmpty)
+      throw new IllegalArgumentException(s"ONNX: unsupported input shape: $errorMessageInput.")
+//    val errorMessageOutput = checkShape(outputShape, tile.cols, tile.rows)
+//    if (errorMessageOutput.nonEmpty)
+//      throw new IllegalArgumentException(s"ONNX: unsupported output shape: $errorMessageOutput.")
+    val result = tiles.map(tile => {
+      val inputArray = reshape(inputType, tile, inputShape)
+      val tensor = OnnxTensor.createTensor(env, inputArray)
+      val inputs = java.util.Map.of(inputName, tensor)
+      val onnxResults = session.run(inputs)
+      val resultValue = onnxResults.get(0).getValue.asInstanceOf[Array[_]]
+      val flattenedResult = flattenNestedArray(resultValue, outputShape, outputType)
+      flattenedResult
+    })
+    if (isTemp) Files.delete(modelFile)
+    result
+
+  }
+
 }

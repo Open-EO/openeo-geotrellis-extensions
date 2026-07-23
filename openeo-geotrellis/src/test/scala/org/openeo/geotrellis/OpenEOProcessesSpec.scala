@@ -1269,8 +1269,8 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   @Test
   def testPredictONNXSpatialSTAC(): Unit = {
-    val layoutCols = 3
-    val layoutRows = 2
+    val layoutCols = 10
+    val layoutRows = 5
     val tileSize = 256
 
     def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
@@ -1282,7 +1282,6 @@ class OpenEOProcessesSpec extends RasterMatchers {
       val resultCube = new OpenEOProcesses().predictONNXSTAC(datacube,modelString)
       assertEquals(expectedType, resultCube.metadata.cellType)
       val theResultTile = resultCube.stitch().tile
-      resultCube.collect()
       assertEquals(expectedNBands,theResultTile.bandCount)
       (0 until expectedNBands).foreach {n =>
         assertArrayEquals(expectedBands(n), theResultTile.band(n).toArray())
