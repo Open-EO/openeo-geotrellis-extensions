@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutScheme, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileLayerMetadata}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{CellSize, CellType, MultibandTile, Raster, RasterExtent, Tile}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, MultibandTile, Raster, RasterExtent, Tile}
 import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, GDALWarpOptions}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods, _}
 import geotrellis.spark.tiling.Tiler
@@ -62,6 +62,10 @@ object NetCDFCollection {
 
     val features: RDD[(TemporalProjectedExtent, MultibandTile)] = items.repartition(stacItems.length).flatMap(f => {
       val allTiles = f.links.flatMap(l => {
+        val targetCellType = if (l.datatype.isDefined){
+          val dataType = l.datatype.get.withNoData(l.nodata)
+          Some(ConvertTargetCellType(dataType))
+        }else None
         l.bandNames.get.flatMap(b => {
           var gdalNetCDFLink = s"${l.href.toString.replace("file:", "NETCDF:")}:${b}"
           if (!gdalNetCDFLink.startsWith("NETCDF:")) {
@@ -69,7 +73,7 @@ object NetCDFCollection {
           }
           try {
 
-            val rs = GDALRasterSource(gdalNetCDFLink, new GDALWarpOptions(outputFormat = None))
+            val rs = GDALRasterSource(gdalNetCDFLink, new GDALWarpOptions(outputFormat = None), targetCellType = targetCellType)
 
             /**
              * Retrieving metadata using dataset directly, because sometimes metadata is so large that it doesn't fit the array allocated by GDALWarp
