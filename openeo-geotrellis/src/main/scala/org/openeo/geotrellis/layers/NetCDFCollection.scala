@@ -119,6 +119,7 @@ object NetCDFCollection {
 
     val cellTypes = features.map(_._2.cellType)
     val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
+    logger.info(s"load_stac: cellType for netCDF collection is ${cellType}, from cellTypes ${cellTypes.distinct().collect().mkString("(", ", ", ")")}")
 
     val extent = bboxWGS84.reproject(LatLng, crs(0))
     val layout = LayoutDefinition(RasterExtent(extent, CellSize(resolutions(0), resolutions(0))), 128)
