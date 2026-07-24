@@ -1283,6 +1283,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             Some(ConvertTargetCellType(dataType.get.withNoData(nodata)))
           }
           else None
+          logger.debug(s"deriveRasterSourcesUsingRasterSourceProviders: link ${link.href} has datatype ${dataType} and nodata ${nodata} and pixelValueScale ${pixelValueScale} and pixelValueOffset ${pixelValueOffset}")
 
           //special case handling for data that does not declare nodata properly
           val targetCellType = link.title match {
