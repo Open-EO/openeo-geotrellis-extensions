@@ -1807,9 +1807,7 @@ class OpenEOProcesses extends Serializable {
     val numPart1 = retiled.getNumPartitions
     if (batchSize > 1) {
     }
-    val totalTiles = retiled.count()
-    val repartitioned = retiled.repartition((totalTiles / batchSize).toInt)
-    val result = repartitioned.mapPartitions(x => {
+    val result = retiled.mapPartitions(x => {
       val (keys,multiTiles) = x.toSeq.unzip
       if (multiTiles.isEmpty) x
       else {

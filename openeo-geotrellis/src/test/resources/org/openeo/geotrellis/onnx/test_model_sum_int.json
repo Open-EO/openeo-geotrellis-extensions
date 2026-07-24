@@ -39,7 +39,7 @@
         "description": "Sum of bands",
         "data_type": "int32",
         "shape": [1, 256, 256],
-        "dim_order": ["bands", "height", "width"]
+        "dim_order": ["batch", "height", "width"]
       }
     ]
   },

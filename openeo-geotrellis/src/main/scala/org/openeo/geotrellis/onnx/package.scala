@@ -83,32 +83,32 @@ package object onnx {
     }
   }
 
-  def reshape(inputType:OnnxJavaType, tile:MultibandTile, inputShape:Array[Long]): AnyRef = {
+  def reshape(inputType:OnnxJavaType, tiles:Array[MultibandTile], inputShape:Array[Long]): AnyRef = {
     val inputArray = inputType match {
       case OnnxJavaType.FLOAT =>
-        if (!tile.cellType.isInstanceOf[FloatCells])
-          throw new IllegalArgumentException(s"ONNX: onnx type float does not match celltype ${tile.cellType}.")
-        val flat = tile.bands.flatMap(x => x.toArrayTile().asInstanceOf[FloatArrayTile].array).toArray
+        if (!tiles.head.cellType.isInstanceOf[FloatCells])
+          throw new IllegalArgumentException(s"ONNX: onnx type float does not match celltype ${tiles.head.cellType}.")
+        val flat  = tiles.flatMap(_.bands.flatMap(x => x.toArrayTile().asInstanceOf[FloatArrayTile].array).toArray)
         OrtUtil.reshape(flat, inputShape)
       case OnnxJavaType.DOUBLE =>
-        if (!tile.cellType.isInstanceOf[DoubleCells])
-          throw new IllegalArgumentException(s"ONNX: onnx type double does not match celltype ${tile.cellType}.")
-        val flat = tile.bands.flatMap(x => x.toArrayTile().asInstanceOf[DoubleArrayTile].array).toArray
+        if (!tiles.head.cellType.isInstanceOf[DoubleCells])
+          throw new IllegalArgumentException(s"ONNX: onnx type double does not match celltype ${tiles.head.cellType}.")
+        val flat  = tiles.flatMap(_.bands.flatMap(x => x.toArrayTile().asInstanceOf[DoubleArrayTile].array).toArray)
         OrtUtil.reshape(flat, inputShape)
       case OnnxJavaType.INT32 =>
-        if (!tile.cellType.isInstanceOf[IntCells])
-          throw new IllegalArgumentException(s"ONNX: onnx type int does not match celltype ${tile.cellType}.")
-        val flat = tile.bands.flatMap(x => x.toArrayTile().asInstanceOf[IntArrayTile].array).toArray
+        if (!tiles.head.cellType.isInstanceOf[IntCells])
+          throw new IllegalArgumentException(s"ONNX: onnx type int does not match celltype ${tiles.head.cellType}.")
+        val flat  = tiles.flatMap(_.bands.flatMap(x => x.toArrayTile().asInstanceOf[IntArrayTile].array).toArray)
         OrtUtil.reshape(flat, inputShape)
       case OnnxJavaType.INT16 =>
-        if (!tile.cellType.isInstanceOf[ShortCells])
-          throw new IllegalArgumentException(s"ONNX: onnx type short does not match celltype ${tile.cellType}.")
-        val flat = tile.bands.flatMap(x => x.toArrayTile().asInstanceOf[ShortArrayTile].array).toArray
+        if (!tiles.head.cellType.isInstanceOf[ShortCells])
+          throw new IllegalArgumentException(s"ONNX: onnx type short does not match celltype ${tiles.head.cellType}.")
+        val flat  = tiles.flatMap(_.bands.flatMap(x => x.toArrayTile().asInstanceOf[ShortArrayTile].array).toArray)
         OrtUtil.reshape(flat, inputShape)
       case OnnxJavaType.INT8 =>
-        if (!tile.cellType.isInstanceOf[ByteCells])
-          throw new IllegalArgumentException(s"ONNX: onnx type byte does not match celltype ${tile.cellType}.")
-        val flat = tile.bands.flatMap(x => x.toArrayTile().asInstanceOf[ByteArrayTile].array).toArray
+        if (!tiles.head.cellType.isInstanceOf[ByteCells])
+          throw new IllegalArgumentException(s"ONNX: onnx type byte does not match celltype ${tiles.head.cellType}.")
+        val flat  = tiles.flatMap(_.bands.flatMap(x => x.toArrayTile().asInstanceOf[ByteArrayTile].array).toArray)
         OrtUtil.reshape(flat, inputShape)
       case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported input type of ONNX model : $onnxType")
     }
@@ -146,7 +146,7 @@ package object onnx {
     val errorMessageOutput = checkShape(outputShape, tile.cols, tile.rows)
     if (errorMessageOutput.nonEmpty)
       throw new IllegalArgumentException(s"ONNX: unsupported output shape: $errorMessageOutput.")
-    val inputArray = reshape(inputType, tile, inputShape)
+    val inputArray = reshape(inputType, Array(tile), inputShape)
     val tensor = OnnxTensor.createTensor(env, inputArray)
     val inputs = java.util.Map.of(inputName, tensor)
     val onnxResults = session.run(inputs)
@@ -189,7 +189,7 @@ package object onnx {
 //    if (errorMessageOutput.nonEmpty)
 //      throw new IllegalArgumentException(s"ONNX: unsupported output shape: $errorMessageOutput.")
     val result = tiles.map(tile => {
-      val inputArray = reshape(inputType, tile, inputShape)
+      val inputArray = reshape(inputType, Array(tile), inputShape)
       val tensor = OnnxTensor.createTensor(env, inputArray)
       val inputs = java.util.Map.of(inputName, tensor)
       val onnxResults = session.run(inputs)
