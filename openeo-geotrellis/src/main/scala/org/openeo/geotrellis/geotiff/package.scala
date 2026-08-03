@@ -1534,7 +1534,7 @@ package object geotiff {
       line => cerrBuffer appendAll line + "\n",
     )
 
-    val args = Seq("gdalinfo", rasterFilePath.toString, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL")
+    val args = Seq("gdalinfo", rasterFilePath.toString, "-json", "-stats")
     val exitCode = args ! processLogger
 
     if (cerrBuffer.nonEmpty) {
