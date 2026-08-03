@@ -1277,7 +1277,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
           val dataType = link.datatype
-          val nodata = link.nodata
+          val nodata = if(link.nodata.isEmpty && (link.title.contains("SCENECLASSIFICATION") || link.title.contains("SCL"))) {
+            logger.info(s"Feature ${feature.id} has a link with title ${link.title} that does not declare nodata, assuming 0 is nodata.")
+            Some(0.0)
+          } else link.nodata
 
           val cellTypeSTAC = if (dataType.isDefined){
             Some(ConvertTargetCellType(dataType.get.withNoData(nodata)))
