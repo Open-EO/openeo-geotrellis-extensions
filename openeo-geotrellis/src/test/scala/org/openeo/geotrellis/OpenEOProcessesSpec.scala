@@ -1291,7 +1291,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val tileDouble = (i:Double) =>  DoubleArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     val tileInt = (i:Int) => IntArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     val tileShort = (i:Short) => ShortArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
-    val resultArray = (i:Int) =>  Array.fill(layoutCols * tileSize * layoutRows * tileSize)(i)
+    def resultArray(i:Int, ts:Int = 256): Array[Int] = {Array.fill(layoutCols * ts * layoutRows * ts)(i)}
 
 
 

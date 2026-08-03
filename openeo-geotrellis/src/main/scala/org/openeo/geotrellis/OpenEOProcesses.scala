@@ -1783,14 +1783,6 @@ class OpenEOProcesses extends Serializable {
           logger.warn(s"ONNX: input dim order does not have 'height' as the third dimension, but got ${inputDimOrder(2)}.")
         if (inputDimOrder(3) != "width")
           logger.warn(s"ONNX: input dim order does not have 'width' as the fourth dimension, but got ${inputDimOrder(3)}.")
-        outputDimOrder.contains("batch") match {
-          case true =>
-            if (inputShape(0) != outputShape(outputDimOrder.indexOf("batch"))){
-              throw new IllegalArgumentException(s"ONNX: batch size of input and output of the model should be the same, but input=${inputShape(0)} is different from output=${outputShape(outputDimOrder.indexOf("batch"))}.")
-            }
-          case false =>
-            throw new IllegalArgumentException(s"ONNX: output dim order does not have 'batch' as a dimension, but input does: output dimensions are $outputDimOrder.")
-        }
         val tileCols = datacube.metadata.tileLayout.tileCols
         val tileRows = datacube.metadata.tileLayout.tileRows
         (inputShape(3), inputShape(2), inputShape(0).toInt)
@@ -1811,7 +1803,7 @@ class OpenEOProcesses extends Serializable {
       val (keys,multiTiles) = x.toSeq.unzip
       if (multiTiles.isEmpty) x
       else {
-        val predicted = onnx.predictOnnxBatch(multiTiles, modelUrl).iterator
+        val predicted = onnx.predictOnnxBatch(multiTiles, model).iterator
         keys.zip(predicted).iterator
       }
 

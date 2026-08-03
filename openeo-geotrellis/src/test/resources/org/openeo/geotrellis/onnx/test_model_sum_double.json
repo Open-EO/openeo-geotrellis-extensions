@@ -38,8 +38,8 @@
         "name": "output",
         "description": "Sum of bands",
         "data_type": "float64",
-        "shape": [1, 256, 256],
-        "dim_order": ["batch", "height", "width"]
+        "shape": [256, 256],
+        "dim_order": ["height", "width"]
       }
     ]
   },
