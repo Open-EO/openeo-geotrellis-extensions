@@ -34,6 +34,7 @@ import spire.math.Integral
 import spire.syntax.cfor.cfor
 
 import java.nio.file.{Files, Path, Paths}
+import java.io.RandomAccessFile
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util
@@ -42,6 +43,7 @@ import java.util.{ArrayList, Collections, Map, UUID, List => JList}
 import scala.jdk.CollectionConverters._
 import scala.language.implicitConversions
 import scala.reflect._
+import scala.util.Using
 
 
 class ByKeyPartitionerKnowKeyAmount(numPartitionsArgument: Int) extends Partitioner {
@@ -56,7 +58,11 @@ package object geotiff {
 
   private val logger = LoggerFactory.getLogger(getClass)
   private val secondsPerDay = 86400L
-  private val gdalProjLib = Option(System.getenv("OPENEO_GDAL_PROJ_LIB")).getOrElse("/usr/share/proj")
+  private final val GdalInfoFileCorruptErrors = Seq(
+    "ZIPDecode:Decoding error",
+    "ZSTDDecode:Error in ZSTD_decompressStream()"
+  )
+  private final val BigTiffSizeThresholdBytes = math.pow(2, 32).toLong
 
   class MultiBandGeoTiffWithCompression(val t: MultibandGeoTiff) {
 
@@ -1530,15 +1536,25 @@ package object geotiff {
     val outputBuffer = new StringBuilder
     val cerrBuffer = new StringBuilder
     val processLogger = ProcessLogger(
-      line => outputBuffer appendAll line + "\n",
-      line => cerrBuffer appendAll line + "\n",
+      fout = line => outputBuffer appendAll line + "\n",
+      ferr = line => cerrBuffer appendAll line + "\n",
     )
 
     val args = Seq("gdalinfo", rasterFilePath.toString, "-json", "-stats")
     val exitCode = args ! processLogger
 
     if (cerrBuffer.nonEmpty) {
-      logger.info(s"gdalinfo warnings: ${cerrBuffer.toString()}") // Mostly harmless messages
+      val stderr = cerrBuffer.toString.trim
+
+      if (GdalInfoFileCorruptErrors.exists(stderr.contains)) {
+        if (Files.size(rasterFilePath) >= BigTiffSizeThresholdBytes && isClassicTiff(rasterFilePath)) {
+          throw new IllegalStateException(s"$rasterFilePath is corrupt (too large for a classic GeoTIFF); output was: $stderr")
+        }
+
+        throw new IllegalStateException(s"$rasterFilePath is corrupt; output was: $stderr")
+      }
+
+      logger.warn(s"gdalinfo warnings: $stderr") // Mostly harmless messages
     }
     val outputBufferString = outputBuffer.toString().trim
     if (exitCode == 0) {
@@ -1552,6 +1568,11 @@ package object geotiff {
     }
   }
 
+  private def isClassicTiff(rasterFilePath: Path): Boolean =
+    Using(new RandomAccessFile(rasterFilePath.toFile, "r")) { f =>
+      val firstFourBytes = f.readInt()
+      firstFourBytes == 0x49492A00 || firstFourBytes == 0x4D4D002A
+    }.getOrElse(false)
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: LayoutDefinition) extends Seq[(K, V)] with Metadata[LayoutDefinition] {
     override def length: Int = tiles.size
