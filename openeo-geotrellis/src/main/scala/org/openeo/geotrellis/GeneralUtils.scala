@@ -2,7 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.layer.LayoutDefinition
 import geotrellis.proj4.CRS
-import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.vector.Extent
 import org.slf4j.LoggerFactory
 
@@ -59,30 +59,30 @@ object GeneralUtils {
   }
 
   def cellTypeUnionWithNoData(leftCellType:CellType, rightCellType:CellType):CellType = {
-    def getNodataAndMax(cellType:CellType):(Option[Double],Double) = {
+    def getNodataMaxMin(cellType:CellType):(Option[Double],Double,Double) = {
       cellType match {
-        case BitCellType => (None, 1)
-        case ByteCellType => (None, Byte.MaxValue)
-        case UByteCellType => (None, 255)
-        case ShortCellType => (None, Short.MaxValue)
-        case UShortCellType => (None, 65535)
-        case IntCellType => (None, Int.MaxValue)
-        case FloatCellType => (None, Float.MaxValue)
-        case DoubleCellType => (None, Double.MaxValue)
-        case ByteConstantNoDataCellType => (Some(byteNODATA), Byte.MaxValue)
-        case UByteConstantNoDataCellType => (Some(ubyteNODATA), 255)
-        case ShortConstantNoDataCellType => (Some(shortNODATA), Short.MaxValue)
-        case UShortConstantNoDataCellType => (Some(ushortNODATA), 65535)
-        case IntConstantNoDataCellType => (Some(NODATA), Int.MaxValue)
-        case FloatConstantNoDataCellType => (Some(floatNODATA), Float.MaxValue)
-        case DoubleConstantNoDataCellType => (Some(doubleNODATA), Double.MaxValue)
-        case ct: ByteUserDefinedNoDataCellType => (Some(ct.noDataValue), Byte.MaxValue)
-        case ct: UByteUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 255)
-        case ct: ShortUserDefinedNoDataCellType => (Some(ct.noDataValue), Short.MaxValue)
-        case ct: UShortUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 65535)
-        case ct: IntUserDefinedNoDataCellType => (Some(ct.noDataValue), Int.MaxValue)
-        case ct: FloatUserDefinedNoDataCellType => (Some(ct.noDataValue), Float.MaxValue)
-        case ct: DoubleUserDefinedNoDataCellType => (Some(ct.noDataValue), Double.MaxValue)
+        case BitCellType => (None, 1,0)
+        case ByteCellType => (None, Byte.MaxValue, Byte.MinValue)
+        case UByteCellType => (None, 255, 0)
+        case ShortCellType => (None, Short.MaxValue, Short.MinValue)
+        case UShortCellType => (None, 65535, 0)
+        case IntCellType => (None, Int.MaxValue, Int.MinValue)
+        case FloatCellType => (None, Float.MaxValue, Float.MinValue)
+        case DoubleCellType => (None, Double.MaxValue, Double.MinValue)
+        case ByteConstantNoDataCellType => (Some(byteNODATA), Byte.MaxValue, Byte.MinValue)
+        case UByteConstantNoDataCellType => (Some(ubyteNODATA), 255, 0)
+        case ShortConstantNoDataCellType => (Some(shortNODATA), Short.MaxValue, Short.MinValue)
+        case UShortConstantNoDataCellType => (Some(ushortNODATA), 65535, 0)
+        case IntConstantNoDataCellType => (Some(NODATA), Int.MaxValue, Int.MinValue)
+        case FloatConstantNoDataCellType => (Some(floatNODATA), Float.MaxValue, Float.MinValue)
+        case DoubleConstantNoDataCellType => (Some(doubleNODATA), Double.MaxValue, Double.MinValue)
+        case ct: ByteUserDefinedNoDataCellType => (Some(ct.noDataValue), Byte.MaxValue, Byte.MinValue)
+        case ct: UByteUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 255, 0)
+        case ct: ShortUserDefinedNoDataCellType => (Some(ct.noDataValue), Short.MaxValue, Short.MinValue)
+        case ct: UShortUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 65535, 0)
+        case ct: IntUserDefinedNoDataCellType => (Some(ct.noDataValue), Int.MaxValue, Int.MinValue)
+        case ct: FloatUserDefinedNoDataCellType => (Some(ct.noDataValue), Float.MaxValue, Float.MinValue)
+        case ct: DoubleUserDefinedNoDataCellType => (Some(ct.noDataValue), Double.MaxValue, Double.MinValue)
       }
     }
 
@@ -93,20 +93,23 @@ object GeneralUtils {
         case _: UByteCells => ShortUserDefinedNoDataCellType(Short.MaxValue)
         case _: ShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
         case _: UShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
-        case _: IntCells => DoubleConstantNoDataCellType
+        case _: IntCells => FloatConstantNoDataCellType
         case _: FloatCells => DoubleConstantNoDataCellType
         case _: DoubleCells => DoubleConstantNoDataCellType
       }
     }
 
     val dataType = cellTypeUnion(leftCellType,rightCellType)
-    val (maybeNodataLeft,maxLeft) = getNodataAndMax(leftCellType)
-    val (maybeNodataRight,maxRight) = getNodataAndMax(rightCellType)
+    val (maybeNodataLeft, maxLeft, minLeft) = getNodataMaxMin(leftCellType)
+    val (maybeNodataRight, maxRight, minRight) = getNodataMaxMin(rightCellType)
 
     if (maybeNodataLeft.isEmpty || maybeNodataRight.isEmpty){
       if (maybeNodataLeft.isDefined) {
         val nodataLeft = maybeNodataLeft.get
         if (maxRight < nodataLeft) {
+          dataType.withNoData(Some(nodataLeft))
+        }
+        else if (minRight > nodataLeft){
           dataType.withNoData(Some(nodataLeft))
         }
         else if (nodataLeft.isNaN){
@@ -124,6 +127,9 @@ object GeneralUtils {
       } else if (maybeNodataRight.isDefined) {
         val nodataRight = maybeNodataRight.get
         if (maxLeft < nodataRight) {
+          dataType.withNoData(Some(nodataRight))
+        }
+        else if (minLeft > nodataRight){
           dataType.withNoData(Some(nodataRight))
         }
         else if (nodataRight.isNaN){
@@ -159,6 +165,9 @@ object GeneralUtils {
         } else if (nodataLeft > nodataRight) {
           if (maxRight < nodataLeft) {
             dataType.withNoData(Some(nodataLeft))
+          }
+          else if (minLeft > nodataRight ){
+            dataType.withNoData(Some(nodataRight))
           } else {
             if (isUnSigned(leftCellType) || isUnSigned(rightCellType)) {
               if (leftCellType.bits >= rightCellType.bits){
@@ -173,6 +182,9 @@ object GeneralUtils {
         } else { // nodataRight > nodataLeft
           if (maxLeft < nodataRight) {
             dataType.withNoData(Some(nodataRight))
+          }
+          else if (minRight > nodataLeft ){
+            dataType.withNoData(Some(nodataLeft))
           } else {
             if (isUnSigned(leftCellType) || isUnSigned(rightCellType)) {
               if (leftCellType.bits >= rightCellType.bits){
@@ -197,15 +209,50 @@ object GeneralUtils {
     }
   }
 
+
+  /**
+   * Works around geotrellis issue.
+   * https://github.com/locationtech/geotrellis/issues/3525
+   */
+  def safeConvert(tile: Tile,ct:CellType): Tile = {
+    if(tile.isInstanceOf[ConstantTile] && tile.getDouble(0,0).isNaN ){
+      EmptyMultibandTile.empty(ct, tile.cols, tile.rows)
+    }else{
+      tile.convert(ct)
+    }
+  }
+
+
   def layoutMerged(layoutLeft:LayoutDefinition, layoutRight:LayoutDefinition, crsLeft: CRS, crsRight: CRS): LayoutDefinition = {
     if (layoutLeft == layoutRight & crsLeft == crsRight) layoutLeft
     else {
-      val reprojectedLayoutRight = layoutRight.extent.reproject(crsRight, crsLeft)
-      val combinedExtent = reprojectedLayoutRight.combine(layoutLeft.extent)
-      val mappedLayout = layoutLeft.mapTransform.apply(combinedExtent)
-      val tileLayout = TileLayout(mappedLayout.width, mappedLayout.height, layoutLeft.tileCols, layoutLeft.tileRows)
-      LayoutDefinition(combinedExtent, tileLayout)
+      val reprojectedExtentRight = layoutRight.extent.reproject(crsRight, crsLeft)
+      val result = layoutDefinitionMergeWithEqualCellSize(layoutLeft, reprojectedExtentRight)
+      logger.info(s"layoutMerged: layoutLeft=$layoutLeft, layoutRight=$layoutRight, crsLeft=$crsLeft, crsRight=$crsRight, result layout =$result")
+      result
     }
+  }
+
+  private def layoutDefinitionMergeWithEqualCellSize(layoutLeft:LayoutDefinition, extentRight:Extent): LayoutDefinition = {
+    val combinedExtent = extentRight.extent.combine(layoutLeft.extent)
+    
+    val ratioWidth = combinedExtent.width / layoutLeft.extent.width
+    val ratioTileWidth = ratioWidth*layoutLeft.layoutCols
+    val newLayoutCols = Math.ceil(ratioTileWidth)
+    val xMax = if (math.abs(ratioTileWidth - math.round(ratioTileWidth)) > 1e-6){
+      combinedExtent.xmin + newLayoutCols/layoutLeft.layoutCols * layoutLeft.extent.width
+    } else combinedExtent.xmax
+
+    val ratioHeight = combinedExtent.height / layoutLeft.extent.height
+    val ratioTileHeight = ratioHeight*layoutLeft.layoutRows
+    val newLayoutRows = Math.ceil(ratioTileHeight)
+    val yMax = if (math.abs(ratioTileHeight - math.round(ratioTileHeight)) > 1e-6){
+      combinedExtent.ymin + newLayoutRows/layoutLeft.layoutRows * layoutLeft.extent.height
+    } else combinedExtent.ymax
+
+
+    val tileLayout = TileLayout(newLayoutCols.toInt, newLayoutRows.toInt, layoutLeft.tileCols, layoutLeft.tileRows)
+    LayoutDefinition(Extent(combinedExtent.xmin,combinedExtent.ymin,xMax, yMax), tileLayout)
   }
 
   private def crossesAntimeridian(bbox: Extent): Boolean = {

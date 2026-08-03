@@ -155,7 +155,6 @@
         <dependency>
             <groupId>com.azavea.geotrellis</groupId>
             <artifactId>gdal-warp-bindings</artifactId>
-            <version>${gdal-bindings.version}</version>
         </dependency>
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>

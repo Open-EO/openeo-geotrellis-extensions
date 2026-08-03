@@ -7,7 +7,7 @@ import geotrellis.raster.{CellType, CropOptions, CroppedTile, GridBounds, GridEx
 import geotrellis.vector.Extent
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
-import org.openeo.geotrellis.GeneralUtils.cellTypeUnion
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrelliscommon.ResampledTile
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
@@ -96,7 +96,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
   }
 
-  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => cellTypeUnion(a, b))
+  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => cellTypeUnionWithNoData(a, b))
 
   override def name: SourceName = sources.head.name
 
@@ -130,7 +130,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       }).groupBy(_._1)
       rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
         val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
-        Raster(MultibandTile(sortedRasters.map(_.tile.band(0).convert(cellType))), sortedRasters.head.extent)
+        Raster(MultibandTile(sortedRasters.map(raster => safeConvert(raster.tile.band(0), cellType))), sortedRasters.head.extent)
       }).iterator
     }
 
@@ -158,7 +158,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }.iterator.to(Seq)
 
     if (singleBandRasters.size == selectedSources.size)
-      Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType))), singleBandRasters.head.extent))
+      Some(Raster(MultibandTile(singleBandRasters.map(raster => safeConvert(raster.tile, cellType))), singleBandRasters.head.extent))
     else None
   }
 
