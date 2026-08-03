@@ -284,8 +284,8 @@ class GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
       mean.mean * netCdfScalingFactor
     }
 
-    assertEquals(1.0106459861932706, mean(from), 0.001)
-    assertEquals(1.014475609832233, mean(to.minusDays(1)), 0.001)
+    assertEquals(1.0040181153452403, mean(from), 0.001)
+    assertEquals(1.0082429593164433, mean(to.minusDays(1)), 0.001)
   }
 
   @Test

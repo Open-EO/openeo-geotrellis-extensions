@@ -240,8 +240,6 @@ object LayerFixtures {
       .datacube_seq(ProjectedPolygons(polygons, crs), from_date, to_date, util.Collections.emptyMap[String, Any](), "", parameters).head._2
   }
 
-
-
   def s2_ndvi_bands(from_date: String = "2017-11-01T00:00:00Z", to_date: String = "2017-11-16T02:00:00Z", polygons:Seq[Polygon],crs:String)={
     val parameters = new DataCubeParameters
     parameters.layoutScheme = "FloatingLayoutScheme"
