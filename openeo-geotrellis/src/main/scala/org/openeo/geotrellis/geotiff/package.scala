@@ -7,7 +7,7 @@ import geotrellis.raster
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.crop._
 import geotrellis.raster.io.geotiff._
-import geotrellis.raster.io.geotiff.compression.{Compression, Compressor, DeflateCompression, Predictor, ZStdCompression}
+import geotrellis.raster.io.geotiff.compression.{Compression, Compressor, DeflateCompression, NoCompression, Predictor, ZStdCompression}
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
@@ -65,7 +65,8 @@ package object geotiff {
         options.compressionMethod match {
           case "zstd" => ZStdCompression(options.compressionLevel)
           case "deflate" => DeflateCompression(options.compressionLevel)
-          case _ => throw new IllegalArgumentException(f"Compression method ${options.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
+          case "none" => NoCompression
+          case _ => throw new IllegalArgumentException(f"Compression method ${options.compressionMethod} is not supported, supported methods are: (none, zstd, deflate (default))")
         }
       }
       if (options.compressionPredictor > 1) {
@@ -773,7 +774,8 @@ package object geotiff {
       formatOptions.compressionMethod match {
         case "zstd" => ZStdCompression(formatOptions.compressionLevel)
         case "deflate" => DeflateCompression(formatOptions.compressionLevel)
-        case _ => throw new IllegalArgumentException(f"Compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
+        case "none" => NoCompression
+        case _ => throw new IllegalArgumentException(f"Compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (none, zstd, deflate (default))")
       }
     }
     compression
@@ -785,6 +787,7 @@ package object geotiff {
       formatOptions.compressionMethod match {
         case "zstd" => ZStdCompression(formatOptions.compressionLevel)
         case "deflate" => DeflateCompression(formatOptions.compressionLevel)
+        case "none" => NoCompression
         case _ => throw new IllegalArgumentException(f"Compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
       }
     }
