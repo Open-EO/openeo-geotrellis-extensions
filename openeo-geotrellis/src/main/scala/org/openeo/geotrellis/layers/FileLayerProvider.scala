@@ -1353,15 +1353,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           return None
         }
 
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => {
-          logger.info(s"${rasterSource.cellType} is the cell type for feature ${feature.id} 1")
-          rasterSource
-        } }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
       } else if (sources.forall { case(_, idx) => idx == 0}) {
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => {
-          logger.info(s"${rasterSource.cellType} is the cell type for feature ${feature.id} 2")
-          rasterSource
-        }}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
       } else {
         logger.warn("Unexpected use of MultibandCompositeRasterSource")
         Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))

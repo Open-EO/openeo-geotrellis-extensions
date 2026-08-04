@@ -181,9 +181,16 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
     val singleBandRasters: Seq[Raster[Tile]] = selectedSources
       .iterator.map(rs => retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
-        BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0)))
+        (BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0))), rs.cellType)
       })
-      .collect { case Some(raster) => raster }.toSeq
+      .collect { case (Some(raster), sourceCellType )=> {
+        if (raster.cellType == sourceCellType) {
+          raster
+        } else {
+          logger.info(s"converting tile from ${sourceCellType} to $cellType")
+          Raster(safeConvert(raster.tile,cellType), raster.extent)
+        }
+      } }.toSeq
 
     try {
       if (singleBandRasters.isEmpty) {
