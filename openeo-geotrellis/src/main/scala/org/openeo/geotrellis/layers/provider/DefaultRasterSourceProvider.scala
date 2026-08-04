@@ -34,28 +34,34 @@ class DefaultRasterSourceProvider extends RasterSourceProvider {
     if (definition.feature.crs.isDefined && definition.feature.crs.get != null && definition.feature.crs.get.equals(definition.targetExtent.crs)) {
       // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
       if (definition.experimental) {
+        logger.info("option 1: using GDALRasterSource")
         GDALRasterSource(definition.dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(definition.theResolution), resampleMethod = Some(definition.resampleMethod)), targetCellType = definition.targetCellType)
       } else {
         val geotiffPath = GeoTiffPath(vsis3ToS3(definition.dataPath))
         if (definition.noResampleOnRead) {
           val tiffAlignment = alignmentFromDataPath(definition.dataPath, definition.targetExtent)
           val geotiffRasterSource = GeoTiffRasterSource(geotiffPath, definition.targetCellType)
+          logger.info("option 2: using ResampledRasterSource")
           new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, definition.theResolution)
         } else {
+          logger.info("option 3: using GeoTiffResampleRasterSource")
           GeoTiffResampleRasterSource(geotiffPath, definition.alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, definition.targetCellType, None)
         }
       }
     } else {
       if (definition.experimental) {
         val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(definition.theResolution), targetCRS = Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod), te = Some(definition.targetExtent.extent))
+        logger.info("option 4: using GDALRasterSource with warp options")
         GDALRasterSource(definition.dataPath.replace("/vsis3/EODATA/", "/vsis3/eodata/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = definition.targetCellType)
       } else {
         val geotiffPath = GeoTiffPath(vsis3ToS3(definition.dataPath))
         if (definition.noResampleOnRead) {
           val tiffAlignment = alignmentFromDataPath(definition.dataPath, definition.targetExtent)
           val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, tiffAlignment, definition.resampleMethod, OverviewStrategy.DEFAULT, targetCellType = definition.targetCellType, errorThreshold = 0)
+          logger.info("option 5: using ResampledRasterSource after reprojecting")
           new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, definition.theResolution)
         } else {
+          logger.info("option 6: using GeoTiffReprojectRasterSource")
           GeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, definition.alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, targetCellType = definition.targetCellType, errorThreshold = 0)
         }
       }
