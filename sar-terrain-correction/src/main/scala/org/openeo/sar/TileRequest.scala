@@ -17,27 +17,41 @@ object BackscatterNormalization {
 
 /** Processing configuration shared by all tiles in a scene.
  *
- *  @param normalization     Whether to output sigma0 or gamma0_RTC (terrain-flattened).
- *                           Default is [[BackscatterNormalization.Sigma0]].
- *  @param shadowLayoverMask When true, adds an extra output band with per-pixel
- *                           shadow/layover classification:
- *                             0 = valid, 1 = layover (θ_local < 0), 2 = shadow (terrain
- *                             facing away from radar). Default false.
+ *  @param normalization          Whether to output sigma0 or gamma0_RTC (terrain-flattened).
+ *                                Default is [[BackscatterNormalization.Sigma0]].
+ *  @param shadowLayoverMask      When true, adds an extra output band with per-pixel
+ *                                shadow/layover classification:
+ *                                  0 = valid, 1 = layover (θ_local < 0), 2 = shadow (terrain
+ *                                facing away from radar). Also enables masking of backscatter
+ *                                on shadow/layover pixels. Default false.
+ *  @param localIncidenceAngle    When true, adds an output band with the local
+ *                                (terrain-relative) incidence angle in degrees. Enabling this
+ *                                (or `shadowLayoverMask`, or gamma0_RTC normalization) requires
+ *                                computing the terrain surface normal per pixel. Default false.
+ *  @param ellipsoidIncidenceAngle When true, adds an output band with the ellipsoidal
+ *                                (look vs. smooth WGS84 ellipsoid normal) incidence angle in
+ *                                degrees. Default false.
  */
 final case class SarProcessingConfig(
   normalization: BackscatterNormalization = BackscatterNormalization.Sigma0,
-  shadowLayoverMask: Boolean              = false
+  shadowLayoverMask: Boolean               = false,
+  localIncidenceAngle: Boolean             = false,
+  ellipsoidIncidenceAngle: Boolean         = false
 ) {
   /** Total number of output bands for `nPols` polarisations.
    *
    *  Layout:
-   *    0..nPols-1             backscatter (sigma0 or gamma0) per polarisation
-   *    nPols                  ellipsoidal incidence angle (degrees)
-   *    nPols+1                local (terrain-relative) incidence angle (degrees)
-   *    nPols+2                validity mask (1=valid, 0=outside swath)
-   *    nPols+3 (optional)     shadow/layover mask (0=valid, 1=layover, 2=shadow)
+   *    0..nPols-1                        backscatter (sigma0 or gamma0) per polarisation
+   *    nPols                (optional)   ellipsoidal incidence angle (degrees)
+   *    nPols+[0|1]          (optional)   local (terrain-relative) incidence angle (degrees)
+   *    nPols+[0..2]                      validity mask (1=valid, 0=outside swath)
+   *    nPols+[1..3]         (optional)   shadow/layover mask (0=valid, 1=layover, 2=shadow)
    */
-  def bandCount(nPols: Int): Int = nPols + 3 + (if (shadowLayoverMask) 1 else 0)
+  def bandCount(nPols: Int): Int =
+    nPols + 1 +
+      (if (ellipsoidIncidenceAngle) 1 else 0) +
+      (if (localIncidenceAngle) 1 else 0) +
+      (if (shadowLayoverMask) 1 else 0)
 }
 
 object SarProcessingConfig {

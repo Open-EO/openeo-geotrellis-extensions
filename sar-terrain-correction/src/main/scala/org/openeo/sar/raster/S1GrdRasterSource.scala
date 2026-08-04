@@ -13,12 +13,12 @@ import org.slf4j.LoggerFactory
  *
  *  Band layout is controlled by [[SarProcessingConfig]] stored in the [[SceneContext]].
  *  See [[org.openeo.sar.backend.TerrainCorrectionBackend]] for the full band index table.
- *  Default layout (sigma0, no shadow/layover mask):
+ *  Default layout (sigma0, no angle bands, no shadow/layover mask):
  *    0 .. nPols-1 → backscatter (sigma0 or gamma0_RTC) per polarisation
- *    nPols        → ellipsoidal incidence angle (degrees)
- *    nPols+1      → local terrain incidence angle (degrees)
- *    nPols+2      → validity mask (1.0 valid, 0.0 outside swath)
- *   [nPols+3]     → shadow/layover mask (optional, 0=ok, 1=layover, 2=shadow)
+ *    nPols        → validity mask (1.0 valid, 0.0 outside swath)
+ *   [nPols+..]    → ellipsoidal incidence angle in degrees (optional, config.ellipsoidIncidenceAngle)
+ *   [nPols+..]    → local terrain incidence angle in degrees (optional, config.localIncidenceAngle)
+ *   [nPols+..]    → shadow/layover mask (optional, config.shadowLayoverMask; 0=ok, 1=layover, 2=shadow)
  *
  *  All expensive state (orbit, LUTs, open RasterSources) lives in the
  *  [[SceneContext]] which is built once and shared across all reads.

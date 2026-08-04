@@ -115,13 +115,15 @@ class TerrainCorrectionTest {
     val tile = proc.computeTile(stacItemUrl, gamma0Request)
 
     val nPols = gamma0Request.polarisations.size
-    // VV, VH, ellipsoidal_inc, local_inc, validity, shadow/layover = 6
+    // VV, VH, validity, shadow/layover = 4 (no angle bands requested)
     assertEquals(gamma0Config.bandCount(nPols), tile.bandCount)
     assertEquals(gamma0Request.cols, tile.cols)
     assertEquals(gamma0Request.rows, tile.rows)
 
     // Shadow/layover band values must be 0, 1 or 2.
-    val slBand = tile.band(nPols + 3)
+    // Band order: backscatter..., [ellipsInc], [localInc], mask, [shadowLayover].
+    // Neither angle band is requested here, so shadow/layover directly follows mask.
+    val slBand = tile.band(nPols + 1)
     var allValid = true
     var c = 0; while (c < tile.cols) {
       var r = 0; while (r < tile.rows) {

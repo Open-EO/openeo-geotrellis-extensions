@@ -87,7 +87,7 @@ final class TerrainCorrectionProcessor(
     val effectiveBands = if (bands.isEmpty) (0 until totalBands) else bands
     extents.toIterator.map { extent =>
       val ctx  = scene.tileContext(extent)
-      val full = backend.compute(ctx)           // always compute all bands; band selection is cheap
+      val full = backend.compute(ctx)           // always compute all bands; band selection is cheap???
       val selected = MultibandTile(effectiveBands.map(full.band))
       Raster(selected, extent)
     }

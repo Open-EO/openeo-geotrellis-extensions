@@ -58,8 +58,8 @@ final class OnnxBackend(modelPath: String) extends TerrainCorrectionBackend with
     val (sigmas, ellipsInc, localInc, mask, shadowLayover) =
       TerrainCorrectionBackend.allocate(req.cols, req.rows, pols.length, req.config)
     // The ONNX model only outputs ellipsoidal incidence; localInc and shadowLayover are not
-    // available. Fill localInc with NaN to signal "no terrain normal computed".
-    java.util.Arrays.fill(localInc.array, Float.NaN)
+    // available. Fill localInc with NaN (if requested) to signal "no terrain normal computed".
+    localInc.foreach(t => java.util.Arrays.fill(t.array, Float.NaN))
 
     // ---- 1. Build pixel-level inputs that are shared across polarisations ----
     val dem = TerrainCorrectionProcessor.readDemEllipsoidal(ctx)
@@ -132,7 +132,7 @@ final class OnnxBackend(modelPath: String) extends TerrainCorrectionBackend with
         val mskOut = result.get(2).asInstanceOf[OnnxTensor].getFloatBuffer.array()
         scatter(sigma0, sigmas(p), req.cols, req.rows)
         if (p == 0) {
-          scatter(incOut, ellipsInc, req.cols, req.rows)
+          ellipsInc.foreach(t => scatter(incOut, t, req.cols, req.rows))
           scatter(mskOut, mask, req.cols, req.rows)
         }
       } finally {

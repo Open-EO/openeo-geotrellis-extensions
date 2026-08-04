@@ -102,6 +102,15 @@ final class NativeBackend extends TerrainCorrectionBackend {
     val doGamma0 = config.normalization == BackscatterNormalization.Gamma0RTC
     val doShadow = config.shadowLayoverMask
 
+    // Whether we need the (expensive) terrain surface normal / local incidence
+    // angle at all: required for gamma0 RTC flattening, for the shadow/layover
+    // classification (which also gates backscatter validity), or when the
+    // caller explicitly asked for the local incidence angle band. When none of
+    // these apply (e.g. plain sigma0, or sigma0 + ellipsoidal angle only), skip
+    // the terrain normal computation and the shadow/layover geometry test
+    // entirely — every in-swath pixel is then considered valid.
+    val needTerrainCheck = doGamma0 || doShadow || config.localIncidenceAngle
+
     // 7. Second pass: sample, calibrate, fill angles + mask bands.
     r = 0
     while (r < req.rows) {
@@ -115,53 +124,60 @@ final class NativeBackend extends TerrainCorrectionBackend {
           val winLine = sc.line - winMinLine
           val winPx   = sc.gr   - winMinPx
 
-          // ---- Angles -------------------------------------------------------
-          // Ellipsoidal incidence angle: look vs. smooth WGS84 ellipsoid normal.
-          val ellipsoidNorm = Ecef.ellipsoidalNormal(sc.pGnd)
-          val thetaEl       = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, ellipsoidNorm)
+          var isLayover = false
+          var isShadow  = false
+          var rtcFactor = 1.0
 
-          // Terrain surface normal via finite differences on the DEM/lonLat arrays.
-          val terrainNorm = terrainSurfaceNormal(dem, lonLat, r, c, req.rows, req.cols)
-          val thetaLoc    = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, terrainNorm)
+          if (needTerrainCheck) {
+            // ---- Angles -------------------------------------------------------
+            // Ellipsoidal incidence angle: look vs. smooth WGS84 ellipsoid normal.
+            // Needed here (regardless of the ellipsoidIncidenceAngle flag) because
+            // the shadow/layover test and the gamma0 RTC factor both depend on it.
+            val ellipsoidNorm = Ecef.ellipsoidalNormal(sc.pGnd)
+            val thetaEl       = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, ellipsoidNorm)
 
-          ellipsInc.setDouble(c, r, math.toDegrees(thetaEl))
-          localInc.setDouble( c, r, math.toDegrees(thetaLoc))
+            // Terrain surface normal via finite differences on the DEM/lonLat arrays.
+            val terrainNorm = terrainSurfaceNormal(dem, lonLat, r, c, req.rows, req.cols)
+            val thetaLoc    = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, terrainNorm)
 
-          // ---- Shadow / layover classification ------------------------------
-          // The look direction (sat→ground): positive dot with terrain normal
-          // means the normal points away from the satellite → shadow.
-          // thetaLoc > π/2 also indicates shadow; we use the dot-product sign
-          // which is numerically cleaner.
-          val look      = (sc.pGnd - sc.pSat).normalize
-          val dotLook   = look.dot(terrainNorm)  // >0 = shadow, <0 = lit
-          // Layover: happens when the ground point is geometrically "ahead" of
-          // the satellite wavefront, indicated by negative slant-range cosine
-          // w.r.t. the flight direction. Practical proxy: θ_local < 0 (masked
-          // out by the geometry) —S1GrdRasterSource we detect it as dotLook < -1 (impossible) or
-          // by thetaEl > thetaLoc (ground is steeper than look angle).
-          val isLayover = thetaLoc < 0.0 || thetaEl > math.Pi / 2.0
-          val isShadow  = thetaLoc > math.Pi / 2.0
+            if (config.localIncidenceAngle) localInc.get.setDouble(c, r, math.toDegrees(thetaLoc))
+            if (config.ellipsoidIncidenceAngle) ellipsInc.get.setDouble(c, r, math.toDegrees(thetaEl))
 
-          if (doShadow) {
-            shadowLayover.get.setDouble(c, r,
-              if (isLayover) 1.0f
-              else if (isShadow) 2.0f
-              else 0.0f)
+            // ---- Shadow / layover classification ------------------------------
+            // Layover: happens when the ground point is geometrically "ahead" of
+            // the satellite wavefront, indicated by negative slant-range cosine
+            // w.r.t. the flight direction. Practical proxy: θ_local < 0 (masked
+            // out by the geometry) — we detect it via thetaEl > thetaLoc (ground
+            // is steeper than look angle).
+            isLayover = thetaLoc < 0.0 || thetaEl > math.Pi / 2.0
+            isShadow  = thetaLoc > math.Pi / 2.0
+
+            if (doShadow) {
+              shadowLayover.get.setDouble(c, r,
+                if (isLayover) 1.0f
+                else if (isShadow) 2.0f
+                else 0.0f)
+            }
+
+            // RTC factor (angle-ratio method).  Clamp sin(θ_local) to avoid
+            // divide-by-zero near 0° or 180° grazing.
+            if (doGamma0) {
+              val sinLocal = math.sin(thetaLoc)
+              rtcFactor =
+                if (sinLocal > 0.01) math.sin(thetaEl) / sinLocal
+                else Double.NaN  // grazing — mark invalid
+            }
+          } else if (config.ellipsoidIncidenceAngle) {
+            // Ellipsoidal incidence angle requested on its own: cheap (no DEM
+            // finite-difference terrain normal needed), so compute it directly
+            // without the full terrain check above.
+            val ellipsoidNorm = Ecef.ellipsoidalNormal(sc.pGnd)
+            val thetaEl       = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, ellipsoidNorm)
+            ellipsInc.get.setDouble(c, r, math.toDegrees(thetaEl))
           }
 
           // ---- Backscatter --------------------------------------------------
           if (!isLayover && !isShadow) {
-            // RTC factor (angle-ratio method).  Clamp sin(θ_local) to avoid
-            // divide-by-zero near 0° or 180° grazing.
-            val sinLocal = math.sin(thetaLoc)
-            val rtcFactor =
-              if (doGamma0 && sinLocal > 0.01)
-                math.sin(thetaEl) / sinLocal
-              else if (doGamma0)
-                Double.NaN  // grazing — mark invalid
-              else
-                1.0
-
             var p = 0
             while (p < pols.length) {
               val polMeta = meta.polarisations(pols(p))
