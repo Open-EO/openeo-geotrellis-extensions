@@ -1308,7 +1308,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
               _.canProcess(definition)
             ).flatMap(
               p => {
-                logger.info(s"Using raster source provider ${p.getClass.getSimpleName} for feature ${feature.id} with link ${link.href}, title ${link.title} and target cell type ${targetCellType} ")
+                logger.info(s"Using raster source provider ${p.getClass.getSimpleName} for feature ${feature.id} with link ${link.href}, title ${link.title} and target cell type ")
                 if (p.usePredefinedExtent(definition)) {
                   predefinedExtent = featureExtentInLayout
                 }
@@ -1317,6 +1317,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             )
             .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
           if (maybeSource.isDefined) {
+            logger.info(s"${maybeSource.get.cellType} is the cell type for feature ${feature.id} with link ${link.href}, title ${link.title} and target cell type ")
             if (bandIndex > 0) {
               Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
             } else {
