@@ -1277,7 +1277,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
           val dataType = link.datatype
           val nodata = if(link.nodata.isEmpty && (link.title.contains("SCENECLASSIFICATION") || link.title.contains("SCL"))) {
-            logger.info(s"Feature ${feature.id} has a link with title ${link.title} that does not declare nodata, assuming 0 is nodata. cellType is ${dataType.getOrElse("unknown")}")
             Some(0.0)
           } else link.nodata
 
@@ -1308,7 +1307,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
               _.canProcess(definition)
             ).flatMap(
               p => {
-                logger.info(s"Using raster source provider ${p.getClass.getSimpleName} for feature ${feature.id} with link ${link.href}, title ${link.title} and target cell type ")
                 if (p.usePredefinedExtent(definition)) {
                   predefinedExtent = featureExtentInLayout
                 }
@@ -1317,7 +1315,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             )
             .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
           if (maybeSource.isDefined) {
-            logger.info(s"${maybeSource.get.cellType} is the cell type for feature ${feature.id} with link ${link.href}, title ${link.title} and target cell type ")
             if (bandIndex > 0) {
               Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
             } else {
@@ -1356,9 +1353,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           return None
         }
 
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => {
+          logger.info(s"${rasterSource.cellType} is the cell type for feature ${feature.id} 1")
+          rasterSource
+        } }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
       } else if (sources.forall { case(_, idx) => idx == 0}) {
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => {
+          logger.info(s"${rasterSource.cellType} is the cell type for feature ${feature.id} 2")
+          rasterSource
+        }}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
       } else {
         logger.warn("Unexpected use of MultibandCompositeRasterSource")
         Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
