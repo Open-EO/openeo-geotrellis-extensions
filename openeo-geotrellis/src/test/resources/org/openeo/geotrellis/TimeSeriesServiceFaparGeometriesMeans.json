@@ -1,8 +1,275 @@
 {
   "results": {
-    "2017-12-14": [
+    "2025-11-01": [
       {
-        "average": 0.04
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-02": [
+      {
+        "totalCount": 313648,
+        "validCount": 183223,
+        "average": 0.5011517113026203
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 393,
+        "validCount": 393,
+        "average": 0.8694529262086514
+      }
+    ],
+    "2025-11-03": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-04": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-05": [
+      {
+        "totalCount": 313648,
+        "validCount": 311750,
+        "average": 0.6314168404170009
+      },
+      {
+        "totalCount": 433920,
+        "validCount": 426692,
+        "average": 0.6022618891378325
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-06": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-07": [
+      {
+        "totalCount": 313648,
+        "validCount": 313336,
+        "average": 0.6378804861235223
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 393,
+        "validCount": 393,
+        "average": 0.875737913486005
+      }
+    ],
+    "2025-11-08": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-09": [
+      {
+        "totalCount": 313648,
+        "validCount": 223933,
+        "average": 0.5694672290372568
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-10": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-11": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-12": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-13": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-14": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-15": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 173000,
+        "validCount": 27025,
+        "average": 0.22039777983348752
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      }
+    ],
+    "2025-11-16": [
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
+      },
+      {
+        "totalCount": 0,
+        "validCount": 0,
+        "average": "NaN"
       }
     ]
   }
