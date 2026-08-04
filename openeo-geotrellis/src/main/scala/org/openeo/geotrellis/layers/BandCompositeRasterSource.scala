@@ -96,7 +96,10 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
   }
 
-  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => cellTypeUnionWithNoData(a, b))
+  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => {
+    logger.debug(s"cellType union: $a, $b")
+    cellTypeUnionWithNoData(a, b)
+  })
 
   override def name: SourceName = sources.head.name
 
