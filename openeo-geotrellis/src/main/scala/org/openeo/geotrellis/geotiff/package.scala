@@ -34,7 +34,7 @@ import spire.math.Integral
 import spire.syntax.cfor.cfor
 
 import java.nio.file.{Files, Path, Paths}
-import java.io.RandomAccessFile
+import java.io.{EOFException, IOException, RandomAccessFile}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util
@@ -43,7 +43,6 @@ import java.util.{ArrayList, Collections, Map, UUID, List => JList}
 import scala.jdk.CollectionConverters._
 import scala.language.implicitConversions
 import scala.reflect._
-import scala.util.Using
 
 
 class ByKeyPartitionerKnowKeyAmount(numPartitionsArgument: Int) extends Partitioner {
@@ -1550,11 +1549,15 @@ package object geotiff {
       val stderr = cerrBuffer.toString.trim
 
       if (GdalInfoFileCorruptErrors.exists(stderr.contains)) {
-        if (Files.size(rasterFilePath) >= BigTiffSizeThresholdBytes && isClassicTiff(rasterFilePath)) {
-          throw new IllegalStateException(s"$rasterFilePath is corrupt (too large for a classic GeoTIFF); output was: $stderr")
+        try {
+          if (Files.size(rasterFilePath) >= BigTiffSizeThresholdBytes && isClassicTiff(rasterFilePath)) {
+            throw new Exception(s"$rasterFilePath is corrupt (too large for a classic GeoTIFF); output was: $stderr")
+          }
+        } catch {
+          case _: IOException => /* less specific error message then */
         }
 
-        throw new IllegalStateException(s"$rasterFilePath is corrupt; output was: $stderr")
+        throw new Exception(s"$rasterFilePath is corrupt; output was: $stderr")
       }
 
       logger.warn(s"gdalinfo warnings: $stderr") // Mostly harmless messages
@@ -1570,12 +1573,6 @@ package object geotiff {
       None
     }
   }
-
-  private def isClassicTiff(rasterFilePath: Path): Boolean =
-    Using(new RandomAccessFile(rasterFilePath.toFile, "r")) { f =>
-      val firstFourBytes = f.readInt()
-      firstFourBytes == 0x49492A00 || firstFourBytes == 0x4D4D002A
-    }.getOrElse(false)
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: LayoutDefinition) extends Seq[(K, V)] with Metadata[LayoutDefinition] {
     override def length: Int = tiles.size
@@ -1611,6 +1608,15 @@ package object geotiff {
       "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9")
     if (invalidNames.contains(filenameWithoutExtension.toUpperCase())) {
       throw new IllegalArgumentException("Invalid filename: " + filename)
+    }
+  }
+
+  def isClassicTiff(rasterFilePath: Path): Boolean = {
+    val f = new RandomAccessFile(rasterFilePath.toFile, "r")
+
+    try Seq(0x49492A00, 0x4D4D002A) contains f.readInt()
+    catch {
+      case _: EOFException => false
     }
   }
 }
