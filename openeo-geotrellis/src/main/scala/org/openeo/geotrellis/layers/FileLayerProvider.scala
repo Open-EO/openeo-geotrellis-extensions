@@ -1308,6 +1308,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
               _.canProcess(definition)
             ).flatMap(
               p => {
+                logger.info(s"Using raster source provider ${p.getClass.getSimpleName} for feature ${feature.id} with link ${link.href}, title ${link.title} and target cell type ${targetCellType} ")
                 if (p.usePredefinedExtent(definition)) {
                   predefinedExtent = featureExtentInLayout
                 }
