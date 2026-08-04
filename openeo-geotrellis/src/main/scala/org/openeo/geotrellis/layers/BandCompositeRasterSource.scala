@@ -39,10 +39,6 @@ object BandCompositeRasterSource {
     try {
       logger.debug(s"reading $bounds from ${source.name}")
       val raster = source.read(bounds, bands)
-      raster match {
-        case Some(r) => logger.debug(s"successfully read $bounds from ${source.name} with extent ${r.extent} and cellType ${r.cellType}, source cellType ${source.cellType}")
-        case None => logger.warn(s"readBounds returned None for $bounds from ${source.name}")
-      }
       logger.debug(s"finished reading $bounds from ${source.name}")
       raster
     } catch {
@@ -200,7 +196,6 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
         if (singleBandRasters.size == selectedSources.size) {
           val convertedRasters: Seq[Tile] = croppedRasters.map {
             case Raster(croppedTile: CroppedTile, extent) =>
-              logger.info(s"cropping and converting tile from ${croppedTile.sourceTile.cellType} to $cellType")
               croppedTile.sourceTile match {
                 case tile: ResampledTile => tile.cropAndConvert(croppedTile.gridBounds, cellType)
                 case _ => if (croppedTile.cellType != cellType) croppedTile.convert(cellType) else croppedTile
