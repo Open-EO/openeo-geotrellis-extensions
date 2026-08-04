@@ -134,7 +134,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       }).groupBy(_._1)
       rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
         val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
-        Raster(MultibandTile(sortedRasters.map(raster => {safeConvert(raster.tile.band(0), cellType)})), sortedRasters.head.extent)
+        Raster(MultibandTile(sortedRasters.map(raster => safeConvert(raster.tile.band(0), cellType))), sortedRasters.head.extent)
       }).iterator
     }
 
@@ -186,8 +186,8 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       .collect { case (Some(raster), sourceCellType )=> {
         if (raster.cellType == sourceCellType) raster
         else {
-          logger.debug(s"converting tile from ${sourceCellType} to $sourceCellType")
-          Raster(safeConvert(raster.tile,cellType), raster.extent)
+          logger.debug(s"converting tile from ${raster.tile.cellType} to $sourceCellType")
+          Raster(safeConvert(raster.tile,sourceCellType), raster.extent)
         }
       } }.toSeq
 
