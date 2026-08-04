@@ -2,20 +2,21 @@ package org.openeo.sar.io
 
 import geotrellis.store.s3.AmazonS3URI
 import org.openeo.geotrellis.creo.CreoS3Utils
-import org.openeo.geotrellis.s3Client
+import org.openeo.geotrellis.{s3Client, withRetryAfterRetries}
 import org.slf4j.{Logger, LoggerFactory}
+import scalaj.http.Http
 import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.{GetObjectRequest, GetObjectResponse}
 
-import java.io.{BufferedInputStream, InputStream}
+import java.io.{BufferedInputStream, ByteArrayInputStream, InputStream}
 import java.net.URI
 import scala.xml.{Elem, XML}
 
 /** Uniform reader for SAR auxiliary files. Dispatches on the URI scheme:
  *
  *  - `s3://bucket/key`            -> [[CreoS3Utils.getS3Client]] (proxy-aware, CDSE-aware)
- *  - `http://` / `https://`       -> standard URL connection
+ *  - `http://` / `https://`       -> `scalaj-http`, retried via [[withRetryAfterRetries]]
  *  - `file://` / no scheme        -> local file
  *
  *  The S3 path bypasses the JDK's lack of an `s3` URLStreamHandler and reuses
@@ -50,7 +51,15 @@ object UriIO {
         val resp: ResponseInputStream[GetObjectResponse] = client.getObject(req)
         new BufferedInputStream(resp)
 
-      case "http" | "https" | "file" =>
+      case "http" | "https" =>
+        // withRetryAfterRetries retries 5xx, socket errors and rate limiting
+        // responses (429/498, honoring Retry-After) with backoff.
+        val response = withRetryAfterRetries(s"sar_backscatter - fetching $uri") {
+          Http(uri.toString).asBytes
+        }
+        new BufferedInputStream(new ByteArrayInputStream(response.throwError.body))
+
+      case "file" =>
         new BufferedInputStream(uri.toURL.openStream())
 
       case null =>
@@ -60,8 +69,6 @@ object UriIO {
         throw new IllegalArgumentException(s"Unsupported URI scheme: $other ($uri)")
     }
   }
-
-
 
   /** Read the URI fully into memory and parse it as XML. */
   def loadXml(uri: URI): Elem = {

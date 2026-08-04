@@ -22,7 +22,7 @@ import java.net.URI
  *  */
 class TerrainCorrectionTest {
 
-  private val runOnline = true  // requires CDSE S3 + STAC access
+  private val runOnline = false  // requires CDSE S3 + STAC access
 
   // A Sentinel-1 IW GRDH product over Belgium. CDSE returns object-store
   // (`s3://eodata/...`) hrefs which GeoTrellis RasterSource handles natively.
