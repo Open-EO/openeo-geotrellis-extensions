@@ -39,6 +39,10 @@ object BandCompositeRasterSource {
     try {
       logger.debug(s"reading $bounds from ${source.name}")
       val raster = source.read(bounds, bands)
+      raster match {
+        case Some(r) => logger.debug(s"successfully read $bounds from ${source.name} with extent ${r.extent} and cellType ${r.cellType}, source cellType ${source.cellType}")
+        case None => logger.warn(s"readBounds returned None for $bounds from ${source.name}")
+      }
       logger.debug(s"finished reading $bounds from ${source.name}")
       raster
     } catch {
@@ -96,10 +100,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
   }
 
-  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => {
-    logger.debug(s"cellType union: $a, $b")
-    cellTypeUnionWithNoData(a, b)
-  })
+  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => cellTypeUnionWithNoData(a, b))
 
   override def name: SourceName = sources.head.name
 
@@ -133,11 +134,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       }).groupBy(_._1)
       rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
         val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
-        logger.debug(s"length of sortedRasters: ${sortedRasters.length}, cellTypes: ${sortedRasters.map(_.cellType)}")
-        Raster(MultibandTile(sortedRasters.map(raster => {
-          logger.debug(s"cellType raster: ${raster.cellType}, cellType tile band: ${raster.tile.band(0).cellType}, cellType target: $cellType")
-          safeConvert(raster.tile.band(0), cellType)
-        })), sortedRasters.head.extent)
+        Raster(MultibandTile(sortedRasters.map(raster => {safeConvert(raster.tile.band(0), cellType)})), sortedRasters.head.extent)
       }).iterator
     }
 
