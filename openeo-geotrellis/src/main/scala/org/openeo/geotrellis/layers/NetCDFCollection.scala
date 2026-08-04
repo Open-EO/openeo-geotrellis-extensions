@@ -63,8 +63,7 @@ object NetCDFCollection {
     val features: RDD[(TemporalProjectedExtent, MultibandTile)] = items.repartition(stacItems.length).flatMap(f => {
       val allTiles = f.links.flatMap(l => {
         val targetCellType = if (l.datatype.isDefined){
-          val dataType = l.datatype.get.withNoData(l.nodata)
-          Some(ConvertTargetCellType(dataType))
+          Some(ConvertTargetCellType(l.datatype.get.withNoData(l.nodata)))
         }else None
         l.bandNames.get.flatMap(b => {
           var gdalNetCDFLink = s"${l.href.toString.replace("file:", "NETCDF:")}:${b}"

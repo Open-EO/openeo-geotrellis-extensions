@@ -753,7 +753,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         GeneralUtils.cellTypeUnionWithNoData(cumCellType, curCellType)
       })
 
-      logger.debug(s"Determined common cell type of rasterSources is $commonCellType, from cell types: ${cellTypes.mkString(", ")}.")
+      logger.debug(s"Determined common cell type of rasterSources is $commonCellType.")
       commonCellType match {
         case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
         case _: NoNoData => commonCellType.withDefaultNoData()

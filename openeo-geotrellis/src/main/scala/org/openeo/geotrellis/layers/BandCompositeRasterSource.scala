@@ -184,10 +184,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
         (BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0))), rs.cellType)
       })
       .collect { case (Some(raster), sourceCellType )=> {
-        if (raster.cellType == sourceCellType) {
-          raster
-        } else {
-          logger.info(s"converting tile from ${sourceCellType} to $cellType")
+        if (raster.cellType == sourceCellType) raster
+        else {
+          logger.debug(s"converting tile from ${sourceCellType} to $sourceCellType")
           Raster(safeConvert(raster.tile,cellType), raster.extent)
         }
       } }.toSeq
