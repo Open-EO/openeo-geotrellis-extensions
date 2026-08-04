@@ -1278,7 +1278,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
           val dataType = link.datatype
           val nodata = if(link.nodata.isEmpty && (link.title.contains("SCENECLASSIFICATION") || link.title.contains("SCL"))) {
-            logger.info(s"Feature ${feature.id} has a link with title ${link.title} that does not declare nodata, assuming 0 is nodata.")
+            logger.info(s"Feature ${feature.id} has a link with title ${link.title} that does not declare nodata, assuming 0 is nodata. cellType is ${dataType.getOrElse("unknown")}")
             Some(0.0)
           } else link.nodata
 
