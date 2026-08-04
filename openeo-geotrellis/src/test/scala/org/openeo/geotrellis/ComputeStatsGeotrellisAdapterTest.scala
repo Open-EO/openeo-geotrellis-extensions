@@ -250,8 +250,8 @@ class ComputeStatsGeotrellisAdapterTest() {
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def validateAccumuloDataCubeAgainstTimeSeriesServiceMeans(): Unit = {
-    val minDateString = "2017-12-01T00:00:00Z"
-    val maxDateString = "2017-12-16T00:00:00Z"
+    val minDateString = "2025-11-01T00:00:00Z"
+    val maxDateString = "2025-11-16T00:00:00Z"
 
     val polygons = Seq(polygon1, polygon2, polygon4).map(_.reproject(LatLng,CRS.fromEpsgCode(32631)))
 
