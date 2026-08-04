@@ -190,6 +190,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
         if (singleBandRasters.size == selectedSources.size) {
           val convertedRasters: Seq[Tile] = croppedRasters.map {
             case Raster(croppedTile: CroppedTile, extent) =>
+              logger.info(s"cropping and converting tile from ${croppedTile.sourceTile.cellType} to $cellType")
               croppedTile.sourceTile match {
                 case tile: ResampledTile => tile.cropAndConvert(croppedTile.gridBounds, cellType)
                 case _ => if (croppedTile.cellType != cellType) croppedTile.convert(cellType) else croppedTile
