@@ -1538,8 +1538,8 @@ package object geotiff {
     val outputBuffer = new StringBuilder
     val cerrBuffer = new StringBuilder
     val processLogger = ProcessLogger(
-      fout = line => outputBuffer appendAll line + "\n",
-      ferr = line => cerrBuffer appendAll line + "\n",
+      fout = line => outputBuffer.append(line).append('\n'),
+      ferr = line => cerrBuffer.append(line).append('\n')
     )
 
     val args = Seq("gdalinfo", rasterFilePath.toString, "-json", "-stats")
@@ -1554,7 +1554,7 @@ package object geotiff {
             throw new Exception(s"$rasterFilePath is corrupt (too large for a classic GeoTIFF); output was: $stderr")
           }
         } catch {
-          case _: IOException => /* less specific error message then */
+          case _: IOException => /* deemed corrupt but nothing to go by: fall back to less specific error message */
         }
 
         throw new Exception(s"$rasterFilePath is corrupt; output was: $stderr")
