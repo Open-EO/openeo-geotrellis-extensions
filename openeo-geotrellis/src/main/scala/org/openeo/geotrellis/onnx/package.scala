@@ -205,34 +205,34 @@ package object onnx {
     inputArray
   }
 
-  def transformOutputShapeWithDimOrder(outputShapeSTAC: Array[Long], outputShapeModel: Seq[Long], dimOrder: Seq[String]): Array[Long] = {
-    if (!(outputShapeModel sameElements outputShapeSTAC)) {
-      throw new IllegalArgumentException(s"ONNX: output shape of model and STAC are different, outputShape of model is ${outputShapeModel.mkString("Array(", ", ", ")")} and from STAC ${outputShapeSTAC.mkString("Array(", ", ", ")")}")
+  def transformShapeWithDimOrder(shapeSTAC: Array[Long], shapeModel: Seq[Long], dimOrder: Seq[String]): Array[Long] = {
+    if (!(shapeModel sameElements shapeSTAC)) {
+      throw new IllegalArgumentException(s"ONNX: output shape of model and STAC are different, outputShape of model is ${shapeModel.mkString("Array(", ", ", ")")} and from STAC ${shapeSTAC.mkString("Array(", ", ", ")")}")
     }
     (dimOrder.indexOf("batch"), dimOrder.indexOf("bands"), dimOrder.indexOf("height"), dimOrder.indexOf("width")) match {
       case (p, b, h, w) if p >= 0 && b >= 0 && h >= 0 && w >= 0 =>
-        Array(outputShapeSTAC(p), outputShapeSTAC(b), outputShapeSTAC(h), outputShapeSTAC(w))
+        Array(shapeSTAC(p), shapeSTAC(b), shapeSTAC(h), shapeSTAC(w))
       case (-1, b, h, w) if b >= 0 && h >= 0 && w >= 0  =>
-        Array(1, outputShapeSTAC(b), outputShapeSTAC(h), outputShapeSTAC(w))
+        Array(1, shapeSTAC(b), shapeSTAC(h), shapeSTAC(w))
       case (p, -1, h, w) if p >= 0 && h >= 0 && w >= 0 =>
         dimOrder.indexOf("class") match {
-          case -1 => Array(outputShapeSTAC(p), 1, outputShapeSTAC(h), outputShapeSTAC(w))
-          case c if c >= 0 => Array(outputShapeSTAC(p), outputShapeSTAC(c), outputShapeSTAC(h), outputShapeSTAC(w))
+          case -1 => Array(shapeSTAC(p), 1, shapeSTAC(h), shapeSTAC(w))
+          case c if c >= 0 => Array(shapeSTAC(p), shapeSTAC(c), shapeSTAC(h), shapeSTAC(w))
         }
       case (-1, -1, h, w) if h >= 0 && w >= 0 =>
         dimOrder.indexOf("class") match {
-          case -1 => Array(1, 1, outputShapeSTAC(h), outputShapeSTAC(w))
-          case c if c >= 0 => Array(1, outputShapeSTAC(c), outputShapeSTAC(h), outputShapeSTAC(w))
+          case -1 => Array(1, 1, shapeSTAC(h), shapeSTAC(w))
+          case c if c >= 0 => Array(1, shapeSTAC(c), shapeSTAC(h), shapeSTAC(w))
         }
       case (p, b, -1, -1) if p >= 0 && b >= 0 =>
-        Array(outputShapeSTAC(p), outputShapeSTAC(b), 1, 1)
+        Array(shapeSTAC(p), shapeSTAC(b), 1, 1)
       case (p, -1, -1, -1) if p >= 0 =>
         dimOrder.indexOf("class") match {
-          case -1 => Array(outputShapeSTAC(p), 1, 1, 1)
-          case c if c >= 0 => Array(outputShapeSTAC(p), outputShapeSTAC(c), 1, 1)
+          case -1 => Array(shapeSTAC(p), 1, 1, 1)
+          case c if c >= 0 => Array(shapeSTAC(p), shapeSTAC(c), 1, 1)
         }
       case _ =>
-        throw new IllegalArgumentException(s"ONNX: unsupported output shape: ${outputShapeSTAC.mkString("Array(", ", ", ")")} with dimOrder: $dimOrder")
+        throw new IllegalArgumentException(s"ONNX: unsupported output shape: ${shapeSTAC.mkString("Array(", ", ", ")")} with dimOrder: $dimOrder")
     }
   }
 
@@ -310,7 +310,7 @@ package object onnx {
     val outputShape = outputInfo.getShape
     val outputDimOrder = parsedModel.outputs.head.dimOrder
     val outputShapeSTAC = parsedModel.outputs.head.shape
-    val newOutputShape = transformOutputShapeWithDimOrder(outputShape, outputShapeSTAC, outputDimOrder)
+    val newOutputShape = transformShapeWithDimOrder(outputShape, outputShapeSTAC, outputDimOrder)
     val groupedTiles = tiles.toArray.grouped(newOutputShape(0).toInt).toSeq
     val result = groupedTiles.flatMap(tiles => {
       val inputArray = reshape(inputType, tiles, inputShape)
