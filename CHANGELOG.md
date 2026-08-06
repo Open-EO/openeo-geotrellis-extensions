@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Experimental support for improved CORSA compression and decompression ([#702](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/702))
 - Support BigTiff output ([#792](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/792))
 - Support treating missing angle bands file as soft error ([#692](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/692))
+- Fail fast when produced GeoTiff is corrupt ([#794](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/794))
 
 ### Changed
 
