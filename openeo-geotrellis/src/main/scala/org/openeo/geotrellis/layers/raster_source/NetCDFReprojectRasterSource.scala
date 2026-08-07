@@ -13,15 +13,15 @@ class NetCDFReprojectRasterSource(
   val resampleTarget: ResampleTarget = DefaultTarget,
   val resampleMethod: ResampleMethod = ResampleMethod.DEFAULT,
   val strategy: OverviewStrategy = OverviewStrategy.DEFAULT,
-  val errorThreshold: Double = 0.125,
+  val errorThreshold: Double = 0.0,
   override val targetCellType: Option[TargetCellType] = None
 ) extends RasterSource {
 
   private val baseCRS: CRS = baseSource.crs
   private val baseGridExtent: GridExtent[Long] = baseSource.gridExtent
 
-  @transient protected lazy val transform = Transform(baseCRS, crs)
-  @transient protected lazy val backTransform = Transform(crs, baseCRS)
+  @transient protected lazy val transform: (Double, Double) => (Double, Double) = Transform(baseCRS, crs)
+  @transient private lazy val backTransform: (Double, Double) => (Double, Double) = Transform(crs, baseCRS)
 
   override lazy val gridExtent: GridExtent[Long] = {
     lazy val reprojectedRasterExtent =

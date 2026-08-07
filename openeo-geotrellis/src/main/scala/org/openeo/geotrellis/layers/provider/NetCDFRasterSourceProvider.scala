@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.layers.provider
 
-import geotrellis.raster.RasterSource
+import geotrellis.raster.{RasterExtent, RasterSource, ResampleTarget, TargetRegion}
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, NetCDFRasterSource}
@@ -19,22 +19,38 @@ class NetCDFRasterSourceProvider extends RasterSourceProvider {
 
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
     val dataPath = definition.dataPath
-    if (definition.cloudPath.isDefined) {
+    def gdalWarpOptions(alignPixels: Boolean): GDALWarpOptions = {
       val warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
-      val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
-      val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(definition.theResolution), targetCRS = Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod),
-        te = definition.featureExtentInLayout.map(_.extent), teCRS = Some(definition.targetExtent.crs), ovr = warpOptionsOvr
+      GDALWarpOptions(
+        alignTargetPixels = alignPixels,
+        cellSize = Some(definition.theResolution),
+        targetCRS = Some(definition.targetExtent.crs),
+        resampleMethod = Some(definition.resampleMethod),
+        te = definition.featureExtentInLayout.map(_.extent),
+        teCRS = Some(definition.targetExtent.crs),
+        ovr = warpOptionsOvr
       )
+    }
+    def ucarAlignment: ResampleTarget =
+      definition.featureExtentInLayout
+        .map(ge => TargetRegion(RasterExtent(ge.extent, ge.cellSize)))
+        .getOrElse(definition.alignment)
+
+    if (definition.cloudPath.isDefined) {
+      val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
+      val warpOptions = gdalWarpOptions(alignPixels)
       logger.debug(s"cloudpath: ${definition.cloudPath}, warp options: $warpOptions")
       GDALCloudRasterSource(definition.cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(definition.cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = definition.targetCellType)
     } else if (canUseUcar(dataPath)) {
-      NetCDFRasterSource.fromSource(dataPath, targetCellType = definition.targetCellType)
+      val source = NetCDFRasterSource.fromSource(dataPath, targetCellType = definition.targetCellType)
+      if (source.crs == definition.targetExtent.crs) {
+        source.resample(ucarAlignment, definition.resampleMethod, OverviewStrategy.DEFAULT)
+      } else {
+        source.reproject(definition.targetExtent.crs, ucarAlignment, definition.resampleMethod, OverviewStrategy.DEFAULT)
+      }
     } else {
-      val warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
       val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
-      val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(definition.theResolution), targetCRS = Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod),
-        te = definition.featureExtentInLayout.map(_.extent), teCRS = Some(definition.targetExtent.crs), ovr = warpOptionsOvr
-      )
+      val warpOptions = gdalWarpOptions(alignPixels)
       logger.debug(s"cloudpath: ${definition.cloudPath}, warp options: $warpOptions")
       // TODO dsamaey
       // predefinedExtent = definition.featureExtentInLayout
@@ -43,7 +59,7 @@ class NetCDFRasterSourceProvider extends RasterSourceProvider {
   }
 
   override def usePredefinedExtent(definition: RasterSourceDefinition): Boolean = {
-    definition.cloudPath.isEmpty && !(canUseUcar(definition.dataPath))
+    definition.cloudPath.isEmpty && !canUseUcar(definition.dataPath)
   }
 
   private def canUseUcar(dataPath: String): Boolean = {
