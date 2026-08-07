@@ -1,7 +1,6 @@
 package org.openeo.geotrellis.layers.raster_source
 
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster._
@@ -66,11 +65,11 @@ case class NetCDFRasterSource(path: String, variableName: String, override val t
   override def metadata: RasterMetadata = this
 
   override protected def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = {
-    GDALRasterSource(sourcePath, targetCellType = targetCellType).reproject(targetCRS, resampleTarget, method, strategy)
+    new NetCDFReprojectRasterSource(this, targetCRS, resampleTarget, method, strategy, targetCellType = targetCellType)
   }
 
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = {
-    GDALRasterSource(sourcePath, targetCellType = targetCellType).resample(resampleTarget, method, strategy)
+    new NetCDFResampleRasterSource(this, resampleTarget, method, strategy, targetCellType)
   }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
