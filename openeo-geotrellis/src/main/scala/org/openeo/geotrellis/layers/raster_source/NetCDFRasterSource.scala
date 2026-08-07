@@ -258,7 +258,10 @@ case class NetCDFRasterSource(path: String, variableName: String, override val t
     )
 
   private def withDataset[T](f: ucar.nc2.dataset.NetcdfDataset => T): T = {
-    val dataset = NetcdfDatasets.openDataset(path)
+    // Open without enhancements: enhanced mode promotes e.g. BYTE+_Unsigned to SHORT, causing
+    // wrong cell type inference (uint16 instead of uint8). With enhance=false we see the raw
+    // data types and handle unsigned / nodata detection ourselves.
+    val dataset = NetcdfDatasets.openDataset(path, false, null)
     try {
       f(dataset)
     } finally {
