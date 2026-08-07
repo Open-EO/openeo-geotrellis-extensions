@@ -11,8 +11,6 @@ object NetCDFRasterSourceProvider extends NetCDFRasterSourceProvider
 class NetCDFRasterSourceProvider extends RasterSourceProvider {
 
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[NetCDFRasterSourceProvider])
-  private val useUcarNetcdfRasterSource: Boolean =
-    sys.env.get("OPENEO_USE_UCAR_NETCDF_RASTERSOURCE").exists(_.equalsIgnoreCase("true"))
 
   override def canProcess(rasterSourceDefinition: RasterSourceDefinition): Boolean = {
     val dataPath = rasterSourceDefinition.dataPath
@@ -29,7 +27,7 @@ class NetCDFRasterSourceProvider extends RasterSourceProvider {
       )
       logger.debug(s"cloudpath: ${definition.cloudPath}, warp options: $warpOptions")
       GDALCloudRasterSource(definition.cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(definition.cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = definition.targetCellType)
-    } else if (useUcarNetcdfRasterSource && canUseUcar(dataPath)) {
+    } else if (canUseUcar(dataPath)) {
       NetCDFRasterSource.fromSource(dataPath, targetCellType = definition.targetCellType)
     } else {
       val warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
@@ -45,7 +43,7 @@ class NetCDFRasterSourceProvider extends RasterSourceProvider {
   }
 
   override def usePredefinedExtent(definition: RasterSourceDefinition): Boolean = {
-    definition.cloudPath.isEmpty && !(useUcarNetcdfRasterSource && canUseUcar(definition.dataPath))
+    definition.cloudPath.isEmpty && !(canUseUcar(definition.dataPath))
   }
 
   private def canUseUcar(dataPath: String): Boolean = {
