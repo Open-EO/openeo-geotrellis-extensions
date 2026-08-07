@@ -11,7 +11,6 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.runners.Parameterized.Parameters
@@ -229,8 +228,8 @@ class ComputeStatsGeotrellisAdapterTest() {
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def compute_median_ndvi_timeseries_on_accumulo_datacube(): Unit = {
-    val minDateString = "2017-11-01T00:00:00Z"
-    val maxDateString = "2017-11-16T02:00:00Z"
+    val minDateString = "2017-12-01T00:00:00Z"
+    val maxDateString = "2017-12-16T00:00:00Z"
     val minDate = ZonedDateTime.parse(minDateString)
 
     val maxDate = ZonedDateTime.parse(maxDateString)
@@ -251,18 +250,12 @@ class ComputeStatsGeotrellisAdapterTest() {
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def validateAccumuloDataCubeAgainstTimeSeriesServiceMeans(): Unit = {
-    val minDateString = "2017-11-01T00:00:00Z"
-    val maxDateString = "2017-11-16T02:00:00Z"
+    val minDateString = "2025-11-01T00:00:00Z"
+    val maxDateString = "2025-11-16T00:00:00Z"
 
     val polygons = Seq(polygon1, polygon2, polygon4).map(_.reproject(LatLng,CRS.fromEpsgCode(32631)))
 
-    val datacube = try {
-      LayerFixtures.s2_fapar(minDateString, maxDateString, polygons, "EPSG:32631")
-    } catch {
-      case e: IllegalArgumentException if e.getMessage.contains("returned 0 results") =>
-        assumeTrue(false, s"Skipping test because no MTDA data is available for the configured reference period: ${e.getMessage}")
-        return
-    }
+    val datacube = LayerFixtures.s2_fapar(minDateString, maxDateString,polygons,"EPSG:32631")
 
     val outDir = "/tmp/csvoutput_validateFAPARAgainstTSService"
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube("mean", datacube, ProjectedPolygons(polygons, "EPSG:32631"), outDir)
@@ -288,13 +281,12 @@ class ComputeStatsGeotrellisAdapterTest() {
       .filter(_._2.exists(!_.isNaN))
 
 
-    val comparableAverages = referenceAverages.filter { case (date, _) => actualAverages.contains(date) }
-    assertFalse(comparableAverages.isEmpty, "No overlapping timestamps between reference and actual values.")
-
     for {
-      (date, expectedAverages) <- comparableAverages
+      (date, expectedAverages) <- referenceAverages
       (expectedAverage, actualAverage) <- expectedAverages zip actualAverages(date)
     } assertEquals(expectedAverage, actualAverage, 0.08)//large delta because we changed to computing in UTM
+
+    assertArrayEquals(referenceAverages.keys.map((_.toEpochSecond)).toArray.sorted,actualAverages.filter(_._2.exists(!_.isNaN)).keys.map((_.toEpochSecond)).toArray.sorted)
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
