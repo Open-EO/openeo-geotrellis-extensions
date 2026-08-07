@@ -69,8 +69,7 @@ package object onnx {
     }
   }
 
-  private def flattenNestedArray(multiArray: Array[_], outputShape: Array[Long], dimOrder:Seq[String], onnxType:OnnxJavaType): Seq[MultibandTile] = {
-    val shapeDimension = outputShape.length
+  private def flattenNestedArray(multiArray: Array[_],  rows:Int, cols:Int, dimOrder:Seq[String], onnxType:OnnxJavaType): Seq[MultibandTile] = {
     onnxType match {
       case OnnxJavaType.FLOAT =>
         val resultArray = dimOrder.sorted match {
@@ -84,9 +83,9 @@ package object onnx {
           case Seq("bands") => Array(multiArray.asInstanceOf[Array[Float]]).map(x => Array(Array(x)))
           case Seq("class") => Array(multiArray.asInstanceOf[Array[Float]]).map(x => Array(Array(x)))
           case Seq("batch") => multiArray.asInstanceOf[Array[Float]].map(x => Array(Array(Array(x))))
-          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape:${outputShape.mkString("Array(", ", ", ")")}, with dimOrder: ${dimOrder.mkString("Array(", ", ", ")")} ")
+          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape from dimOrder: ${dimOrder.mkString("Array(", ", ", ")")} ")
         }
-        val flattenBands = resultArray.map(batch => MultibandTile(batch.map(x => FloatArrayTile(x.flatten, outputShape(shapeDimension-2).toInt,outputShape(shapeDimension-1).toInt))))
+        val flattenBands = resultArray.map(batch => MultibandTile(batch.map(x => FloatArrayTile(x.flatten, cols, rows))))
         flattenBands
       case OnnxJavaType.DOUBLE =>
         val resultArray = dimOrder.sorted match {
@@ -100,9 +99,9 @@ package object onnx {
           case Seq("bands") => Array(multiArray.asInstanceOf[Array[Double]]).map(x => Array(Array(x)))
           case Seq("class") => Array(multiArray.asInstanceOf[Array[Double]]).map(x => Array(Array(x)))
           case Seq("batch") => multiArray.asInstanceOf[Array[Double]].map(x => Array(Array(Array(x))))
-          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape:${outputShape.mkString("Array(", ", ", ")")} ")
+          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape from dimOrder: ${dimOrder.mkString("Array(", ", ", ")")}  ")
         }
-        val flattenBands = resultArray.map(batch => MultibandTile(batch.map(x => DoubleArrayTile(x.flatten, outputShape(shapeDimension-2).toInt,outputShape(shapeDimension-1).toInt))))
+        val flattenBands = resultArray.map(batch => MultibandTile(batch.map(x => DoubleArrayTile(x.flatten, cols, rows))))
         flattenBands
       case OnnxJavaType.INT32 =>
         val resultArray = dimOrder.sorted match {
@@ -116,8 +115,9 @@ package object onnx {
           case Seq("bands") => Array(multiArray.asInstanceOf[Array[Int]]).map(x => Array(Array(x)))
           case Seq("class") => Array(multiArray.asInstanceOf[Array[Int]]).map(x => Array(Array(x)))
           case Seq("batch") => multiArray.asInstanceOf[Array[Int]].map(x => Array(Array(Array(x))))
+          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape from dimOrder: ${dimOrder.mkString("Array(", ", ", ")")}  ")
         }
-        val flattenBands = resultArray.map(batch => MultibandTile(batch.map(x => IntArrayTile(x.flatten, outputShape(shapeDimension-2).toInt,outputShape(shapeDimension-1).toInt))))
+        val flattenBands = resultArray.map(batch => MultibandTile(batch.map(x => IntArrayTile(x.flatten, cols, rows))))
         flattenBands
       case OnnxJavaType.INT16 =>
         val resultArray = dimOrder.sorted match {
@@ -131,8 +131,9 @@ package object onnx {
           case Seq("bands") => Array(multiArray.asInstanceOf[Array[Short]]).map(x => Array(Array(x)))
           case Seq("class") => Array(multiArray.asInstanceOf[Array[Short]]).map(x => Array(Array(x)))
           case Seq("batch") => multiArray.asInstanceOf[Array[Short]].map(x => Array(Array(Array(x))))
+          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape from dimOrder: ${dimOrder.mkString("Array(", ", ", ")")}  ")
         }
-        val flattenBands = resultArray.map(batch => MultibandTile(batch.map(x => ShortArrayTile(x.flatten, outputShape(shapeDimension-2).toInt,outputShape(shapeDimension-1).toInt))))
+        val flattenBands = resultArray.map(batch => MultibandTile(batch.map(x => ShortArrayTile(x.flatten, cols, rows))))
         flattenBands
       case OnnxJavaType.INT8 =>
         val resultArray = dimOrder.sorted match {
@@ -146,9 +147,9 @@ package object onnx {
           case Seq("bands") => Array(multiArray.asInstanceOf[Array[Byte]]).map(x => Array(Array(x)))
           case Seq("class") => Array(multiArray.asInstanceOf[Array[Byte]]).map(x => Array(Array(x)))
           case Seq("batch") => multiArray.asInstanceOf[Array[Byte]].map(x => Array(Array(Array(x))))
-          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape:${outputShape.mkString("Array(", ", ", ")")} ")
+          case _ => throw new IllegalArgumentException(s"ONNX: unsupported output shape from dimOrder: ${dimOrder.mkString("Array(", ", ", ")")}  ")
         }
-        val flattenBands = resultArray.map(batch => MultibandTile(batch.map(x => ByteArrayTile(x.flatten, outputShape(shapeDimension-2).toInt,outputShape(shapeDimension-1).toInt))))
+        val flattenBands = resultArray.map(batch => MultibandTile(batch.map(x => ByteArrayTile(x.flatten, cols, rows))))
         flattenBands
       case onnxType => throw new IllegalArgumentException(f"ONNX: Unsupported output type of ONNX model : $onnxType")
     }
@@ -205,34 +206,32 @@ package object onnx {
     inputArray
   }
 
-  def transformShapeWithDimOrder(shapeSTAC: Array[Long], shapeModel: Seq[Long], dimOrder: Seq[String]): Array[Long] = {
-    if (!(shapeModel sameElements shapeSTAC)) {
-      throw new IllegalArgumentException(s"ONNX: output shape of model and STAC are different, outputShape of model is ${shapeModel.mkString("Array(", ", ", ")")} and from STAC ${shapeSTAC.mkString("Array(", ", ", ")")}")
-    }
+  def transformShapeWithDimOrder(shapeSTAC: Seq[Long], dimOrder: Seq[String]): (Long,Long,Long,Long) = {
+    assert(shapeSTAC.length == dimOrder.length, s"ONNX: shape length (${shapeSTAC.length}) does not match dim order length (${dimOrder.length}), shape is $shapeSTAC and dim order is $dimOrder.")
     (dimOrder.indexOf("batch"), dimOrder.indexOf("bands"), dimOrder.indexOf("height"), dimOrder.indexOf("width")) match {
       case (p, b, h, w) if p >= 0 && b >= 0 && h >= 0 && w >= 0 =>
-        Array(shapeSTAC(p), shapeSTAC(b), shapeSTAC(h), shapeSTAC(w))
+        (shapeSTAC(p), shapeSTAC(b), shapeSTAC(h), shapeSTAC(w))
       case (-1, b, h, w) if b >= 0 && h >= 0 && w >= 0  =>
-        Array(1, shapeSTAC(b), shapeSTAC(h), shapeSTAC(w))
+        (1, shapeSTAC(b), shapeSTAC(h), shapeSTAC(w))
       case (p, -1, h, w) if p >= 0 && h >= 0 && w >= 0 =>
         dimOrder.indexOf("class") match {
-          case -1 => Array(shapeSTAC(p), 1, shapeSTAC(h), shapeSTAC(w))
-          case c if c >= 0 => Array(shapeSTAC(p), shapeSTAC(c), shapeSTAC(h), shapeSTAC(w))
+          case -1 => (shapeSTAC(p), 1, shapeSTAC(h), shapeSTAC(w))
+          case c if c >= 0 => (shapeSTAC(p), shapeSTAC(c), shapeSTAC(h), shapeSTAC(w))
         }
       case (-1, -1, h, w) if h >= 0 && w >= 0 =>
         dimOrder.indexOf("class") match {
-          case -1 => Array(1, 1, shapeSTAC(h), shapeSTAC(w))
-          case c if c >= 0 => Array(1, shapeSTAC(c), shapeSTAC(h), shapeSTAC(w))
+          case -1 => (1, 1, shapeSTAC(h), shapeSTAC(w))
+          case c if c >= 0 => (1, shapeSTAC(c), shapeSTAC(h), shapeSTAC(w))
         }
       case (p, b, -1, -1) if p >= 0 && b >= 0 =>
-        Array(shapeSTAC(p), shapeSTAC(b), 1, 1)
+        (shapeSTAC(p), shapeSTAC(b), 1, 1)
       case (p, -1, -1, -1) if p >= 0 =>
         dimOrder.indexOf("class") match {
-          case -1 => Array(shapeSTAC(p), 1, 1, 1)
-          case c if c >= 0 => Array(shapeSTAC(p), shapeSTAC(c), 1, 1)
+          case -1 => (shapeSTAC(p), 1, 1, 1)
+          case c if c >= 0 => (shapeSTAC(p), shapeSTAC(c), 1, 1)
         }
       case _ =>
-        throw new IllegalArgumentException(s"ONNX: unsupported output shape: ${shapeSTAC.mkString("Array(", ", ", ")")} with dimOrder: $dimOrder")
+        throw new IllegalArgumentException(s"ONNX: unsupported shape: $shapeSTAC with dimOrder: $dimOrder")
     }
   }
 
@@ -310,15 +309,15 @@ package object onnx {
     val outputShape = outputInfo.getShape
     val outputDimOrder = parsedModel.outputs.head.dimOrder
     val outputShapeSTAC = parsedModel.outputs.head.shape
-    val newOutputShape = transformShapeWithDimOrder(outputShape, outputShapeSTAC, outputDimOrder)
-    val groupedTiles = tiles.toArray.grouped(newOutputShape(0).toInt).toSeq
+    val (batch, bands, inputRows,  inputCols) = transformShapeWithDimOrder(outputShapeSTAC, outputDimOrder)
+    val groupedTiles = tiles.toArray.grouped(batch.toInt).toSeq
     val result = groupedTiles.flatMap(tiles => {
       val inputArray = reshape(inputType, tiles, inputShape)
       val tensor = OnnxTensor.createTensor(env, inputArray)
       val inputs = java.util.Map.of(inputName, tensor)
       val onnxResults = session.run(inputs)
       val resultValue = onnxResults.get(0).getValue.asInstanceOf[Array[_]]
-      val flattenedResult = flattenNestedArray(resultValue, newOutputShape, outputDimOrder, outputType)
+      val flattenedResult = flattenNestedArray(resultValue, inputRows.toInt, inputCols.toInt, outputDimOrder, outputType)
       flattenedResult
     })
     if (isTemp) Files.delete(modelFile)
@@ -401,43 +400,8 @@ package object onnx {
       throw new IllegalArgumentException(s"ONNX: input shape length (${inputShape.length}) does not match input dim order length (${inputDimOrder.length}), shape is $inputShape and dim order is $inputDimOrder.")
     val outputDimOrder = output.dimOrder
     val outputShape = output.shape
-    if (outputShape.length != outputDimOrder.length)
-      throw new IllegalArgumentException(s"ONNX: output shape length (${outputShape.length}) does not match output dim order length (${outputDimOrder.length}), shape is $outputShape and dim order is $outputDimOrder.")
-    val (inputCols, inputRows, batchSize)= inputShape.length match {
-      case 1 =>
-        throw new IllegalArgumentException(s"ONNX: only supports models with 2 or more dimensions, but got ${inputShape.length}.")
-      case 2 =>
-        if (inputDimOrder(0) != "height")
-          logger.warn(s"ONNX: input dim order does not have 'height' as the first dimension, but got ${inputDimOrder(0)}.")
-        if (inputDimOrder(1) != "width")
-          logger.warn(s"ONNX: input dim order does not have 'width' as the second dimension, but got ${inputDimOrder(1)}.")
-        (inputShape(1), inputShape(0), 0)
-      case 3 =>
-        if (inputDimOrder(0) != "bands")
-          logger.warn(s"ONNX: input dim order does not have 'bands' as the first dimension, but got ${inputDimOrder(0)}.")
-        if (inputDimOrder(1) != "height")
-          logger.warn(s"ONNX: input dim order does not have 'height' as the second dimension, but got ${inputDimOrder(1)}.")
-        if (inputDimOrder(2) != "width")
-          logger.warn(s"ONNX: input dim order does not have 'width' as the third dimension, but got ${inputDimOrder(2)}.")
-
-        val tileCols = datacube.metadata.tileLayout.tileCols
-        val tileRows = datacube.metadata.tileLayout.tileRows
-        (inputShape(2), inputShape(1), 0)
-      case 4 =>
-        if (inputDimOrder(0) != "batch")
-          throw new IllegalArgumentException(s"ONNX: input dim order does not have 'batch' as the first dimension, but got ${inputDimOrder(0)}.")
-        if (inputDimOrder(1) != "bands")
-          logger.warn(s"ONNX: input dim order does not have 'bands' as the second dimension, but got ${inputDimOrder(1)}.")
-        if (inputDimOrder(2) != "height")
-          logger.warn(s"ONNX: input dim order does not have 'height' as the third dimension, but got ${inputDimOrder(2)}.")
-        if (inputDimOrder(3) != "width")
-          logger.warn(s"ONNX: input dim order does not have 'width' as the fourth dimension, but got ${inputDimOrder(3)}.")
-        val tileCols = datacube.metadata.tileLayout.tileCols
-        val tileRows = datacube.metadata.tileLayout.tileRows
-        (inputShape(3), inputShape(2), inputShape(0).toInt)
-      case _ =>
-        throw new IllegalArgumentException(s"ONNX: only supports models with 3 or less dimensions, but got ${inputShape.length}.")
-    }
+    val outputShapeTransformed = transformShapeWithDimOrder(outputShape, outputDimOrder)
+    val (batchSize, _ , inputRows,  inputCols) = transformShapeWithDimOrder(inputShape, inputDimOrder)
     val tileLayout = datacube.metadata.tileLayout
     val tileCols = tileLayout.tileCols
     val tileRows = tileLayout.tileRows
