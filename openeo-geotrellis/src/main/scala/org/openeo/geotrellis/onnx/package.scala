@@ -302,6 +302,9 @@ package object onnx {
     val inputType = inputInfo.`type`
     val inputShape = inputInfo.getShape
     val errorMessageInput = checkShape(inputShape, tile.cols, tile.rows, Some(bandCount))
+    val inputDimOrder = parsedModel.inputs.head.dimOrder
+    val inputShapeSTAC = parsedModel.inputs.head.shape
+    val (batchInput, bandsInput, inputRows,  inputCols) = transformShapeWithDimOrder(inputShapeSTAC, inputDimOrder)
     if (errorMessageInput.nonEmpty)
       throw new IllegalArgumentException(s"ONNX: unsupported input shape: $errorMessageInput.")
 
@@ -309,16 +312,25 @@ package object onnx {
     val outputShape = outputInfo.getShape
     val outputDimOrder = parsedModel.outputs.head.dimOrder
     val outputShapeSTAC = parsedModel.outputs.head.shape
-    val (batch, bands, inputRows,  inputCols) = transformShapeWithDimOrder(outputShapeSTAC, outputDimOrder)
-    val groupedTiles = tiles.toArray.grouped(batch.toInt).toSeq
+    val (batchOutput, bandsOutput, outPutRows,  outputCols) = transformShapeWithDimOrder(outputShapeSTAC, outputDimOrder)
+
+        if (batchOutput != batchInput)
+          throw new IllegalArgumentException(s"ONNX: batch size of output ($batchOutput) does not match batch size of input ($batchInput).")
+    val groupedTiles = tiles.toArray.grouped(batchOutput.toInt).toSeq
     val result = groupedTiles.flatMap(tiles => {
-      val inputArray = reshape(inputType, tiles, inputShape)
+      val tilesCorrectSize = if (tiles.length != batchInput.toInt) {
+        val differTiles = batchInput.toInt - tiles.length
+        val emptyTile = new EmptyMultibandTile(inputCols.toInt,inputRows.toInt,tile.cellType,bandCount)
+        val arrayWithEmptyTiles = Array.fill(differTiles)(emptyTile)
+        tiles ++ arrayWithEmptyTiles
+      } else tiles
+      val inputArray = reshape(inputType, tilesCorrectSize, inputShape)
       val tensor = OnnxTensor.createTensor(env, inputArray)
       val inputs = java.util.Map.of(inputName, tensor)
       val onnxResults = session.run(inputs)
       val resultValue = onnxResults.get(0).getValue.asInstanceOf[Array[_]]
-      val flattenedResult = flattenNestedArray(resultValue, inputRows.toInt, inputCols.toInt, outputDimOrder, outputType)
-      flattenedResult
+      val flattenedResult = flattenNestedArray(resultValue, outPutRows.toInt, outputCols.toInt, outputDimOrder, outputType)
+      flattenedResult.take(tiles.length)
     })
     if (isTemp) Files.delete(modelFile)
     result

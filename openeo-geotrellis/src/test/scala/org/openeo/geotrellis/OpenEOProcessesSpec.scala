@@ -1269,8 +1269,8 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   @Test
   def testPredictONNXSpatialSTAC(): Unit = {
-    val layoutCols = 10
-    val layoutRows = 5
+    val layoutCols = 6
+    val layoutRows = 3
     val tileSize = 256
 
     def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
