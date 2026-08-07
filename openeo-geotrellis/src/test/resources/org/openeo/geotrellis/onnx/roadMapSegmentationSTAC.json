@@ -1,0 +1,70 @@
+{
+  "stac_version": "1.0.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"
+  ],
+  "type": "Feature",
+  "id": "roadmap-segmentation-model-onnx",
+  "bbox": [-180.0, -90.0, 180.0, 90.0],
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [[-180.0, -90.0], [180.0, -90.0], [180.0, 90.0], [-180.0, 90.0], [-180.0, -90.0]]
+    ]
+  },
+  "properties": {
+    "datetime": "2026-06-29T00:00:00Z",
+    "mlm:name": "Road Map Segmentation Model",
+    "mlm:description": "ONNX model for semantic segmentation producing 10 class predictions from 64×64 RGB patches",
+    "mlm:architecture": "UNSPECIFIED",
+    "mlm:learning_approach": "supervised",
+    "mlm:prediction_type": "segmentation",
+    "mlm:framework": [
+      {
+        "name": "onnx",
+        "version": "1.15.0"
+      }
+    ],
+    "mlm:tasks": ["semantic-segmentation"],
+    "mlm:input": [
+      {
+        "name": "input",
+        "description": "Input image tensor with named dimensions",
+        "data_type": "float32",
+        "shape": [25, 3, 64, 64],
+        "dim_order": ["batch", "bands", "height", "width"]
+      }
+    ],
+    "mlm:output": [
+      {
+        "name": "output",
+        "description": "Classification logits for 10 classes",
+        "data_type": "float32",
+        "shape": [25, 10],
+        "dim_order": ["batch", "class"]
+      }
+    ],
+    "mlm:classes": [
+      {"value": 0, "name": "class_0"},
+      {"value": 1, "name": "class_1"},
+      {"value": 2, "name": "class_2"},
+      {"value": 3, "name": "class_3"},
+      {"value": 4, "name": "class_4"},
+      {"value": 5, "name": "class_5"},
+      {"value": 6, "name": "class_6"},
+      {"value": 7, "name": "class_7"},
+      {"value": 8, "name": "class_8"},
+      {"value": 9, "name": "class_9"}
+    ]
+  },
+  "links": [],
+  "assets": {
+    "model": {
+      "href": "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/roadMapSegmentationModel.onnx",
+      "type": "application/x-onnx",
+      "title": "ONNX Model Binary",
+      "roles": ["ml-model:checkpoint", "mlm:model"]
+    }
+  },
+  "collection": "ml-models"
+}

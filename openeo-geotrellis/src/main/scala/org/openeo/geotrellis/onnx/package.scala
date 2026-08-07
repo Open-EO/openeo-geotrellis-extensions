@@ -400,8 +400,10 @@ package object onnx {
       throw new IllegalArgumentException(s"ONNX: input shape length (${inputShape.length}) does not match input dim order length (${inputDimOrder.length}), shape is $inputShape and dim order is $inputDimOrder.")
     val outputDimOrder = output.dimOrder
     val outputShape = output.shape
-    val outputShapeTransformed = transformShapeWithDimOrder(outputShape, outputDimOrder)
-    val (batchSize, _ , inputRows,  inputCols) = transformShapeWithDimOrder(inputShape, inputDimOrder)
+    val (batchSizeOutput, _, outputRows, outputCols) = transformShapeWithDimOrder(outputShape, outputDimOrder)
+    val (batchSizeInput, _ , inputRows,  inputCols) = transformShapeWithDimOrder(inputShape, inputDimOrder)
+    if (batchSizeInput != batchSizeOutput)
+      throw new IllegalArgumentException(s"ONNX: batch size of input ($batchSizeInput) does not match batch size of output ($batchSizeOutput).")
     val tileLayout = datacube.metadata.tileLayout
     val tileCols = tileLayout.tileCols
     val tileRows = tileLayout.tileRows
@@ -421,9 +423,11 @@ package object onnx {
       }
 
     }, preservesPartitioning = true)
+
+    val updatedMetadata = retiled.metadata.copy(layout = retiled.metadata.layout.copy(tileLayout = retiled.metadata.layout.tileLayout.copy(tileCols = outputCols.toInt, tileRows = outputRows.toInt)))
     ContextRDD(
       result,
-      retiled.metadata
+      updatedMetadata
     )
   }
 
