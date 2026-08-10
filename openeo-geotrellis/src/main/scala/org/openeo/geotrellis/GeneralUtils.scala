@@ -1,8 +1,14 @@
 package org.openeo.geotrellis
 
-import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.layer.LayoutDefinition
+import geotrellis.proj4.CRS
+import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.vector.Extent
+import org.slf4j.LoggerFactory
 
 object GeneralUtils {
+
+  val logger = LoggerFactory.getLogger(GeneralUtils.getClass)
 
   def toSigned(cellType: CellType): CellType = {
     cellType match {
@@ -189,6 +195,78 @@ object GeneralUtils {
       case x:UShortCells => true
       case _ => false
     }
+  }
+
+
+  /**
+   * Works around geotrellis issue.
+   * https://github.com/locationtech/geotrellis/issues/3525
+   */
+  def safeConvert(tile: Tile,ct:CellType): Tile = {
+    if(tile.isInstanceOf[ConstantTile] && tile.getDouble(0,0).isNaN ){
+      EmptyMultibandTile.empty(ct, tile.cols, tile.rows)
+    }else{
+      tile.convert(ct)
+    }
+  }
+
+
+  def layoutMerged(layoutLeft:LayoutDefinition, layoutRight:LayoutDefinition, crsLeft: CRS, crsRight: CRS): LayoutDefinition = {
+    if (layoutLeft == layoutRight & crsLeft == crsRight) layoutLeft
+    else {
+      val reprojectedExtentRight = layoutRight.extent.reproject(crsRight, crsLeft)
+      val result = layoutDefinitionMergeWithEqualCellSize(layoutLeft, reprojectedExtentRight)
+      logger.info(s"layoutMerged: layoutLeft=$layoutLeft, layoutRight=$layoutRight, crsLeft=$crsLeft, crsRight=$crsRight, result layout =$result")
+      result
+    }
+  }
+
+  private def layoutDefinitionMergeWithEqualCellSize(layoutLeft:LayoutDefinition, extentRight:Extent): LayoutDefinition = {
+    val combinedExtent = extentRight.extent.combine(layoutLeft.extent)
+    
+    val ratioWidth = combinedExtent.width / layoutLeft.extent.width
+    val ratioTileWidth = ratioWidth*layoutLeft.layoutCols
+    val newLayoutCols = Math.ceil(ratioTileWidth)
+    val xMax = if (math.abs(ratioTileWidth - math.round(ratioTileWidth)) > 1e-6){
+      combinedExtent.xmin + newLayoutCols/layoutLeft.layoutCols * layoutLeft.extent.width
+    } else combinedExtent.xmax
+
+    val ratioHeight = combinedExtent.height / layoutLeft.extent.height
+    val ratioTileHeight = ratioHeight*layoutLeft.layoutRows
+    val newLayoutRows = Math.ceil(ratioTileHeight)
+    val yMax = if (math.abs(ratioTileHeight - math.round(ratioTileHeight)) > 1e-6){
+      combinedExtent.ymin + newLayoutRows/layoutLeft.layoutRows * layoutLeft.extent.height
+    } else combinedExtent.ymax
+
+
+    val tileLayout = TileLayout(newLayoutCols.toInt, newLayoutRows.toInt, layoutLeft.tileCols, layoutLeft.tileRows)
+    LayoutDefinition(Extent(combinedExtent.xmin,combinedExtent.ymin,xMax, yMax), tileLayout)
+  }
+
+  private def crossesAntimeridian(bbox: Extent): Boolean = {
+    bbox.xmin < -180 || bbox.xmax > 180
+  }
+
+  def fixBboxLargerThanWorld(bbox: Extent): Extent = {
+    if (crossesAntimeridian(bbox)) {
+      if (bbox.width>360) {
+        cropXDimensionBboxLargerThanWorld(bbox)
+      } else {
+        bbox
+      }
+    } else {
+      bbox
+    }
+  }
+  // returns an extent that is cropped to the world extent if the input extent is larger than the world extent
+  // the bbox has to be CRS EPSG:4326
+  def cropXDimensionBboxLargerThanWorld(bbox: Extent): Extent = {
+    Extent(
+      math.max(bbox.xmin, -180),
+      bbox.ymin,
+      math.min(bbox.xmax, 180),
+      bbox.ymax
+    )
   }
 
 }

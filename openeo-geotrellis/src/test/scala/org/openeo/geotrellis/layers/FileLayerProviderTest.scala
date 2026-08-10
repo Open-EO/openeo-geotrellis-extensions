@@ -4,12 +4,12 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.{GDALIOException, GDALRasterSource}
-import geotrellis.raster.io.geotiff.GeoTiff
+import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
 import geotrellis.raster.resample.{Bilinear, CubicConvolution, ResampleMethod}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource, ShortConstantNoDataCellType, isNoData}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, Raster, RasterSource, ShortConstantNoDataCellType, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
@@ -19,7 +19,7 @@ import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInp
 import org.apache.commons.io.FileUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api._
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
@@ -1787,6 +1787,58 @@ class FileLayerProviderTest extends RasterMatchers {
     )
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasEodataData")
+  @ParameterizedTest
+  @ValueSource(booleans = Array(false, true))
+  def testAngleBandsFileNotFoundIsSoftError(loadPerProduct: Boolean): Unit = {
+    val pyramidFactory = LayerFixtures.stacMissingAngleBandsFileCollection
+
+    val projectedPolygons = ProjectedPolygons.fromExtent(
+      Extent(5.583635357486733, 51.131906092550565, 5.619892972445416, 51.14786554888872),
+      "EPSG:4326",
+    ).reproject(CRS.fromEpsgCode(32631))
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
+    dataCubeParameters.loadPerProduct = loadPerProduct
+
+    val Seq((_, baseLayer)) = pyramidFactory.datacube_seq(
+      projectedPolygons,
+      from_date = "2026-02-03T00:00:00Z",
+      to_date = "2026-02-04T00:00:00Z",
+      metadata_properties = util.Collections.emptyMap(),
+      correlationId = "",
+      dataCubeParameters = dataCubeParameters,
+    )
+
+    baseLayer.cache()
+
+    val Raster(multibandTile, extent) = baseLayer
+      .toSpatial()
+      .crop(projectedPolygons.extent.extent)
+      .stitch()
+
+    // MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs).write(s"/tmp/testAngleBandsFileNotFoundIsSoftError_$loadPerProduct.tif")
+
+    assertEquals(2, baseLayer.count()) // tiles for overlapping features/spatial keys are merged (S2A gets precedence)
+
+    val uniqueDates = baseLayer.keys.map(_.temporalKey.time).distinct().collect()
+    assertEquals(1, uniqueDates.length)
+
+    val multibandTiles = baseLayer.values.collect()
+
+    for (multibandTile <- multibandTiles) {
+      val Vector(b04, saa, sza) = multibandTile.bands
+      assertFalse(b04.isNoDataTile)
+      assertNotEquals(165.638, b04.getDouble(0, 0), 0.001) // SAA value
+      assertNotEquals(68.481, b04.getDouble(0, 0), 0.001) // SZA value
+
+      assertTrue(saa.isNoDataTile, s"SAA should have been NODATA but was ${saa.getDouble(0, 0)}")
+      assertTrue(sza.isNoDataTile, s"SZA should have been NODATA but was ${sza.getDouble(0, 0)}")
+    }
+  }
+
   @Test
   def testMultibandCOGViaSTACResampleReadOneBand(@TempDir outDir: Path): Unit = {
     val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0, 10.0), util.Arrays.asList("precipitation-flux"))
@@ -1804,7 +1856,6 @@ class FileLayerProviderTest extends RasterMatchers {
     writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory,
       f"$outDir/testSinglebandCOGViaSTACResampled.nc", referenceFile)
   }
-
 
   private def writeToNetCDFAndCompare(polygonAOI: ProjectedPolygons, dataCubeParameters: DataCubeParameters, bands: util.ArrayList[String], factory: PyramidFactory, outLocation: String, referenceFile: String): Unit = {
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)

@@ -60,7 +60,7 @@ class PyramidFactoryTest {
     val to = from.plusDays(1)
 
     singleBandGeoTiffFromDisk(
-      globPattern = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/24/*/10M/*_FAPAR_10M_V200.tif", from, to)
+      globPattern = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/24/*/10M/*_FAPAR_10M_V220.tif", from, to)
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
@@ -70,7 +70,7 @@ class PyramidFactoryTest {
     val to = from plusDays 2
 
     singleBandGeoTiffFromDisk(
-      globPattern = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/2[34567]/*/10M/*_FAPAR_10M_V200.tif", from, to)
+      globPattern = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/2[34567]/*/10M/*_FAPAR_10M_V220.tif", from, to)
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")

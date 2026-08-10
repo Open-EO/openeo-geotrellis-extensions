@@ -18,7 +18,7 @@ import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrelliscommon.DatacubeSupport._
-import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SyntheticDataOverride}
+import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SyntheticDataOverride, UdfLanguage}
 import org.openeo.opensearch.OpenSearchResponses.FeatureCollection
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -303,7 +303,7 @@ class RasterTileLoaderTest extends RasterMatchers {
 
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.setLoadPerProduct(true)
-    dataCubeParameters.setSyntheticDataOverride(new SyntheticDataOverride("uint16raw", None))
+    dataCubeParameters.setSyntheticDataOverride(SyntheticDataOverride("uint16raw", Some("def generate(row: Int, col:Int): Short = {7}"), UdfLanguage.Scala))
 
     val client = new FixedFeaturesOpenSearchClient
 

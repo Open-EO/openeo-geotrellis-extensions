@@ -57,26 +57,11 @@ pipeline {
             steps {
                 script {
                     rel_version = getMavenVersion()
-                    build(skipTests = params.skip_tests, skipSentinelHubTests = params.skip_sentinelhub_tests)
+                    buildIt(skipTests = params.skip_tests, skipSentinelHubTests = params.skip_sentinelhub_tests)
                     utils.setWorkspacePermissions()
                 }
             }
         }
-
-        stage("trigger integrationtests") {
-            when {
-                expression {
-                    ["master", "develop"].contains(env.BRANCH_NAME)
-                }
-            }
-            steps {
-                script {
-                    build(job: "openEO/openeo-integrationtests", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
-                }
-            }
-        }
-
-
         stage('Input') {
             when {
                 expression {
@@ -92,8 +77,6 @@ pipeline {
             }
 
         }
-
-
         stage('Releasing') {
             when {
                 expression {
@@ -110,7 +93,7 @@ pipeline {
                         sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
                     }
                     echo "releasing version ${rel_version}"
-                    build(skipTests = true)
+                    buildIt(skipTests = true)
 
                     withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
                         withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'BobDeBouwer', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
@@ -129,7 +112,18 @@ pipeline {
                 }
             }
         }
-
+        stage("Trigger geopyspark driver master build") {
+            when {
+                expression {
+                    ["master", "develop"].contains(env.BRANCH_NAME)
+                }
+            }
+            steps {
+                script {
+                    build(job: "openEO/openeo-geopyspark-driver/master", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
+                }
+            }
+        }
     }
     post {
         always {
@@ -184,12 +178,12 @@ String updateMavenVersion(){
     return v_snapshot
 }
 
-void build(skipTests = false, skipSentinelHubTests = false){
+void buildIt(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-21-openjdk" ]
     def testImage = docker.build("openeo-geotrellis-test-image:20250921_1", "-f ./docker/tests_dockerfile ./docker")
-    testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root' ) {
+    testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -v /data/projects/OpenEO/automated_test_files/eodata:/eodata:ro -u root' ) {
         withEnv(jdkEnv) {
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
             sh 'current_dir=$(pwd) && git config --global --add safe.directory  $current_dir'
@@ -221,7 +215,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                         [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
                         [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
                 ]) {
-                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts,integrationtests -U clean install' + rtMaven.opts
+                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts -U clean install' + rtMaven.opts
                     try {
                         if (rtMaven.deployer.deployArtifacts)
                             server.publishBuildInfo buildInfo
