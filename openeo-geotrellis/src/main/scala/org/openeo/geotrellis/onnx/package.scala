@@ -302,11 +302,13 @@ package object onnx {
     val inputType = inputInfo.`type`
     val inputShape = inputInfo.getShape
     val errorMessageInput = checkShape(inputShape, tile.cols, tile.rows, Some(bandCount))
-    val inputDimOrder = parsedModel.inputs.head.dimOrder
-    val inputShapeSTAC = parsedModel.inputs.head.shape
-    val (batchInput, bandsInput, inputRows,  inputCols) = transformShapeWithDimOrder(inputShapeSTAC, inputDimOrder)
     if (errorMessageInput.nonEmpty)
       throw new IllegalArgumentException(s"ONNX: unsupported input shape: $errorMessageInput.")
+    val inputDimOrder = parsedModel.inputs.head.dimOrder
+    val inputShapeSTAC = parsedModel.inputs.head.shape
+    if (inputShapeSTAC != inputShape.toSeq)
+      throw new IllegalArgumentException(s"ONNX: input shape from STAC model ($inputShapeSTAC) does not match input shape from ONNX model (${inputShape.mkString("Array(", ", ", ")")}).")
+    val (batchInput, bandsInput, inputRows,  inputCols) = transformShapeWithDimOrder(inputShapeSTAC, inputDimOrder)
 
     val outputType = outputInfo.`type`
     val outputShape = outputInfo.getShape
@@ -314,9 +316,10 @@ package object onnx {
     val outputShapeSTAC = parsedModel.outputs.head.shape
     val (batchOutput, bandsOutput, outPutRows,  outputCols) = transformShapeWithDimOrder(outputShapeSTAC, outputDimOrder)
 
-        if (batchOutput != batchInput)
-          throw new IllegalArgumentException(s"ONNX: batch size of output ($batchOutput) does not match batch size of input ($batchInput).")
-    val groupedTiles = tiles.toArray.grouped(batchOutput.toInt).toSeq
+    if (batchOutput != batchInput)
+      throw new IllegalArgumentException(s"ONNX: batch size of output ($batchOutput) does not match batch size of input ($batchInput).")
+    val groupedTiles:  Seq[Array[MultibandTile]] = if (batchInput == -1) Seq(tiles.toArray)
+      else tiles.toArray.grouped(batchOutput.toInt).toSeq
     val result = groupedTiles.flatMap(tiles => {
       val tilesCorrectSize = if (tiles.length != batchInput.toInt) {
         val differTiles = batchInput.toInt - tiles.length
@@ -412,6 +415,8 @@ package object onnx {
       throw new IllegalArgumentException(s"ONNX: input shape length (${inputShape.length}) does not match input dim order length (${inputDimOrder.length}), shape is $inputShape and dim order is $inputDimOrder.")
     val outputDimOrder = output.dimOrder
     val outputShape = output.shape
+    if (outputShape.length != outputDimOrder.length)
+      throw new IllegalArgumentException(s"ONNX: output shape length (${outputShape.length}) does not match input dim order length (${outputDimOrder.length}), shape is $outputShape and dim order is $outputDimOrder.")
     val (batchSizeOutput, _, outputRows, outputCols) = transformShapeWithDimOrder(outputShape, outputDimOrder)
     val (batchSizeInput, _ , inputRows,  inputCols) = transformShapeWithDimOrder(inputShape, inputDimOrder)
     if (batchSizeInput != batchSizeOutput)

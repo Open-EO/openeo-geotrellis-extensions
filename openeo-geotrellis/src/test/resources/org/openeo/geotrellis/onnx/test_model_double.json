@@ -29,8 +29,8 @@
         "name": "input",
         "description": "Input image tensor with named dimensions",
         "data_type": "float64",
-        "shape": [1, 1, 256, 256],
-        "dim_order": ["batch", "bands", "height", "width"]
+        "shape": [1, 256, 256],
+        "dim_order": ["bands", "height", "width"]
       }
     ],
     "mlm:output": [
@@ -39,7 +39,7 @@
         "description": "Output image tensor",
         "data_type": "float64",
         "shape": [1, 256, 256],
-        "dim_order": ["batch", "height", "width"]
+        "dim_order": ["bands", "height", "width"]
       }
     ]
   },
