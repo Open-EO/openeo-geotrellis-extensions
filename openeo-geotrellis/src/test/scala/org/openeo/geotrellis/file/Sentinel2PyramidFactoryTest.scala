@@ -251,7 +251,7 @@ class Sentinel2PyramidFactoryTest {
     @Test
     def testStatsFromPyramid(): Unit = {
         val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))
-        val localDate = LocalDate.of(2024, 8, 7)
+        val localDate = LocalDate.of(2026, 8, 7)
         val spatialLayer = createLayerForDate(bbox, localDate)
 
         checkStatsResult("testStatsFromPyramid", bbox, spatialLayer)
@@ -261,7 +261,7 @@ class Sentinel2PyramidFactoryTest {
     @Test
     def testStatsFromNativeUTM(): Unit = {
         val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))
-        val localDate = LocalDate.of(2024, 8, 7)
+        val localDate = LocalDate.of(2026, 8, 7)
         val spatialLayer = createLayerForDate(bbox, localDate, pyramid = false)
 
         checkStatsResult("testStatsFromNativeUTM", bbox, spatialLayer)
@@ -276,7 +276,7 @@ class Sentinel2PyramidFactoryTest {
             case Summary(values) => values.head.mean
         }
 
-        val qgisZonalStaticsPluginResult = 8.982515316307564
+        val qgisZonalStaticsPluginResult = 4.699450065992081
         assertEquals(qgisZonalStaticsPluginResult, singleBandMean, 0.005)
     }
 
@@ -327,33 +327,32 @@ class Sentinel2PyramidFactoryTest {
               |        "https://stac-extensions.github.io/alternate-assets/v1.2.0/schema.json",
               |        "https://stac-extensions.github.io/authentication/v1.1.0/schema.json"
               |      ],
-              |      "id": "S2A_20240807T105031_31TCN_TOC_V220",
+              |      "id": "S2C_20260807T104621_31TCN_TOC_V220",
               |      "collection": "terrascope-s2-toc-v2",
               |      "geometry": {
               |        "type": "Polygon",
               |        "coordinates": [
               |          [
-              |            [0.355044220027663, 47.2803122025056],
+              |            [0.353496071341766, 47.3112713918985],
               |            [0.377280362167835, 46.8356437141635],
               |            [1.81664846691532, 46.8595830838483],
               |            [1.79435498889108, 47.8473711523488],
-              |            [0.55391790638907, 47.8264133587128],
-              |            [0.517538563375689, 47.7273955014657],
-              |            [0.464398003394962, 47.5810506045951],
-              |            [0.411192906835087, 47.434683319942],
-              |            [0.35793169032171, 47.2882980540114],
-              |            [0.355044220027663, 47.2803122025056]
+              |            [0.5412353563803, 47.8261990808026],
+              |            [0.506279748806763, 47.7314940568723],
+              |            [0.452957836887773, 47.5850291507813],
+              |            [0.399727939547736, 47.4386396658516],
+              |            [0.353496071341766, 47.3112713918985]
               |          ]
               |        ]
               |      },
-              |      "bbox": [0.355044220027663, 46.8356437141635, 1.81664846691532, 47.8473711523488],
+              |      "bbox": [0.353496071341766, 46.8356437141635, 1.81664846691532, 47.8473711523488],
               |      "properties": {
-              |        "title": "S2A_20240807T105031_31TCN_TOC_V220",
-              |        "datetime": "2024-08-07T10:50:31.024000Z",
-              |        "created": "2026-02-07T09:33:33.533383Z",
-              |        "updated": "2026-02-07T09:33:33.991518Z",
-              |        "start_datetime": "2024-08-07T10:50:31.024000Z",
-              |        "end_datetime": "2024-08-07T10:50:31.024000Z",
+              |        "title": "S2C_20260807T104621_31TCN_TOC_V220",
+              |        "datetime": "2026-08-07T10:46:21.025000Z",
+              |        "created": "2026-08-07T23:03:55.618954Z",
+              |        "updated": "2026-08-07T23:03:56.042877Z",
+              |        "start_datetime": "2026-08-07T10:46:21.025000Z",
+              |        "end_datetime": "2026-08-07T10:46:21.025000Z",
               |        "providers": [
               |          {
               |            "name": "ESA",
@@ -371,14 +370,14 @@ class Sentinel2PyramidFactoryTest {
               |            "url": "https://terrascope.be/"
               |          }
               |        ],
-              |        "platform": "sentinel-2a",
+              |        "platform": "sentinel-2c",
               |        "instruments": [
               |          "msi"
               |        ],
               |        "constellation": "sentinel-2",
               |        "gsd": 10,
-              |        "eo:cloud_cover": 55.19,
-              |        "sat:absolute_orbit": 47667,
+              |        "eo:cloud_cover": 0,
+              |        "sat:absolute_orbit": 10031,
               |        "sat:relative_orbit": 51,
               |        "sat:orbit_state": "descending",
               |        "product:type": "TOC",
@@ -387,7 +386,7 @@ class Sentinel2PyramidFactoryTest {
               |        "mgrs:grid_square": "CN",
               |        "grid:code": "MGRS-31TCN",
               |        "processing:facility": "VITO",
-              |        "processing:datetime": "2026-02-07T09:33:23.052Z",
+              |        "processing:datetime": "2026-08-07T23:03:51.167Z",
               |        "processing:version": "220",
               |        "image_refining": true,
               |        "proj:code": "EPSG:32631",
@@ -405,7 +404,7 @@ class Sentinel2PyramidFactoryTest {
               |        },
               |        "proj:bbox": [300000, 5190240, 409800, 5300040],
               |        "processing:software": {
-              |          "sentinel2_terrascope": "1.0.0"
+              |          "sentinel2_terrascope": "1.1.0"
               |        },
               |        "auth:schemes": {
               |          "oidc": {
@@ -419,7 +418,7 @@ class Sentinel2PyramidFactoryTest {
               |        {
               |          "rel": "self",
               |          "type": "application/geo+json",
-              |          "href": "https://stac.terrascope.be/collections/terrascope-s2-toc-v2/items/S2A_20240807T105031_31TCN_TOC_V220"
+              |          "href": "https://stac.terrascope.be/collections/terrascope-s2-toc-v2/items/S2C_20260807T104621_31TCN_TOC_V220"
               |        },
               |        {
               |          "rel": "parent",
@@ -439,32 +438,32 @@ class Sentinel2PyramidFactoryTest {
               |      ],
               |      "assets": {
               |        "AOT": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_AOT_60M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_AOT_60M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "AOT",
               |          "description": "Aerosol Optical Thickness at native 60M resolution",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 171103,
-              |          "updated": "2026-02-07T08:57:48.238720Z",
+              |          "file:size": 219373,
+              |          "updated": "2026-08-07T23:03:10.790734Z",
               |          "data_type": "uint16",
               |          "raster:scale": 0.001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [1830, 1830],
-              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "AOT"
               |            }
               |          ],
+              |          "proj:shape": [1830, 1830],
+              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "gsd": 60,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_AOT_60M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_AOT_60M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -472,15 +471,15 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "CLOUDMASK": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_CLOUDMASK_20M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_CLOUDMASK_20M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "CLOUDMASK",
               |          "roles": [
               |            "data-mask",
               |            "cloud"
               |          ],
-              |          "file:size": 130121,
-              |          "updated": "2026-02-07T08:57:48.314631Z",
+              |          "file:size": 53013,
+              |          "updated": "2026-08-07T23:03:10.804733Z",
               |          "data_type": "uint8",
               |          "raster:scale": 1,
               |          "raster:offset": 0,
@@ -491,7 +490,7 @@ class Sentinel2PyramidFactoryTest {
               |          "gsd": 20,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_CLOUDMASK_20M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_CLOUDMASK_20M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -499,32 +498,32 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "RAA": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_RAA_60M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_RAA_60M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "RAA",
               |          "description": "Relative Azimuth Angle at native 60M resolution",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 466823,
-              |          "updated": "2026-02-07T08:57:15.503737Z",
+              |          "file:size": 411617,
+              |          "updated": "2026-08-07T23:02:59.153954Z",
               |          "data_type": "uint16",
               |          "raster:scale": 0.01,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 65535,
               |          "unit": "deg",
-              |          "proj:shape": [1830, 1830],
-              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "RAA"
               |            }
               |          ],
+              |          "proj:shape": [1830, 1830],
+              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "gsd": 60,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_RAA_60M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_RAA_60M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -532,30 +531,30 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "SCL": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_SCENECLASSIFICATION_20M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_SCENECLASSIFICATION_20M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "SCL",
               |          "description": "Scene classification generated by Sen2Cor",
               |          "roles": [
               |            "data-mask"
               |          ],
-              |          "file:size": 1421515,
-              |          "updated": "2026-02-07T08:57:48.105615Z",
+              |          "file:size": 2072801,
+              |          "updated": "2026-08-07T23:03:10.725760Z",
               |          "data_type": "uint8",
               |          "raster:scale": 1,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
-              |          "proj:shape": [5490, 5490],
-              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "SCL"
               |            }
               |          ],
+              |          "proj:shape": [5490, 5490],
+              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "gsd": 20,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_SCENECLASSIFICATION_20M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_SCENECLASSIFICATION_20M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -563,32 +562,32 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "SZA": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_SZA_60M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_SZA_60M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "SZA",
               |          "description": "Sun Zenith Angle at native 60M resolution",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 91103,
-              |          "updated": "2026-02-07T08:57:15.476700Z",
+              |          "file:size": 88207,
+              |          "updated": "2026-08-07T23:02:58.984964Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.01,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "deg",
-              |          "proj:shape": [1830, 1830],
-              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "SZA"
               |            }
               |          ],
+              |          "proj:shape": [1830, 1830],
+              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "gsd": 60,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_SZA_60M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_SZA_60M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -596,23 +595,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B01": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B01_60M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B01_60M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B01",
               |          "description": "S2-MSI Band01, 60M resolution, Top Of Canopy Reflectance at 443nm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 3872469,
-              |          "updated": "2026-02-07T08:57:15.799640Z",
+              |          "file:size": 5230427,
+              |          "updated": "2026-08-07T23:02:59.317943Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [1830, 1830],
-              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B01",
@@ -621,10 +618,12 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.027
               |            }
               |          ],
+              |          "proj:shape": [1830, 1830],
+              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "gsd": 60,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B01_60M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B01_60M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -632,23 +631,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B02": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B02_10M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B02_10M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B02",
               |          "description": "S2-MSI Band02, 10M resolution, Top Of Canopy Reflectance at 490nm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 116416621,
-              |          "updated": "2026-02-07T08:57:19.934552Z",
+              |          "file:size": 184757429,
+              |          "updated": "2026-08-07T23:03:01.218825Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [10980, 10980],
-              |          "proj:transform": [10, 0, 300000, 0, -10, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B02",
@@ -657,9 +654,11 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.098
               |            }
               |          ],
+              |          "proj:shape": [10980, 10980],
+              |          "proj:transform": [10, 0, 300000, 0, -10, 5300040, 0, 0, 1],
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B02_10M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B02_10M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -667,23 +666,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B03": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B03_10M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B03_10M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B03",
               |          "description": "S2-MSI Band03, 10M resolution, Top Of Canopy Reflectance at 560nm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 117520187,
-              |          "updated": "2026-02-07T08:57:26.673634Z",
+              |          "file:size": 189789967,
+              |          "updated": "2026-08-07T23:03:03.187704Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [10980, 10980],
-              |          "proj:transform": [10, 0, 300000, 0, -10, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B03",
@@ -692,9 +689,11 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.045
               |            }
               |          ],
+              |          "proj:shape": [10980, 10980],
+              |          "proj:transform": [10, 0, 300000, 0, -10, 5300040, 0, 0, 1],
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B03_10M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B03_10M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -702,23 +701,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B04": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B04_10M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B04_10M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B04",
               |          "description": "S2-MSI Band04, 10M resolution, Top Of Canopy Reflectance at 665nm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 121427837,
-              |          "updated": "2026-02-07T08:57:31.881726Z",
+              |          "file:size": 193855833,
+              |          "updated": "2026-08-07T23:03:05.186080Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [10980, 10980],
-              |          "proj:transform": [10, 0, 300000, 0, -10, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B04",
@@ -727,9 +724,11 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.038
               |            }
               |          ],
+              |          "proj:shape": [10980, 10980],
+              |          "proj:transform": [10, 0, 300000, 0, -10, 5300040, 0, 0, 1],
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B04_10M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B04_10M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -737,23 +736,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B05": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B05_20M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B05_20M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B05",
               |          "description": "S2-MSI Band05, 20M resolution, Top Of Canopy Reflectance at 705nm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 34638797,
-              |          "updated": "2026-02-07T08:57:33.969658Z",
+              |          "file:size": 50819093,
+              |          "updated": "2026-08-07T23:03:05.748045Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [5490, 5490],
-              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B05",
@@ -762,10 +759,12 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.019
               |            }
               |          ],
+              |          "proj:shape": [5490, 5490],
+              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "gsd": 20,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B05_20M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B05_20M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -773,23 +772,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B06": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B06_20M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B06_20M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B06",
               |          "description": "S2-MSI Band06, 20M resolution, Top Of Canopy Reflectance at 740nm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 34997003,
-              |          "updated": "2026-02-07T08:57:35.322584Z",
+              |          "file:size": 50259285,
+              |          "updated": "2026-08-07T23:03:06.455002Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [5490, 5490],
-              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B06",
@@ -798,10 +795,12 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.018
               |            }
               |          ],
+              |          "proj:shape": [5490, 5490],
+              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "gsd": 20,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B06_20M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B06_20M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -809,23 +808,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B07": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B07_20M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B07_20M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B07",
               |          "description": "S2-MSI Band07, 20M resolution, Top Of Canopy Reflectance at 783nm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 35491719,
-              |          "updated": "2026-02-07T08:57:36.898849Z",
+              |          "file:size": 50676081,
+              |          "updated": "2026-08-07T23:03:07.004968Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [5490, 5490],
-              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B07",
@@ -834,10 +831,12 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.028
               |            }
               |          ],
+              |          "proj:shape": [5490, 5490],
+              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "gsd": 20,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B07_20M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B07_20M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -845,23 +844,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B08": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B08_10M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B08_10M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B08",
               |          "description": "S2-MSI Band08, 10M resolution, Top Of Canopy Reflectance at 842nm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 116569147,
-              |          "updated": "2026-02-07T08:57:43.137681Z",
+              |          "file:size": 194614789,
+              |          "updated": "2026-08-07T23:03:09.027842Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [10980, 10980],
-              |          "proj:transform": [10, 0, 300000, 0, -10, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B08",
@@ -870,9 +867,11 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.145
               |            }
               |          ],
+              |          "proj:shape": [10980, 10980],
+              |          "proj:transform": [10, 0, 300000, 0, -10, 5300040, 0, 0, 1],
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B08_10M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B08_10M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -880,23 +879,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B11": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B11_20M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B11_20M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B11",
               |          "description": "S2-MSI Band11, 20M resolution, Top Of Canopy Reflectance at 1610mm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 35161567,
-              |          "updated": "2026-02-07T08:57:46.042746Z",
+              |          "file:size": 51775915,
+              |          "updated": "2026-08-07T23:03:10.138775Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [5490, 5490],
-              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B11",
@@ -905,10 +902,12 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.143
               |            }
               |          ],
+              |          "proj:shape": [5490, 5490],
+              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "gsd": 20,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B11_20M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B11_20M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -916,23 +915,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B12": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B12_20M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B12_20M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B12",
               |          "description": "S2-MSI Band12, 20M resolution, Top Of Canopy Reflectance at 2190nm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 34476167,
-              |          "updated": "2026-02-07T08:57:47.918721Z",
+              |          "file:size": 50618787,
+              |          "updated": "2026-08-07T23:03:10.675741Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [5490, 5490],
-              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B12",
@@ -941,10 +938,12 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.242
               |            }
               |          ],
+              |          "proj:shape": [5490, 5490],
+              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "gsd": 20,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B12_20M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B12_20M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -952,23 +951,21 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "B8A": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B8A_20M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B8A_20M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "B8A",
               |          "description": "S2-MSI Band8A, 20M resolution, Top Of Canopy Reflectance at 865nm",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 35577415,
-              |          "updated": "2026-02-07T08:57:44.522857Z",
+              |          "file:size": 50867217,
+              |          "updated": "2026-08-07T23:03:09.586810Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.0001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [5490, 5490],
-              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "B8A",
@@ -977,10 +974,12 @@ class Sentinel2PyramidFactoryTest {
               |              "eo:full_width_half_max": 0.033
               |            }
               |          ],
+              |          "proj:shape": [5490, 5490],
+              |          "proj:transform": [20, 0, 300000, 0, -20, 5300040, 0, 0, 1],
               |          "gsd": 20,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC-B8A_20M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC-B8A_20M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -988,14 +987,14 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "QUICKLOOK": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC_QUICKLOOK_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC_QUICKLOOK_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "QUICKLOOK",
               |          "roles": [
               |            "thumbnail"
               |          ],
-              |          "file:size": 903627,
-              |          "updated": "2026-02-07T08:57:48.472710Z",
+              |          "file:size": 1295041,
+              |          "updated": "2026-08-07T23:03:10.823732Z",
               |          "data_type": "uint8",
               |          "raster:scale": 1,
               |          "raster:offset": 0,
@@ -1005,53 +1004,53 @@ class Sentinel2PyramidFactoryTest {
               |          "proj:transform": [160.058309037901, 0, 300000, 0, -160.058309037901, 5300040, 0, 0, 1],
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC_QUICKLOOK_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC_QUICKLOOK_V220.tif"
               |            }
               |          }
               |        },
               |        "metadata": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC_V220.xml",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC_V220.xml",
               |          "type": "application/xml",
               |          "title": "metadata",
               |          "description": "INSPIRE metadata",
               |          "roles": [
               |            "metadata"
               |          ],
-              |          "file:size": 41247,
-              |          "updated": "2026-02-07T08:57:48.577653Z",
+              |          "file:size": 41245,
+              |          "updated": "2026-08-07T23:03:10.845731Z",
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_TOC_V220.xml"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_TOC_V220.xml"
               |            }
               |          }
               |        },
               |        "VZA": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_VZA_60M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_VZA_60M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "VZA",
               |          "description": "View Zenith Angle at native 60M resolution",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 191613,
-              |          "updated": "2026-02-07T08:57:15.487673Z",
+              |          "file:size": 186129,
+              |          "updated": "2026-08-07T23:02:59.100956Z",
               |          "data_type": "int16",
               |          "raster:scale": 0.01,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "deg",
-              |          "proj:shape": [1830, 1830],
-              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "VZA"
               |            }
               |          ],
+              |          "proj:shape": [1830, 1830],
+              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "gsd": 60,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_VZA_60M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_VZA_60M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -1059,32 +1058,32 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "WVP": {
-              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_WVP_60M_V220.tif",
+              |          "href": "https://services.terrascope.be/download/Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_WVP_60M_V220.tif",
               |          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
               |          "title": "WVP",
               |          "description": "Column Water Vapor at native 60M resolution",
               |          "roles": [
               |            "data"
               |          ],
-              |          "file:size": 995577,
-              |          "updated": "2026-02-07T08:57:48.202668Z",
+              |          "file:size": 4814125,
+              |          "updated": "2026-08-07T23:03:10.786734Z",
               |          "data_type": "uint16",
               |          "raster:scale": 0.001,
               |          "raster:offset": 0,
               |          "raster:sampling": "area",
               |          "nodata": 32767,
               |          "unit": "-",
-              |          "proj:shape": [1830, 1830],
-              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "bands": [
               |            {
               |              "name": "WVP"
               |            }
               |          ],
+              |          "proj:shape": [1830, 1830],
+              |          "proj:transform": [60, 0, 300000, 0, -60, 5300040, 0, 0, 1],
               |          "gsd": 60,
               |          "alternate": {
               |            "local": {
-              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2024/08/07/S2A_20240807T105031_31TCN_TOC_V220/S2A_20240807T105031_31TCN_WVP_60M_V220.tif"
+              |              "href": "file:///data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2026/08/07/S2C_20260807T104621_31TCN_TOC_V220/S2C_20260807T104621_31TCN_WVP_60M_V220.tif"
               |            }
               |          },
               |          "auth:refs": [
@@ -1092,7 +1091,7 @@ class Sentinel2PyramidFactoryTest {
               |          ]
               |        },
               |        "preview": {
-              |          "href": "https://titiler.terrascope.be/collections/terrascope-s2-toc-v2/items/S2A_20240807T105031_31TCN_TOC_V220/preview?assets=B04&assets=B03&assets=B02&format=png&max_size=256&rescale=200,1600&rescale=200,1600&rescale=200,1600",
+              |          "href": "https://titiler.terrascope.be/collections/terrascope-s2-toc-v2/items/S2C_20260807T104621_31TCN_TOC_V220/preview?assets=B04&assets=B03&assets=B02&format=png&max_size=256&rescale=200,1600&rescale=200,1600&rescale=200,1600",
               |          "type": "image/png",
               |          "title": "Preview",
               |          "description": "Preview image",
@@ -1115,7 +1114,7 @@ class Sentinel2PyramidFactoryTest {
               |    {
               |      "rel": "self",
               |      "type": "application/json",
-              |      "href": "https://stac.terrascope.be/search?collections=terrascope-s2-toc-v2&bbox=1.3381310991461013,47.05179515321805,1.3968672829862574,47.088475592749106&limit=200&datetime=2024-08-07T00:00:00Z/2024-08-07T23:59:59Z"
+              |      "href": "https://stac.terrascope.be/search?collections=terrascope-s2-toc-v2&bbox=1.3381310991461013,47.05179515321805,1.3968672829862574,47.088475592749106&limit=200&datetime=2026-08-07T00:00:00Z/2026-08-07T23:59:59Z"
               |    }
               |  ],
               |  "numberReturned": 1,
