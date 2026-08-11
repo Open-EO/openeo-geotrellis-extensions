@@ -3,7 +3,6 @@ package org.openeo.geotrellis.layers
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutScheme, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, MultibandTile, Raster, RasterExtent, Tile}
-import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, GDALWarpOptions}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods, _}
 import geotrellis.spark.tiling.Tiler
 import geotrellis.spark.partition.SpacePartitioner
@@ -15,11 +14,14 @@ import org.openeo.geotrellis.GeneralUtils.cellTypeUnionWithNoData
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, DataCubeParameters, DatacubeSupport}
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.slf4j.{Logger, LoggerFactory}
+import ucar.nc2.dataset.NetcdfDatasets
 
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
+import scala.jdk.CollectionConverters._
 import scala.collection.immutable
+import org.openeo.geotrellis.layers.raster_source.NetCDFRasterSource
 
 object NetCDFCollection {
 
@@ -66,36 +68,53 @@ object NetCDFCollection {
           Some(ConvertTargetCellType(l.datatype.get.withNoData(l.nodata)))
         }else None
         l.bandNames.get.flatMap(b => {
-          var gdalNetCDFLink = s"${l.href.toString.replace("file:", "NETCDF:")}:${b}"
-          if (!gdalNetCDFLink.startsWith("NETCDF:")) {
-            gdalNetCDFLink = s"NETCDF:${gdalNetCDFLink}"
+          val source = {
+            val href = l.href
+            val hrefString = href.toString
+            if (hrefString.startsWith("NETCDF:")) {
+              s"$hrefString:$b"
+            } else if ("file" == href.getScheme) {
+              val localPath = java.nio.file.Paths.get(href).toString
+              s"""NETCDF:"$localPath":$b"""
+            } else {
+              s"""NETCDF:"$hrefString":$b"""
+            }
           }
           try {
+            val rs = NetCDFRasterSource.fromSource(source)
+            val (bandCount, timeValues) = {
+              val ds = NetcdfDatasets.openDataset(rs.path, true, null)
+              try {
+                val variable = Option(ds.findVariable(rs.variableName)).getOrElse(
+                  throw new IllegalArgumentException(s"Variable '${rs.variableName}' not found in ${rs.path}.")
+                )
+                val conventions: String = Option(ds.findGlobalAttributeIgnoreCase("Conventions"))
+                  .map(_.getStringValue)
+                  .getOrElse("")
+                val dimensions = variable.getDimensions.asScala.map(_.getShortName).toList
+                val extraDim = dimensions.filterNot(d => d == "x" || d == "y")
+                val tVar = Option(ds.findVariable("t"))
+                  .getOrElse(throw new IllegalArgumentException(s"Time dimension variable 't' not found in ${rs.path}."))
+                val units = Option(tVar.findAttributeIgnoreCase("units")).map(_.getStringValue).orNull
 
-            val rs = GDALRasterSource(gdalNetCDFLink, new GDALWarpOptions(outputFormat = None), targetCellType = targetCellType)
+                if (!conventions.startsWith("CF-1")) {
+                  throw new IllegalArgumentException(s"Only netCDF files with CF-1.x conventions are supported by this openEO backend, but found ${conventions}.")
+                }
+                if (extraDim != List("t")) {
+                  throw new IllegalArgumentException("Only netCDF files with a time dimension named 't' are supported by this openEO backend.")
+                }
+                if (units != "days since 1990-01-01") {
+                  throw new IllegalArgumentException("Only netCDF files with a time dimension in 'days since 1990-01-01' are supported by this openEO backend.")
+                }
 
-            /**
-             * Retrieving metadata using dataset directly, because sometimes metadata is so large that it doesn't fit the array allocated by GDALWarp
-             */
-            val units = rs.dataset.getMetadataItem("t#units", DefaultDomain, 0)
-            val conventions: String = rs.dataset.getMetadataItem("NC_GLOBAL#Conventions", DefaultDomain, 0)
-            val extraDim = rs.dataset.getMetadataItem("NETCDF_DIM_EXTRA", DefaultDomain, 0)
-
-            if (!conventions.startsWith("CF-1")) {
-              throw new IllegalArgumentException(s"Only netCDF files with CF-1.x conventions are supported by this openEO backend, but found ${conventions}.")
+                val bandCount: Int = if (variable.getRank == 3) variable.getDimension(0).getLength else 1
+                val timeArray = tVar.read()
+                val timeValues = (0 until bandCount).map(i => timeArray.getDouble(i).toInt)
+                (bandCount, timeValues)
+              } finally {
+                ds.close()
+              }
             }
-            if (extraDim != "{t}") {
-              throw new IllegalArgumentException("Only netCDF files with a time dimension named 't' are supported by this openEO backend.")
-            }
-            if (units != "days since 1990-01-01") {
-              throw new IllegalArgumentException("Only netCDF files with a time dimension in 'days since 1990-01-01' are supported by this openEO backend.")
-            }
-            val bandCount: Int = rs.dataset.bandCount
-
-            //there's also a metadata item containing all timesteps, but it doesn't work on cluster for unknown reason
-            val timeValues = (1 to bandCount).map(b => {
-              rs.dataset.getMetadataItem("NETCDF_DIM_t", DefaultDomain, b).toInt
-            })
 
             val timestamps = timeValues.map(t => {
               LocalDate.of(1990, 1, 1).atStartOfDay(ZoneId.of("UTC")).plusDays(t)
@@ -106,8 +125,8 @@ object NetCDFCollection {
             })
             temporalRasters
           } catch {
-            case e: GDALException => {
-              throw new IllegalArgumentException(s"load_stac/load_collection: GDAL gave an error for ${gdalNetCDFLink} with band $b. Error message: ${e.getMessage}", e)
+            case e: Exception => {
+              throw new IllegalArgumentException(s"load_stac/load_collection: Error while reading ${source} with band $b. Error message: ${e.getMessage}", e)
             }
           }
 
