@@ -81,7 +81,7 @@ object NetCDFCollection {
             }
           }
           try {
-            val rs = NetCDFRasterSource.fromSource(source)
+            val rs = NetCDFRasterSource.fromSource(source, targetCellType = targetCellType)
             val (bandCount, timeValues) = {
               val ds = NetcdfDatasets.openDataset(rs.path, true, null)
               try {
