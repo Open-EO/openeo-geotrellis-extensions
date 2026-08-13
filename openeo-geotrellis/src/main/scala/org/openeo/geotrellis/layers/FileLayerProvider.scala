@@ -18,9 +18,10 @@ import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
 import _root_.io.opentelemetry.api._
+import _root_.io.opentelemetry.api.trace.Tracer
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.{LongAccumulator, SizeEstimator}
-import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
+import org.apache.spark.{HashPartitioner, Partitioner, SparkContext, SparkEnv, TaskContext}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
@@ -88,6 +89,8 @@ object FileLayerProvider {
 
   private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
   private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("load_collection_read").build().gaugeBuilder("openeo_megapixel_per_second").build()
+  private[layers] lazy val assetReadMeter = openTelemetry.meterBuilder("asset_read").build().histogramBuilder("the_asset_read").build()
+  private val tracer: Tracer = openTelemetry.tracerBuilder("openeo").build()
 
   private val rasterSourceProviderChain: Seq[RasterSourceProvider] = {
     import java.util.ServiceLoader
@@ -420,12 +423,24 @@ object FileLayerProvider {
       //TODO this assumes that the index is actually the index of this band in the eventual multiband tile, not the index to read from the source
       val theIndex = tuple._2.flatMap(_._1).head
 
-      val allRasters =
+      val allRasters = {
+        val span = tracer.spanBuilder("FileLayerProvider.loadPartitionBySource.readBounds").startSpan()
+        Option(TaskContext.get())
+          .flatMap(taskContext => Option(taskContext.getLocalProperty("spark.jobGroup.id")))
+          .foreach(jobId => span.setAttribute("spark.job.id", jobId))
+        val scope = span.makeCurrent()
         try {
           source.readBounds(bounds).map(_.mapTile { _ convert cellType }).toSeq
         } catch {
-          case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
+          case e: Exception =>
+            span.recordException(e)
+            span.setStatus(_root_.io.opentelemetry.api.trace.StatusCode.ERROR)
+            throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
+        } finally {
+          scope.close()
+          span.end()
         }
+      }
 
       val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
       val paddedRasters = allRasters.zipWithIndex.flatMap {case (raster,index) => {
