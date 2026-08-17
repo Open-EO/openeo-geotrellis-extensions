@@ -748,10 +748,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def determineCelltype(overlappingRasterSources: Seq[(RasterSource, Feature)]): CellType = {
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
-      val cellTypes = overlappingRasterSources.map(_._1.cellType)
-      val commonCellType = cellTypes.reduceLeft((cumCellType, curCellType) => {
-        GeneralUtils.cellTypeUnionWithNoData(cumCellType, curCellType)
-      })
+      val commonCellType = arbitraryRasterSource.cellType
 
       logger.debug(s"Determined common cell type of rasterSources is $commonCellType.")
       commonCellType match {
