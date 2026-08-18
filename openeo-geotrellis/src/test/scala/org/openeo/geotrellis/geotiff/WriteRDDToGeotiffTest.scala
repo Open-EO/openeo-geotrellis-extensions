@@ -368,14 +368,12 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256,256.toByte)
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
-    val empty = tileLayerRDD.withContext{_.filter(_ => false)}
-    val empty2: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext{_.map{case(key,tile) => (key,new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,tile.bandCount)) }}
-    val (_,_,processedRdd) = preProcess(empty2, None, retainNoDataTiles = true)
-    val (_,_,processedRddFiltered) = preProcess(empty2, None, retainNoDataTiles = false)
+    val emptyRdd: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext{_.map{case(key,tile) => (key,new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,tile.bandCount)) }}
+    val (_,_,processedRdd) = preProcess(emptyRdd, None, retainNoDataTiles = true)
+    val (_,_,processedRddFiltered) = preProcess(emptyRdd, None, retainNoDataTiles = false)
     val count = processedRdd.count()
     assertEquals(layoutCols*layoutRows,count)
     assertEquals(0,processedRddFiltered.count())
-
   }
 
 
