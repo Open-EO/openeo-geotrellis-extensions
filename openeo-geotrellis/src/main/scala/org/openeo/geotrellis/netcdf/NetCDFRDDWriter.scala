@@ -148,7 +148,7 @@ object NetCDFRDDWriter {
     }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds)
+    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
   }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K],
@@ -160,9 +160,10 @@ object NetCDFRDDWriter {
                        zLevel:Int,
                        addBandsStatistics: Boolean,
                        cropBounds:Option[Extent]= None,
+                       retainNoDataTiles: Boolean = true
                       ): java.util.List[Item] = {
 
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds, retainNoDataTiles)
     val extent = preProcessResult._2
     val preProcessedRdd = preProcessResult._3
 
@@ -439,7 +440,7 @@ object NetCDFRDDWriter {
                   filenamePrefix: Option[String],
                  ): java.util.List[Item] = {
     if (options.bandNames.isEmpty) logger.error("Couldn't find bandNames in options. It cannot be empty")
-    saveSamples(rdd, path, polygons, sampleNames, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix)
+    saveSamples(rdd, path, polygons, sampleNames, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix, options.retainNoDataTiles)
   }
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -452,12 +453,13 @@ object NetCDFRDDWriter {
                   bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                   addBandsStatistics: Boolean,
                   filenamePrefix: Option[String],
+                  retainNoDataTiles: Boolean = true
                  ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toSeq.zip(reprojected.polygons)
     logger.info(s"Using metadata: ${rdd.metadata}.")
     logger.info(s"Using features: ${features}.")
-    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, addBandsStatistics, filenamePrefix)
+    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, addBandsStatistics, filenamePrefix, retainNoDataTiles)
   }
 
   def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
@@ -509,11 +511,12 @@ object NetCDFRDDWriter {
                                            bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                            addBandsStatistics: Boolean,
                                            filenamePrefix: Option[String] = None,
+                                           retainNoDataTiles: Boolean = true,
                                            ): java.util.List[Item] = {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val crs = rdd.metadata.crs
-    val groupedBySample = stitchRDDBySample(rdd, featuresBC)
+    val groupedBySample = stitchRDDBySample(rdd, featuresBC, retainNoDataTiles)
     //doing a count triggers full job execution, and there's already logging in previous block
     //logger.info(s"Writing ${groupedBySample.keys.count()} samples to disk.")
     groupedBySample.map { case (name, tiles: Iterable[(Long, Raster[MultibandTile], Extent)]) =>
@@ -551,12 +554,14 @@ object NetCDFRDDWriter {
       .toList.asJava
   }
 
-  private def stitchRDDBySample(rdd: MultibandTileLayerRDD[SpaceTimeKey], featuresBC: Broadcast[Seq[(String, Geometry)]]) = {
+  private def stitchRDDBySample(rdd: MultibandTileLayerRDD[SpaceTimeKey], featuresBC: Broadcast[Seq[(String, Geometry)]], retainNoDataTiles: Boolean)  = {
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
     val sampleNames = featuresBC.value.map { case (sampleName, _) => sampleName }
     logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
-    val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
+    val filtered = 
+      if (retainNoDataTiles) rdd 
+      else new OpenEOProcesses().filterEmptyTile(rdd)
     //the logging below is rather expensive
     //logger.info(s"Filtered out ${rdd.count() - filtered.count()} empty tiles. ${rdd.count()} -> ${filtered.count()}")
     val groupedByInstant = filtered.flatMap {

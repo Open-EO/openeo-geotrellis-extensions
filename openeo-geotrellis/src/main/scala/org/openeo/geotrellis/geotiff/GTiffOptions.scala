@@ -22,6 +22,7 @@ class GTiffOptions extends Serializable {
   var compressionLevel = 6
   var compressionPredictor = 1
   var isBigTiff = false
+  var retainNoDataTiles = true
 
   def setFilenamePrefix(name: String): Unit = {
     assertSafeToUseInFilePath(name)
@@ -120,6 +121,8 @@ class GTiffOptions extends Serializable {
   }
 
   def setBigTiff(enabled: Boolean): Unit = isBigTiff = enabled
+  
+  def setRetainNoDataTiles(enabled: Boolean): Unit = retainNoDataTiles = enabled
 
   def addHeadTag(tagName: String, value: String): Unit = {
     tags = tags.copy(headTags = tags.headTags + (tagName -> value))
