@@ -22,7 +22,7 @@ class GTiffOptions extends Serializable {
   var compressionLevel = 6
   var compressionPredictor = 1
   var isBigTiff = false
-  var retainNoDataTiles = true
+  var retainNoDataTiles = false
 
   def setFilenamePrefix(name: String): Unit = {
     assertSafeToUseInFilePath(name)

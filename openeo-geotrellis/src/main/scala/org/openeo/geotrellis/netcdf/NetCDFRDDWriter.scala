@@ -160,7 +160,7 @@ object NetCDFRDDWriter {
                        zLevel:Int,
                        addBandsStatistics: Boolean,
                        cropBounds:Option[Extent]= None,
-                       retainNoDataTiles: Boolean = true
+                       retainNoDataTiles: Boolean = false
                       ): java.util.List[Item] = {
 
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds, retainNoDataTiles)
@@ -453,7 +453,7 @@ object NetCDFRDDWriter {
                   bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                   addBandsStatistics: Boolean,
                   filenamePrefix: Option[String],
-                  retainNoDataTiles: Boolean = true
+                  retainNoDataTiles: Boolean = false
                  ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toSeq.zip(reprojected.polygons)
@@ -511,7 +511,7 @@ object NetCDFRDDWriter {
                                            bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                            addBandsStatistics: Boolean,
                                            filenamePrefix: Option[String] = None,
-                                           retainNoDataTiles: Boolean = true,
+                                           retainNoDataTiles: Boolean = false,
                                            ): java.util.List[Item] = {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
