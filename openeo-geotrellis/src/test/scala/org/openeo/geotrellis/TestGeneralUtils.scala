@@ -72,6 +72,7 @@ class TestGeneralUtils {
 
     // only left side has nodata value
     assertEquals(ShortUserDefinedNoDataCellType(350), cellTypeUnionWithNoData(ShortUserDefinedNoDataCellType(350), ByteCellType))
+    assertEquals(ShortUserDefinedNoDataCellType(-350), cellTypeUnionWithNoData(ShortUserDefinedNoDataCellType(-350), ByteCellType))
     assertEquals(FloatConstantNoDataCellType, cellTypeUnionWithNoData(FloatConstantNoDataCellType, ByteCellType))
     assertEquals(ShortUserDefinedNoDataCellType(Short.MaxValue), cellTypeUnionWithNoData(ByteConstantNoDataCellType, ByteCellType))
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(ShortUserDefinedNoDataCellType(9), ByteCellType))
@@ -83,6 +84,7 @@ class TestGeneralUtils {
 
     // only right side has nodata value
     assertEquals(ShortUserDefinedNoDataCellType(350), cellTypeUnionWithNoData(ByteCellType, ShortUserDefinedNoDataCellType(350)))
+    assertEquals(ShortUserDefinedNoDataCellType(-350), cellTypeUnionWithNoData(ByteCellType, ShortUserDefinedNoDataCellType(-350)))
     assertEquals(FloatConstantNoDataCellType, cellTypeUnionWithNoData(ByteCellType, FloatConstantNoDataCellType))
     assertEquals(ShortUserDefinedNoDataCellType(Short.MaxValue), cellTypeUnionWithNoData(ByteCellType, ByteConstantNoDataCellType))
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(ByteCellType, ShortUserDefinedNoDataCellType(9)))
@@ -110,6 +112,7 @@ class TestGeneralUtils {
 
     // both have nodata, and nodataLeft > nodataRight
     assertEquals(ShortUserDefinedNoDataCellType(280), cellTypeUnionWithNoData(ShortUserDefinedNoDataCellType(280),ByteUserDefinedNoDataCellType(5)))
+    assertEquals(ShortUserDefinedNoDataCellType(-280), cellTypeUnionWithNoData(ShortUserDefinedNoDataCellType(-280),ByteUserDefinedNoDataCellType(5)))
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(UShortUserDefinedNoDataCellType(10), ShortUserDefinedNoDataCellType(5)))
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(ShortUserDefinedNoDataCellType(100), ShortUserDefinedNoDataCellType(5)))
     assertEquals(DoubleUserDefinedNoDataCellType(1e40), cellTypeUnionWithNoData(DoubleUserDefinedNoDataCellType(1e40), FloatUserDefinedNoDataCellType(3.0f)))
@@ -118,6 +121,7 @@ class TestGeneralUtils {
 
     // both have nodata,  and nodataLeft < nodataRight
     assertEquals(ShortUserDefinedNoDataCellType(280), cellTypeUnionWithNoData(ByteUserDefinedNoDataCellType(5), ShortUserDefinedNoDataCellType(280)))
+    assertEquals(ShortUserDefinedNoDataCellType(-280), cellTypeUnionWithNoData(ByteUserDefinedNoDataCellType(5), ShortUserDefinedNoDataCellType(-280)))
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(ShortUserDefinedNoDataCellType(5), UShortUserDefinedNoDataCellType(10)))
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(ShortUserDefinedNoDataCellType(5), ShortUserDefinedNoDataCellType(100)))
     assertEquals(DoubleUserDefinedNoDataCellType(1e40), cellTypeUnionWithNoData(FloatUserDefinedNoDataCellType(3.0f), DoubleUserDefinedNoDataCellType(1e40)))
