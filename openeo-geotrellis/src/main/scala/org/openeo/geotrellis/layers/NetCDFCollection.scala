@@ -27,6 +27,30 @@ object NetCDFCollection {
 
   private implicit val logger: Logger = LoggerFactory.getLogger("NetCDFCollection")
 
+  private def toNetCDFSource(link: OpenSearchResponses.Link, bandName: String): String = {
+    val href = link.href
+    val hrefString = href.toString
+    if (hrefString.startsWith("NETCDF:")) {
+      s"$hrefString:$bandName"
+    } else if ("file" == href.getScheme) {
+      val localPath = java.nio.file.Paths.get(href).toString
+      s"""NETCDF:"$localPath":$bandName"""
+    } else {
+      s"""NETCDF:"$hrefString":$bandName"""
+    }
+  }
+
+  private def referenceRasterSource(stacItems: Seq[OpenSearchResponses.Feature]): NetCDFRasterSource = {
+    val firstBandSource = stacItems
+      .view
+      .flatMap(_.links.view)
+      .flatMap(link => link.bandNames.toSeq.flatten.view.map(bandName => toNetCDFSource(link, bandName)))
+      .headOption
+      .getOrElse(throw new IllegalArgumentException("No NetCDF assets with band names found in collection."))
+
+    NetCDFRasterSource.fromSource(firstBandSource)
+  }
+
   def datacube_seq(polygons: ProjectedPolygons, from_date: String, to_date: String,
                    metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters, osClient: OpenSearchClient): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     val sc = SparkContext.getOrCreate()
@@ -47,6 +71,7 @@ object NetCDFCollection {
   def loadCollection(osClient: OpenSearchClient, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val stacItems = osClient.getProducts("", None, null, Map[String, Any](), "", "")
     val items = sc.parallelize(stacItems)
+    val referenceGridExtent = referenceRasterSource(stacItems).gridExtent
 
     sc.setJobDescription(s"load_stac from netCDFs - ${stacItems.head.id} - ${stacItems.head.links.head.href}")
     val resolutions = items.flatMap(_.resolution).distinct().collect()
@@ -59,27 +84,13 @@ object NetCDFCollection {
       throw new IllegalArgumentException("All items in a collection must have the same CRS")
     }
 
-    val bboxWGS84: Extent = items.map(_.bbox).reduce((a, b) => (a.combine(b)))
-
-
     val features: RDD[(TemporalProjectedExtent, MultibandTile)] = items.repartition(stacItems.length).flatMap(f => {
       val allTiles = f.links.flatMap(l => {
         val targetCellType = if (l.datatype.isDefined){
           Some(ConvertTargetCellType(l.datatype.get.withNoData(l.nodata)))
         }else None
         l.bandNames.get.flatMap(b => {
-          val source = {
-            val href = l.href
-            val hrefString = href.toString
-            if (hrefString.startsWith("NETCDF:")) {
-              s"$hrefString:$b"
-            } else if ("file" == href.getScheme) {
-              val localPath = java.nio.file.Paths.get(href).toString
-              s"""NETCDF:"$localPath":$b"""
-            } else {
-              s"""NETCDF:"$hrefString":$b"""
-            }
-          }
+          val source = toNetCDFSource(l, b)
           try {
             val rs = NetCDFRasterSource.fromSource(source, targetCellType = targetCellType)
             val (bandCount, timeValues) = {
@@ -142,16 +153,22 @@ object NetCDFCollection {
     val cellTypes = features.map(_._2.cellType)
     val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
 
-    val extent = bboxWGS84.reproject(LatLng, crs(0))
-    val layout = LayoutDefinition(RasterExtent(extent, CellSize(resolutions(0), resolutions(0))), 128)
+    val sourceExtent = features.map(_._1.extent).reduce((a, b) => a.combine(b))
+    val snappedExtent = referenceGridExtent.createAlignedGridExtent(sourceExtent).extent
+    val layout = LayoutDefinition(RasterExtent(snappedExtent, referenceGridExtent.cellSize), 128)
 
-    val spatialBounds = KeyBounds(layout.mapTransform(extent))
+    val spatialBounds = KeyBounds(layout.mapTransform(snappedExtent))
     val temporalBounds = KeyBounds(SpaceTimeKey(spatialBounds.minKey, TemporalKey(LocalDate.of(1990, 1, 1).atStartOfDay(ZoneId.of("UTC")))), SpaceTimeKey(spatialBounds.maxKey, TemporalKey(LocalDate.now().atStartOfDay(ZoneId.of("UTC")))))
 
-    val keys: Array[SpatialKey] = items.map(i => i.geometry.getOrElse(i.bbox.toPolygon())).map(_.reproject(LatLng, crs(0))).clipToGrid(layout).map(_._1).distinct().collect()
+    val keys: Array[SpatialKey] = features
+      .map { case (temporalProjectedExtent, _) => temporalProjectedExtent.extent.toPolygon() }
+      .clipToGrid(layout)
+      .map(_._1)
+      .distinct()
+      .collect()
     val partitioner: Partitioner = new SpacePartitioner(temporalBounds)(implicitly, implicitly, new ByTileSpacetimePartitioner(Some(keys)))
 
-    val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, extent, crs(0), temporalBounds)
+    val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, snappedExtent, crs(0), temporalBounds)
     val retiled: RDD[(SpaceTimeKey, MultibandTile)] = features.tileToLayout(metadata, Tiler.Options(partitioner = partitioner))
     logger.info(s"Created cube for netCDF samples with metadata ${metadata} and partitioner ${partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
     val cRDD = ContextRDD(retiled, metadata)

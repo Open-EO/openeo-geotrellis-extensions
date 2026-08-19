@@ -68,14 +68,14 @@ class NetCDFCollectionTest {
     val index = cube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
     assert(index.asInstanceOf[SpatialKeysProvider].spatialKeys.get.length > 100)
 
-    assertEquals(2331, cube.count())
-    assertEquals(Extent(603901.4819578232, 5656508.552285681, 653638.1910088382, 5687527.3439567955), cube.metadata.extent)
+    assertEquals(2359, cube.count())
+    assertEquals(Extent(604500.0, 5656790.0, 653150.0, 5686540.0), cube.metadata.extent)
     assertEquals(crs, cube.metadata.crs)
     assertEquals(ShortUserDefinedNoDataCellType(32767), cube.metadata.cellType)
     assertEquals(CellSize(10.0, 10.0), cube.metadata.cellSize)
 
-    assertEquals(2331, cube.count())
-    assertEquals(Extent(603901.4819578232, 5656508.552285681, 653638.1910088382, 5687527.3439567955), cube.metadata.extent)
+    assertEquals(2359, cube.count())
+    assertEquals(Extent(604500.0, 5656790.0, 653150.0, 5686540.0), cube.metadata.extent)
     assertEquals(crs, cube.metadata.crs)
     assertEquals(ShortUserDefinedNoDataCellType(32767), cube.metadata.cellType)
     assertEquals(CellSize(10.0, 10.0), cube.metadata.cellSize)
