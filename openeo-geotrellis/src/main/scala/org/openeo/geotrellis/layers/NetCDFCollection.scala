@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutScheme, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileLayerMetadata}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{CellSize, CellType, MultibandTile, Raster, RasterExtent, Tile}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, MultibandTile, Raster, RasterExtent, Tile}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods, _}
 import geotrellis.spark.tiling.Tiler
 import geotrellis.spark.partition.SpacePartitioner
@@ -86,10 +86,13 @@ object NetCDFCollection {
 
     val features: RDD[(TemporalProjectedExtent, MultibandTile)] = items.repartition(stacItems.length).flatMap(f => {
       val allTiles = f.links.flatMap(l => {
+        val targetCellType = if (l.datatype.isDefined){
+          Some(ConvertTargetCellType(l.datatype.get.withNoData(l.nodata)))
+        }else None
         l.bandNames.get.flatMap(b => {
           val source = toNetCDFSource(l, b)
           try {
-            val rs = NetCDFRasterSource.fromSource(source)
+            val rs = NetCDFRasterSource.fromSource(source, targetCellType = targetCellType)
             val (bandCount, timeValues) = {
               val ds = NetcdfDatasets.openDataset(rs.path, true, null)
               try {
@@ -147,10 +150,8 @@ object NetCDFCollection {
       })
     })
 
-    val first = features.first()
-    val cellType = first._2.cellType
-//    val cellTypes = features.map(_._2.cellType)
-//    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
+    val cellTypes = features.map(_._2.cellType)
+    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
 
     val sourceExtent = features.map(_._1.extent).reduce((a, b) => a.combine(b))
     val snappedExtent = referenceGridExtent.createAlignedGridExtent(sourceExtent).extent

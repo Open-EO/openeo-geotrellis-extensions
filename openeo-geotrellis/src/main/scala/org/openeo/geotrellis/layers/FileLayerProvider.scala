@@ -763,8 +763,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def determineCelltype(overlappingRasterSources: Seq[(RasterSource, Feature)]): CellType = {
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
-//      val commonCellType = overlappingRasterSources.foldLeft(BitCellType:CellType)((cumCellType, CurCellType) => cellTypeUnionWithNoData(cumCellType, CurCellType._1.cellType))
       val commonCellType = arbitraryRasterSource.cellType
+
+      logger.debug(s"Determined common cell type of rasterSources is $commonCellType.")
       commonCellType match {
         case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
         case _: NoNoData => commonCellType.withDefaultNoData()
@@ -1287,14 +1288,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
           val dataType = link.datatype
-          val nodata = link.nodata
+          val nodata =
+            if(link.nodata.isEmpty && (link.title.contains("SCENECLASSIFICATION") || link.title.contains("SCL"))) Some(0.0)
+            else link.nodata
 
           val cellTypeSTAC = if (dataType.isDefined){
-            val nodataDouble = nodata match {
-              case _ => None
-
-            }
-            Some(ConvertTargetCellType(dataType.get.withNoData(nodataDouble)))
+            Some(ConvertTargetCellType(dataType.get.withNoData(nodata)))
           }
           else None
 
@@ -1305,7 +1304,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
             case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(UShortConstantNoDataCellType)) // TODO: get info from Link object
             case Some(title) if fromLoadStac && Seq("SCL_20m", "SCL_60m").contains(title) => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) // TODO: get info from Link object
-            case _ => None
+            case _ => cellTypeSTAC
           }
 
           val targetTargetCellType: Option[TargetCellType] = link.title match {
@@ -1313,7 +1312,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
             case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
-            case _ => None
+            case _ => cellTypeSTAC
           }
           val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental, bandName, softErrors)
           val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
@@ -1366,7 +1365,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           return None
         }
 
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
       } else if (sources.forall { case(_, idx) => idx == 0}) {
         Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
       } else {
