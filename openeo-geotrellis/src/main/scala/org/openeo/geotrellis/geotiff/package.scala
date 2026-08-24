@@ -76,7 +76,7 @@ package object geotiff {
       }
       if (options.compressionPredictor > 1) {
         compression = compression.withPredictor(Predictor(t.tile.toGeoTiffTile()))
-        MultibandGeoTiff(t.tile.toArrayTile(), t.extent, t.crs, t.tags, GeoTiffOptions(compression), t.overviews)
+        MultibandGeoTiff(t.tile, t.extent, t.crs, t.tags, GeoTiffOptions(compression), t.overviews)
       } else (
         t
         )
