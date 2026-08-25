@@ -317,7 +317,7 @@ case class RasterTileLoader() {
 
   private def loadPartition(partitionIterator: Iterator[(SpaceTimeKey, Iterable[(RasterRegion, SourceName)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs: CRS, layout: LayoutDefinition) = {
     var totalPixelsPartition = 0
-    val loadedPartitions = partitionIterator.toParArray.map { case (spaceTimeKey, allRegions) =>
+    val loadedPartitions = partitionIterator.map { case (spaceTimeKey, allRegions) =>
       val tileForRegion = allRegions
         .toSeq
         .flatMap { case (rasterRegion, sourceName: SourceName) =>

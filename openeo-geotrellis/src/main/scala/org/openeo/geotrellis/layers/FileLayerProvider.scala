@@ -479,7 +479,7 @@ object FileLayerProvider {
 
   private def loadPartition(partitionIterator: Iterator[(SpaceTimeKey, Iterable[(RasterRegion, SourceName)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs :CRS, layout:LayoutDefinition ) = {
     var totalPixelsPartition = 0
-    val loadedPartitions = partitionIterator.toParArray.map(tuple => {
+    val loadedPartitions = partitionIterator.map(tuple => {
       val allRegions = tuple._2.toSeq
 
       val tilesForRegion = allRegions
