@@ -1288,6 +1288,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
         assertArrayEquals(expectedBands(n), theResultTile.band(n).toArray())
       }
       val resultCubeFile = onnx.predictONNXSTACFile(datacube, modelPath.toString)
+      assertEquals(expectedType, resultCubeFile.metadata.cellType)
+      val theResultTileFile = resultCubeFile.stitch().tile
+      assertEquals(expectedNBands,theResultTileFile.bandCount)
+      (0 until expectedNBands).foreach {n =>
+        assertArrayEquals(expectedBands(n), theResultTileFile.band(n).toArray())
+      }
     }
     val tileFloat = (i:Float) => FloatArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     val tileDouble = (i:Double) =>  DoubleArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
