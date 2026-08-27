@@ -80,7 +80,7 @@ package object geotiff {
           MultibandGeoTiff(t.tile.toArrayTile(), t.extent, t.crs, t.tags, GeoTiffOptions(compression), t.overviews)
         } catch {
           case e: IndexOutOfBoundsException =>
-            throw new IllegalArgumentException(s"""Compression "${options.compressionMethod}" with predictor ${options.compressionPredictor} is not supported yet; supported are: "deflate" [1] and "zstd" [1, 2, 3] (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/837)""", e)
+            throw new IllegalArgumentException(s"""Compression "${options.compressionMethod}" with predictor ${options.compressionPredictor} is not supported yet; supported are: "deflate" [1] and "zstd" [1, 2, 3] (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/837)""")
         }
       } else t
     }
