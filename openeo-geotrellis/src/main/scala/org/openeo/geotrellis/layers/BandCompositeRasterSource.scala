@@ -9,7 +9,8 @@ import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrelliscommon.ResampledTile
-import org.slf4j.LoggerFactory
+import org.openeo.logging.JsonLayout
+import org.slf4j.{LoggerFactory, MDC}
 import software.amazon.awssdk.core.exception.AbortedException
 
 import java.io.IOException
@@ -50,6 +51,19 @@ object BandCompositeRasterSource {
       case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
     }
   }
+
+  def withRequestContext[R](requestId: String, userId: String)(f: => R): R = {
+    /* convenience function for ad-hoc req_id, user_id propagation across threads */
+
+    if (requestId != null) MDC.put(JsonLayout.RequestId, requestId)
+    if (userId != null) MDC.put(JsonLayout.UserId, userId)
+
+    try f
+    finally {
+      MDC.remove(JsonLayout.RequestId)
+      MDC.remove(JsonLayout.UserId)
+    }
+  }
 }
 
 class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource],
@@ -64,12 +78,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   import BandCompositeRasterSource._
 
   private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "20").toInt
+  private val requestId = MDC.get(JsonLayout.RequestId)
+  private val userId = MDC.get(JsonLayout.UserId)
 
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map {
     _.reproject(crs)
   }
 
-  protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = {
+  protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = withRequestContext(requestId, userId) {
     def reprojectRasterSourceAttemptFailed(source: RasterSource)(e: Exception): Unit =
       logger.warn(s"attempt to reproject ${source.name} to $crs failed", e)
 
@@ -79,10 +95,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       catch {
 
         case e: AbortedException => throw e
-        case e: Exception if softErrors => {
+        case e: Exception if softErrors =>
           logger.warn(s"load_collection: ignoring soft error for ${rs.name} - ${e.getMessage}", e)
           None
-        }
         case e: Exception => throw new IOException(s"load_collection: Error while reading: ${rs.name} - ${e.getMessage}", e)
       }
     }
@@ -118,7 +133,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   }
 
-  override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
+  override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = withRequestContext(requestId, userId) {
     val union = bounds.reduce(_ combine _)
     val percentageToRead = bounds.map(_.size).sum.toFloat / union.size.toFloat
     if (percentageToRead > 0.5 && readFullTile) {
@@ -163,7 +178,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   }
 
 
-  override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
+  override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = withRequestContext(requestId, userId) {
     val sources = reprojectedSources(bands)
     val selectedSources: IterableOnce[RasterSource] =
       if (parallelRead) {
@@ -177,7 +192,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
     val singleBandRasters: Seq[Raster[Tile]] = selectedSources
       .iterator.map(rs => retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
-        (BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0))), rs.cellType)
+        (withRequestContext(requestId, userId) { BandCompositeRasterSource.readBounds(rs, bounds, softErrors) }.map(_.mapTile(_.band(0))), rs.cellType)
       })
       .collect { case (Some(raster), sourceCellType )=> {
         if (raster.cellType == sourceCellType) raster

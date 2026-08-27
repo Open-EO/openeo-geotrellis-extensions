@@ -5,6 +5,8 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{ConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterSource, ResampleMethod, ResampleTarget, TargetCellType, Tile}
 import geotrellis.vector.Extent
+import org.openeo.logging.JsonLayout
+import org.slf4j.MDC
 
 // TODO: is this class necessary? Looks like a more general case of BandCompositeRasterSource so maybe the inheritance
 //  relationship should be reversed; or maybe the BandCompositeRasterSource could be made more general and accept
@@ -16,6 +18,9 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
                                      override val predefinedExtent: Option[GridExtent[Long]] = None
                                     )
   extends BandCompositeRasterSource(sourcesListWithBandIds.map(_._1), crs, attributes, readFullTile = readFullTile) {
+
+  private val requestId = MDC.get(JsonLayout.RequestId)
+  private val userId = MDC.get(JsonLayout.UserId)
 
   override def bandCount: Int = sourcesListWithBandIds.map(_._2.size).toList.sum
 
@@ -32,7 +37,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val rasters: Seq[Raster[MultibandTile]] = sourcesWithBandIds
-      .map { s => BandCompositeRasterSource.readBounds(s._1, bounds, false, s._2) }
+      .map(s => BandCompositeRasterSource.withRequestContext(requestId, userId) { BandCompositeRasterSource.readBounds(s._1, bounds, false, s._2) })
       .collect { case Some(raster) => raster }
 
     if (rasters.size == sources.size) {
