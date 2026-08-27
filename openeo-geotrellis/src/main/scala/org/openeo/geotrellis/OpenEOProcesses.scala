@@ -1670,12 +1670,12 @@ class OpenEOProcesses extends Serializable {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
         if (model.endsWith(".onnx")) onnx.predictONNXModel(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
         else if (model.startsWith("{")) onnx.predictONNXSTAC(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
-        else if (model.endsWith("json")) onnx.predictONNXSTACFile(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+        else if (model.contains("json")) onnx.predictONNXSTACFile(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
         else throw new IllegalArgumentException(s"ONNX: Only supports models with .onnx extension, but got $model.")
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
         if (model.endsWith(".onnx")) onnx.predictONNXModel(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
         else if (model.startsWith("{")) onnx.predictONNXSTAC(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
-        else if (model.endsWith(".json")) onnx.predictONNXSTAC(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        else if (model.contains(".json")) onnx.predictONNXSTAC(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
         else throw new IllegalArgumentException(s"ONNX: Only supports models with .onnx extension, but got $model.")
       case _ => throw new IllegalArgumentException(s"Unsupported rdd type for predict_onnx: $datacube")
     }
