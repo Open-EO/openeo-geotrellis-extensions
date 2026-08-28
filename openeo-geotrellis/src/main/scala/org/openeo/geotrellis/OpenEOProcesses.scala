@@ -1675,7 +1675,7 @@ class OpenEOProcesses extends Serializable {
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
         if (model.endsWith(".onnx")) onnx.predictONNXModel(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
         else if (model.startsWith("{")) onnx.predictONNXSTAC(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
-        else if (model.contains(".json")) onnx.predictONNXSTAC(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        else if (model.contains(".json")) onnx.predictONNXSTACFile(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
         else throw new IllegalArgumentException(s"ONNX: Only supports models with .onnx extension, but got $model.")
       case _ => throw new IllegalArgumentException(s"Unsupported rdd type for predict_onnx: $datacube")
     }
