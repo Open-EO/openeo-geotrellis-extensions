@@ -71,15 +71,16 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     _.reproject(crs)
   }
 
-  protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = {
+  protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = requestContext.apply {
     def reprojectRasterSourceAttemptFailed(source: RasterSource)(e: Exception): Unit =
       logger.warn(s"attempt to reproject ${source.name} to $crs failed", e)
 
     val selectedBands = bands.map(sources.toList)
     selectedBands flatMap { rs =>
-      try Some(retryWithBackoff(maxRetries, reprojectRasterSourceAttemptFailed(rs))(rs.reproject(crs)))
+      try Some(retryWithBackoff(maxRetries, reprojectRasterSourceAttemptFailed(rs)) {
+        rs.reproject(crs)
+      })
       catch {
-
         case e: AbortedException => throw e
         case e: Exception if softErrors =>
           logger.warn(s"load_collection: ignoring soft error for ${rs.name} - ${e.getMessage}", e)
@@ -119,7 +120,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   }
 
-  override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
+  override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = requestContext.apply {
     val union = bounds.reduce(_ combine _)
     val percentageToRead = bounds.map(_.size).sum.toFloat / union.size.toFloat
     if (percentageToRead > 0.5 && readFullTile) {
@@ -164,7 +165,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   }
 
 
-  override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
+  override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = requestContext.apply {
     val sources = reprojectedSources(bands)
     val selectedSources: IterableOnce[RasterSource] =
       if (parallelRead) {
@@ -181,17 +182,17 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       .map { rs =>
         requestContext.apply {
           retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
-            ( BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0))), rs.cellType)
+            (BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0))), rs.cellType)
           }
         }
       }
-      .collect { case (Some(raster), sourceCellType )=> {
+      .collect { case (Some(raster), sourceCellType) =>
         if (raster.cellType == sourceCellType) raster
         else {
           logger.debug(s"converting tile from ${raster.tile.cellType} to $sourceCellType")
           Raster(safeConvert(raster.tile,sourceCellType), raster.extent)
         }
-      } }.toSeq
+      }.toSeq
 
     try {
       if (singleBandRasters.isEmpty) {
@@ -201,12 +202,12 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
         val croppedRasters = singleBandRasters.map(_.crop(intersection))
         if (singleBandRasters.size == selectedSources.size) {
           val convertedRasters: Seq[Tile] = croppedRasters.map {
-            case Raster(croppedTile: CroppedTile, extent) =>
+            case Raster(croppedTile: CroppedTile, _) =>
               croppedTile.sourceTile match {
                 case tile: ResampledTile => tile.cropAndConvert(croppedTile.gridBounds, cellType)
                 case _ => if (croppedTile.cellType != cellType) croppedTile.convert(cellType) else croppedTile
               }
-          }.toSeq
+          }
           Some(Raster(MultibandTile(convertedRasters), intersection))
         }
         else None
