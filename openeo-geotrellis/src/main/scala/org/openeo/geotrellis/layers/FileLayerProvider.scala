@@ -551,8 +551,8 @@ object FileLayerProvider {
                     tile.cellType match {
                       case originalCellType: NoNoData =>
                         val noDataCellType =
-                          if (originalCellType.isFloatingPoint) originalCellType.withDefaultNoData()
-                          else originalCellType withNoData Some(0)
+                          if (originalCellType.isFloatingPoint) originalCellType/*.withDefaultNoData()*/
+                          else originalCellType/* withNoData Some(0)*/
 
                         logger.debug(s"converting tile cell type from $originalCellType to $noDataCellType with NODATA")
                         tile convert noDataCellType
@@ -767,8 +767,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       logger.debug(s"Determined common cell type of rasterSources is $commonCellType.")
       commonCellType match {
-        case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
-        case _: NoNoData => commonCellType.withDefaultNoData()
+        /*case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
+        case _: NoNoData => commonCellType.withDefaultNoData()*/
         case _ => commonCellType
       }
     } catch {

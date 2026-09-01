@@ -389,8 +389,8 @@ case class RasterTileLoader() {
                     tile.cellType match {
                       case originalCellType: NoNoData =>
                         val noDataCellType =
-                          if (originalCellType.isFloatingPoint) originalCellType.withDefaultNoData()
-                          else originalCellType withNoData Some(0)
+                          if (originalCellType.isFloatingPoint) originalCellType/*.withDefaultNoData()*/
+                          else originalCellType/* withNoData Some(0)*/
 
                         logger.debug(s"converting tile cell type from $originalCellType to $noDataCellType with NODATA")
                         tile convert noDataCellType
