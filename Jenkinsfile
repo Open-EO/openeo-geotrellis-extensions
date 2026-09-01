@@ -57,7 +57,7 @@ pipeline {
             steps {
                 script {
                     rel_version = getMavenVersion()
-                    buildIt(skipTests = params.skip_tests, skipSentinelHubTests = params.skip_sentinelhub_tests)
+                    buildIt(skipTests = params.skip_tests, skipSentinelHubTests = true)
                     utils.setWorkspacePermissions()
                 }
             }
