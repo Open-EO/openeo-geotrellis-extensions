@@ -595,7 +595,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
         attributes = null,
         bandsMetadata = null,
         zLevel = 6,
-        addBandsStatistics = addStatistics,
+        addBandStatistics = addStatistics,
         cropBounds = cropBounds
       )
       assertEquals(1, items.size())
@@ -797,7 +797,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
         attributes = null,
         bandsMetadata = null,
         zLevel = 6,
-        addBandsStatistics = false,
+        addBandStatistics = false,
         cropBounds = None
       )
       val rasterSource = GDALRasterSource(s"""NETCDF:"$path":TOC-B04_10M""")

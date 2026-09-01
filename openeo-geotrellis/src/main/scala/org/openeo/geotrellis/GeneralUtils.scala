@@ -2,7 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.layer.LayoutDefinition
 import geotrellis.proj4.CRS
-import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, isData, isNoData, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.vector.Extent
 import org.slf4j.LoggerFactory
 
@@ -279,6 +279,48 @@ object GeneralUtils {
       math.min(bbox.xmax, 180),
       bbox.ymax
     )
+  }
+
+  def statsDouble(tile: Tile): (Double,Double,Double,Double,Int) = {
+    var zmin = Double.NaN
+    var zmax = Double.NaN
+    var sum = 0.0
+    var powerSum = 0.0
+    var validCount = 0
+    tile.foreachDouble { z =>
+      if (isData(z)) {
+        validCount+=1
+        sum += z
+        powerSum += Math.pow(z,2)
+        if(isNoData(zmin)) {
+          zmin = z
+          zmax = z
+        } else {
+          zmin = math.min(zmin, z)
+          zmax = math.max(zmax, z)
+        }
+      }
+    }
+    (zmin,zmax,sum,powerSum,validCount)
+  }
+  
+  def statsInt(tile:Tile): (Double,Double,Double,Double,Int) = {
+    var zmin = Int.MaxValue
+    var zmax = Int.MinValue
+    var sum = 0
+    var powerSum = 0.0
+    var validCount = 0
+
+    tile.foreach { z =>
+      if (isData(z)) {
+        validCount +=1
+        zmin = math.min(zmin, z)
+        zmax = math.max(zmax, z)
+        sum += z
+        powerSum += Math.pow(z,2)
+      }
+    }
+    (zmin,zmax,sum.toDouble,powerSum,validCount)
   }
 
 }
