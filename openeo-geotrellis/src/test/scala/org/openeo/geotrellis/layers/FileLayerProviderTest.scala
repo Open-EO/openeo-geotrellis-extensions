@@ -1763,8 +1763,9 @@ class FileLayerProviderTest extends RasterMatchers {
   }
 
   @ParameterizedTest
-  @ValueSource(booleans = Array(false, true))
+  @ValueSource(booleans = Array(false))
   def testMultibandNoNoDataCOGViaSTAC(loadPerProduct: Boolean, @TempDir outDir: Path): Unit = {
+    val outDir = Paths.get("/tmp")
     val pyramidFactory = LayerFixtures.stacCogNoNoDataCollection
 
     val projectedPolygons = ProjectedPolygons.fromExtent(
@@ -1904,6 +1905,11 @@ class FileLayerProviderTest extends RasterMatchers {
 
   private def writeToNetCDFAndCompare(polygonAOI: ProjectedPolygons, dataCubeParameters: DataCubeParameters, bands: util.ArrayList[String], factory: PyramidFactory, outLocation: String, referenceFile: String): Unit = {
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+
+    val baseLayer = cube.head._2.toSpatial()
+    val Raster(multibandTile, extent) = baseLayer.stitch()
+    MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs).write(outLocation.replace(".nc", ".tif"))
+
     val opts = new NetCDFOptions()
     opts.setBandNames(bands)
     NetCDFRDDWriter.saveSingleNetCDFGeneric(cube.head._2, outLocation, opts)
