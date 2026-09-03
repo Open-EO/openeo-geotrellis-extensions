@@ -18,9 +18,10 @@ import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
 import _root_.io.opentelemetry.api._
+import _root_.io.opentelemetry.api.trace.Tracer
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.{LongAccumulator, SizeEstimator}
-import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
+import org.apache.spark.{HashPartitioner, Partitioner, SparkContext, SparkEnv, TaskContext}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
@@ -88,6 +89,8 @@ object FileLayerProvider {
 
   private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
   private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("load_collection_read").build().gaugeBuilder("openeo_megapixel_per_second").build()
+  private[layers] lazy val assetReadMeter = openTelemetry.meterBuilder("asset_read").build().histogramBuilder("the_asset_read").build()
+  private val tracer: Tracer = openTelemetry.tracerBuilder("openeo").build()
 
   private val rasterSourceProviderChain: Seq[RasterSourceProvider] = {
     import java.util.ServiceLoader
@@ -420,12 +423,24 @@ object FileLayerProvider {
       //TODO this assumes that the index is actually the index of this band in the eventual multiband tile, not the index to read from the source
       val theIndex = tuple._2.flatMap(_._1).head
 
-      val allRasters =
+      val allRasters = {
+        val span = tracer.spanBuilder("FileLayerProvider.loadPartitionBySource.readBounds").startSpan()
+        Option(TaskContext.get())
+          .flatMap(taskContext => Option(taskContext.getLocalProperty("spark.jobGroup.id")))
+          .foreach(jobId => span.setAttribute("spark.job.id", jobId))
+        val scope = span.makeCurrent()
         try {
           source.readBounds(bounds).map(_.mapTile { _ convert cellType }).toSeq
         } catch {
-          case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
+          case e: Exception =>
+            span.recordException(e)
+            span.setStatus(_root_.io.opentelemetry.api.trace.StatusCode.ERROR)
+            throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
+        } finally {
+          scope.close()
+          span.end()
         }
+      }
 
       val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
       val paddedRasters = allRasters.zipWithIndex.flatMap {case (raster,index) => {
@@ -747,8 +762,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def determineCelltype(overlappingRasterSources: Seq[(RasterSource, Feature)]): CellType = {
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
-//      val commonCellType = overlappingRasterSources.foldLeft(BitCellType:CellType)((cumCellType, CurCellType) => cellTypeUnionWithNoData(cumCellType, CurCellType._1.cellType))
       val commonCellType = arbitraryRasterSource.cellType
+
+      logger.debug(s"Determined common cell type of rasterSources is $commonCellType.")
       commonCellType match {
         case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
         case _: NoNoData => commonCellType.withDefaultNoData()
@@ -1271,14 +1287,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
           val dataType = link.datatype
-          val nodata = link.nodata
+          val nodata =
+            if(link.nodata.isEmpty && (link.title.contains("SCENECLASSIFICATION") || link.title.contains("SCL"))) Some(0.0)
+            else link.nodata
 
           val cellTypeSTAC = if (dataType.isDefined){
-            val nodataDouble = nodata match {
-              case _ => None
-
-            }
-            Some(ConvertTargetCellType(dataType.get.withNoData(nodataDouble)))
+            Some(ConvertTargetCellType(dataType.get.withNoData(nodata)))
           }
           else None
 
@@ -1289,7 +1303,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
             case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(UShortConstantNoDataCellType)) // TODO: get info from Link object
             case Some(title) if fromLoadStac && Seq("SCL_20m", "SCL_60m").contains(title) => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) // TODO: get info from Link object
-            case _ => None
+            case _ => cellTypeSTAC
           }
 
           val targetTargetCellType: Option[TargetCellType] = link.title match {
@@ -1297,7 +1311,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
             case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
-            case _ => None
+            case _ => cellTypeSTAC
           }
           val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental, bandName, softErrors)
           val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
@@ -1350,7 +1364,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           return None
         }
 
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
       } else if (sources.forall { case(_, idx) => idx == 0}) {
         Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
       } else {

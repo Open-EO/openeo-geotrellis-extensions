@@ -7,7 +7,7 @@ import geotrellis.raster
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.crop._
 import geotrellis.raster.io.geotiff._
-import geotrellis.raster.io.geotiff.compression.{Compression, Compressor, DeflateCompression, Predictor, ZStdCompression}
+import geotrellis.raster.io.geotiff.compression.{Compression, Compressor, DeflateCompression, NoCompression, Predictor, ZStdCompression}
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
@@ -34,6 +34,7 @@ import spire.math.Integral
 import spire.syntax.cfor.cfor
 
 import java.nio.file.{Files, Path, Paths}
+import java.io.{EOFException, IOException, RandomAccessFile}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util
@@ -56,7 +57,11 @@ package object geotiff {
 
   private val logger = LoggerFactory.getLogger(getClass)
   private val secondsPerDay = 86400L
-  private val gdalProjLib = Option(System.getenv("OPENEO_GDAL_PROJ_LIB")).getOrElse("/usr/share/proj")
+  private final val GdalInfoFileCorruptErrors = Seq(
+    "ZIPDecode:Decoding error",
+    "ZSTDDecode:Error in ZSTD_decompressStream()"
+  )
+  private final val BigTiffSizeThresholdBytes = math.pow(2, 32).toLong
 
   class MultiBandGeoTiffWithCompression(val t: MultibandGeoTiff) {
 
@@ -65,7 +70,8 @@ package object geotiff {
         options.compressionMethod match {
           case "zstd" => ZStdCompression(options.compressionLevel)
           case "deflate" => DeflateCompression(options.compressionLevel)
-          case _ => throw new IllegalArgumentException(f"Compression method ${options.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
+          case "none" => NoCompression
+          case _ => throw new IllegalArgumentException(f"Compression method ${options.compressionMethod} is not supported, supported methods are: (none, zstd, deflate (default))")
         }
       }
       if (options.compressionPredictor > 1) {
@@ -305,7 +311,7 @@ package object geotiff {
                                                                 overviewReductionsFunction: (GTiffOptions, Int, Int, Int, Int) => List[Int] = defaultOverviewReductions,
                                                                ): JList[Item] = {
     formatOptions.assertNoConflicts()
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd, cropBounds)
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd, cropBounds, formatOptions.retainNoDataTiles)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = preProcessResult._3
@@ -635,7 +641,7 @@ package object geotiff {
       GridBounds[Int](colMin, rowMin, colMax.toInt, rowMax.toInt)
   }
 
-  def preProcess[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], cropBounds: Option[Extent]): (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = {
+  def preProcess[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], cropBounds: Option[Extent], retainNoDataTiles:Boolean): (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = {
     val re = rdd.metadata.toRasterExtent()
     /**
      * CLAMPING EP-4150
@@ -644,7 +650,9 @@ package object geotiff {
      */
     var gridBounds = gridBoundsFor(re, cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
     val croppedExtent = re.extentFor(gridBounds, clamp = false)
-    val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
+    val filtered =
+      if (retainNoDataTiles) rdd
+      else new OpenEOProcesses().filterEmptyTile(rdd)
     val preprocessedRdd = {
       if (gridBounds.colMin != 0 || gridBounds.rowMin != 0) {
         logger.info(s"Gridbounds requires reprojection: ${gridBounds}")
@@ -685,7 +693,7 @@ package object geotiff {
   }
 
   private def saveRDDGeneric[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): (String, Extent, util.Map[String, Any]) = {
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds)
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds, formatOptions.retainNoDataTiles)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3.persist(StorageLevel.MEMORY_AND_DISK)
@@ -773,7 +781,8 @@ package object geotiff {
       formatOptions.compressionMethod match {
         case "zstd" => ZStdCompression(formatOptions.compressionLevel)
         case "deflate" => DeflateCompression(formatOptions.compressionLevel)
-        case _ => throw new IllegalArgumentException(f"Compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
+        case "none" => NoCompression
+        case _ => throw new IllegalArgumentException(f"Compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (none, zstd, deflate (default))")
       }
     }
     compression
@@ -785,6 +794,7 @@ package object geotiff {
       formatOptions.compressionMethod match {
         case "zstd" => ZStdCompression(formatOptions.compressionLevel)
         case "deflate" => DeflateCompression(formatOptions.compressionLevel)
+        case "none" => NoCompression
         case _ => throw new IllegalArgumentException(f"Compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
       }
     }
@@ -905,7 +915,7 @@ package object geotiff {
 
   // This implementation does not properly work, output tiffs are not properly aligned and colors are also incorrect
   private def saveRDDGenericTileGrid[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path: String, tileGrid: String, cropBounds: Option[Extent] = Option.empty[Extent], options: GTiffOptions = new GTiffOptions): List[String] = {
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds)
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds, options.retainNoDataTiles)
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3
 
@@ -1530,15 +1540,29 @@ package object geotiff {
     val outputBuffer = new StringBuilder
     val cerrBuffer = new StringBuilder
     val processLogger = ProcessLogger(
-      line => outputBuffer appendAll line + "\n",
-      line => cerrBuffer appendAll line + "\n",
+      fout = line => outputBuffer.append(line).append('\n'),
+      ferr = line => cerrBuffer.append(line).append('\n')
     )
 
-    val args = Seq("gdalinfo", rasterFilePath.toString, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL")
+    val args = Seq("gdalinfo", rasterFilePath.toString, "-json", "-stats")
     val exitCode = args ! processLogger
 
     if (cerrBuffer.nonEmpty) {
-      logger.info(s"gdalinfo warnings: ${cerrBuffer.toString()}") // Mostly harmless messages
+      val stderr = cerrBuffer.toString.trim
+
+      if (GdalInfoFileCorruptErrors.exists(stderr.contains)) {
+        try {
+          if (Files.size(rasterFilePath) >= BigTiffSizeThresholdBytes && isClassicTiff(rasterFilePath)) {
+            throw new Exception(s"$rasterFilePath is corrupt (too large for a classic GeoTIFF); output was: $stderr")
+          }
+        } catch {
+          case _: IOException => /* deemed corrupt but nothing to go by: fall back to less specific error message */
+        }
+
+        throw new Exception(s"$rasterFilePath is corrupt; output was: $stderr")
+      }
+
+      logger.warn(s"gdalinfo warnings: $stderr") // Mostly harmless messages
     }
     val outputBufferString = outputBuffer.toString().trim
     if (exitCode == 0) {
@@ -1551,7 +1575,6 @@ package object geotiff {
       None
     }
   }
-
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: LayoutDefinition) extends Seq[(K, V)] with Metadata[LayoutDefinition] {
     override def length: Int = tiles.size
@@ -1587,6 +1610,15 @@ package object geotiff {
       "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9")
     if (invalidNames.contains(filenameWithoutExtension.toUpperCase())) {
       throw new IllegalArgumentException("Invalid filename: " + filename)
+    }
+  }
+
+  def isClassicTiff(rasterFilePath: Path): Boolean = {
+    val f = new RandomAccessFile(rasterFilePath.toFile, "r")
+
+    try Seq(0x49492A00, 0x4D4D002A) contains f.readInt()
+    catch {
+      case _: EOFException => false
     }
   }
 }

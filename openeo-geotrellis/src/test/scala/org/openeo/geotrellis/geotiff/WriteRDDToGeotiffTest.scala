@@ -3,7 +3,7 @@ package org.openeo.geotrellis.geotiff
 import better.files.File
 import better.files.File.apply
 import cats.data.NonEmptyList
-import geotrellis.layer.{CRSWorldExtent, FloatingLayoutScheme, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
+import geotrellis.layer.{CRSWorldExtent, FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{BigTiff, GeoTiff, MultibandGeoTiff, Tiff, TiffType, Tiled}
@@ -24,7 +24,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.nio.file.{Files, Path, Paths}
@@ -357,6 +357,23 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val croppedOutput = result.band(0).toArrayTile()
     assertArrayEquals(croppedReference.tile.toBytes(),croppedOutput.toBytes())
 
+  }
+
+  @Test
+  def testRetainNoDataTile(): Unit ={
+    val layoutCols = 8
+    val layoutRows = 4
+
+    val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
+    val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256,256.toByte)
+
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
+    val emptyRdd: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext{_.map{case(key,tile) => (key,new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,tile.bandCount)) }}
+    val (_,_,processedRdd) = preProcess(emptyRdd, None, retainNoDataTiles = true)
+    val (_,_,processedRddFiltered) = preProcess(emptyRdd, None, retainNoDataTiles = false)
+    val count = processedRdd.count()
+    assertEquals(layoutCols*layoutRows,count)
+    assertEquals(0,processedRddFiltered.count())
   }
 
 

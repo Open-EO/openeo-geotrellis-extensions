@@ -7,7 +7,7 @@ import geotrellis.raster.{CellType, CropOptions, CroppedTile, GridBounds, GridEx
 import geotrellis.vector.Extent
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
-import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, safeConvert}
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrelliscommon.ResampledTile
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
@@ -96,7 +96,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
   }
 
-  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => cellTypeUnion(a, b))
+  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a, b) => cellTypeUnionWithNoData(a, b))
 
   override def name: SourceName = sources.head.name
 
@@ -177,9 +177,15 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
     val singleBandRasters: Seq[Raster[Tile]] = selectedSources
       .iterator.map(rs => retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
-        BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0)))
+        (BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0))), rs.cellType)
       })
-      .collect { case Some(raster) => raster }.toSeq
+      .collect { case (Some(raster), sourceCellType )=> {
+        if (raster.cellType == sourceCellType) raster
+        else {
+          logger.debug(s"converting tile from ${raster.tile.cellType} to $sourceCellType")
+          Raster(safeConvert(raster.tile,sourceCellType), raster.extent)
+        }
+      } }.toSeq
 
     try {
       if (singleBandRasters.isEmpty) {

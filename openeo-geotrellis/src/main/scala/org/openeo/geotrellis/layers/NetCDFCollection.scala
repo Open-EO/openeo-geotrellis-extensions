@@ -2,8 +2,7 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutScheme, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileLayerMetadata}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{CellSize, CellType, MultibandTile, Raster, RasterExtent, Tile}
-import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, GDALWarpOptions}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, MultibandTile, Raster, RasterExtent, Tile}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods, _}
 import geotrellis.spark.tiling.Tiler
 import geotrellis.spark.partition.SpacePartitioner
@@ -15,15 +14,42 @@ import org.openeo.geotrellis.GeneralUtils.cellTypeUnionWithNoData
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, DataCubeParameters, DatacubeSupport}
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.slf4j.{Logger, LoggerFactory}
+import ucar.nc2.dataset.NetcdfDatasets
 
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
+import scala.jdk.CollectionConverters._
 import scala.collection.immutable
+import org.openeo.geotrellis.layers.raster_source.NetCDFRasterSource
 
 object NetCDFCollection {
 
   private implicit val logger: Logger = LoggerFactory.getLogger("NetCDFCollection")
+
+  private def toNetCDFSource(link: OpenSearchResponses.Link, bandName: String): String = {
+    val href = link.href
+    val hrefString = href.toString
+    if (hrefString.startsWith("NETCDF:")) {
+      s"$hrefString:$bandName"
+    } else if ("file" == href.getScheme) {
+      val localPath = java.nio.file.Paths.get(href).toString
+      s"""NETCDF:"$localPath":$bandName"""
+    } else {
+      s"""NETCDF:"$hrefString":$bandName"""
+    }
+  }
+
+  private def referenceRasterSource(stacItems: Seq[OpenSearchResponses.Feature]): NetCDFRasterSource = {
+    val firstBandSource = stacItems
+      .view
+      .flatMap(_.links.view)
+      .flatMap(link => link.bandNames.toSeq.flatten.view.map(bandName => toNetCDFSource(link, bandName)))
+      .headOption
+      .getOrElse(throw new IllegalArgumentException("No NetCDF assets with band names found in collection."))
+
+    NetCDFRasterSource.fromSource(firstBandSource)
+  }
 
   def datacube_seq(polygons: ProjectedPolygons, from_date: String, to_date: String,
                    metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters, osClient: OpenSearchClient): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
@@ -45,6 +71,7 @@ object NetCDFCollection {
   def loadCollection(osClient: OpenSearchClient, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val stacItems = osClient.getProducts("", None, null, Map[String, Any](), "", "")
     val items = sc.parallelize(stacItems)
+    val referenceGridExtent = referenceRasterSource(stacItems).gridExtent
 
     sc.setJobDescription(s"load_stac from netCDFs - ${stacItems.head.id} - ${stacItems.head.links.head.href}")
     val resolutions = items.flatMap(_.resolution).distinct().collect()
@@ -57,42 +84,48 @@ object NetCDFCollection {
       throw new IllegalArgumentException("All items in a collection must have the same CRS")
     }
 
-    val bboxWGS84: Extent = items.map(_.bbox).reduce((a, b) => (a.combine(b)))
-
-
     val features: RDD[(TemporalProjectedExtent, MultibandTile)] = items.repartition(stacItems.length).flatMap(f => {
       val allTiles = f.links.flatMap(l => {
+        val targetCellType = if (l.datatype.isDefined){
+          Some(ConvertTargetCellType(l.datatype.get.withNoData(l.nodata)))
+        }else None
         l.bandNames.get.flatMap(b => {
-          var gdalNetCDFLink = s"${l.href.toString.replace("file:", "NETCDF:")}:${b}"
-          if (!gdalNetCDFLink.startsWith("NETCDF:")) {
-            gdalNetCDFLink = s"NETCDF:${gdalNetCDFLink}"
-          }
+          val source = toNetCDFSource(l, b)
           try {
+            val rs = NetCDFRasterSource.fromSource(source, targetCellType = targetCellType)
+            val (bandCount, timeValues) = {
+              val ds = NetcdfDatasets.openDataset(rs.path, true, null)
+              try {
+                val variable = Option(ds.findVariable(rs.variableName)).getOrElse(
+                  throw new IllegalArgumentException(s"Variable '${rs.variableName}' not found in ${rs.path}.")
+                )
+                val conventions: String = Option(ds.findGlobalAttributeIgnoreCase("Conventions"))
+                  .map(_.getStringValue)
+                  .getOrElse("")
+                val dimensions = variable.getDimensions.asScala.map(_.getShortName).toList
+                val extraDim = dimensions.filterNot(d => d == "x" || d == "y")
+                val tVar = Option(ds.findVariable("t"))
+                  .getOrElse(throw new IllegalArgumentException(s"Time dimension variable 't' not found in ${rs.path}."))
+                val units = Option(tVar.findAttributeIgnoreCase("units")).map(_.getStringValue).orNull
 
-            val rs = GDALRasterSource(gdalNetCDFLink, new GDALWarpOptions(outputFormat = None))
+                if (!conventions.startsWith("CF-1")) {
+                  throw new IllegalArgumentException(s"Only netCDF files with CF-1.x conventions are supported by this openEO backend, but found ${conventions}.")
+                }
+                if (extraDim != List("t")) {
+                  throw new IllegalArgumentException("Only netCDF files with a time dimension named 't' are supported by this openEO backend.")
+                }
+                if (units != "days since 1990-01-01") {
+                  throw new IllegalArgumentException("Only netCDF files with a time dimension in 'days since 1990-01-01' are supported by this openEO backend.")
+                }
 
-            /**
-             * Retrieving metadata using dataset directly, because sometimes metadata is so large that it doesn't fit the array allocated by GDALWarp
-             */
-            val units = rs.dataset.getMetadataItem("t#units", DefaultDomain, 0)
-            val conventions: String = rs.dataset.getMetadataItem("NC_GLOBAL#Conventions", DefaultDomain, 0)
-            val extraDim = rs.dataset.getMetadataItem("NETCDF_DIM_EXTRA", DefaultDomain, 0)
-
-            if (!conventions.startsWith("CF-1")) {
-              throw new IllegalArgumentException(s"Only netCDF files with CF-1.x conventions are supported by this openEO backend, but found ${conventions}.")
+                val bandCount: Int = if (variable.getRank == 3) variable.getDimension(0).getLength else 1
+                val timeArray = tVar.read()
+                val timeValues = (0 until bandCount).map(i => timeArray.getDouble(i).toInt)
+                (bandCount, timeValues)
+              } finally {
+                ds.close()
+              }
             }
-            if (extraDim != "{t}") {
-              throw new IllegalArgumentException("Only netCDF files with a time dimension named 't' are supported by this openEO backend.")
-            }
-            if (units != "days since 1990-01-01") {
-              throw new IllegalArgumentException("Only netCDF files with a time dimension in 'days since 1990-01-01' are supported by this openEO backend.")
-            }
-            val bandCount: Int = rs.dataset.bandCount
-
-            //there's also a metadata item containing all timesteps, but it doesn't work on cluster for unknown reason
-            val timeValues = (1 to bandCount).map(b => {
-              rs.dataset.getMetadataItem("NETCDF_DIM_t", DefaultDomain, b).toInt
-            })
 
             val timestamps = timeValues.map(t => {
               LocalDate.of(1990, 1, 1).atStartOfDay(ZoneId.of("UTC")).plusDays(t)
@@ -103,8 +136,8 @@ object NetCDFCollection {
             })
             temporalRasters
           } catch {
-            case e: GDALException => {
-              throw new IllegalArgumentException(s"load_stac/load_collection: GDAL gave an error for ${gdalNetCDFLink} with band $b. Error message: ${e.getMessage}", e)
+            case e: Exception => {
+              throw new IllegalArgumentException(s"load_stac/load_collection: Error while reading ${source} with band $b. Error message: ${e.getMessage}", e)
             }
           }
 
@@ -117,21 +150,25 @@ object NetCDFCollection {
       })
     })
 
-    val first = features.first()
-    val cellType = first._2.cellType
-//    val cellTypes = features.map(_._2.cellType)
-//    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
+    val cellTypes = features.map(_._2.cellType)
+    val cellType = cellTypes.reduce((CurrentCellType, nextCellType) => cellTypeUnionWithNoData(CurrentCellType,nextCellType))
 
-    val extent = bboxWGS84.reproject(LatLng, crs(0))
-    val layout = LayoutDefinition(RasterExtent(extent, CellSize(resolutions(0), resolutions(0))), 128)
+    val sourceExtent = features.map(_._1.extent).reduce((a, b) => a.combine(b))
+    val snappedExtent = referenceGridExtent.createAlignedGridExtent(sourceExtent).extent
+    val layout = LayoutDefinition(RasterExtent(snappedExtent, referenceGridExtent.cellSize), 128)
 
-    val spatialBounds = KeyBounds(layout.mapTransform(extent))
+    val spatialBounds = KeyBounds(layout.mapTransform(snappedExtent))
     val temporalBounds = KeyBounds(SpaceTimeKey(spatialBounds.minKey, TemporalKey(LocalDate.of(1990, 1, 1).atStartOfDay(ZoneId.of("UTC")))), SpaceTimeKey(spatialBounds.maxKey, TemporalKey(LocalDate.now().atStartOfDay(ZoneId.of("UTC")))))
 
-    val keys: Array[SpatialKey] = items.map(i => i.geometry.getOrElse(i.bbox.toPolygon())).map(_.reproject(LatLng, crs(0))).clipToGrid(layout).map(_._1).distinct().collect()
+    val keys: Array[SpatialKey] = features
+      .map { case (temporalProjectedExtent, _) => temporalProjectedExtent.extent.toPolygon() }
+      .clipToGrid(layout)
+      .map(_._1)
+      .distinct()
+      .collect()
     val partitioner: Partitioner = new SpacePartitioner(temporalBounds)(implicitly, implicitly, new ByTileSpacetimePartitioner(Some(keys)))
 
-    val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, extent, crs(0), temporalBounds)
+    val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, snappedExtent, crs(0), temporalBounds)
     val retiled: RDD[(SpaceTimeKey, MultibandTile)] = features.tileToLayout(metadata, Tiler.Options(partitioner = partitioner))
     logger.info(s"Created cube for netCDF samples with metadata ${metadata} and partitioner ${partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
     val cRDD = ContextRDD(retiled, metadata)
