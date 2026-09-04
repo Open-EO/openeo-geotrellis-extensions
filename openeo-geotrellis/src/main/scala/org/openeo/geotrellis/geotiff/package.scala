@@ -697,7 +697,7 @@ package object geotiff {
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3.persist(StorageLevel.MEMORY_AND_DISK)
     logger.info(f"saveRDDGeneric with cropBounds:$cropBounds, layout: ${preprocessedRdd.metadata.tileLayout}, filenamePrefix: ${formatOptions.filenamePrefix} ")
-    val assetMetadata = setupAssetMetadata(List(), croppedExtent, preprocessedRdd.metadata.crs, Array(gridBounds.height, gridBounds.width), Array())
+    val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
     try {
       val compression = determineCompression(formatOptions)
       val (tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
@@ -751,6 +751,7 @@ package object geotiff {
       metadata.asset(fixedPath)
       metadata.write(stacItemPath)
       val (geoTiffResultObject, bandStatistics) = writeTiff(fixedPath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount, formatOptions = formatOptions, overviews = overviews)
+      val assetMetadata = setupAssetMetadata(bandLabels, croppedExtent, preprocessedRdd.metadata.crs, Array(gridBounds.height, gridBounds.width), bandStatistics)
       geoTiffResultObject.gdalInfoPath match {
         case Some(gdalInfoPath) =>
           updateGdalInfoJsonFile(gdalInfoPath, geoTiffResultObject.correctPath)
@@ -1419,12 +1420,16 @@ package object geotiff {
         val filename = s"${filenamePrefix}_${DateTimeFormatter.ISO_DATE.format(time)}_$name.tif"
         val filePath = Paths.get(path).resolve(filename).toString
         val timestamp = time format DateTimeFormatter.ISO_ZONED_DATE_TIME
-        val assetMetadata = setupAssetMetadata(List(), croppedExtent.getOrElse(geometry.extent), crs, Array(layout.rows.toInt,layout.cols.toInt),Array())
 
         val croppedBbox =
           if (crs == LatLng) fixBboxLargerThanWorld(croppedExtent.getOrElse(geometry.extent))
           else croppedExtent.getOrElse(geometry.extent)
         val (stitchedTiff, bandStatistics) = stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression, formatOptions)
+        val bandLabels = formatOptions match {
+          case Some(fo) => fo.tags.bandTags.map(_("DESCRIPTION"))
+          case None => List()
+        }
+        val assetMetadata = setupAssetMetadata(bandLabels, croppedExtent.getOrElse(geometry.extent), crs, Array(layout.rows.toInt,layout.cols.toInt),bandStatistics)
         (stitchedTiff.correctPath, timestamp, croppedBbox, name, assetMetadata)
       }
       .collect()
@@ -1456,6 +1461,11 @@ package object geotiff {
       case Some(fo) => fo.filenamePrefix
       case None => new GTiffOptions().filenamePrefix
     }
+    
+    val bandTags = formatOptions match {
+      case Some(fo) => fo.tags.bandTags.map(_("DESCRIPTION"))
+      case None => List()
+    }
     val ret = rdd
       .flatMap { case (key, tile) => featuresBC.value
         .filter { case (_, geometry) => layout.mapTransform.keysForGeometry(geometry) contains key }
@@ -1468,8 +1478,8 @@ package object geotiff {
         val croppedBbox =
           if (crs == LatLng) fixBboxLargerThanWorld(geometry.extent)
           else geometry.extent
-        val (stitchedTiff, statistics) =   stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression, formatOptions)
-        val assetMetadata = setupAssetMetadata(List(), croppedExtent.getOrElse(geometry.extent), crs, Array(layout.rows.toInt,layout.cols.toInt),Array())
+        val (stitchedTiff, statistics) = stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression, formatOptions)
+        val assetMetadata = setupAssetMetadata(bandTags, croppedExtent.getOrElse(geometry.extent), crs, Array(layout.rows.toInt,layout.cols.toInt), statistics)
         (stitchedTiff.correctPath, croppedBbox, assetMetadata)
       }
       .collect()
