@@ -728,7 +728,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private val fromLoadStac = openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
   private val softErrors = maxSoftErrorsRatio > 0.0
 
-
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     if (fromLoadStac) {
       val features: Seq[Feature] = openSearch.asInstanceOf[FixedFeaturesOpenSearchClient].asInstanceOf[FixedFeaturesOpenSearchClient].getProducts(null, null, null)
