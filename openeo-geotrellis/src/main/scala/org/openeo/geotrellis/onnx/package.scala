@@ -1,15 +1,17 @@
 package org.openeo.geotrellis
 
 import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, OrtUtil, TensorInfo}
+import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.layer.{Bounds, SpatialComponent}
 import geotrellis.raster.{ByteArrayTile, ByteCells, DoubleArrayTile, DoubleCells, FloatArrayTile, FloatCells, IntArrayTile, IntCells, MultibandTile, ShortArrayTile, ShortCells}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.util.Component
-import org.apache.commons.io.FileUtils
+import org.apache.commons.io.{FileUtils, IOUtils}
 import org.slf4j.LoggerFactory
 
 import java.nio.file.{Files, Paths}
 import java.net.URL
+import java.util
 import scala.reflect.ClassTag
 
 package object onnx {
@@ -446,6 +448,21 @@ package object onnx {
       result,
       updatedMetadata
     )
+  }
+
+  def predictONNXSTACFile[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
+    val modelPath = Paths.get(model)
+    val (modelFile, isTemp) = if (Files.exists(modelPath)) {
+      (modelPath,false)
+    } else {
+      val tempFileName = Files.createTempFile(null, ".json")
+      FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
+      (tempFileName,true)
+    }
+    val modelString = IOUtils.toString(modelFile.toUri, "UTF-8")
+    val modelMap = new ObjectMapper().readValue(modelString, classOf[util.Map[String, Any]])
+    val modelJson = new ObjectMapper().writeValueAsString(modelMap)
+    predictONNXSTAC(datacube, modelJson)
   }
 
 }
