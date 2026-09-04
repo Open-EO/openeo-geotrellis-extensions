@@ -56,6 +56,11 @@
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
+            <artifactId>openeo-logging</artifactId>
+            <version>${parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openeo</groupId>
             <artifactId>geotrellis-s3-extensions</artifactId>
             <version>${parent.version}</version>
             <exclusions>
