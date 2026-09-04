@@ -1022,7 +1022,7 @@ package object geotiff {
     logger.info(s"Writing $tiffType geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
     val tiffTile: GeoTiffMultibandTile = toTiff(tiffs, gridBounds, tileLayout, compression, cellType, detectedBandCount, segmentCount)
     val bandStatistics =
-      if (formatOptions.addBandStatistics)bandsStatistics(tiffTile)
+      if (formatOptions.addBandStatistics) bandsStatistics(tiffTile)
       else Array[java.util.HashMap[String, Any]]()
 
     val options = formatOptions.colorMap match {
@@ -1176,15 +1176,15 @@ package object geotiff {
           .resolve(newFilePath(Path.of(path).getFileName.toString, tileId)).toString
 
         val (stitchedTiff, bandStatistics) = stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression, formatOptions)
-        (stitchedTiff, tileId, extent, bandStatistics)
+        (stitchedTiff, tileId, extent)
     }.collect()
     val res = geotiffResults.map {
-      case (geoTiffResultObject, tileId, croppedExtent, bandStatistics) =>
+      case (geoTiffResultObject, tileId, croppedExtent) =>
         val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
-        (destinationPath, tileId, croppedExtent, bandStatistics)
+        (destinationPath, tileId, croppedExtent)
     }
 
-    val items = res.map { case (path, tileId, extent, bandStatistics) =>
+    val items = res.map { case (path, tileId, extent) =>
       val assetMetadata = setupAssetMetadata(List(), extent, crs, Array(layout.rows.toInt,layout.cols.toInt), Array())
       val croppedBbox =
         if (crs == LatLng) fixBboxLargerThanWorld(extent)
@@ -1603,8 +1603,12 @@ package object geotiff {
         case _: UShortCells => statsInt(band)
         case _: IntCells => statsInt(band)
       }
-      val stddev = Math.sqrt(powerSum / validCount - Math.pow(sum / validCount, 2))
-      new java.util.HashMap[String, Any](java.util.Map.of("mean", sum / validCount, "maximum", max, "minimum", min, "stddev", stddev , "valid_percent", validCount.toDouble / band.size * 100))
+      if (validCount==0) new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0))
+      else {
+        val stddev = Math.sqrt(powerSum / validCount - Math.pow(sum / validCount, 2))
+        new java.util.HashMap[String, Any](java.util.Map.of("mean", sum / validCount, "maximum", max, "minimum", min, "stddev", stddev, "valid_percent", validCount.toDouble / band.size * 100))
+      }
+
     }).toArray
     stats
   }
