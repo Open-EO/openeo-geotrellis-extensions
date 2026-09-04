@@ -315,7 +315,7 @@ object GeneralUtils {
     val nodata = getNodataMaxMin(cellType = tile.cellType)._1
 
     tile.foreach { z =>
-      if (isData(z) && (nodata.isDefined && z != nodata.get)) {
+      if (isData(z) && (nodata.isEmpty || z != nodata.get)) {
         validCount +=1
         zmin = math.min(zmin, z)
         zmax = math.max(zmax, z)
