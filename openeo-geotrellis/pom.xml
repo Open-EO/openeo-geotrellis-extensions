@@ -14,7 +14,6 @@
         <dependency>
             <groupId>com.azavea.geotrellis</groupId>
             <artifactId>gdal-warp-bindings</artifactId>
-            <version>${gdal-bindings.version}</version>
         </dependency>
         <dependency>
             <groupId>org.locationtech.proj4j</groupId>
@@ -53,6 +52,11 @@
         <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>geotrellis-common</artifactId>
+            <version>${parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>openeo-logging</artifactId>
             <version>${parent.version}</version>
         </dependency>
         <dependency>
@@ -317,6 +321,11 @@
             <groupId>com.microsoft.onnxruntime</groupId>
             <artifactId>onnxruntime</artifactId>
             <version>1.23.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-compiler</artifactId>
+            <version>${scala.version}</version>
         </dependency>
     </dependencies>
     <build>

@@ -4,6 +4,7 @@ import geotrellis.layer.{LayoutDefinition, SpaceTimeKey}
 import geotrellis.proj4.CRS
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.{FloatConstantNoDataCellType, Tile}
+import org.openeo.geotrellis.GeneralUtils.safeConvert
 
 /**
  * Provides DEM values, in kilometers, which is what icor requires.
@@ -18,7 +19,7 @@ class DEMProvider(layout:LayoutDefinition, crs:CRS,path:String="https://artifact
   def compute(key:SpaceTimeKey, targetCRS:CRS,layoutDefinition:LayoutDefinition): Tile = {
     val targetExtent = layoutDefinition.mapTransform.apply(key)
     val raster = rasterSource.read(targetExtent)
-    raster.get.tile.band(0).convert(FloatConstantNoDataCellType).localDivide(1000.0)
+    safeConvert(raster.get.tile.band(0), FloatConstantNoDataCellType).localDivide(1000.0)
   }
 
 }

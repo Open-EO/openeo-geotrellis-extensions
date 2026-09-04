@@ -317,10 +317,9 @@ case class RasterTileLoader() {
 
   private def loadPartition(partitionIterator: Iterator[(SpaceTimeKey, Iterable[(RasterRegion, SourceName)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs: CRS, layout: LayoutDefinition) = {
     var totalPixelsPartition = 0
-    val loadedPartitions = partitionIterator.toParArray.map(tuple => {
-      val allRegions = tuple._2.toSeq
-
-      val tilesForRegion = allRegions
+    val loadedPartitions = partitionIterator.toParArray.map { case (spaceTimeKey, allRegions) =>
+      val tileForRegion = allRegions
+        .toSeq
         .flatMap { case (rasterRegion, sourceName: SourceName) =>
           val result: Option[(MultibandTile, SourceName)] = cloudFilterStrategy match {
             case l1cFilterStrategy: L1CCloudFilterStrategy =>
@@ -419,8 +418,10 @@ case class RasterTileLoader() {
         }
         .map { case (multibandTile, _) => multibandTile }
         .reduceOption(_ merge _)
-      (tuple._1, tilesForRegion)
-    })
+
+      (spaceTimeKey, tileForRegion)
+    }
+
     (loadedPartitions, totalPixelsPartition)
   }
 

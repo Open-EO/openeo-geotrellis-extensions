@@ -27,10 +27,12 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext}
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
+import org.openeo.geotrellis.GeneralUtils.safeConvert
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
+import org.openeo.geotrellis.onnx.StacModelParser
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
@@ -58,7 +60,7 @@ object OpenEOProcesses{
   private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)],cellType: CellType) = {
     MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)).map( t => {
       if(t.cellType != cellType){
-        t.convert(cellType)
+        safeConvert(t, cellType)
       }else{
         t
       }
@@ -203,7 +205,9 @@ class OpenEOProcesses extends Serializable {
     val index: Option[PartitionerIndex[SpaceTimeKey]] = maybePartitionerIndex(datacube)
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val rdd: RDD[(SpaceTimeKey, MultibandTile)] =
-      if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner] || index.get.isInstanceOf[ByTileSpacetimePartitioner] )) {
+      if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner]
+        || index.get.isInstanceOf[ByTileSpacetimePartitioner]
+        || (!datacube.getBounds.isEmpty && datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time))) {
         datacube
       } else {
         val keys: Option[Array[SpatialKey]] = findPartitionerSpatialKeys(datacube)
@@ -975,42 +979,48 @@ class OpenEOProcesses extends Serializable {
     Some(new SparseSpaceTimePartitioner(indices,indexReduction,Some(spaceTimeKeys)))
   }
 
+  def constructCompatibleTargetPartitioner(dataPartitioner: Option[Partitioner], partitionerTarget: Option[Partitioner], dataMetadata: TileLayerMetadata[SpaceTimeKey], targetMetadata: TileLayerMetadata[SpaceTimeKey]): Option[Partitioner] = {
+    if(partitionerTarget.isDefined && partitionerTarget.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+      val index = partitionerTarget.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+      val theIndex = index match {
+        case partitioner: SparseSpaceTimePartitioner =>
+          dataPartitioner match {
+            case Some(dataPartitioner: SpacePartitioner[SpaceTimeKey]) =>
+              dataPartitioner.index match {
+                case dataIndex:SparseSpaceTimePartitioner => {
+                  transformSparseSpaceTimePartition(dataIndex.theKeys,dataMetadata,targetMetadata,partitioner.indexReduction).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
+                }
+                case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
+              }
+            case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
+          }
+        case _ =>
+          index
+      }
+      Some(SpacePartitioner[SpaceTimeKey](targetMetadata.bounds)(implicitly,implicitly,theIndex))
+    }else{
+      partitionerTarget
+    }
+  }
+
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
-    if(target.metadata.crs.equals(data.metadata.crs) && target.metadata.layout.equals(data.metadata.layout)) {
+    resampleCubeSpatial(data, target.metadata, target.partitioner, method)
+  }
+
+  def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], targetMetadata: TileLayerMetadata[SpaceTimeKey], targetPartitioner: Option[Partitioner], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+    if(targetMetadata.crs.equals(data.metadata.crs) && targetMetadata.layout.equals(data.metadata.layout)) {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
       (0,data)
     }else{
       logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
       //construct a partitioner that is compatible with data cube
-      val targetPartitioner =
-      if(target.partitioner.isDefined && target.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
-        val index = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-        val theIndex = index match {
-          case partitioner: SparseSpaceTimePartitioner =>
-            data.partitioner match {
-              case Some(dataPartitioner: SpacePartitioner[SpaceTimeKey]) =>
-                dataPartitioner.index match {
-                  case dataIndex:SparseSpaceTimePartitioner => {
-                    transformSparseSpaceTimePartition(dataIndex.theKeys,data.metadata,target.metadata,partitioner.indexReduction).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
-                  }
-                  case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
-                }
-              case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
-            }
-          case _ =>
-            index
-        }
-        Some(SpacePartitioner[SpaceTimeKey](target.metadata.bounds)(implicitly,implicitly,theIndex))
-      }else{
-        target.partitioner
-      }
-
+      val partitioner = constructCompatibleTargetPartitioner(data.partitioner, targetPartitioner, data.metadata, targetMetadata)
       var bufferSize = 16
-      if(method == NearestNeighbor && target.metadata.crs == data.metadata.crs && target.metadata.cellSize.resolution < data.metadata.cellSize.resolution) {
+      if(method == NearestNeighbor && targetMetadata.crs == data.metadata.crs && targetMetadata.cellSize.resolution < data.metadata.cellSize.resolution) {
         //bufferSize 0 is cheaper, but can only be used under strict conditions, the current selection is rather strict to be safe, potentially can be relaxed
         bufferSize = 0
       }
-      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, target.metadata.crs, Right(target.metadata.layout), bufferSize, method, targetPartitioner)
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, targetMetadata.crs, Right(targetMetadata.layout), bufferSize, method, partitioner)
       filterNegativeSpatialKeys(reprojected)
     }
   }
@@ -1329,7 +1339,8 @@ class OpenEOProcesses extends Serializable {
         if (l.get.bandCount != r.get.bandCount) {
           throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.get.bandCount, r.get.bandCount))
         }
-        MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
+        val tile = MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
+        tile
       }
     }), updatedMetadata)
   }
@@ -1657,59 +1668,15 @@ class OpenEOProcesses extends Serializable {
   def predictONNX(datacube: Object, model: String): Object = {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
-        predictONNXGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+        if (model.endsWith(".onnx")) onnx.predictONNXModel(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+        else if (model.startsWith("{")) onnx.predictONNXSTAC(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+        else throw new IllegalArgumentException(s"ONNX: Only supports models with .onnx extension, but got $model.")
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
-        predictONNXGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        if (model.endsWith(".onnx")) onnx.predictONNXModel(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        else if (model.startsWith("{")) onnx.predictONNXSTAC(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        else throw new IllegalArgumentException(s"ONNX: Only supports models with .onnx extension, but got $model.")
       case _ => throw new IllegalArgumentException(s"Unsupported rdd type for predict_onnx: $datacube")
     }
-  }
-
-  def predictONNXGeneric[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
-    val modelPath = Paths.get(model)
-    val (modelFile, isTemp) = if (Files.exists(modelPath)) {
-      (modelPath,false)
-    } else {
-      val tempFileName = Files.createTempFile(null, ".onnx")
-      FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
-      (tempFileName,true)
-    }
-    val env = OrtEnvironment.getEnvironment()
-    val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
-    val inputNames = session.getInputNames
-    val outputNames = session.getOutputNames
-
-    if (inputNames.size() > 1)
-      // TODO support the case for multiple inputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
-    if (outputNames.size() > 1)
-      // TODO support the case for multiple outputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
-
-
-    val inputName = inputNames.toArray()(0).asInstanceOf[String]
-    val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
-    val outputName = outputNames.toArray()(0).asInstanceOf[String]
-    val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
-
-    val inputType = inputInfo.`type`
-    val outputType = outputInfo.`type`
-    if (inputType != outputType)
-      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
-
-    val inputShape = inputInfo.getShape
-    val tileCols = datacube.metadata.tileLayout.tileCols
-    val tileRows = datacube.metadata.tileLayout.tileRows
-    val retiled = if (tileCols != inputShape(inputShape.length-1) || tileRows != inputShape(inputShape.length-2)) {
-      logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(inputShape.length-1)},${inputShape(inputShape.length-2)})")
-      retileGeneric(datacube,inputShape(inputShape.length-2).toInt,inputShape(inputShape.length-1).toInt,0,0)
-    } else datacube
-    if (isTemp) Files.delete(modelFile)
-    ContextRDD(
-      retiled.mapValues(x => onnx.predictOnnx(x,model)),
-      retiled.metadata
-    )
   }
 
 

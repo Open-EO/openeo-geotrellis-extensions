@@ -2,7 +2,7 @@ package org.openeo.geotrellis.netcdf
 
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer._
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster
 import geotrellis.raster._
 import geotrellis.spark.MultibandTileLayerRDD
@@ -14,7 +14,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkContext, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.cellTypeUnion
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, fixBboxLargerThanWorld, safeConvert}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.geotiff.preProcess
 import org.openeo.geotrellis.stac.{Asset, Item}
@@ -148,7 +148,7 @@ object NetCDFRDDWriter {
     }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds)
+    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
   }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K],
@@ -160,9 +160,10 @@ object NetCDFRDDWriter {
                        zLevel:Int,
                        addBandsStatistics: Boolean,
                        cropBounds:Option[Extent]= None,
+                       retainNoDataTiles: Boolean = false
                       ): java.util.List[Item] = {
 
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds, retainNoDataTiles)
     val extent = preProcessResult._2
     val preProcessedRdd = preProcessResult._3
 
@@ -257,7 +258,7 @@ object NetCDFRDDWriter {
 
             var tile = multibandTile.band(bandIndex)
             if (tile.cellType != cellType) {
-              tile = tile.convert(cellType)
+              tile = safeConvert(tile, cellType)
             }
 
             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
@@ -310,7 +311,10 @@ object NetCDFRDDWriter {
         path
       }
 
-    val item = Item(id = UUID.randomUUID().toString, bbox = cropBounds.getOrElse(extent), datetime = null,
+    val croppedBbox =
+      if (rdd.metadata.crs == LatLng) fixBboxLargerThanWorld(cropBounds.getOrElse(extent))
+      else cropBounds.getOrElse(extent)
+    val item = Item(id = UUID.randomUUID().toString, bbox = croppedBbox, datetime = null,
       assets = Collections.singletonMap("openEO", Asset(finalPath,metadata = assetsMetadata)))
 
     Collections.singletonList(item)
@@ -436,7 +440,7 @@ object NetCDFRDDWriter {
                   filenamePrefix: Option[String],
                  ): java.util.List[Item] = {
     if (options.bandNames.isEmpty) logger.error("Couldn't find bandNames in options. It cannot be empty")
-    saveSamples(rdd, path, polygons, sampleNames, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix)
+    saveSamples(rdd, path, polygons, sampleNames, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix, options.retainNoDataTiles)
   }
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -449,12 +453,13 @@ object NetCDFRDDWriter {
                   bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                   addBandsStatistics: Boolean,
                   filenamePrefix: Option[String],
+                  retainNoDataTiles: Boolean = false
                  ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toSeq.zip(reprojected.polygons)
     logger.info(s"Using metadata: ${rdd.metadata}.")
     logger.info(s"Using features: ${features}.")
-    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, addBandsStatistics, filenamePrefix)
+    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, addBandsStatistics, filenamePrefix, retainNoDataTiles)
   }
 
   def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
@@ -506,11 +511,12 @@ object NetCDFRDDWriter {
                                            bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                            addBandsStatistics: Boolean,
                                            filenamePrefix: Option[String] = None,
+                                           retainNoDataTiles: Boolean = false,
                                            ): java.util.List[Item] = {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val crs = rdd.metadata.crs
-    val groupedBySample = stitchRDDBySample(rdd, featuresBC)
+    val groupedBySample = stitchRDDBySample(rdd, featuresBC, retainNoDataTiles)
     //doing a count triggers full job execution, and there's already logging in previous block
     //logger.info(s"Writing ${groupedBySample.keys.count()} samples to disk.")
     groupedBySample.map { case (name, tiles: Iterable[(Long, Raster[MultibandTile], Extent)]) =>
@@ -539,18 +545,23 @@ object NetCDFRDDWriter {
 
         }
 
-        Item(id = UUID.randomUUID().toString, datetime = null , bbox = tiles.head._3,
+        val croppedBbox =
+          if (crs == LatLng) fixBboxLargerThanWorld(tiles.head._3)
+          else tiles.head._3
+        Item(id = UUID.randomUUID().toString, datetime = null , bbox = croppedBbox,
           assets = Collections.singletonMap("openEO", Asset(path = assetPath,metadata = assetsMetadata)))
       }.collect()
       .toList.asJava
   }
 
-  private def stitchRDDBySample(rdd: MultibandTileLayerRDD[SpaceTimeKey], featuresBC: Broadcast[Seq[(String, Geometry)]]) = {
+  private def stitchRDDBySample(rdd: MultibandTileLayerRDD[SpaceTimeKey], featuresBC: Broadcast[Seq[(String, Geometry)]], retainNoDataTiles: Boolean)  = {
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
     val sampleNames = featuresBC.value.map { case (sampleName, _) => sampleName }
     logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
-    val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
+    val filtered = 
+      if (retainNoDataTiles) rdd 
+      else new OpenEOProcesses().filterEmptyTile(rdd)
     //the logging below is rather expensive
     //logger.info(s"Filtered out ${rdd.count() - filtered.count()} empty tiles. ${rdd.count()} -> ${filtered.count()}")
     val groupedByInstant = filtered.flatMap {
@@ -626,8 +637,10 @@ object NetCDFRDDWriter {
         } catch {
           case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
-
-        Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent.extent,
+        val bbox =
+          if (crs == LatLng) fixBboxLargerThanWorld(extent.extent)
+          else extent.extent
+        Item(id = UUID.randomUUID().toString, datetime = null, bbox = bbox,
           assets = Collections.singletonMap("openEO", Asset(assetPath, metadata = assetMetadata)))
       }.collect()
       .toList.asJava
@@ -920,7 +933,10 @@ object NetCDFRDDWriter {
       maps
     }
     assetMetadata.put("bands", bands)
-    assetMetadata.put("proj:bbox", Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
+    val croppedBbox =
+      if (metadata.crs == LatLng) fixBboxLargerThanWorld(bbox)
+      else bbox
+    assetMetadata.put("proj:bbox", Array(croppedBbox.xmin, croppedBbox.ymin, croppedBbox.xmax, croppedBbox.ymax))
     metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
     assetMetadata.put("proj:shape", Array(gridBounds.height, gridBounds.width))
     assetMetadata
@@ -943,7 +959,10 @@ object NetCDFRDDWriter {
       maps
     }
     assetMetadata.put("bands", bands)
-    assetMetadata.put("proj:bbox",Array(rasters.head.extent.xmin, rasters.head.extent.ymin, rasters.head.extent.xmax, rasters.head.extent.ymax))
+    val bbox =
+      if (metadata.crs == LatLng) fixBboxLargerThanWorld(rasters.head.extent)
+      else rasters.head.extent
+    assetMetadata.put("proj:bbox",Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
     metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
     assetMetadata.put("proj:shape", Array(rasters.head.rows, rasters.head.cols))
     assetMetadata
