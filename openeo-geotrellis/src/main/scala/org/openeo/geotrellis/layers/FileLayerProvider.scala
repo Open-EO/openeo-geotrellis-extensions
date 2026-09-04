@@ -1520,11 +1520,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       overlappingRasterSources.map { case (_, feature) => feature.id }.asJava
     )
 
-    tracker.addAuxiliaryFile(
-      new DerivedFromDocumentWriter(inputFeatures = overlappingRasterSources.map { case (_, feature) => feature }),
-      "application/geo+json",
-    )
-
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
 
