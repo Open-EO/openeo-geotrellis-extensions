@@ -22,6 +22,7 @@ class GTiffOptions extends Serializable {
   var compressionLevel = 6
   var compressionPredictor = 1
   var isBigTiff = false
+  var addBandStatistics: Boolean = false
   var retainNoDataTiles = false
 
   def setFilenamePrefix(name: String): Unit = {
@@ -121,6 +122,8 @@ class GTiffOptions extends Serializable {
   }
 
   def setBigTiff(enabled: Boolean): Unit = isBigTiff = enabled
+
+  def setAddBandStatistics(boolean: Boolean): Unit = addBandStatistics = boolean
   
   def setRetainNoDataTiles(enabled: Boolean): Unit = retainNoDataTiles = enabled
 
