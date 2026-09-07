@@ -72,9 +72,11 @@ object CroptypeInference {
     val onnxModelPath = scalaContext
       .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu.onnx")
       .asInstanceOf[String]
-    val outputMode = scalaContext.getOrElse("output_mode", "classification").asInstanceOf[String]
-    require(outputMode == "classification" || outputMode == "embeddings" || outputMode == "probabilities",
-      s"output_mode must be 'classification', 'embeddings', or 'probabilities', got: $outputMode")
+    val outputEmbeddings = scalaContext.getOrElse("output_embeddings", false).asInstanceOf[Boolean]
+    val outputProbabilities = scalaContext.getOrElse("output_probabilities", false).asInstanceOf[Boolean]
+    val outputClassification = scalaContext.getOrElse("output_classification", !outputEmbeddings && !outputProbabilities).asInstanceOf[Boolean]
+    require(outputEmbeddings || outputProbabilities || outputClassification,
+      "At least one of output_embeddings, output_probabilities, output_classification must be true")
     val numLcClasses = scalaContext.get("num_landcover_classes").map(_.asInstanceOf[Int])
     val numCtClasses = scalaContext.get("num_croptype_classes").map(_.asInstanceOf[Int])
     val numSeasons = scalaContext.getOrElse("num_seasons", 2).asInstanceOf[Int]
@@ -90,7 +92,9 @@ object CroptypeInference {
 
     val sc             = SparkContext.getOrCreate()
     val modelPathBC    = sc.broadcast(onnxModelPath)
-    val outputModeBC   = sc.broadcast(outputMode)
+    val outputEmbeddingsBC = sc.broadcast(outputEmbeddings)
+    val outputProbabilitiesBC = sc.broadcast(outputProbabilities)
+    val outputClassificationBC = sc.broadcast(outputClassification)
     val crsBC          = sc.broadcast(crs)
     val layoutBC       = sc.broadcast(layout)
     val numSeasonsBC   = sc.broadcast(numSeasons)
@@ -108,7 +112,9 @@ object CroptypeInference {
           tileExtent = tileExtent,
           crs = crsBC.value,
           onnxModelPath = modelPathBC.value,
-          outputMode = outputModeBC.value,
+          outputEmbeddings = outputEmbeddingsBC.value,
+          outputProbabilities = outputProbabilitiesBC.value,
+          outputClassification = outputClassificationBC.value,
           numLcClassesOverride = numLcClassesBC.value,
           numCtClassesOverride = numCtClassesBC.value,
           numSeasons = numSeasonsBC.value,
@@ -154,7 +160,9 @@ object CroptypeInference {
     tileExtent:          Extent,
     crs:                 CRS,
     onnxModelPath:       String,
-    outputMode:          String,
+    outputEmbeddings:    Boolean,
+    outputProbabilities: Boolean,
+    outputClassification: Boolean,
     numLcClassesOverride: Option[Int],
     numCtClassesOverride: Option[Int],
     numSeasons:          Int,
@@ -285,23 +293,23 @@ object CroptypeInference {
 
       val result = session.run(inputs)
       try {
-        outputMode match {
-          case "embeddings" =>
-            embeddingAccum ++= flatten2d(result.get(0).getValue)
-          case "classification" | "probabilities" =>
-            // Auto-detect class counts from ONNX output shapes on first batch
-            if (detectedLcClasses < 0) {
-              val lcShape = result.get(2).getInfo.asInstanceOf[TensorInfo].getShape
-              detectedLcClasses = lcShape.last.toInt
-              logger.info(s"CroptypeInference: detected $detectedLcClasses landcover classes from output shape ${lcShape.mkString("[", ",", "]")}")
-            }
-            if (detectedCtClasses < 0) {
-              val ctShape = result.get(3).getInfo.asInstanceOf[TensorInfo].getShape
-              detectedCtClasses = ctShape.last.toInt
-              logger.info(s"CroptypeInference: detected $detectedCtClasses croptype classes from output shape ${ctShape.mkString("[", ",", "]")}")
-            }
-            landcoverAccum ++= flatten2d(result.get(2).getValue)
-            croptypeAccum ++= flattenCroptype(result.get(3).getValue, batchB, numSeasons, detectedCtClasses)
+        if (outputEmbeddings) {
+          embeddingAccum ++= flatten2d(result.get(0).getValue)
+        }
+        if (outputProbabilities || outputClassification) {
+          // Auto-detect class counts from ONNX output shapes on first batch
+          if (detectedLcClasses < 0) {
+            val lcShape = result.get(2).getInfo.asInstanceOf[TensorInfo].getShape
+            detectedLcClasses = lcShape.last.toInt
+            logger.info(s"CroptypeInference: detected $detectedLcClasses landcover classes from output shape ${lcShape.mkString("[", ",", "]")}")
+          }
+          if (detectedCtClasses < 0) {
+            val ctShape = result.get(3).getInfo.asInstanceOf[TensorInfo].getShape
+            detectedCtClasses = ctShape.last.toInt
+            logger.info(s"CroptypeInference: detected $detectedCtClasses croptype classes from output shape ${ctShape.mkString("[", ",", "]")}")
+          }
+          landcoverAccum ++= flatten2d(result.get(2).getValue)
+          croptypeAccum ++= flattenCroptype(result.get(3).getValue, batchB, numSeasons, detectedCtClasses)
         }
       } finally {
         result.close()
@@ -322,25 +330,28 @@ object CroptypeInference {
       pStart = pEnd
     }
 
-    outputMode match {
-      case "embeddings" =>
-        OnnxInferenceUtils.buildQuantizedEmbeddingTile(embeddingAccum.toArray, B, cols, rows)
-      case "probabilities" =>
-        buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
-          detectedLcClasses, detectedCtClasses, numSeasons)
-      case "classification" =>
-        buildClassificationTileFromProbs(
-          lcProbs = landcoverAccum.toArray,
-          ctProbs = croptypeAccum.toArray,
-          cols = cols,
-          rows = rows,
-          numLcClasses = detectedLcClasses,
-          numCtClasses = detectedCtClasses,
-          numSeasons = numSeasons,
-          maskCropland = maskCropland,
-          croplandClassSet = croplandClassSet
-        )
+    val outputTiles = new ArrayBuffer[Tile]()
+    if (outputEmbeddings) {
+      outputTiles ++= OnnxInferenceUtils.buildQuantizedEmbeddingTile(embeddingAccum.toArray, B, cols, rows).bands
     }
+    if (outputProbabilities) {
+      outputTiles ++= buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
+        detectedLcClasses, detectedCtClasses, numSeasons).bands
+    }
+    if (outputClassification) {
+      outputTiles ++= buildClassificationTileFromProbs(
+        lcProbs = landcoverAccum.toArray,
+        ctProbs = croptypeAccum.toArray,
+        cols = cols,
+        rows = rows,
+        numLcClasses = detectedLcClasses,
+        numCtClasses = detectedCtClasses,
+        numSeasons = numSeasons,
+        maskCropland = maskCropland,
+        croplandClassSet = croplandClassSet
+      ).bands
+    }
+    MultibandTile(outputTiles.toSeq)
   }
 
   /**
