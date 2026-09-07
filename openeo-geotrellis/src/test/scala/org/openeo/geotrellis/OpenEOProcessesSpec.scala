@@ -1274,17 +1274,25 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val tileSize = 256
 
     def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
-      val modelPath = IOUtils.toString(getClass.getResource(path), "UTF-8")
-      val model = new ObjectMapper().readValue(modelPath, classOf[util.Map[String, Any]])
-      val modelString = new ObjectMapper().writeValueAsString(model)
+      val modelPath = getClass.getResource(path)
+      val modelAsString = IOUtils.toString(modelPath, "UTF-8")
+      val modelAsMap = new ObjectMapper().readValue(modelAsString, classOf[util.Map[String, Any]])
+      val modelAsJson = new ObjectMapper().writeValueAsString(modelAsMap)
 
       val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tile.cols/layoutCols, tile.rows/layoutRows))
-      val resultCube = onnx.predictONNXSTAC(datacube,modelString)
+      val resultCube = onnx.predictONNXSTAC(datacube,modelAsJson)
       assertEquals(expectedType, resultCube.metadata.cellType)
       val theResultTile = resultCube.stitch().tile
       assertEquals(expectedNBands,theResultTile.bandCount)
       (0 until expectedNBands).foreach {n =>
         assertArrayEquals(expectedBands(n), theResultTile.band(n).toArray())
+      }
+      val resultCubeFile = onnx.predictONNXSTACFile(datacube, modelPath.toString)
+      assertEquals(expectedType, resultCubeFile.metadata.cellType)
+      val theResultTileFile = resultCubeFile.stitch().tile
+      assertEquals(expectedNBands,theResultTileFile.bandCount)
+      (0 until expectedNBands).foreach {n =>
+        assertArrayEquals(expectedBands(n), theResultTileFile.band(n).toArray())
       }
     }
     val tileFloat = (i:Float) => FloatArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
