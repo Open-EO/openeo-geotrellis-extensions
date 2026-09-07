@@ -258,12 +258,14 @@ case class RasterTileLoader() {
     val partitionedBySource = byBandSource.groupByKey(new ByKeyPartitioner(allSources))
     val sparkJobId = Option(rasterRegionRDD.sparkContext.getLocalProperty("spark.jobGroup.id"))
       .orElse(Option(rasterRegionRDD.sparkContext.getLocalProperty("spark.job.id")))
+    logger.info("### sparkJobId: " + sparkJobId)
     val value1 = partitionedBySource.mapPartitions(
       (partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
         val ((loadedPartition: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels), duration) = time {
           val span = tracer.spanBuilder("RasterTileLoader.loadPartitionBySource").startSpan()
           sparkJobId.foreach(jobId => span.setAttribute(AttributeKey.stringKey("spark.job.id"), jobId))
           val scope = span.makeCurrent()
+          logger.debug("### metrics span started")
           try {
             val tuple: (Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], Int) = loadPartitionBySource(partition, cloudFilterStrategy, totalChunksAcc, tracker, crs, layout, theCellType)
             span.setAttribute(AttributeKey.longKey("pixels.loaded"), tuple._2)
@@ -271,6 +273,7 @@ case class RasterTileLoader() {
           } finally {
             scope.close()
             span.end()
+            logger.debug("### metrics span ended")
           }
         }
 
