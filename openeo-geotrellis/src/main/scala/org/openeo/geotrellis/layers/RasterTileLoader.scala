@@ -18,8 +18,9 @@ import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createP
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, time}
+import org.openeo.logging.JsonLayout
 import org.openeo.opensearch.OpenSearchResponses.Feature
-import org.slf4j.{Logger, LoggerFactory}
+import org.slf4j.{Logger, LoggerFactory, MDC}
 
 import java.io.IOException
 import scala.collection.parallel.CollectionsHaveToParArray
@@ -259,6 +260,10 @@ case class RasterTileLoader() {
     val sparkJobId = Option(rasterRegionRDD.sparkContext.getLocalProperty("spark.jobGroup.id"))
       .orElse(Option(rasterRegionRDD.sparkContext.getLocalProperty("spark.job.id")))
     logger.info("### sparkJobId: " + sparkJobId)
+    val reqId: String = MDC.get(JsonLayout.RequestId)
+    val userId: String = MDC.get(JsonLayout.UserId)
+    val jobId: String = MDC.get(JsonLayout.JobId)
+    logger.info("### MDC: reqId=" + reqId + " userId=" + userId + " jobId=" + jobId)
     val value1 = partitionedBySource.mapPartitions(
       (partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
         val ((loadedPartition: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels), duration) = time {
