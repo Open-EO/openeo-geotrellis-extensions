@@ -264,6 +264,18 @@ case class RasterTileLoader() {
     val userId: String = MDC.get(JsonLayout.UserId)
     val jobId: String = MDC.get(JsonLayout.JobId)
     logger.info("### MDC: reqId=" + reqId + " userId=" + userId + " jobId=" + jobId)
+    val context = SparkContext.getOrCreate()
+    val strings = context.getJobTags()
+    logger.info("### SparkContext JobTags(): " + strings)
+    val status = context.getExecutorMemoryStatus
+    logger.info("### SparkContext ExecutorMemoryStatus: " + status)
+    val user = context.sparkUser
+    logger.info("### SparkContext User: " + user)
+    val name = context.appName
+    logger.info("### SparkContext AppName: " + name)
+    val id = context.applicationId
+    logger.info("### SparkContext ApplicationId: " + id)
+
     val value1 = partitionedBySource.mapPartitions(
       (partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
         val ((loadedPartition: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels), duration) = time {
