@@ -382,22 +382,7 @@ case class RasterTileLoader() {
                   }
                 }
 
-                override def loadData: Option[MultibandTile] = {
-                  for {
-                    Raster(tile, _) <- rasterRegion.raster
-                  } yield {
-                    tile.cellType match {
-                      case originalCellType: NoNoData =>
-                        val noDataCellType =
-                          if (originalCellType.isFloatingPoint) originalCellType/*.withDefaultNoData()*/
-                          else originalCellType/* withNoData Some(0)*/
-
-                        logger.debug(s"converting tile cell type from $originalCellType to $noDataCellType with NODATA")
-                        tile convert noDataCellType
-                      case _ => tile
-                    }
-                  }
-                }
+                override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
               }).map((_, sourceName))
           }
           if (result.isDefined) {
@@ -417,12 +402,35 @@ case class RasterTileLoader() {
           }
         }
         .map { case (multibandTile, _) => multibandTile }
-        .reduceOption(_ merge _)
+        .reduceOption { (tile1, tile2) =>
+          tile1.cellType match {
+            case originalCellType: NoNoData =>
+              val noDataCellType = widen(originalCellType)
+              (tile1.convert(noDataCellType) merge tile2.convert(noDataCellType)).convert(originalCellType)
+            case _ => tile1 merge tile2
+          }
+        }
 
       (spaceTimeKey, tileForRegion)
     }
 
     (loadedPartitions, totalPixelsPartition)
+  }
+
+  private def widen(cellType: CellType): CellType = {
+    // TODO: reduce code duplication with GeneralUtils
+    import geotrellis.raster._
+
+    cellType match {
+      case _: BitCells => ByteConstantNoDataCellType
+      case _: ByteCells => ShortUserDefinedNoDataCellType(Short.MaxValue)
+      case _: UByteCells => ShortUserDefinedNoDataCellType(Short.MaxValue)
+      case _: ShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
+      case _: UShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
+      case _: IntCells => FloatConstantNoDataCellType
+      case _: FloatCells => DoubleConstantNoDataCellType
+      case _: DoubleCells => DoubleConstantNoDataCellType
+    }
   }
 
 
