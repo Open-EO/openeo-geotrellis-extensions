@@ -34,7 +34,7 @@ import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
-import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
+import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link, STACFeatureCollection}
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener}
@@ -1785,6 +1785,51 @@ class FileLayerProviderTest extends RasterMatchers {
       outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC.nc",
       referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testMultibandNoNoDataCOGViaSTAC.nc",
     )
+  }
+
+  @Test
+  def testDEMRegression(): Unit = {
+    val openSearchClient = new FixedFeaturesOpenSearchClient
+
+    val in = Source.fromInputStream(
+      Thread.currentThread().getContextClassLoader.getResourceAsStream("org/openeo/geotrellis/layers/dem.geojson")
+    )
+
+    val (featureCollection, _) =
+      try STACFeatureCollection.parse(in.mkString, toS3URL = false)
+      finally in.close()
+
+    featureCollection.features.foreach(openSearchClient.addFeature)
+
+    val bandNames = new util.ArrayList(util.Collections.singletonList("DEM"))
+    val resolution = 0.000277777777778
+
+    val pyramidFactory = new PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = "https://stac.openeo.vito.be",
+      openSearchLinkTitles = bandNames,
+      rootPath = null,
+      maxSpatialResolution = CellSize(resolution, resolution),
+    )
+
+    val projectedPolygons = ProjectedPolygons.fromExtent(Extent(5.5, 50.5, 6.5, 51.5), "EPSG:4326")
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
+
+    val Seq((_, cube)) = pyramidFactory.datacube_seq(
+      projectedPolygons,
+      from_date = "2000-01-01T00:00:00Z",
+      to_date = "2030-12-31T00:00:00Z",
+      metadata_properties = util.Collections.emptyMap(),
+      correlationId = "",
+      dataCubeParameters = dataCubeParameters,
+    )
+
+    val netCDFOptions = new NetCDFOptions
+    netCDFOptions.setBandNames(bandNames)
+    NetCDFRDDWriter.saveSingleNetCDFGeneric(cube, "/tmp/testDEMRegression.nc", netCDFOptions)
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasEodataData")
