@@ -71,7 +71,7 @@ object CroptypeInference {
 
     val scalaContext = context.asScala
     val onnxModelPath = scalaContext
-      .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal.onnx")
+      .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu.onnx")
       .asInstanceOf[String]
     val outputMode = scalaContext.getOrElse("output_mode", "classification").asInstanceOf[String]
     require(outputMode == "classification" || outputMode == "embeddings" || outputMode == "probabilities",
