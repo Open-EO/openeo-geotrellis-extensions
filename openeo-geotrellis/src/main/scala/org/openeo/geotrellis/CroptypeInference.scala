@@ -146,7 +146,7 @@ object CroptypeInference {
     ContextRDD(
       resultRDD,
       new TileLayerMetadata[SpaceTimeKey](
-        cellType = FloatConstantNoDataCellType,
+        cellType = UByteCellType,
         layout = layout,
         extent = meta.extent,
         crs = crs,
@@ -351,7 +351,7 @@ object CroptypeInference {
         croplandClassSet = croplandClassSet
       ).bands
     }
-    MultibandTile(outputTiles.toSeq)
+    MultibandTile(outputTiles.toSeq).convert(UByteCellType)
   }
 
   /**
@@ -385,8 +385,13 @@ object CroptypeInference {
     if (sum == 0f) 0f else (b8Norm - b4Norm) / sum
   }
 
+  /** Scale a [0,1] probability to a [0,100] integral value suitable for a uint8 cube. */
+  private def scaleProbabilityToByte(prob: Float): Float =
+    math.round(math.max(0f, math.min(1f, prob)) * 100f).toFloat
+
   /**
-   * Output all raw probability values as bands for inspection.
+   * Output all raw probability values as bands for inspection, scaled from [0,1] to [0,100]
+   * so the result fits a uint8 output cube.
    * Bands: [lc_0 .. lc_N, ct_s0_0 .. ct_s0_M, ct_s1_0 .. ct_s1_M, ...]
    */
   private def buildProbabilityTile(
@@ -403,12 +408,13 @@ object CroptypeInference {
     val bands = Array.tabulate(totalBands) { band =>
       val data = new Array[Float](B)
       for (p <- 0 until B) {
-        data(p) = if (band < numLcClasses) {
+        val prob = if (band < numLcClasses) {
           lcProbs(p * numLcClasses + band)
         } else {
           val ctBand = band - numLcClasses
           ctProbs(p * numSeasons * numCtClasses + ctBand)
         }
+        data(p) = scaleProbabilityToByte(prob)
       }
       FloatArrayTile(data, cols, rows): Tile
     }
@@ -478,9 +484,9 @@ object CroptypeInference {
       val isCrop = croplandClassSet.contains(lcPred)
 
       croplandClass(p) = if (isCrop) 1f else 0f
-      croplandProb(p) = croplandClassSet.foldLeft(0f) { (acc, idx) =>
+      croplandProb(p) = scaleProbabilityToByte(croplandClassSet.foldLeft(0f) { (acc, idx) =>
         if (idx < numLcClasses) acc + lcSlice(idx) else acc
-      }
+      })
 
       var s = 0
       while (s < numSeasons) {
@@ -492,7 +498,7 @@ object CroptypeInference {
           val ctSlice = java.util.Arrays.copyOfRange(ctProbs, ctOffset, ctOffset + numCtClasses)
           val ctPred = OnnxInferenceUtils.argmax(ctSlice)
           croptypeClassPerSeason(s)(p) = ctPred.toFloat
-          croptypeProbPerSeason(s)(p) = ctSlice(ctPred)
+          croptypeProbPerSeason(s)(p) = scaleProbabilityToByte(ctSlice(ctPred))
         }
         s += 1
       }
