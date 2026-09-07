@@ -120,7 +120,7 @@ pipeline {
             }
             steps {
                 script {
-                    build(job: "openEO/openeo-geopyspark-driver/master", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
+                    build(job: "openEO/openeo-geopyspark-driver-python311/master", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
                 }
             }
         }
