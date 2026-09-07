@@ -45,11 +45,11 @@ object CroptypeInference {
 
   private val IN_B2     = 0;  private val IN_B3     = 1;  private val IN_B4     = 2
   private val IN_B5     = 3;  private val IN_B6     = 4;  private val IN_B7     = 5
-  private val IN_B8     = 6;  private val IN_B8A    = 7
-  private val IN_B11    = 8;  private val IN_B12    = 9
-  private val IN_VV     = 10; private val IN_VH     = 11
-  private val IN_TEMP   = 12; private val IN_PRECIP = 13
-  private val IN_ELEV   = 14
+  private val IN_B8     = 6;  //private val IN_B8A    = 7
+  private val IN_B11    = 7;  private val IN_B12    = 8
+  private val IN_VV     = 9;  private val IN_VH     = 10
+  private val IN_ELEV   = 11; private val IN_SLOPE   = 12
+  private val IN_TEMP   = 13; private val IN_PRECIP = 14
 
   private val P_VV      = 0;  private val P_VH      = 1
   private val P_B2      = 2;  private val P_B3      = 3;  private val P_B4      = 4
@@ -80,7 +80,7 @@ object CroptypeInference {
     val numCtClasses = scalaContext.get("num_croptype_classes").map(_.asInstanceOf[Int])
     val numSeasons = scalaContext.getOrElse("num_seasons", 2).asInstanceOf[Int]
     val seasonWindows = parseSeasonWindows(scalaContext.get("season_windows"))
-    val croplandClassSet = scalaContext.getOrElse("cropland_class_indices", Seq(1, 2)).asInstanceOf[Seq[Int]].toSet
+    val croplandClassSet = scalaContext.getOrElse("cropland_class_indices", Seq(0, 1, 2)).asInstanceOf[Seq[Int]].toSet
     val maskCropland = scalaContext.getOrElse("mask_cropland", true).asInstanceOf[Boolean]
     val batchSize = scalaContext.getOrElse("batch_size", 22 * 22).asInstanceOf[Int]
 
@@ -225,7 +225,7 @@ object CroptypeInference {
           val rawB6  = raw(IN_B6);  xBuf.put(base + P_B6, normalizeBand(P_B6, rawB6)); maskBuf.put(base + P_B6, if (OnnxInferenceUtils.isNodata(rawB6)) 1L else 0L)
           val rawB7  = raw(IN_B7);  xBuf.put(base + P_B7, normalizeBand(P_B7, rawB7)); maskBuf.put(base + P_B7, if (OnnxInferenceUtils.isNodata(rawB7)) 1L else 0L)
           val rawB8  = raw(IN_B8);  xBuf.put(base + P_B8, normalizeBand(P_B8, rawB8)); maskBuf.put(base + P_B8, if (OnnxInferenceUtils.isNodata(rawB8)) 1L else 0L)
-          val rawB8A = raw(IN_B8A); xBuf.put(base + P_B8A, normalizeBand(P_B8A, rawB8A)); maskBuf.put(base + P_B8A, if (OnnxInferenceUtils.isNodata(rawB8A)) 1L else 0L)
+          val rawB8A = Float.NaN; xBuf.put(base + P_B8A, normalizeBand(P_B8A, rawB8A)); maskBuf.put(base + P_B8A, if (OnnxInferenceUtils.isNodata(rawB8A)) 1L else 0L)
           val rawB11 = raw(IN_B11); xBuf.put(base + P_B11, normalizeBand(P_B11, rawB11)); maskBuf.put(base + P_B11, if (OnnxInferenceUtils.isNodata(rawB11)) 1L else 0L)
           val rawB12 = raw(IN_B12); xBuf.put(base + P_B12, normalizeBand(P_B12, rawB12)); maskBuf.put(base + P_B12, if (OnnxInferenceUtils.isNodata(rawB12)) 1L else 0L)
           val rawVV  = raw(IN_VV);  xBuf.put(base + P_VV, normalizeBand(P_VV, OnnxInferenceUtils.rescaleS1(rawVV))); maskBuf.put(base + P_VV, if (OnnxInferenceUtils.isNodata(rawVV)) 1L else 0L)
@@ -233,7 +233,7 @@ object CroptypeInference {
           val rawTmp = raw(IN_TEMP); xBuf.put(base + P_TEMP, normalizeBand(P_TEMP, OnnxInferenceUtils.rescaleTemperature(rawTmp))); maskBuf.put(base + P_TEMP, if (OnnxInferenceUtils.isNodata(rawTmp)) 1L else 0L)
           val rawPrc = raw(IN_PRECIP); xBuf.put(base + P_PRECIP, normalizeBand(P_PRECIP, OnnxInferenceUtils.rescalePrecipitation(rawPrc))); maskBuf.put(base + P_PRECIP, if (OnnxInferenceUtils.isNodata(rawPrc)) 1L else 0L)
           val rawElv = raw(IN_ELEV); xBuf.put(base + P_ELEV, normalizeBand(P_ELEV, rawElv)); maskBuf.put(base + P_ELEV, if (OnnxInferenceUtils.isNodata(rawElv)) 1L else 0L)
-          xBuf.put(base + P_SLOPE, 0f); maskBuf.put(base + P_SLOPE, 0L)
+          val rawSlope = raw(IN_SLOPE); xBuf.put(base + P_SLOPE, normalizeBand(P_SLOPE,rawSlope)); maskBuf.put(base + P_SLOPE, if (OnnxInferenceUtils.isNodata(rawSlope)) 1L else 0L)
           xBuf.put(base + P_NDVI, computeNdvi(xBuf.get(base + P_B8), xBuf.get(base + P_B4)))
           maskBuf.put(base + P_NDVI, if (OnnxInferenceUtils.isNodata(rawB8) || OnnxInferenceUtils.isNodata(rawB4) || (rawB8 + rawB4) == 0f) 1L else 0L)
 
@@ -321,7 +321,7 @@ object CroptypeInference {
 
     outputMode match {
       case "embeddings" =>
-        OnnxInferenceUtils.buildEmbeddingTile(embeddingAccum.toArray, B, cols, rows)
+        OnnxInferenceUtils.buildQuantizedEmbeddingTile(embeddingAccum.toArray, B, cols, rows)
       case "probabilities" =>
         buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
           detectedLcClasses, detectedCtClasses, numSeasons)
@@ -452,14 +452,15 @@ object CroptypeInference {
 
     val B = rows * cols
     val croplandClass = new Array[Float](B)
-    val croptypeClass = new Array[Float](B)
     val croplandProb  = new Array[Float](B)
-    val croptypeProb  = new Array[Float](B)
+    val croptypeClassPerSeason = Array.fill(numSeasons)(new Array[Float](B))
+    val croptypeProbPerSeason  = Array.fill(numSeasons)(new Array[Float](B))
 
     for (p <- 0 until B) {
       val lcOffset = p * numLcClasses
       val lcSlice = java.util.Arrays.copyOfRange(lcProbs, lcOffset, lcOffset + numLcClasses)
       val lcPred = OnnxInferenceUtils.argmax(lcSlice)
+      //println(s"Pixel $p: lcPred = $lcPred, lcSlice = ${lcSlice.mkString("[", ",", "]")}")
       val isCrop = croplandClassSet.contains(lcPred)
 
       croplandClass(p) = if (isCrop) 1f else 0f
@@ -467,23 +468,35 @@ object CroptypeInference {
         if (idx < numLcClasses) acc + lcSlice(idx) else acc
       }
 
-      if (maskCropland && !isCrop) {
-        croptypeClass(p) = OnnxInferenceUtils.NOCROP_VALUE
-        croptypeProb(p) = 0f
-      } else {
-        val ctOffset = p * numSeasons * numCtClasses
-        val ctSlice = java.util.Arrays.copyOfRange(ctProbs, ctOffset, ctOffset + numCtClasses)
-        val ctPred = OnnxInferenceUtils.argmax(ctSlice)
-        croptypeClass(p) = ctPred.toFloat
-        croptypeProb(p) = ctSlice(ctPred)
+      var s = 0
+      while (s < numSeasons) {
+        if (maskCropland && !isCrop ) {
+          croptypeClassPerSeason(s)(p) = OnnxInferenceUtils.NOCROP_VALUE
+          croptypeProbPerSeason(s)(p) = 0f
+        } else {
+          val ctOffset = (p * numSeasons + s) * numCtClasses
+          val ctSlice = java.util.Arrays.copyOfRange(ctProbs, ctOffset, ctOffset + numCtClasses)
+          val ctPred = OnnxInferenceUtils.argmax(ctSlice)
+          croptypeClassPerSeason(s)(p) = ctPred.toFloat
+          croptypeProbPerSeason(s)(p) = ctSlice(ctPred)
+        }
+        s += 1
       }
     }
 
+    val seasonBands = Array.tabulate(numSeasons) { s =>
+      Array[Tile](
+        FloatArrayTile(croptypeClassPerSeason(s), cols, rows): Tile,
+        FloatArrayTile(croptypeProbPerSeason(s), cols, rows): Tile
+      )
+    }.flatten
+
+
     MultibandTile(
-      FloatArrayTile(croplandClass, cols, rows),
-      FloatArrayTile(croptypeClass, cols, rows),
-      FloatArrayTile(croplandProb, cols, rows),
-      FloatArrayTile(croptypeProb, cols, rows)
+      (Array[Tile](
+        FloatArrayTile(croplandClass, cols, rows): Tile,
+        FloatArrayTile(croplandProb, cols, rows): Tile
+      ) ++ seasonBands): _*
     )
   }
 

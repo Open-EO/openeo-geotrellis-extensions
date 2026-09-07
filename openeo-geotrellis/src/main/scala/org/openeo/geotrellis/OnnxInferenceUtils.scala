@@ -109,6 +109,75 @@ object OnnxInferenceUtils {
     MultibandTile(bands)
   }
 
+  /**
+   * The 99th percentile (linear interpolation, matching numpy.percentile's
+   * default behaviour) of the given values. The input array is sorted in place.
+   */
+  private def percentile99(values: Array[Float]): Float = {
+    val n = values.length
+    scala.util.Sorting.quickSort(values)
+    if (n == 1) return values(0)
+    val idx  = 0.99 * (n - 1)
+    val lo   = math.floor(idx).toInt
+    val hi   = math.ceil(idx).toInt
+    if (lo == hi) values(lo)
+    else {
+      val frac = (idx - lo).toFloat
+      values(lo) * (1f - frac) + values(hi) * frac
+    }
+  }
+
+  /**
+   * Quantize per-pixel embeddings to uint8 (0..255) with a per-pixel scale factor
+   * based on the 99th percentile of the absolute embedding values.
+   * Decode formula: embedding ~= (quantized_uint8 - 128) * scale
+   *
+   * The CroptypeInference output layer uses a single float32 cell type for all
+   * bands, so the quantized (byte-range) values are stored as float32 rather
+   * than as an actual uint8 cell type; a downstream export step is expected to
+   * cast these bands to uint8 on write. Returns a MultibandTile with D
+   * quantized embedding bands (values in [0, 255]) followed by one extra band
+   * holding the per-pixel scale factor.
+   */
+  def buildQuantizedEmbeddingTile(
+    embeddings: Array[Float],
+    B:          Int,
+    cols:       Int,
+    rows:       Int
+  ): MultibandTile = {
+    require(embeddings.length % B == 0,
+      s"Embeddings length ${embeddings.length} is not divisible by B=$B")
+    val D = embeddings.length / B
+
+    val quantizedBands = Array.ofDim[Float](D, B)
+    val scaleBand       = new Array[Float](B)
+    val absValues       = new Array[Float](D)
+
+    var p = 0
+    while (p < B) {
+      var d = 0
+      while (d < D) { absValues(d) = math.abs(embeddings(p * D + d)); d += 1 }
+      val scale = math.max(percentile99(absValues) / 127.0f, 1e-6f)
+      scaleBand(p) = scale
+
+      d = 0
+      while (d < D) {
+        val v          = embeddings(p * D + d)
+        val qSignedRaw = math.round(v / scale)
+        val qSigned    = math.max(-128, math.min(127, qSignedRaw))
+        quantizedBands(d)(p) = (qSigned + 128).toFloat
+        d += 1
+      }
+      p += 1
+    }
+
+    val embeddingTiles = Array.tabulate(D) { d =>
+      FloatArrayTile(quantizedBands(d), cols, rows): Tile
+    }
+    val bands = embeddingTiles :+ (FloatArrayTile(scaleBand, cols, rows): Tile)
+    MultibandTile(bands)
+  }
+
   def buildOutputTile(
     lcLogits:         Array[Float],
     ctLogits:         Array[Float],
