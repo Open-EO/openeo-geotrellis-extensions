@@ -8,7 +8,6 @@ import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.{Assumptions, Test}
 import org.openeo.sar.backend.nativ.NativeBackend
-import org.openeo.sar.backend.onnx.OnnxBackend
 import org.openeo.sar.metadata.Polarisation
 
 import java.net.URI
@@ -136,22 +135,5 @@ class TerrainCorrectionTest {
     assertTrue(allValid, "Shadow/layover band must contain only 0, 1, 2 or NaN")
 
     GeoTiff(tile, gamma0Request.extent, gamma0Request.crs).write("/tmp/terrain-correction-gamma0-test.tif")
-  }
-
-  @Test
-  def onnxBackendProducesExpectedTile(): Unit = {
-    Assumptions.assumeTrue(runOnline, "online test disabled")
-
-    val onnx = new OnnxBackend(getClass.getResource("/sar_tc.onnx").getPath)
-    try {
-      val proc = new TerrainCorrectionProcessor(
-        backend          = onnx,
-        demSourceFactory = demFactory
-      )
-      val tile = proc.computeTile(stacItemUrl, request)
-      assertEquals(request.config.bandCount(request.polarisations.size), tile.bandCount)
-      assertEquals(request.cols, tile.cols)
-      assertEquals(request.rows, tile.rows)
-    } finally onnx.close()
   }
 }

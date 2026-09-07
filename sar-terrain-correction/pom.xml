@@ -12,7 +12,6 @@
     <packaging>jar</packaging>
 
     <properties>
-        <onnxruntime.version>1.20.0</onnxruntime.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
@@ -42,13 +41,6 @@
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-s3_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
-        </dependency>
-
-        <!-- ONNX runtime (CPU). Swap for onnxruntime_gpu if needed. -->
-        <dependency>
-            <groupId>com.microsoft.onnxruntime</groupId>
-            <artifactId>onnxruntime</artifactId>
-            <version>${onnxruntime.version}</version>
         </dependency>
 
         <!-- JSON for STAC item parsing -->
