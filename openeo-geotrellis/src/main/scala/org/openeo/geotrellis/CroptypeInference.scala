@@ -8,6 +8,7 @@ import geotrellis.spark._
 import geotrellis.vector.Extent
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrelliscommon.DatacubeSupport.maybeBandLabels
 import org.openeo.geotrelliscommon.OpenEOProcess
 import org.slf4j.LoggerFactory
 
@@ -43,14 +44,6 @@ object CroptypeInference {
     1f
   )
 
-  private val IN_B2     = 0;  private val IN_B3     = 1;  private val IN_B4     = 2
-  private val IN_B5     = 3;  private val IN_B6     = 4;  private val IN_B7     = 5
-  private val IN_B8     = 6;  //private val IN_B8A    = 7
-  private val IN_B11    = 7;  private val IN_B12    = 8
-  private val IN_VV     = 9;  private val IN_VH     = 10
-  private val IN_ELEV   = 11; private val IN_SLOPE   = 12
-  private val IN_TEMP   = 13; private val IN_PRECIP = 14
-
   private val P_VV      = 0;  private val P_VH      = 1
   private val P_B2      = 2;  private val P_B3      = 3;  private val P_B4      = 4
   private val P_B5      = 5;  private val P_B6      = 6;  private val P_B7      = 7
@@ -58,6 +51,12 @@ object CroptypeInference {
   private val P_B11     = 10; private val P_B12     = 11
   private val P_TEMP    = 12; private val P_PRECIP  = 13
   private val P_ELEV    = 14; private val P_SLOPE   = 15; private val P_NDVI    = 16
+
+  /** Resolved input band positions in the source datacube, derived dynamically from band labels. */
+  private case class InputBandIndices(
+    b2: Int, b3: Int, b4: Int, b5: Int, b6: Int, b7: Int, b8: Int, b8a: Int, b11: Int, b12: Int,
+    vv: Int, vh: Int, temp: Int, precip: Int, elev: Int, slope: Int
+  )
 
   @OpenEOProcess(
     id = "croptype_inference",
@@ -87,6 +86,7 @@ object CroptypeInference {
     val meta   = datacube.metadata
     val layout = meta.layout
     val crs    = meta.crs
+    val inputBandIndices = resolveInputBandIndices(datacube)
 
     val sc             = SparkContext.getOrCreate()
     val modelPathBC    = sc.broadcast(onnxModelPath)
@@ -97,6 +97,7 @@ object CroptypeInference {
     val seasonWindowsBC = sc.broadcast(seasonWindows)
     val numLcClassesBC = sc.broadcast(numLcClasses)
     val numCtClassesBC = sc.broadcast(numCtClasses)
+    val inputBandIndicesBC = sc.broadcast(inputBandIndices)
 
     val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[SpatialKey, MultibandTile] = {
       tiles =>
@@ -114,7 +115,8 @@ object CroptypeInference {
           seasonWindows = seasonWindowsBC.value,
           maskCropland = maskCropland,
           croplandClassSet = croplandClassSet,
-          batchSize = batchSize
+          batchSize = batchSize,
+          inputBandIndices = inputBandIndicesBC.value
         )
         Map(spatialKey -> result)
     }
@@ -159,7 +161,8 @@ object CroptypeInference {
     seasonWindows:       Seq[(LocalDate, LocalDate)],
     maskCropland:        Boolean,
     croplandClassSet:    Set[Int],
-    batchSize:           Int
+    batchSize:           Int,
+    inputBandIndices:    InputBandIndices
   ): MultibandTile = {
 
     val sorted  = OnnxInferenceUtils.sortByTime(tiles)
@@ -218,22 +221,22 @@ object CroptypeInference {
 
           def raw(band: Int): Float = tile.band(band).getDouble(col, row).toFloat
 
-          val rawB2  = raw(IN_B2);  xBuf.put(base + P_B2, normalizeBand(P_B2, rawB2)); maskBuf.put(base + P_B2, if (OnnxInferenceUtils.isNodata(rawB2)) 1L else 0L)
-          val rawB3  = raw(IN_B3);  xBuf.put(base + P_B3, normalizeBand(P_B3, rawB3)); maskBuf.put(base + P_B3, if (OnnxInferenceUtils.isNodata(rawB3)) 1L else 0L)
-          val rawB4  = raw(IN_B4);  xBuf.put(base + P_B4, normalizeBand(P_B4, rawB4)); maskBuf.put(base + P_B4, if (OnnxInferenceUtils.isNodata(rawB4)) 1L else 0L)
-          val rawB5  = raw(IN_B5);  xBuf.put(base + P_B5, normalizeBand(P_B5, rawB5)); maskBuf.put(base + P_B5, if (OnnxInferenceUtils.isNodata(rawB5)) 1L else 0L)
-          val rawB6  = raw(IN_B6);  xBuf.put(base + P_B6, normalizeBand(P_B6, rawB6)); maskBuf.put(base + P_B6, if (OnnxInferenceUtils.isNodata(rawB6)) 1L else 0L)
-          val rawB7  = raw(IN_B7);  xBuf.put(base + P_B7, normalizeBand(P_B7, rawB7)); maskBuf.put(base + P_B7, if (OnnxInferenceUtils.isNodata(rawB7)) 1L else 0L)
-          val rawB8  = raw(IN_B8);  xBuf.put(base + P_B8, normalizeBand(P_B8, rawB8)); maskBuf.put(base + P_B8, if (OnnxInferenceUtils.isNodata(rawB8)) 1L else 0L)
-          val rawB8A = Float.NaN; xBuf.put(base + P_B8A, normalizeBand(P_B8A, rawB8A)); maskBuf.put(base + P_B8A, if (OnnxInferenceUtils.isNodata(rawB8A)) 1L else 0L)
-          val rawB11 = raw(IN_B11); xBuf.put(base + P_B11, normalizeBand(P_B11, rawB11)); maskBuf.put(base + P_B11, if (OnnxInferenceUtils.isNodata(rawB11)) 1L else 0L)
-          val rawB12 = raw(IN_B12); xBuf.put(base + P_B12, normalizeBand(P_B12, rawB12)); maskBuf.put(base + P_B12, if (OnnxInferenceUtils.isNodata(rawB12)) 1L else 0L)
-          val rawVV  = raw(IN_VV);  xBuf.put(base + P_VV, normalizeBand(P_VV, OnnxInferenceUtils.rescaleS1(rawVV))); maskBuf.put(base + P_VV, if (OnnxInferenceUtils.isNodata(rawVV)) 1L else 0L)
-          val rawVH  = raw(IN_VH);  xBuf.put(base + P_VH, normalizeBand(P_VH, OnnxInferenceUtils.rescaleS1(rawVH))); maskBuf.put(base + P_VH, if (OnnxInferenceUtils.isNodata(rawVH)) 1L else 0L)
-          val rawTmp = raw(IN_TEMP); xBuf.put(base + P_TEMP, normalizeBand(P_TEMP, OnnxInferenceUtils.rescaleTemperature(rawTmp))); maskBuf.put(base + P_TEMP, if (OnnxInferenceUtils.isNodata(rawTmp)) 1L else 0L)
-          val rawPrc = raw(IN_PRECIP); xBuf.put(base + P_PRECIP, normalizeBand(P_PRECIP, OnnxInferenceUtils.rescalePrecipitation(rawPrc))); maskBuf.put(base + P_PRECIP, if (OnnxInferenceUtils.isNodata(rawPrc)) 1L else 0L)
-          val rawElv = raw(IN_ELEV); xBuf.put(base + P_ELEV, normalizeBand(P_ELEV, rawElv)); maskBuf.put(base + P_ELEV, if (OnnxInferenceUtils.isNodata(rawElv)) 1L else 0L)
-          val rawSlope = raw(IN_SLOPE); xBuf.put(base + P_SLOPE, normalizeBand(P_SLOPE,rawSlope)); maskBuf.put(base + P_SLOPE, if (OnnxInferenceUtils.isNodata(rawSlope)) 1L else 0L)
+          val rawB2  = raw(inputBandIndices.b2);  xBuf.put(base + P_B2, normalizeBand(P_B2, rawB2)); maskBuf.put(base + P_B2, if (OnnxInferenceUtils.isNodata(rawB2)) 1L else 0L)
+          val rawB3  = raw(inputBandIndices.b3);  xBuf.put(base + P_B3, normalizeBand(P_B3, rawB3)); maskBuf.put(base + P_B3, if (OnnxInferenceUtils.isNodata(rawB3)) 1L else 0L)
+          val rawB4  = raw(inputBandIndices.b4);  xBuf.put(base + P_B4, normalizeBand(P_B4, rawB4)); maskBuf.put(base + P_B4, if (OnnxInferenceUtils.isNodata(rawB4)) 1L else 0L)
+          val rawB5  = raw(inputBandIndices.b5);  xBuf.put(base + P_B5, normalizeBand(P_B5, rawB5)); maskBuf.put(base + P_B5, if (OnnxInferenceUtils.isNodata(rawB5)) 1L else 0L)
+          val rawB6  = raw(inputBandIndices.b6);  xBuf.put(base + P_B6, normalizeBand(P_B6, rawB6)); maskBuf.put(base + P_B6, if (OnnxInferenceUtils.isNodata(rawB6)) 1L else 0L)
+          val rawB7  = raw(inputBandIndices.b7);  xBuf.put(base + P_B7, normalizeBand(P_B7, rawB7)); maskBuf.put(base + P_B7, if (OnnxInferenceUtils.isNodata(rawB7)) 1L else 0L)
+          val rawB8  = raw(inputBandIndices.b8);  xBuf.put(base + P_B8, normalizeBand(P_B8, rawB8)); maskBuf.put(base + P_B8, if (OnnxInferenceUtils.isNodata(rawB8)) 1L else 0L)
+          val rawB8A = raw(inputBandIndices.b8a); xBuf.put(base + P_B8A, normalizeBand(P_B8A, rawB8A)); maskBuf.put(base + P_B8A, if (OnnxInferenceUtils.isNodata(rawB8A)) 1L else 0L)
+          val rawB11 = raw(inputBandIndices.b11); xBuf.put(base + P_B11, normalizeBand(P_B11, rawB11)); maskBuf.put(base + P_B11, if (OnnxInferenceUtils.isNodata(rawB11)) 1L else 0L)
+          val rawB12 = raw(inputBandIndices.b12); xBuf.put(base + P_B12, normalizeBand(P_B12, rawB12)); maskBuf.put(base + P_B12, if (OnnxInferenceUtils.isNodata(rawB12)) 1L else 0L)
+          val rawVV  = raw(inputBandIndices.vv);  xBuf.put(base + P_VV, normalizeBand(P_VV, OnnxInferenceUtils.rescaleS1(rawVV))); maskBuf.put(base + P_VV, if (OnnxInferenceUtils.isNodata(rawVV)) 1L else 0L)
+          val rawVH  = raw(inputBandIndices.vh);  xBuf.put(base + P_VH, normalizeBand(P_VH, OnnxInferenceUtils.rescaleS1(rawVH))); maskBuf.put(base + P_VH, if (OnnxInferenceUtils.isNodata(rawVH)) 1L else 0L)
+          val rawTmp = raw(inputBandIndices.temp); xBuf.put(base + P_TEMP, normalizeBand(P_TEMP, OnnxInferenceUtils.rescaleTemperature(rawTmp))); maskBuf.put(base + P_TEMP, if (OnnxInferenceUtils.isNodata(rawTmp)) 1L else 0L)
+          val rawPrc = raw(inputBandIndices.precip); xBuf.put(base + P_PRECIP, normalizeBand(P_PRECIP, OnnxInferenceUtils.rescalePrecipitation(rawPrc))); maskBuf.put(base + P_PRECIP, if (OnnxInferenceUtils.isNodata(rawPrc)) 1L else 0L)
+          val rawElv = raw(inputBandIndices.elev); xBuf.put(base + P_ELEV, normalizeBand(P_ELEV, rawElv)); maskBuf.put(base + P_ELEV, if (OnnxInferenceUtils.isNodata(rawElv)) 1L else 0L)
+          val rawSlope = raw(inputBandIndices.slope); xBuf.put(base + P_SLOPE, normalizeBand(P_SLOPE,rawSlope)); maskBuf.put(base + P_SLOPE, if (OnnxInferenceUtils.isNodata(rawSlope)) 1L else 0L)
           xBuf.put(base + P_NDVI, computeNdvi(xBuf.get(base + P_B8), xBuf.get(base + P_B4)))
           maskBuf.put(base + P_NDVI, if (OnnxInferenceUtils.isNodata(rawB8) || OnnxInferenceUtils.isNodata(rawB4) || (rawB8 + rawB4) == 0f) 1L else 0L)
 
@@ -528,5 +531,43 @@ object CroptypeInference {
       arr.flatten
     case other =>
       throw new IllegalArgumentException(s"Expected 2D/3D croptype output, got ${other.getClass.getName}")
+  }
+
+  /**
+   * Resolve dynamic input band indices from the datacube's band labels, so inference
+   * doesn't depend on a fixed input band ordering.
+   */
+  private def resolveInputBandIndices(datacube: MultibandTileLayerRDD[SpaceTimeKey]): InputBandIndices = {
+    val labels = maybeBandLabels(datacube)
+      .getOrElse(throw new IllegalArgumentException("Missing band labels in datacube metadata for croptype_inference"))
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .toArray
+
+    val byLabel = labels.zipWithIndex.toMap
+
+    def idx(name: String): Int =
+      byLabel.getOrElse(name, throw new IllegalArgumentException(
+        s"Required band label '$name' not found. Available labels: ${labels.mkString(",")}"
+      ))
+
+    InputBandIndices(
+      b2     = idx("S2-L2A-B02"),
+      b3     = idx("S2-L2A-B03"),
+      b4     = idx("S2-L2A-B04"),
+      b5     = idx("S2-L2A-B05"),
+      b6     = idx("S2-L2A-B06"),
+      b7     = idx("S2-L2A-B07"),
+      b8     = idx("S2-L2A-B08"),
+      b8a    = idx("S2-L2A-B8A"),
+      b11    = idx("S2-L2A-B11"),
+      b12    = idx("S2-L2A-B12"),
+      vv     = idx("S1-SIGMA0-VV"),
+      vh     = idx("S1-SIGMA0-VH"),
+      slope  = idx("slope"),
+      elev   = idx("elevation"),
+      precip = idx("AGERA5-PRECIP"),
+      temp   = idx("AGERA5-TMEAN")
+    )
   }
 }
