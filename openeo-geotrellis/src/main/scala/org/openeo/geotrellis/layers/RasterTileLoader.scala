@@ -275,6 +275,7 @@ case class RasterTileLoader() {
     logger.info("### SparkContext AppName: " + name)
     val id = context.applicationId
     logger.info("### SparkContext ApplicationId: " + id)
+    sys.env.foreach(t => logger.info("### SparkContext Env: " + t._1 + "=" + t._2))
 
     val value1 = partitionedBySource.mapPartitions(
       (partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
