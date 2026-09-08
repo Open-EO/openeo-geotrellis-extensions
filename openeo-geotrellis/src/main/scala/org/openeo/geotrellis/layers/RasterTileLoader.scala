@@ -18,9 +18,8 @@ import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createP
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, time}
-import org.openeo.logging.JsonLayout
 import org.openeo.opensearch.OpenSearchResponses.Feature
-import org.slf4j.{Logger, LoggerFactory, MDC}
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.IOException
 import scala.collection.parallel.CollectionsHaveToParArray
@@ -257,33 +256,14 @@ case class RasterTileLoader() {
     val theCellType = metadata.cellType
     rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
     val partitionedBySource = byBandSource.groupByKey(new ByKeyPartitioner(allSources))
-    val sparkJobId = Option(rasterRegionRDD.sparkContext.getLocalProperty("spark.jobGroup.id"))
-      .orElse(Option(rasterRegionRDD.sparkContext.getLocalProperty("spark.job.id")))
-    logger.info("### sparkJobId: " + sparkJobId)
-    val reqId: String = MDC.get(JsonLayout.RequestId)
-    val userId: String = MDC.get(JsonLayout.UserId)
-    val jobId: String = MDC.get(JsonLayout.JobId)
-    logger.info("### MDC: reqId=" + reqId + " userId=" + userId + " jobId=" + jobId)
-    val context = SparkContext.getOrCreate()
-    val strings = context.getJobTags()
-    logger.info("### SparkContext JobTags(): " + strings)
-    val status = context.getExecutorMemoryStatus
-    logger.info("### SparkContext ExecutorMemoryStatus: " + status)
-    val user = context.sparkUser
-    logger.info("### SparkContext User: " + user)
-    val name = context.appName
-    logger.info("### SparkContext AppName: " + name)
-    val id = context.applicationId
-    logger.info("### SparkContext ApplicationId: " + id)
-//    sys.env.foreach(t => logger.info("### SparkContext Env: " + t._1 + "=" + t._2))
-    val openeobatchjobid = System.getenv("OPENEO_BATCH_JOB_ID")
-    logger.info("### OPENEO_BATCH_JOB_ID: " + openeobatchjobid)
+    val jobId: String = System.getenv("OPENEO_BATCH_JOB_ID")
+    logger.info("### OPENEO_BATCH_JOB_ID: " + jobId)
 
     val value1 = partitionedBySource.mapPartitions(
       (partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
         val ((loadedPartition: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels), duration) = time {
           val span = tracer.spanBuilder("RasterTileLoader.loadPartitionBySource").startSpan()
-          sparkJobId.foreach(jobId => span.setAttribute(AttributeKey.stringKey("spark.job.id"), jobId))
+          span.setAttribute(AttributeKey.stringKey("spark.job.id"), jobId)
           val scope = span.makeCurrent()
           logger.debug("### metrics span started")
           try {
@@ -305,6 +285,7 @@ case class RasterTileLoader() {
           logger.debug(s"totalPixelsPartition=$partitionPixels durationSeconds=$durationSeconds megapixelPerSecond=$megapixelPerSecond")
           megapixelPerSecondMeter.set(megapixelPerSecond)
         }
+        Range(0, 600).foreach(_ => Thread.sleep(1000)) // give time for metrics to be read from Prometheus port
         loadedPartition
       },
       preservesPartitioning = true
