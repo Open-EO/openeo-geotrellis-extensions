@@ -12,6 +12,7 @@ import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withGeometryClipToGr
 import geotrellis.vector.{MultiPolygon, Polygon, ReprojectMutliPolygon}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.storage.RDDInfo
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelPerSecondMeter, tracer}
@@ -258,6 +259,11 @@ case class RasterTileLoader() {
     val partitionedBySource = byBandSource.groupByKey(new ByKeyPartitioner(allSources))
     val jobId: String = System.getenv("OPENEO_BATCH_JOB_ID")
     logger.info("### OPENEO_BATCH_JOB_ID: " + jobId)
+    val context = SparkContext.getOrCreate()
+    val status: collection.Map[String, (Long, Long)] = context.getExecutorMemoryStatus
+    status.foreach(t => logger.info("### SparkContext ExecutorMemoryStatus: " + t._1 + " -> " + t._2))
+    val storageInfo: Array[RDDInfo] = context.getRDDStorageInfo
+    storageInfo.foreach(t => logger.info("### SparkContext RDDStorageInfo: " + t.name + " -> " + t.numPartitions + " partitions, " + t.numCachedPartitions + " cached, " + t.memSize + " bytes in memory, " + t.diskSize + " bytes on disk"))
 
     val value1 = partitionedBySource.mapPartitions(
       (partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
