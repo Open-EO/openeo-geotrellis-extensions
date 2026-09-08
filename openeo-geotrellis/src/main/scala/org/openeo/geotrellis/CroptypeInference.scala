@@ -84,6 +84,12 @@ object CroptypeInference {
     val croplandClassSet = scalaContext.getOrElse("cropland_class_indices", Seq(0, 1, 2)).asInstanceOf[Seq[Int]].toSet
     val maskCropland = scalaContext.getOrElse("mask_cropland", true).asInstanceOf[Boolean]
     val batchSize = scalaContext.getOrElse("batch_size", 22 * 22).asInstanceOf[Int]
+    // Majority-vote postprocessing (see MajorityVote), enabled by default on both the
+    // cropland and croptype classification labels, matching the python reference.
+    val majorityVoteEnabled = scalaContext.getOrElse("majority_vote", true).asInstanceOf[Boolean]
+    val majorityVoteKernelSize = scalaContext.getOrElse("majority_vote_kernel_size", 5).asInstanceOf[Int]
+    val majorityVoteCropland = scalaContext.getOrElse("majority_vote_cropland", true).asInstanceOf[Boolean]
+    val majorityVoteCroptype = scalaContext.getOrElse("majority_vote_croptype", true).asInstanceOf[Boolean]
 
     val meta   = datacube.metadata
     val layout = meta.layout
@@ -102,6 +108,10 @@ object CroptypeInference {
     val numLcClassesBC = sc.broadcast(numLcClasses)
     val numCtClassesBC = sc.broadcast(numCtClasses)
     val inputBandIndicesBC = sc.broadcast(inputBandIndices)
+    val majorityVoteEnabledBC = sc.broadcast(majorityVoteEnabled)
+    val majorityVoteKernelSizeBC = sc.broadcast(majorityVoteKernelSize)
+    val majorityVoteCroplandBC = sc.broadcast(majorityVoteCropland)
+    val majorityVoteCroptypeBC = sc.broadcast(majorityVoteCroptype)
 
     val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[SpatialKey, MultibandTile] = {
       tiles =>
@@ -122,7 +132,11 @@ object CroptypeInference {
           maskCropland = maskCropland,
           croplandClassSet = croplandClassSet,
           batchSize = batchSize,
-          inputBandIndices = inputBandIndicesBC.value
+          inputBandIndices = inputBandIndicesBC.value,
+          majorityVoteEnabled = majorityVoteEnabledBC.value,
+          majorityVoteKernelSize = majorityVoteKernelSizeBC.value,
+          majorityVoteCropland = majorityVoteCroplandBC.value,
+          majorityVoteCroptype = majorityVoteCroptypeBC.value
         )
         Map(spatialKey -> result)
     }
@@ -170,7 +184,11 @@ object CroptypeInference {
     maskCropland:        Boolean,
     croplandClassSet:    Set[Int],
     batchSize:           Int,
-    inputBandIndices:    InputBandIndices
+    inputBandIndices:    InputBandIndices,
+    majorityVoteEnabled:    Boolean,
+    majorityVoteKernelSize: Int,
+    majorityVoteCropland:   Boolean,
+    majorityVoteCroptype:   Boolean
   ): MultibandTile = {
 
     val sorted  = OnnxInferenceUtils.sortByTime(tiles)
@@ -348,7 +366,11 @@ object CroptypeInference {
         numCtClasses = detectedCtClasses,
         numSeasons = numSeasons,
         maskCropland = maskCropland,
-        croplandClassSet = croplandClassSet
+        croplandClassSet = croplandClassSet,
+        majorityVoteEnabled = majorityVoteEnabled,
+        majorityVoteKernelSize = majorityVoteKernelSize,
+        majorityVoteCropland = majorityVoteCropland,
+        majorityVoteCroptype = majorityVoteCroptype
       ).bands
     }
     MultibandTile(outputTiles.toSeq).convert(UByteCellType)
@@ -467,7 +489,11 @@ object CroptypeInference {
     numCtClasses:     Int,
     numSeasons:       Int,
     maskCropland:     Boolean,
-    croplandClassSet: Set[Int]
+    croplandClassSet: Set[Int],
+    majorityVoteEnabled:    Boolean = true,
+    majorityVoteKernelSize: Int = 5,
+    majorityVoteCropland:   Boolean = true,
+    majorityVoteCroptype:   Boolean = true
   ): MultibandTile = {
 
     val B = rows * cols
@@ -504,9 +530,23 @@ object CroptypeInference {
       }
     }
 
+    val croplandClassTile: Tile =
+      if (majorityVoteEnabled && majorityVoteCropland)
+        MajorityVote(FloatArrayTile(croplandClass, cols, rows), majorityVoteKernelSize, Set.empty[Int])
+      else
+        FloatArrayTile(croplandClass, cols, rows)
+
+    // Croptype labels exclude the "no crop" sentinel from voting, matching the python
+    // reference's POSTPROCESSING_EXCLUDED_VALUES handling for croptype postprocessing.
+    val croptypeExcludedValues = Set(OnnxInferenceUtils.NOCROP_VALUE.toInt)
     val seasonBands = Array.tabulate(numSeasons) { s =>
+      val croptypeClassTile: Tile =
+        if (majorityVoteEnabled && majorityVoteCroptype)
+          MajorityVote(FloatArrayTile(croptypeClassPerSeason(s), cols, rows), majorityVoteKernelSize, croptypeExcludedValues)
+        else
+          FloatArrayTile(croptypeClassPerSeason(s), cols, rows)
       Array[Tile](
-        FloatArrayTile(croptypeClassPerSeason(s), cols, rows): Tile,
+        croptypeClassTile,
         FloatArrayTile(croptypeProbPerSeason(s), cols, rows): Tile
       )
     }.flatten
@@ -514,7 +554,7 @@ object CroptypeInference {
 
     MultibandTile(
       (Array[Tile](
-        FloatArrayTile(croplandClass, cols, rows): Tile,
+        croplandClassTile,
         FloatArrayTile(croplandProb, cols, rows): Tile
       ) ++ seasonBands): _*
     )
