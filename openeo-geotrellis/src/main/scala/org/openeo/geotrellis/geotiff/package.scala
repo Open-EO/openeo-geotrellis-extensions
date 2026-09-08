@@ -1177,16 +1177,20 @@ package object geotiff {
           .resolve(newFilePath(Path.of(path).getFileName.toString, tileId)).toString
 
         val (stitchedTiff, bandStatistics) = stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression, formatOptions)
-        (stitchedTiff, tileId, extent)
+        (stitchedTiff, tileId, extent, bandStatistics)
     }.collect()
     val res = geotiffResults.map {
-      case (geoTiffResultObject, tileId, croppedExtent) =>
+      case (geoTiffResultObject, tileId, croppedExtent, bandStatistics) =>
         val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
-        (destinationPath, tileId, croppedExtent)
+        (destinationPath, tileId, croppedExtent, bandStatistics)
     }
 
-    val items = res.map { case (path, tileId, extent) =>
-      val assetMetadata = setupAssetMetadata(List(), extent, crs, Array(layout.rows.toInt,layout.cols.toInt), Array())
+    val items = res.map { case (path, tileId, extent, bandStatistics) =>
+      val bandLabels = formatOptions match {
+        case Some(fo) => fo.tags.bandTags.map(_("DESCRIPTION"))
+        case None => List()
+      }
+      val assetMetadata = setupAssetMetadata(bandLabels, extent, crs, Array(layout.rows.toInt,layout.cols.toInt), bandStatistics)
       val croppedBbox =
         if (crs == LatLng) fixBboxLargerThanWorld(extent)
         else extent
