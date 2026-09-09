@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory
 
 import java.nio.{ByteBuffer, ByteOrder}
 import java.time.LocalDate
+import java.util.Collections
 import scala.collection.mutable.ArrayBuffer
 import scala.jdk.CollectionConverters._
 
@@ -65,10 +66,10 @@ object CroptypeInference {
   )
   def run(
     datacube: MultibandTileLayerRDD[SpaceTimeKey],
-    context: java.util.Map[String, Any]
+    args: java.util.Map[String, Any]
   ): MultibandTileLayerRDD[SpaceTimeKey] = {
 
-    val scalaContext = context.asScala
+    val scalaContext = args.getOrDefault("context", Collections.emptyMap()).asInstanceOf[java.util.Map[String,Any]].asScala
     logger.info(s"CroptypeInference: Starting WorldCereal ONNX inference over datacube with ${scalaContext.mkString(",")}" )
     val onnxModelPath = scalaContext
       .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu.onnx")
@@ -150,8 +151,8 @@ object CroptypeInference {
 
     val processes = new OpenEOProcesses()
     val input =
-      if (context.containsKey("tile_size")) {
-        val size = context.get("tile_size").asInstanceOf[Int]
+      if (scalaContext.contains("tile_size")) {
+        val size = scalaContext.get("tile_size").asInstanceOf[Int]
         logger.info("CroptypeInference: Retiling datacube to tile_size = " + size)
         processes.retileGeneric(datacube, size, size, 0, 0)
       } else {
