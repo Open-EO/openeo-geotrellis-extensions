@@ -73,11 +73,15 @@ object CroptypeInference {
     val onnxModelPath = scalaContext
       .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu.onnx")
       .asInstanceOf[String]
-    val outputEmbeddings = scalaContext.getOrElse("output_embeddings", true).asInstanceOf[Boolean]
+    val outputEmbeddingsEnabled = scalaContext.getOrElse("output_embeddings", true)
+    logger.info(s"CroptypeINference: output_embeddings = $outputEmbeddingsEnabled - ${outputEmbeddingsEnabled.asInstanceOf[Boolean]}")
+    val outputEmbeddings = outputEmbeddingsEnabled.asInstanceOf[Boolean]
     val outputProbabilities = true//scalaContext.getOrElse("output_probabilities", true).asInstanceOf[Boolean]
     val outputClassification = scalaContext.getOrElse("output_classification", true).asInstanceOf[Boolean]
     require(outputEmbeddings || outputProbabilities || outputClassification,
       "At least one of output_embeddings, output_probabilities, output_classification must be true")
+    // Optional: append one NDVI band per monthly timestep, scaled to fit the uint8 output cube.
+    val outputNdvi = scalaContext.getOrElse("output_ndvi", true).asInstanceOf[Boolean]
     val numLcClasses = scalaContext.get("num_landcover_classes").map(_.asInstanceOf[Int])
     val numCtClasses = scalaContext.get("num_croptype_classes").map(_.asInstanceOf[Int])
     val numSeasons = scalaContext.getOrElse("num_seasons", 2).asInstanceOf[Int]
@@ -102,6 +106,7 @@ object CroptypeInference {
     val outputEmbeddingsBC = sc.broadcast(outputEmbeddings)
     val outputProbabilitiesBC = sc.broadcast(outputProbabilities)
     val outputClassificationBC = sc.broadcast(outputClassification)
+    val outputNdviBC = sc.broadcast(outputNdvi)
     val crsBC          = sc.broadcast(crs)
     val layoutBC       = sc.broadcast(layout)
     val numSeasonsBC   = sc.broadcast(numSeasons)
@@ -126,6 +131,7 @@ object CroptypeInference {
           outputEmbeddings = outputEmbeddingsBC.value,
           outputProbabilities = outputProbabilitiesBC.value,
           outputClassification = outputClassificationBC.value,
+          outputNdvi = outputNdviBC.value,
           numLcClassesOverride = numLcClassesBC.value,
           numCtClassesOverride = numCtClassesBC.value,
           numSeasons = numSeasonsBC.value,
@@ -178,6 +184,7 @@ object CroptypeInference {
     outputEmbeddings:    Boolean,
     outputProbabilities: Boolean,
     outputClassification: Boolean,
+    outputNdvi:          Boolean,
     numLcClassesOverride: Option[Int],
     numCtClassesOverride: Option[Int],
     numSeasons:          Int,
@@ -228,6 +235,8 @@ object CroptypeInference {
     val embeddingAccum = new ArrayBuffer[Float]()
     val landcoverAccum = new ArrayBuffer[Float]()
     val croptypeAccum  = new ArrayBuffer[Float]()
+    // One (scaled) NDVI value per pixel per monthly timestep, indexed as p * T + t.
+    val ndviAccum: Array[Float] = if (outputNdvi) new Array[Float](B * T) else null
 
     var detectedLcClasses = numLcClassesOverride.getOrElse(-1)
     var detectedCtClasses = numCtClassesOverride.getOrElse(-1)
@@ -266,6 +275,7 @@ object CroptypeInference {
           val rawSlope = raw(inputBandIndices.slope); xBuf.put(base + P_SLOPE, normalizeBand(P_SLOPE,rawSlope)); maskBuf.put(base + P_SLOPE, if (OnnxInferenceUtils.isNodata(rawSlope)) 1L else 0L)
           xBuf.put(base + P_NDVI, computeNdvi(xBuf.get(base + P_B8), xBuf.get(base + P_B4)))
           maskBuf.put(base + P_NDVI, if (OnnxInferenceUtils.isNodata(rawB8) || OnnxInferenceUtils.isNodata(rawB4) || (rawB8 + rawB4) == 0f) 1L else 0L)
+          if (outputNdvi) ndviAccum(p * T + t) = scaleNdviToByte(xBuf.get(base + P_NDVI))
 
           pi += 1
         }
@@ -376,6 +386,10 @@ object CroptypeInference {
         majorityVoteCroptype = majorityVoteCroptype
       ).bands
     }
+    if (outputNdvi) {
+      outputTiles ++= buildNdviTiles(ndviAccum, cols, rows, T)
+      logger.info(s"CroptypeInference: added ndvi ${T} monthly bands.")
+    }
     logger.info(s"CroptypeInference: Finished for tile at extent $tileExtent, output bands: ${outputTiles.length} outputEmbeddings=$outputEmbeddings, outputProbabilities=$outputProbabilities, outputClassification=$outputClassification")
     MultibandTile(outputTiles.toSeq).convert(UByteCellType)
   }
@@ -409,6 +423,29 @@ object CroptypeInference {
   private def computeNdvi(b8Norm: Float, b4Norm: Float): Float = {
     val sum = b8Norm + b4Norm
     if (sum == 0f) 0f else (b8Norm - b4Norm) / sum
+  }
+
+  /**
+   * Clip NDVI to [-0.08, 0.92] and rescale to a [0, 250] integral value suitable for a
+   * uint8 output cube: ndvi_scaled = (clip(ndvi, -0.08, 0.92) + 0.08) / 0.004.
+   */
+  private def scaleNdviToByte(ndvi: Float): Float = {
+    val clipped = math.max(-0.08f, math.min(0.92f, ndvi))
+    math.round((clipped + 0.08f) / 0.004f).toFloat
+  }
+
+  /** Build one band per monthly timestep from a [B * T] (pixel-major) NDVI accumulator. */
+  private def buildNdviTiles(ndviAccum: Array[Float], cols: Int, rows: Int, T: Int): Seq[Tile] = {
+    val B = cols * rows
+    (0 until T).map { t =>
+      val bandData = new Array[Float](B)
+      var p = 0
+      while (p < B) {
+        bandData(p) = ndviAccum(p * T + t)
+        p += 1
+      }
+      FloatArrayTile(bandData, cols, rows): Tile
+    }
   }
 
   /** Scale a [0,1] probability to a [0,100] integral value suitable for a uint8 cube. */
