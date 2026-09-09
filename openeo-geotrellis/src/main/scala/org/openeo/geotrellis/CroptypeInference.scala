@@ -152,7 +152,7 @@ object CroptypeInference {
     val processes = new OpenEOProcesses()
     val input =
       if (scalaContext.contains("tile_size")) {
-        val size = scalaContext.get("tile_size").asInstanceOf[Int]
+        val size = scalaContext("tile_size").asInstanceOf[Int]
         logger.info("CroptypeInference: Retiling datacube to tile_size = " + size)
         processes.retileGeneric(datacube, size, size, 0, 0)
       } else {
