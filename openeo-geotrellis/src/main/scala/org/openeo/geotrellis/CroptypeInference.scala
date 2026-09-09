@@ -74,7 +74,7 @@ object CroptypeInference {
       .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu.onnx")
       .asInstanceOf[String]
     val outputEmbeddings = scalaContext.getOrElse("output_embeddings", true).asInstanceOf[Boolean]
-    val outputProbabilities = scalaContext.getOrElse("output_probabilities", true).asInstanceOf[Boolean]
+    val outputProbabilities = true//scalaContext.getOrElse("output_probabilities", true).asInstanceOf[Boolean]
     val outputClassification = scalaContext.getOrElse("output_classification", true).asInstanceOf[Boolean]
     require(outputEmbeddings || outputProbabilities || outputClassification,
       "At least one of output_embeddings, output_probabilities, output_classification must be true")
