@@ -352,10 +352,12 @@ object CroptypeInference {
     val outputTiles = new ArrayBuffer[Tile]()
     if (outputEmbeddings) {
       outputTiles ++= OnnxInferenceUtils.buildQuantizedEmbeddingTile(embeddingAccum.toArray, B, cols, rows).bands
+      logger.info(s"CroptypeInference: added embeddings ${outputTiles.length} ")
     }
     if (outputProbabilities) {
       outputTiles ++= buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
         detectedLcClasses, detectedCtClasses, numSeasons).bands
+      logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
     }
     if (outputClassification) {
       outputTiles ++= buildClassificationTileFromProbs(
@@ -374,7 +376,7 @@ object CroptypeInference {
         majorityVoteCroptype = majorityVoteCroptype
       ).bands
     }
-    logger.info(s"CroptypeInference: Finished for tile at extent $tileExtent, output bands: ${outputTiles.length}")
+    logger.info(s"CroptypeInference: Finished for tile at extent $tileExtent, output bands: ${outputTiles.length} outputEmbeddings=$outputEmbeddings, outputProbabilities=$outputProbabilities, outputClassification=$outputClassification")
     MultibandTile(outputTiles.toSeq).convert(UByteCellType)
   }
 
