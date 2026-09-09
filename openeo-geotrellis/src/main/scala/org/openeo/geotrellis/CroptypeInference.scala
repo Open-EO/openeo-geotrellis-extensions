@@ -153,7 +153,7 @@ object CroptypeInference {
       }
 
     val resultRDD: RDD[(SpaceTimeKey, MultibandTile)] = processes.transformTimeDimension[SpatialKey](
-      input, applyToTimeseries, reduce = true
+      input, applyToTimeseries, reduce = false
     ).map({ case (spatialKey, tile) => (SpaceTimeKey(spatialKey, meta.bounds.get.minKey.temporalKey), tile) })
 
     val oldBounds = meta.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]]
@@ -374,6 +374,7 @@ object CroptypeInference {
         majorityVoteCroptype = majorityVoteCroptype
       ).bands
     }
+    logger.info(s"CroptypeInference: Finished for tile at extent $tileExtent, output bands: ${outputTiles.length}")
     MultibandTile(outputTiles.toSeq).convert(UByteCellType)
   }
 
