@@ -69,6 +69,7 @@ object CroptypeInference {
   ): MultibandTileLayerRDD[SpaceTimeKey] = {
 
     val scalaContext = context.asScala
+    logger.info(s"CroptypeInference: Starting WorldCereal ONNX inference over datacube with ${scalaContext.mkString(",")}" )
     val onnxModelPath = scalaContext
       .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu.onnx")
       .asInstanceOf[String]
@@ -245,7 +246,7 @@ object CroptypeInference {
           val col  = p % cols
           val base = (pi * T + t) * NUM_BANDS
 
-          def raw(band: Int): Float = tile.band(band).getDouble(col, row).toFloat
+          def raw(band: Int): Float = if (band >= 0) tile.band(band).getDouble(col, row).toFloat else Float.NaN
 
           val rawB2  = raw(inputBandIndices.b2);  xBuf.put(base + P_B2, normalizeBand(P_B2, rawB2)); maskBuf.put(base + P_B2, if (OnnxInferenceUtils.isNodata(rawB2)) 1L else 0L)
           val rawB3  = raw(inputBandIndices.b3);  xBuf.put(base + P_B3, normalizeBand(P_B3, rawB3)); maskBuf.put(base + P_B3, if (OnnxInferenceUtils.isNodata(rawB3)) 1L else 0L)
@@ -616,7 +617,7 @@ object CroptypeInference {
       b6     = idx("S2-L2A-B06"),
       b7     = idx("S2-L2A-B07"),
       b8     = idx("S2-L2A-B08"),
-      b8a    = idx("S2-L2A-B8A"),
+      b8a    = -1,//idx("S2-L2A-B8A"),
       b11    = idx("S2-L2A-B11"),
       b12    = idx("S2-L2A-B12"),
       vv     = idx("S1-SIGMA0-VV"),
