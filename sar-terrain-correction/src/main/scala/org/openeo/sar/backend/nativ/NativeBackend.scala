@@ -7,6 +7,8 @@ import org.openeo.sar.metadata.Polarisation
 import org.openeo.sar.{BackscatterNormalization, TerrainCorrectionProcessor, TileComputeContext}
 import org.slf4j.{Logger, LoggerFactory}
 
+import scala.collection.parallel.CollectionConverters._
+
 object NativeBackend {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[NativeBackend])
 }
@@ -46,13 +48,21 @@ final class NativeBackend extends TerrainCorrectionBackend {
     // 4. First pass: forward-geocode every output pixel to SAR (line, groundRangePx)
     //    and remember the bounding box so we issue ONE windowed read per polarisation.
     case class SarCoord(line: Double, gr: Double, pSat: Vec3, pGnd: Vec3)
-    val sarCoords: Array[Array[SarCoord]] = Array.ofDim(req.rows, req.cols)
-    var minLine = Int.MaxValue; var maxLine = Int.MinValue
-    var minPx   = Int.MaxValue; var maxPx   = Int.MinValue
-    var anyValid = false
+    case class RowScan(row: Int,
+                      coords: Array[SarCoord],
+                      minLine: Int,
+                      maxLine: Int,
+                      minPx: Int,
+                      maxPx: Int,
+                      anyValid: Boolean)
 
-    var r = 0
-    while (r < req.rows) {
+    val sarCoords: Array[Array[SarCoord]] = Array.fill(req.rows)(Array.ofDim(req.cols))
+    val rowScans = Array.range(0, req.rows).par.map { r =>
+      val rowCoords = Array.ofDim[SarCoord](req.cols)
+      var minLine = Int.MaxValue; var maxLine = Int.MinValue
+      var minPx = Int.MaxValue; var maxPx = Int.MinValue
+      var anyValid = false
+
       var c = 0
       while (c < req.cols) {
         val h = dem(r)(c)
@@ -66,23 +76,42 @@ final class NativeBackend extends TerrainCorrectionBackend {
           val srgr   = meta.polarisations(pols(0)).srgr.at(tAz)
           val grMetres = srgr.groundRangeFromSlant(rSlant, gSeed = math.max(0.0, rSlant - srgr.sr0))
           val grPx     = grMetres / meta.timing.rangePixelSpacing
-          sarCoords(r)(c) = SarCoord(azLine, grPx, pSat, pGnd)
+          rowCoords(c) = SarCoord(azLine, grPx, pSat, pGnd)
 
-          if (azLine >= 0 && azLine <  meta.timing.numberOfLines &&
-              grPx   >= 0 && grPx   <  meta.timing.numberOfPixels) {
+          if (azLine >= 0 && azLine < meta.timing.numberOfLines &&
+              grPx >= 0 && grPx < meta.timing.numberOfPixels) {
             anyValid = true
             val il = azLine.toInt; val ip = grPx.toInt
             if (il < minLine) minLine = il; if (il > maxLine) maxLine = il
-            if (ip < minPx)   minPx   = ip; if (ip > maxPx)   maxPx   = ip
+            if (ip < minPx) minPx = ip; if (ip > maxPx) maxPx = ip
           }
         }
         c += 1
       }
-      r += 1
+
+      sarCoords(r) = rowCoords
+      RowScan(r, rowCoords, minLine, maxLine, minPx, maxPx, anyValid)
+    }.seq
+
+    val aggregate = rowScans.foldLeft(RowScan(-1, Array.empty, Int.MaxValue, Int.MinValue, Int.MaxValue, Int.MinValue, false)) {
+      case (acc, rowScan) =>
+        if (!rowScan.anyValid) acc
+        else RowScan(
+          row = -1,
+          coords = Array.empty,
+          minLine = math.min(acc.minLine, rowScan.minLine),
+          maxLine = math.max(acc.maxLine, rowScan.maxLine),
+          minPx = math.min(acc.minPx, rowScan.minPx),
+          maxPx = math.max(acc.maxPx, rowScan.maxPx),
+          anyValid = true
+        )
     }
 
-    if (!anyValid)
+    if (!aggregate.anyValid)
       return TerrainCorrectionBackend.assemble(backscatter, ellipsInc, localInc, mask, shadowLayover)
+
+    val minLine = aggregate.minLine; val maxLine = aggregate.maxLine
+    val minPx = aggregate.minPx; val maxPx = aggregate.maxPx
 
     // 5. Pad window by 1 pixel for bilinear sampling, clip to scene.
     val winMinLine = math.max(0, minLine - 1)
@@ -112,8 +141,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
     val needTerrainCheck = doGamma0 || doShadow || config.localIncidenceAngle
 
     // 7. Second pass: sample, calibrate, fill angles + mask bands.
-    r = 0
-    while (r < req.rows) {
+    Array.range(0, req.rows).par.foreach { r =>
       var c = 0
       while (c < req.cols) {
         val sc = sarCoords(r)(c)
@@ -129,28 +157,16 @@ final class NativeBackend extends TerrainCorrectionBackend {
           var rtcFactor = 1.0
 
           if (needTerrainCheck) {
-            // ---- Angles -------------------------------------------------------
-            // Ellipsoidal incidence angle: look vs. smooth WGS84 ellipsoid normal.
-            // Needed here (regardless of the ellipsoidIncidenceAngle flag) because
-            // the shadow/layover test and the gamma0 RTC factor both depend on it.
             val ellipsoidNorm = Ecef.ellipsoidalNormal(sc.pGnd)
-            val thetaEl       = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, ellipsoidNorm)
-
-            // Terrain surface normal via finite differences on the DEM/lonLat arrays.
+            val thetaEl = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, ellipsoidNorm)
             val terrainNorm = terrainSurfaceNormal(dem, lonLat, r, c, req.rows, req.cols)
-            val thetaLoc    = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, terrainNorm)
+            val thetaLoc = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, terrainNorm)
 
             if (config.localIncidenceAngle) localInc.get.setDouble(c, r, math.toDegrees(thetaLoc))
             if (config.ellipsoidIncidenceAngle) ellipsInc.get.setDouble(c, r, math.toDegrees(thetaEl))
 
-            // ---- Shadow / layover classification ------------------------------
-            // Layover: happens when the ground point is geometrically "ahead" of
-            // the satellite wavefront, indicated by negative slant-range cosine
-            // w.r.t. the flight direction. Practical proxy: θ_local < 0 (masked
-            // out by the geometry) — we detect it via thetaEl > thetaLoc (ground
-            // is steeper than look angle).
             isLayover = thetaLoc < 0.0 || thetaEl > math.Pi / 2.0
-            isShadow  = thetaLoc > math.Pi / 2.0
+            isShadow = thetaLoc > math.Pi / 2.0
 
             if (doShadow) {
               shadowLayover.get.setDouble(c, r,
@@ -159,24 +175,18 @@ final class NativeBackend extends TerrainCorrectionBackend {
                 else 0.0f)
             }
 
-            // RTC factor (angle-ratio method).  Clamp sin(θ_local) to avoid
-            // divide-by-zero near 0° or 180° grazing.
             if (doGamma0) {
               val sinLocal = math.sin(thetaLoc)
               rtcFactor =
                 if (sinLocal > 0.01) math.sin(thetaEl) / sinLocal
-                else Double.NaN  // grazing — mark invalid
+                else Double.NaN
             }
           } else if (config.ellipsoidIncidenceAngle) {
-            // Ellipsoidal incidence angle requested on its own: cheap (no DEM
-            // finite-difference terrain normal needed), so compute it directly
-            // without the full terrain check above.
             val ellipsoidNorm = Ecef.ellipsoidalNormal(sc.pGnd)
-            val thetaEl       = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, ellipsoidNorm)
+            val thetaEl = RangeDoppler.localIncidence(sc.pGnd, sc.pSat, ellipsoidNorm)
             ellipsInc.get.setDouble(c, r, math.toDegrees(thetaEl))
           }
 
-          // ---- Backscatter --------------------------------------------------
           if (!isLayover && !isShadow) {
             var p = 0
             while (p < pols.length) {
@@ -185,19 +195,17 @@ final class NativeBackend extends TerrainCorrectionBackend {
               if (!java.lang.Double.isNaN(dn)) {
                 val sigmaLut = polMeta.sigmaLut(sc.line, sc.gr)
                 val noiseLut = polMeta.noiseLut(sc.line, sc.gr)
-                val num      = Math.fma(dn, dn, -noiseLut)
-                val sigma0   = if (sigmaLut > 0) num / (sigmaLut * sigmaLut) else Float.NaN
+                val num = Math.fma(dn, dn, -noiseLut)
+                val sigma0 = if (sigmaLut > 0) num / (sigmaLut * sigmaLut) else Float.NaN
                 backscatter(p).setDouble(c, r, sigma0 * rtcFactor)
               }
               p += 1
             }
             mask.setDouble(c, r, 1.0)
           }
-          // shadow/layover pixels: backscatter stays NaN, mask stays 0
         }
         c += 1
       }
-      r += 1
     }
 
     TerrainCorrectionBackend.assemble(backscatter, ellipsInc, localInc, mask, shadowLayover)
