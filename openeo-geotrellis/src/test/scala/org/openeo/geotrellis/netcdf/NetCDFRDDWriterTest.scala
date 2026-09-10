@@ -7,7 +7,7 @@ import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayTile, ByteCellType, CellType, DoubleCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, IntArrayTile, IntCellType, IntUserDefinedNoDataCellType, MultibandTile, Raster, RasterExtent, ShortCellType, Tile, TileLayout, UByteCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortUserDefinedNoDataCellType, isData}
+import geotrellis.raster.{ArrayTile, BitCellType, ByteCellType, CellType, DoubleCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, IntArrayTile, IntCellType, IntUserDefinedNoDataCellType, MultibandTile, Raster, RasterExtent, ShortCellType, Tile, TileLayout, UByteCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortUserDefinedNoDataCellType, isData}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
@@ -785,6 +785,8 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     val layoutRows = 2
     val arrayDim = 512
     val arrayTile = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim)
+    val bitMaskArray = Array(0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0)
+    val bitMaskTile = IntArrayTile(bitMaskArray, 4, 4)
     val targetDir = temporaryFolder.toString
 
     def checkCellTypes(cellTypes:Array[CellType], expectedCellType:CellType,fileName:String = ".nc"):Unit = {
@@ -806,6 +808,26 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       assertTrue(raster.cellType.equalDataType(expectedCellType))
     }
 
+    def checkBitCellTypeRoundTrip(fileName: String): Unit = {
+      val layer = LayerFixtures.aSpacetimeTileLayerRddWithCellTypes(bitMaskTile, layoutCols, layoutRows, Array(BitCellType))
+      val path = targetDir + "/" + fileName
+      NetCDFRDDWriter.saveSingleNetCDFGeneric(layer,
+        path,
+        bandNames = new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),
+        dimensionNames = null,
+        attributes = null,
+        bandsMetadata = null,
+        zLevel = 6,
+        addBandsStatistics = false,
+        cropBounds = None
+      )
+      val rasterSource = GDALRasterSource(s"""NETCDF:"$path":TOC-B04_10M""")
+      val Some(multiBandRaster) = rasterSource.read()
+      val raster = multiBandRaster.mapTile(_.band(0)) // first timestamp
+      assertTrue(raster.cellType.equalDataType(UByteCellType))
+      assertArrayEquals(bitMaskArray, raster.tile.toArray())
+    }
+
     checkCellTypes(Array(IntCellType, ShortCellType, UShortCellType, FloatCellType), FloatCellType, "testCellType01.nc")
     checkCellTypes(Array(ShortCellType, UShortCellType), IntCellType, "testCellType02.nc")
     checkCellTypes(Array(UShortCellType, UShortCellType), UShortCellType, "testCellType03.nc")
@@ -817,5 +839,6 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     checkCellTypes(Array(IntCellType, ShortCellType, ByteCellType), IntCellType, "testCellType09.nc")
     checkCellTypes(Array(IntCellType, FloatCellType), FloatCellType, "testCellType10.nc")
     checkCellTypes(Array(FloatCellType, IntCellType), FloatCellType, "testCellType11.nc")
+    checkBitCellTypeRoundTrip("testCellType12.nc")
   }
 }
