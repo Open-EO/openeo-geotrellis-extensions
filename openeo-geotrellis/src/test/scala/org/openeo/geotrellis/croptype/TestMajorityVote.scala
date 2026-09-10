@@ -1,4 +1,4 @@
-package org.openeo.geotrellis
+package org.openeo.geotrellis.croptype
 
 import geotrellis.raster.{IntArrayTile, isNoData}
 import org.junit.jupiter.api.Assertions._
