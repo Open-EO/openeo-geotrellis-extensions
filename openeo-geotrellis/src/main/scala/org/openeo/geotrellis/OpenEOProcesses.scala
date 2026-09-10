@@ -27,7 +27,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext}
-import org.openeo.geotrellis.GeneralUtils.safeConvert
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
@@ -827,7 +827,7 @@ class OpenEOProcesses extends Serializable {
         SpacePartitioner[K](kb)(implicitly,implicitly,index)
       } else {
         val nrBands = leftCount.getOrElse(10) + rightCount.getOrElse(10)
-        val outputCellType = maybeCellType(leftCube).getOrElse(DoubleCellType).union(maybeCellType(rightCube).getOrElse(DoubleCellType))
+        val outputCellType = cellTypeUnionWithNoData(maybeCellType(leftCube).getOrElse(DoubleCellType), maybeCellType(rightCube).getOrElse(DoubleCellType))
         val tileSize = maybeTileSize(leftCube).getOrElse(128 * 128)
         val newIndex = getPartitionerIndexForMaxPartitionSize[K](nrBands, tileSize, outputCellType.bits)
         SpacePartitioner[K](kb)(implicitly, implicitly, newIndex)
@@ -1083,7 +1083,7 @@ class OpenEOProcesses extends Serializable {
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
     val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, resampled)
     if(operator == null) {
-      val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
+      val outputCellType = cellTypeUnionWithNoData(leftCube.metadata.cellType,resampled.metadata.cellType)
       //TODO: what if extent of joined cube is larger than left cube?
       val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
       return new ContextRDD(rdd.mapValues({case (l,r) =>
@@ -1126,7 +1126,7 @@ class OpenEOProcesses extends Serializable {
     val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,NearestNeighbor,leftCube.partitioner.orNull)._2
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
     val joined = outerJoin(leftCube,resampled)
-    val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
+    val outputCellType = cellTypeUnionWithNoData(leftCube.metadata.cellType, resampled.metadata.cellType)
     val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
@@ -1135,7 +1135,7 @@ class OpenEOProcesses extends Serializable {
     val resampled = resampleCubeSpatial(rightCube,leftCube,NearestNeighbor)._2
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
     val joined = outerJoin(leftCube,resampled)
-    val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
+    val outputCellType = cellTypeUnionWithNoData(leftCube.metadata.cellType, resampled.metadata.cellType)
 
     val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
@@ -1490,7 +1490,7 @@ class OpenEOProcesses extends Serializable {
   def apply_kernel[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K],kernel:Tile): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
     datacube.sparkContext.setCallSite(s"apply_kernel")
     val k = new Kernel(kernel)
-    val outputCellType = datacube.convert(datacube.metadata.cellType.union(kernel.cellType))
+    val outputCellType = datacube.convert(cellTypeUnionWithNoData(datacube.metadata.cellType, kernel.cellType))
     if (kernel.cols > 10 || kernel.rows > 10) {
       MultibandFocalOperation(outputCellType, k, None) { (tile, bounds: Option[GridBounds[Int]]) => {
         FFTConvolve(tile, kernel).crop(bounds.get)
