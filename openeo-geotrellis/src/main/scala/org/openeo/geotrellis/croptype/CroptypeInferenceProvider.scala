@@ -6,6 +6,3 @@ class CroptypeInferenceProvider extends CubeProcessProvider {
   def getInstance(): AnyRef = CroptypeInference
 }
 
-class PrestoInferenceProvider extends CubeProcessProvider {
-  def getInstance(): AnyRef = PrestoInference
-}
