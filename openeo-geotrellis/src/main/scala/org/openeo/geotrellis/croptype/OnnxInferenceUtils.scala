@@ -1,4 +1,4 @@
-package org.openeo.geotrellis
+package org.openeo.geotrellis.croptype
 
 import ai.onnxruntime.OrtSession.SessionOptions.ExecutionMode
 import ai.onnxruntime.{OrtEnvironment, OrtSession}

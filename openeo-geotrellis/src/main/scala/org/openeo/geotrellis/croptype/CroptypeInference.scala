@@ -1,4 +1,4 @@
-package org.openeo.geotrellis
+package org.openeo.geotrellis.croptype
 
 import ai.onnxruntime.{OnnxTensor, OnnxTensorLike, OrtEnvironment, TensorInfo}
 import geotrellis.layer._
@@ -8,6 +8,7 @@ import geotrellis.spark._
 import geotrellis.vector.Extent
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.OpenEOProcesses
 import org.openeo.geotrelliscommon.DatacubeSupport.maybeBandLabels
 import org.openeo.geotrelliscommon.OpenEOProcess
 import org.slf4j.LoggerFactory

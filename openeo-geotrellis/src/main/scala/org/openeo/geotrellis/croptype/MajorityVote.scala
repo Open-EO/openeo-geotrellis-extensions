@@ -1,6 +1,7 @@
-package org.openeo.geotrellis
+package org.openeo.geotrellis.croptype
 
 import geotrellis.raster.{ShortArrayTile, ShortConstantNoDataCellType, Tile, isNoData}
+import org.openeo.geotrellis.OpenEOProcesses
 
 /**
   * Majority-vote postprocessing for classification label tiles.

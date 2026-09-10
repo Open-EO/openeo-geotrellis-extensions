@@ -1,4 +1,4 @@
-package org.openeo.geotrellis
+package org.openeo.geotrellis.croptype
 
 import org.openeo.geotrelliscommon.CubeProcessProvider
 

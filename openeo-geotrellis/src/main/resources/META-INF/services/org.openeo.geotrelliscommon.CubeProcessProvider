@@ -1,2 +1,1 @@
-org.openeo.geotrellis.CroptypeInferenceProvider
-org.openeo.geotrellis.PrestoInferenceProvider
+org.openeo.geotrellis.croptype.CroptypeInferenceProvider
