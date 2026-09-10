@@ -968,7 +968,7 @@ object NetCDFRDDWriter {
     assetMetadata
   }
 
-  private def bandsStatistics(tile:Tile, bandStatistics:collection.mutable.Map[String,(Double,Double,Double,Double,Int,Int)], bandName:String): Unit = {
+  private def bandsStatistics(tile:Tile, bandStat:collection.mutable.Map[String,(Double,Double,Double,Double,Int,Int)], bandName:String): Unit = {
     val (tempMin,tempMax, tempSum, tempPowerSum, tempValidCount,totalCount) = tile.cellType match {
       case _:FloatCells => statsDouble(tile)
       case _:DoubleCells => statsDouble(tile)
@@ -976,11 +976,11 @@ object NetCDFRDDWriter {
       case _:UShortCells => statsInt(tile)
       case _:IntCells => statsInt(tile)
     }
-    val result = if (bandStatistics.contains(bandName)) {
-      val (curMin,curMax,curSum,curPowerSum,curValidCount,size) = bandStatistics(bandName)
+    val result = if (bandStat.contains(bandName)) {
+      val (curMin,curMax,curSum,curPowerSum,curValidCount,size) = bandStat(bandName)
       (Math.min(tempMin,curMin), Math.max(tempMax,curMax), tempSum+curSum, tempPowerSum+curPowerSum, tempValidCount+curValidCount, size+totalCount)
     } else (tempMin,tempMax,tempSum,tempPowerSum,tempValidCount,totalCount)
-    bandStatistics.update(bandName,result)
+    bandStat.update(bandName,result)
   }
 
   private def bandsStatistics(rasters:Seq[Raster[MultibandTile]], bandNames: ArrayList[String]): java.util.ArrayList[java.util.HashMap[String,Any]] = {

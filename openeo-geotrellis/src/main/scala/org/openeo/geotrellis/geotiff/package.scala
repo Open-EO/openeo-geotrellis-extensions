@@ -1620,7 +1620,7 @@ package object geotiff {
       if (validCount==0) new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0))
       else {
         val stddev = Math.sqrt(powerSum / validCount - Math.pow(sum / validCount, 2))
-        new java.util.HashMap[String, Any](java.util.Map.of("mean", sum / validCount, "maximum", max, "minimum", min, "stddev", stddev, "valid_percent", validCount.toDouble / (band.size.toDouble) * 100))
+        new java.util.HashMap[String, Any](java.util.Map.of("mean", sum / validCount, "maximum", max, "minimum", min, "stddev", stddev, "valid_percent", validCount.toDouble / totalCount * 100))
       }
 
     }).toArray

@@ -305,7 +305,6 @@ object GeneralUtils {
         }
       }
     }
-    (zmin,zmax,sum,powerSum,validCount)
     (zmin,zmax,sum,powerSum,validCount,totalCount)
   }
   
