@@ -156,6 +156,10 @@ class GTiffOptions extends Serializable {
   def setBandTags(newBandTags: List[Map[String, String]]): Unit = {
     tags = tags.copy(bandTags = newBandTags.map(tags => SortedMap(tags.toSeq: _*)(Ordering.by(_.toLowerCase))))
   }
+  
+  def getBandNames: List[String] = {
+    tags.bandTags.map(tags => tags.getOrElse("DESCRIPTION", tags.head._2))
+  }
 
   def tagsAsGdalMetadataXml: xml.Elem = {
     val headTags = for {
