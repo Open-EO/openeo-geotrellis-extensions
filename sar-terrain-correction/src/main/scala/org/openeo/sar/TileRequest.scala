@@ -66,8 +66,8 @@ final case class TileRequest(
   polarisations: Seq[Polarisation],
   config: SarProcessingConfig = SarProcessingConfig.default
 ) {
-  def cols: Int = math.round(extent.width  / cellSize.width ).toInt
-  def rows: Int = math.round(extent.height / cellSize.height).toInt
+  val cols: Int = math.round(extent.width  / cellSize.width ).toInt
+  val rows: Int = math.round(extent.height / cellSize.height).toInt
 }
 
 /** Scene-level state that is expensive to build and shared across all tiles

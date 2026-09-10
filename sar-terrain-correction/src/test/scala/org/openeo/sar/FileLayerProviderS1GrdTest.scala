@@ -9,6 +9,7 @@ import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.condition.EnabledIf
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
 import org.openeo.geotrellis.geotiff.saveRDDTemporal
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
@@ -116,6 +117,7 @@ class FileLayerProviderS1GrdTest {
   // ---- Test -----------------------------------------------------------------
 
   @Test
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasS3Credentials")
   def fileLayerProviderReturnsS1GrdTileLayer(): Unit = {
     //org.junit.jupiter.api.Assumptions.assumeTrue(runOnline, "online test disabled")
 

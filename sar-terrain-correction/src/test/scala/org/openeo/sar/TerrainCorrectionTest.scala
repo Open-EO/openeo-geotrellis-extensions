@@ -46,8 +46,8 @@ class TerrainCorrectionTest {
 
   @Test
   def tileRequestComputesColsAndRows(): Unit = {
-    assertEquals(300, request.cols)
-    assertEquals(300, request.rows)
+    assertEquals(1100, request.cols)
+    assertEquals(1100, request.rows)
   }
 
   @Test
