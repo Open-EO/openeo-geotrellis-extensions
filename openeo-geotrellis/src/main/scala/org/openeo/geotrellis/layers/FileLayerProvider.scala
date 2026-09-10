@@ -457,11 +457,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       val commonCellType = arbitraryRasterSource.cellType
 
       logger.debug(s"Determined common cell type of rasterSources is $commonCellType.")
-      commonCellType match {
-        case integralNoNoData: NoNoData if !integralNoNoData.isFloatingPoint => commonCellType.withNoData(Some(0))
-        case _: NoNoData => commonCellType.withDefaultNoData()
-        case _ => commonCellType
-      }
+      commonCellType
     } catch {
       case e: Exception => {
         // Geotrellis GDALException errors are not descriptive enough. Attempt to add some more useful information.
