@@ -67,6 +67,11 @@
             <artifactId>openeo-geotrellis-healpix</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>sar-terrain-correction</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
