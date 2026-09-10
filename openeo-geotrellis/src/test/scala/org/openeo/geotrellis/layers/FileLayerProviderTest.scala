@@ -1782,7 +1782,7 @@ class FileLayerProviderTest extends RasterMatchers {
       dataCubeParameters,
       bands = new util.ArrayList(util.Collections.singletonList("L2A-B02-P10")),
       pyramidFactory,
-      outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC.nc",
+      outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC_$loadPerProduct.nc",
       referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testMultibandNoNoDataCOGViaSTAC.nc",
     )
   }
@@ -1858,23 +1858,21 @@ class FileLayerProviderTest extends RasterMatchers {
   }
 
   private def writeToNetCDFAndCompare(polygonAOI: ProjectedPolygons, dataCubeParameters: DataCubeParameters, bands: util.ArrayList[String], factory: PyramidFactory, outLocation: String, referenceFile: String): Unit = {
-    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+    val Seq((_, cube)): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+    cube.cache()
+
+    println(new ComputeStatsGeotrellisAdapter().compute_reduction_timeseries_from_spatial_datacube(cube.toSpatial()))
+
     val opts = new NetCDFOptions()
     opts.setBandNames(bands)
-    NetCDFRDDWriter.saveSingleNetCDFGeneric(cube.head._2, outLocation, opts)
+    NetCDFRDDWriter.saveSingleNetCDFGeneric(cube, outLocation, opts)
 
     val actualFile = NetcdfFile.open(outLocation)
     val refFile = NetcdfFile.open(referenceFile)
 
     val formatter = new Formatter()
     val areEqual = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile, new ObjFilter {
-      override def attCheckOk(v: Variable, att: Attribute): Boolean = {
-        if( v == null && att.getShortName == "_NCProperties") {
-          return false
-        }else{
-          return true
-        }
-      }
+      override def attCheckOk(v: Variable, att: Attribute): Boolean = v != null || att.getShortName != "_NCProperties"
     })
 
     assertTrue(areEqual, s"netCDF files are not equal:\n$formatter")
