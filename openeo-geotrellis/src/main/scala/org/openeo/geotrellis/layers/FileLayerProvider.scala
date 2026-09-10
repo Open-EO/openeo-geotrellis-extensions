@@ -1,14 +1,13 @@
 package org.openeo.geotrellis.layers
 
+import _root_.io.opentelemetry.api._
 import cats.data.NonEmptyList
 import com.azavea.gdal.GDALWarp
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
-import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{BitCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridExtent, NoNoData, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -17,19 +16,17 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
-import _root_.io.opentelemetry.api._
-import _root_.io.opentelemetry.api.trace.Tracer
 import org.apache.spark.rdd.RDD
-import org.apache.spark.util.{LongAccumulator, SizeEstimator}
-import org.apache.spark.{HashPartitioner, Partitioner, SparkContext, SparkEnv, TaskContext}
+import org.apache.spark.util.SizeEstimator
+import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis.layers.provider._
-import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, NoDataRasterSource, ValueOffsetRasterSource}
+import org.openeo.geotrellis.layers.raster_source.{IndexedRasterSource, NoDataRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.{Logger, LoggerFactory}
@@ -40,7 +37,6 @@ import java.nio.file.{Files, Path, Paths}
 import java.time._
 import java.time.temporal.ChronoUnit.DAYS
 import java.util.concurrent.TimeUnit
-import scala.collection.parallel.CollectionsHaveToParArray
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
@@ -89,8 +85,8 @@ object FileLayerProvider {
 
   private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
   private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("load_collection_read").build().gaugeBuilder("openeo_megapixel_per_second").build()
-  private[layers] lazy val tracer: Tracer = openTelemetry.tracerBuilder("openeo").build()
-
+  private[layers] lazy val megapixelPerSecondMeterHistogram = openTelemetry.meterBuilder("load_collection_read").build().histogramBuilder("openeo_megapixel_per_second_histogram").build()
+\
   private val rasterSourceProviderChain: Seq[RasterSourceProvider] = {
     import java.util.ServiceLoader
     import scala.jdk.CollectionConverters._
