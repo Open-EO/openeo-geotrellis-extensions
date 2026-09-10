@@ -1610,7 +1610,7 @@ package object geotiff {
 
   private def bandsStatistics(tile: MultibandTile): Array[java.util.HashMap[String,Any]] = {
     val stats = tile.bands.map(band => {
-      val (min, max, sum, powerSum, validCount) = band.cellType match {
+      val (min, max, sum, powerSum, validCount, totalCount) = band.cellType match {
         case _: FloatCells => statsDouble(band)
         case _: DoubleCells => statsDouble(band)
         case _: ShortCells => statsInt(band)
@@ -1620,7 +1620,7 @@ package object geotiff {
       if (validCount==0) new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0))
       else {
         val stddev = Math.sqrt(powerSum / validCount - Math.pow(sum / validCount, 2))
-        new java.util.HashMap[String, Any](java.util.Map.of("mean", sum / validCount, "maximum", max, "minimum", min, "stddev", stddev, "valid_percent", validCount.toDouble / band.size * 100))
+        new java.util.HashMap[String, Any](java.util.Map.of("mean", sum / validCount, "maximum", max, "minimum", min, "stddev", stddev, "valid_percent", validCount.toDouble / (band.size.toDouble) * 100))
       }
 
     }).toArray

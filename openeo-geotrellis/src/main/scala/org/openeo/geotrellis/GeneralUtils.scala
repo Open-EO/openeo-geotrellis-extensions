@@ -282,15 +282,17 @@ object GeneralUtils {
     )
   }
 
-  def statsDouble(tile: Tile): (Double,Double,Double,Double,Int) = {
+  def statsDouble(tile: Tile): (Double,Double,Double,Double,Int,Int) = {
     var zmin = Double.NaN
     var zmax = Double.NaN
     var sum = 0.0
     var powerSum = 0.0
     var validCount = 0
+    var totalCount = 0
     val nodata = getNodataMaxMin(cellType = tile.cellType)._1
     tile.foreachDouble { z =>
-      if (isData(z) && (nodata.isDefined && z != nodata.get)) {
+      totalCount += 1
+      if (isData(z) && (nodata.isEmpty || z != nodata.get)) {
         validCount+=1
         sum += z
         powerSum += Math.pow(z,2)
@@ -304,17 +306,20 @@ object GeneralUtils {
       }
     }
     (zmin,zmax,sum,powerSum,validCount)
+    (zmin,zmax,sum,powerSum,validCount,totalCount)
   }
   
-  def statsInt(tile:Tile): (Double,Double,Double,Double,Int) = {
+  def statsInt(tile:Tile): (Double,Double,Double,Double,Int,Int) = {
     var zmin = Int.MaxValue
     var zmax = Int.MinValue
     var sum = 0
     var powerSum = 0.0
     var validCount = 0
+    var totalCount = 0
     val nodata = getNodataMaxMin(cellType = tile.cellType)._1
 
     tile.foreach { z =>
+      totalCount+= 1
       if (isData(z) && (nodata.isEmpty || z != nodata.get)) {
         validCount +=1
         zmin = math.min(zmin, z)
@@ -323,7 +328,7 @@ object GeneralUtils {
         powerSum += Math.pow(z,2)
       }
     }
-    (zmin,zmax,sum.toDouble,powerSum,validCount)
+    (zmin,zmax,sum.toDouble,powerSum,validCount,totalCount)
   }
 
 }

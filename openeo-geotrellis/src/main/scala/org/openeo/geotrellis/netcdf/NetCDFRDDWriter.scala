@@ -969,7 +969,7 @@ object NetCDFRDDWriter {
   }
 
   private def bandsStatistics(tile:Tile, bandStatistics:collection.mutable.Map[String,(Double,Double,Double,Double,Int,Int)], bandName:String): Unit = {
-    val (tempMin,tempMax, tempSum, tempPowerSum, tempValidCount) = tile.cellType match {
+    val (tempMin,tempMax, tempSum, tempPowerSum, tempValidCount,totalCount) = tile.cellType match {
       case _:FloatCells => statsDouble(tile)
       case _:DoubleCells => statsDouble(tile)
       case _:ShortCells => statsInt(tile)
@@ -978,8 +978,8 @@ object NetCDFRDDWriter {
     }
     val result = if (bandStatistics.contains(bandName)) {
       val (curMin,curMax,curSum,curPowerSum,curValidCount,size) = bandStatistics(bandName)
-      (Math.min(tempMin,curMin), Math.max(tempMax,curMax), tempSum+curSum, tempPowerSum+curPowerSum, tempValidCount+curValidCount, size+tile.size)
-    } else (tempMin,tempMax,tempSum,tempPowerSum,tempValidCount,tile.size)
+      (Math.min(tempMin,curMin), Math.max(tempMax,curMax), tempSum+curSum, tempPowerSum+curPowerSum, tempValidCount+curValidCount, size+totalCount)
+    } else (tempMin,tempMax,tempSum,tempPowerSum,tempValidCount,totalCount)
     bandStatistics.update(bandName,result)
   }
 
@@ -988,14 +988,14 @@ object NetCDFRDDWriter {
     for (bandId <- 0 until bandNames.size()){
       val bandStatistics = rasters.map(raster => {
         val tile = raster.tile.band(bandId)
-        val (min, max, sum, powerSum, validCount) = tile.cellType match {
+        val (min, max, sum, powerSum, validCount, totalCount) = tile.cellType match {
           case _: FloatCells => statsDouble(tile)
           case _: DoubleCells => statsDouble(tile)
           case _: ShortCells => statsInt(tile)
           case _: UShortCells => statsInt(tile)
           case _: IntCells => statsInt(tile)
         }
-        (min, max, sum, powerSum, validCount, raster.tile.size)
+        (min, max, sum, powerSum, validCount,totalCount)
       })
       val (min,max,sum, powerSum,validCount,size)= bandStatistics.reduce{(accumulated, temporary) => {
         val (accMin, accMax, accSum, accPowerSum, accValidCount, accSize) = accumulated
