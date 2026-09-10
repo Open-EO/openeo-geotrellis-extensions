@@ -45,6 +45,7 @@ class TestGeneralUtils {
     assertEquals(DoubleCellType, cellTypeUnion(ShortCellType, DoubleCellType))
 
     assertEquals(UShortCellType, cellTypeUnion(UShortCellType, BitCellType))
+    assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnion(UShortCellType, ByteCellType))
     assertEquals(IntConstantNoDataCellType, cellTypeUnion(UShortCellType, ShortCellType))
     assertEquals(UShortCellType, cellTypeUnion(UShortCellType, UShortCellType))
     assertEquals(IntCellType, cellTypeUnion(UShortCellType, IntCellType))
