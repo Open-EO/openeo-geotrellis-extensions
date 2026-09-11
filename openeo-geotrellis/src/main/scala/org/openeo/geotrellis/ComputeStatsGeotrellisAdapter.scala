@@ -2,6 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.layer._
 import geotrellis.proj4.CRS
+import geotrellis.raster.{Tile, isData}
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
 import geotrellis.spark._
@@ -184,6 +185,54 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
     intern.computeHistogramTimeSeries(datacube, polygons.polygons, polygons.crs, startDate, endDate, histogramsCollector, unusedCancellationContext, sc)
+  }
+
+
+  def compute_reduction_timeseries_from_spatial_datacube(cube: MultibandTileLayerRDD[SpatialKey], reducer: String): JList[Double] = {
+    val aggregateBandTile: Tile => Double = reducer match {
+      case "max" => tile => { val (_, max) = tile.findMinMaxDouble; max }
+      case "min" => tile => { val (min, _) = tile.findMinMaxDouble; min }
+      case "sum" => tile => {
+        var sum = Double.NaN
+
+        tile.foreachDouble { v =>
+          if (isData(v)) {
+            if (sum.isNaN) sum = v
+            else sum += v
+          }
+        }
+
+        sum
+      }
+      case "count" => tile => {
+        var count = 0
+
+        tile.foreachDouble { v => if (isData(v)) count += 1 }
+
+        count
+      }
+    }
+
+    val combineBandValues: (Double, Double) => Double = reducer match {
+      case "max" => _ max _
+      case "min" => _ min _
+      case "sum" => _ + _
+      case "count" => _ + _
+    }
+
+    val bandAggregatesPerTile = cube
+      .map { case (_, multibandTile) => multibandTile.bands.map(aggregateBandTile) }
+
+    val bandAggregates = bandAggregatesPerTile.fold(Vector[Double]()) { (bandAggregatesLeft, bandAggregatesRight) =>
+      if (bandAggregatesLeft.isEmpty) bandAggregatesRight
+      else if (bandAggregatesRight.isEmpty) bandAggregatesLeft
+      else bandAggregatesLeft.zip(bandAggregatesRight)
+        .map { case (leftAggregate, rightAggregate) =>
+          combineBandValues(leftAggregate, rightAggregate)
+        }
+    }
+
+    bandAggregates.asJava
   }
 
 
