@@ -15,7 +15,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.RDDInfo
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelHistogram, megapixelMeter, megapixelPerSecondHistogram}
+import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelPerSecondHistogram, megapixelMeter}
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, autoUtmEpsg, time}
