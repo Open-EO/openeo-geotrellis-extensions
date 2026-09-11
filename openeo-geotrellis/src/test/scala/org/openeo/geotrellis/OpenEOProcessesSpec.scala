@@ -805,6 +805,30 @@ class OpenEOProcessesSpec extends RasterMatchers {
   }
 
   @Test
+  def transformTimeDimensionUsesMetadataBounds(): Unit = {
+    val timestamp = ZonedDateTime.parse("2019-01-21T00:00:00Z")
+    val layer = LayerFixtures.randomNoiseLayer(
+      pixelType = PixelType.Short,
+      dates = Some(List(timestamp)),
+      cols = 64,
+      rows = 64
+    )
+    val partitioned = new ContextRDD(layer.partitionBy(SpacePartitioner(layer.metadata.bounds.get)), layer.metadata)
+    val lazyFailure = new ContextRDD(
+      partitioned.mapPartitions(_ => throw new IllegalStateException("RDD should stay lazy"), preservesPartitioning = true),
+      partitioned.metadata
+    )
+
+    val transformed = new OpenEOProcesses().transformTimeDimension[SpaceTimeKey](
+      lazyFailure,
+      timeseries => timeseries.iterator.map { case (key, tile) => key -> tile }.toMap,
+      reduce = false
+    )
+
+    assertNotNull(transformed)
+  }
+
+  @Test
   def relabelTemporalTest(): Unit = {
     val pixelType = PixelType.Short
     val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType,cols = 64,rows=64)
