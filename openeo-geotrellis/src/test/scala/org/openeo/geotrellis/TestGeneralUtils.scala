@@ -45,6 +45,7 @@ class TestGeneralUtils {
     assertEquals(DoubleCellType, cellTypeUnion(ShortCellType, DoubleCellType))
 
     assertEquals(UShortCellType, cellTypeUnion(UShortCellType, BitCellType))
+    assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnion(UShortCellType, ByteCellType))
     assertEquals(IntConstantNoDataCellType, cellTypeUnion(UShortCellType, ShortCellType))
     assertEquals(UShortCellType, cellTypeUnion(UShortCellType, UShortCellType))
     assertEquals(IntCellType, cellTypeUnion(UShortCellType, IntCellType))
@@ -78,7 +79,7 @@ class TestGeneralUtils {
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(ShortUserDefinedNoDataCellType(9), ByteCellType))
     assertEquals(DoubleConstantNoDataCellType, cellTypeUnionWithNoData(FloatUserDefinedNoDataCellType(2.5f), IntCellType))
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(UShortUserDefinedNoDataCellType(10), ByteCellType))
-    assertEquals(UShortUserDefinedNoDataCellType(200), cellTypeUnionWithNoData(UShortUserDefinedNoDataCellType(200), ByteCellType))
+    assertEquals(IntUserDefinedNoDataCellType(200), cellTypeUnionWithNoData(UShortUserDefinedNoDataCellType(200), ByteCellType))
     assertEquals(ShortUserDefinedNoDataCellType(Short.MaxValue), cellTypeUnionWithNoData(UByteUserDefinedNoDataCellType(10), UByteCellType))
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(UByteUserDefinedNoDataCellType(10), UShortCellType))
 
@@ -90,7 +91,7 @@ class TestGeneralUtils {
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(ByteCellType, ShortUserDefinedNoDataCellType(9)))
     assertEquals(DoubleConstantNoDataCellType, cellTypeUnionWithNoData(IntCellType, FloatUserDefinedNoDataCellType(2.5f)))
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(ByteCellType, UShortUserDefinedNoDataCellType(10)))
-    assertEquals(UShortUserDefinedNoDataCellType(200), cellTypeUnionWithNoData(ByteCellType, UShortUserDefinedNoDataCellType(200)))
+    assertEquals(IntUserDefinedNoDataCellType(200), cellTypeUnionWithNoData(ByteCellType, UShortUserDefinedNoDataCellType(200)))
     assertEquals(ShortUserDefinedNoDataCellType(Short.MaxValue), cellTypeUnionWithNoData(UByteCellType, UByteUserDefinedNoDataCellType(10)))
     assertEquals(IntUserDefinedNoDataCellType(Int.MaxValue), cellTypeUnionWithNoData(UShortCellType, UByteUserDefinedNoDataCellType(10)))
 

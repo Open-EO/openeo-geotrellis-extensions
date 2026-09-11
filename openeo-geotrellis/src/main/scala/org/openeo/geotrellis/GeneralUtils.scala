@@ -39,39 +39,50 @@ object GeneralUtils {
   }
 
   def cellTypeUnion(a:CellType,b:CellType):CellType = {
-    if (a.bits < b.bits)
-      b
-    else if (a.bits > b.bits)
-      a
-    else if (a.isFloatingPoint && !b.isFloatingPoint)
-      a
-    else if(isUnSigned(a) != isUnSigned(b) ) {
-      if(a.bits==8) {
-        ShortConstantNoDataCellType
-      }else if(a.isFloatingPoint || b.isFloatingPoint){
-        Seq(a,b).maxBy(_.bits)
-      }else{
-        IntConstantNoDataCellType
+    if(isUnSigned(a) != isUnSigned(b) ){
+      if (a.bits == b.bits) {
+        if (a.bits == 8) {
+          ShortConstantNoDataCellType
+        } else {
+          IntConstantNoDataCellType
+        }
       }
+      else if (a.bits < b.bits) {
+          if (isUnSigned(b)){
+            upgradeCellTypes(b)
+          }else b
+      } else {
+          if (isUnSigned(a)){
+            upgradeCellTypes(a)
+          }else a
+      }
+    }else {
+      if (a.bits < b.bits)
+        b
+      else if (a.bits > b.bits)
+        a
+      else if (a.isFloatingPoint && !b.isFloatingPoint)
+        a
+      else
+        b
     }
-    else
-      b
+  }
+
+  def upgradeCellTypes(dataType: CellType): CellType = {
+    dataType match {
+      case _: BitCells => ByteConstantNoDataCellType
+      case _: ByteCells => ShortUserDefinedNoDataCellType(Short.MaxValue)
+      case _: UByteCells => ShortUserDefinedNoDataCellType(Short.MaxValue)
+      case _: ShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
+      case _: UShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
+      case _: IntCells => FloatConstantNoDataCellType
+      case _: FloatCells => DoubleConstantNoDataCellType
+      case _: DoubleCells => DoubleConstantNoDataCellType
+    }
   }
 
   def cellTypeUnionWithNoData(leftCellType:CellType, rightCellType:CellType):CellType = {
 
-    def upgradeCellTypes(dataType: CellType): CellType = {
-      dataType match {
-        case _: BitCells => ByteConstantNoDataCellType
-        case _: ByteCells => ShortUserDefinedNoDataCellType(Short.MaxValue)
-        case _: UByteCells => ShortUserDefinedNoDataCellType(Short.MaxValue)
-        case _: ShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
-        case _: UShortCells => IntUserDefinedNoDataCellType(Int.MaxValue)
-        case _: IntCells => FloatConstantNoDataCellType
-        case _: FloatCells => DoubleConstantNoDataCellType
-        case _: DoubleCells => DoubleConstantNoDataCellType
-      }
-    }
 
     val dataType = cellTypeUnion(leftCellType,rightCellType)
     val (maybeNodataLeft, maxLeft, minLeft) = getNodataMaxMin(leftCellType)
@@ -177,6 +188,7 @@ object GeneralUtils {
 
   private def isUnSigned(a:CellType): Boolean = {
     a match{
+      case x:BitCells => true
       case x:UByteCells => true
       case x:UShortCells => true
       case _ => false
