@@ -258,12 +258,6 @@ case class RasterTileLoader() {
     rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
     val partitionedBySource = byBandSource.groupByKey(new ByKeyPartitioner(allSources))
     val jobId: String = System.getenv("OPENEO_BATCH_JOB_ID")
-    logger.info("### OPENEO_BATCH_JOB_ID: " + jobId)
-    val context = SparkContext.getOrCreate()
-    val status: collection.Map[String, (Long, Long)] = context.getExecutorMemoryStatus
-    status.foreach(t => logger.info("### SparkContext ExecutorMemoryStatus: " + t._1 + " -> " + t._2))
-    val storageInfo: Array[RDDInfo] = context.getRDDStorageInfo
-    storageInfo.foreach(t => logger.info("### SparkContext RDDStorageInfo: " + t.name + " -> " + t.numPartitions + " partitions, " + t.numCachedPartitions + " cached, " + t.memSize + " bytes in memory, " + t.diskSize + " bytes on disk"))
 
     val value1 = partitionedBySource.mapPartitions(
       (partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
@@ -280,6 +274,7 @@ case class RasterTileLoader() {
           val attributes = Attributes.of(AttributeKey.stringKey("spark.job.id"), jobId)
           megapixelPerSecondMeter.set(megapixelPerSecond, attributes)
           megapixelPerSecondMeterHistogram.record(megapixelPerSecond, attributes)
+          logger.info(s"### Metrics attributes: $attributes")
         }
         loadedPartition
       },
