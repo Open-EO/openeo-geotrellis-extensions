@@ -22,6 +22,7 @@ class GTiffOptions extends Serializable {
   var compressionLevel = 6
   var compressionPredictor = 1
   var isBigTiff = false
+  var addBandStatistics: Boolean = false
   var retainNoDataTiles = false
 
   def setFilenamePrefix(name: String): Unit = {
@@ -121,6 +122,8 @@ class GTiffOptions extends Serializable {
   }
 
   def setBigTiff(enabled: Boolean): Unit = isBigTiff = enabled
+
+  def setAddBandStatistics(boolean: Boolean): Unit = addBandStatistics = boolean
   
   def setRetainNoDataTiles(enabled: Boolean): Unit = retainNoDataTiles = enabled
 
@@ -152,6 +155,10 @@ class GTiffOptions extends Serializable {
 
   def setBandTags(newBandTags: List[Map[String, String]]): Unit = {
     tags = tags.copy(bandTags = newBandTags.map(tags => SortedMap(tags.toSeq: _*)(Ordering.by(_.toLowerCase))))
+  }
+  
+  def getBandNames: List[String] = {
+    tags.bandTags.map(tags => tags.getOrElse("DESCRIPTION", tags.head._2))
   }
 
   def tagsAsGdalMetadataXml: xml.Elem = {
