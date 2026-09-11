@@ -15,7 +15,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.RDDInfo
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelPerSecondMeter, megapixelPerSecondMeterHistogram}
+import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelHistogram, megapixelMeter, megapixelPerSecondHistogram}
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, autoUtmEpsg, time}
@@ -151,6 +151,10 @@ case class RasterTileLoader() {
               val secondsPerChunk = (durationMillis / 1000.0) / (totalPixelsPartition / (256 * 256))
               loadingTimeAcc.add(secondsPerChunk)
             }
+            val megaPixels = totalPixelsPartition / (1024 * 1024)
+            megapixelMeter.add(megaPixels)
+            val megaPixelsPerSecond = megaPixels / (durationMillis / 1000.0)
+            megapixelPerSecondHistogram.record(megaPixelsPerSecond)
             loadedPartitions
           }
           val withEmptyTiles = if (retainNoDataTiles) {
@@ -267,14 +271,12 @@ case class RasterTileLoader() {
 
         if (partitionPixels > 0) {
           val durationSeconds = duration.toMillis / 1000.0
-          val secondsPerChunk = durationSeconds / (partitionPixels / (256 * 256))
+          val megaPixels = partitionPixels / (256 * 256)
+          val secondsPerChunk = durationSeconds / megaPixels
           loadingTimeAcc.add(secondsPerChunk)
           val megapixelPerSecond = (partitionPixels / (1024.0 * 1024)) / durationSeconds
-          logger.debug(s"totalPixelsPartition=$partitionPixels durationSeconds=$durationSeconds megapixelPerSecond=$megapixelPerSecond")
-          val attributes = Attributes.of(AttributeKey.stringKey("spark.job.id"), jobId)
-          megapixelPerSecondMeter.set(megapixelPerSecond, attributes)
-          megapixelPerSecondMeterHistogram.record(megapixelPerSecond, attributes)
-          logger.info(s"### Metrics attributes: $attributes")
+          megapixelMeter.add(megaPixels)
+          megapixelPerSecondHistogram.record(megapixelPerSecond)
         }
         loadedPartition
       },

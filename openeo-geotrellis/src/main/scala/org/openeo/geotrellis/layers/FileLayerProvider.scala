@@ -84,8 +84,8 @@ object FileLayerProvider {
 
 
   private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
-  private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("load_collection_read").build().gaugeBuilder("openeo_megapixel_per_second").build()
-  private[layers] lazy val megapixelPerSecondMeterHistogram = openTelemetry.meterBuilder("load_collection_read").build().histogramBuilder("openeo_megapixel_per_second_histogram").build()
+  private[layers] lazy val megapixelMeter = openTelemetry.meterBuilder("load_collection_read").build().counterBuilder("openeo_megapixels").build()
+  private[layers] lazy val megapixelPerSecondHistogram = openTelemetry.meterBuilder("load_collection_read").build().histogramBuilder("openeo_megapixel_per_second_histogram").build()
 
   private val rasterSourceProviderChain: Seq[RasterSourceProvider] = {
     import java.util.ServiceLoader
