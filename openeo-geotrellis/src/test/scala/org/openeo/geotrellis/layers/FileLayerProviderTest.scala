@@ -1861,7 +1861,7 @@ class FileLayerProviderTest extends RasterMatchers {
     val Seq((_, cube)): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
     cube.cache()
 
-    println(new ComputeStatsGeotrellisAdapter().compute_reduction_timeseries_from_spatial_datacube(cube.toSpatial()))
+    println(new ComputeStatsGeotrellisAdapter().compute_reduction_timeseries_from_spatial_datacube(cube.toSpatial(), reducer = "max"))
 
     val opts = new NetCDFOptions()
     opts.setBandNames(bands)
