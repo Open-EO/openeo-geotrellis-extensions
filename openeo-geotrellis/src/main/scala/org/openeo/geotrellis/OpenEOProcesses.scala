@@ -216,11 +216,13 @@ class OpenEOProcesses extends Serializable {
 
   private[geotrellis] def transformTimeDimension[KT](datacube: MultibandTileLayerRDD[SpaceTimeKey],applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[KT, MultibandTile],  reduce:Boolean ): RDD[(KT, MultibandTile)] = {
     val index: Option[PartitionerIndex[SpaceTimeKey]] = maybePartitionerIndex(datacube)
+    val metadataBounds = datacube.metadata.bounds
+    val singleTemporalSlice = metadataBounds.exists(bounds => bounds.maxKey.time == bounds.minKey.time)
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val rdd: RDD[(SpaceTimeKey, MultibandTile)] =
       if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner]
         || index.get.isInstanceOf[ByTileSpacetimePartitioner]
-        || (!datacube.getBounds.isEmpty && datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time))) {
+        || singleTemporalSlice)) {
         datacube
       } else {
         val keys: Option[Array[SpatialKey]] = findPartitionerSpatialKeys(datacube)
@@ -235,7 +237,7 @@ class OpenEOProcesses extends Serializable {
                 DEFAULT_BAND_COUNT
               }
             val reduction =
-              if (datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time) {
+              if (singleTemporalSlice) {
                 DatacubeSupport.computeReductionForTileSize(datacube.metadata.tileCols, datacube.metadata.tileRows,bandCount, datacube.metadata.cellType.bits, DEFAULT_MAX_PARTITION_SIZE_IN_MB.intValue)
               } else {
                 val maybeKeys = findPartitionerKeys(datacube)
@@ -1719,6 +1721,5 @@ class OpenEOProcesses extends Serializable {
   }
 
 }
-
 
 
