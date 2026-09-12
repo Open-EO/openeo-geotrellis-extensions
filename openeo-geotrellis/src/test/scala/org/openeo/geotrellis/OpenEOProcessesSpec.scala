@@ -815,7 +815,10 @@ class OpenEOProcessesSpec extends RasterMatchers {
     )
     val partitioned = new ContextRDD(layer.partitionBy(SpacePartitioner(layer.metadata.bounds.get)), layer.metadata)
     val lazyFailure = new ContextRDD(
-      partitioned.mapPartitions(_ => throw new IllegalStateException("RDD should stay lazy"), preservesPartitioning = true),
+      partitioned.mapPartitions[(SpaceTimeKey, MultibandTile)](
+        _ => throw new IllegalStateException("RDD should stay lazy"),
+        preservesPartitioning = true
+      ),
       partitioned.metadata
     )
 
