@@ -115,7 +115,7 @@ class AggregatePolygonProcess {
     val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, geometryRDD)
 
     val pixelRDD: RDD[Row] = combinedRDD.flatMap {
-      case (key: SpaceTimeKey, (tile: MultibandTile, geoms: Iterable[Feature[Geometry,Int]])) => {
+      case (key: SpaceTimeKey, (tile: MultibandTile, Some(geoms: Iterable[Feature[Geometry,Int]]))) => {
         val result: ListBuffer[Row] = ListBuffer()
         val bands = checkTileBandCount(tile.bandCount, bandCount)
 
@@ -154,6 +154,7 @@ class AggregatePolygonProcess {
         }
         result
       }
+      case (_, (_, None)) => Seq.empty
     }
     val cellType = datacube.metadata.cellType
     val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
