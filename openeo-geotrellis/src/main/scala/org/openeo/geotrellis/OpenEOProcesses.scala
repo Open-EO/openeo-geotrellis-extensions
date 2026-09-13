@@ -1128,7 +1128,7 @@ class OpenEOProcesses extends Serializable {
               MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
             }
           case None =>
-            // No matching right-hand tile for this spacetime key: nothing to combine, keep left as-is.
+            // TODO: wrong interpretation, left should not be kept as-is, but rather the operator should be applied to left and a nodata tile
             l
         }
       }), leftCube.metadata)
@@ -1466,7 +1466,7 @@ class OpenEOProcesses extends Serializable {
    *                       When false, only spacetime keys with a matching spatial key on `right`
    *                       are kept (plain inner join).
    */
-  def leftJoinSpacetimeSpatial(left: MultibandTileLayerRDD[SpaceTimeKey], right: MultibandTileLayerRDD[SpatialKey], leftOuterJoin: Boolean): RDD[(SpaceTimeKey, (MultibandTile, Option[MultibandTile]))] = {
+  def leftJoinSpacetimeSpatial[T : ClassTag](left: MultibandTileLayerRDD[SpaceTimeKey], right: RDD[(SpatialKey, T)], leftOuterJoin: Boolean): RDD[(SpaceTimeKey, (MultibandTile, Option[T]))] = {
     val maybePartitioner = left.partitioner.collect {
       case partitioner: SpacePartitioner[SpaceTimeKey] => partitioner
     }
@@ -1507,7 +1507,7 @@ class OpenEOProcesses extends Serializable {
           left.join(rightAsSpacetime, left.partitioner.get).mapValues { case (l, r) => (l, Some(r)) }
         }
       } else {
-        new SpatialToSpacetimeJoinRdd[MultibandTile](left, right, leftOuterJoin)
+        new SpatialToSpacetimeJoinRdd[T](left, right, leftOuterJoin)
       }
     }
   }
