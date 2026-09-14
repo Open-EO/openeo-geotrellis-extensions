@@ -413,7 +413,7 @@ package object geotiff {
       val (geoTiffResultObject, bandStatistics) = writeTiff(thePath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs,
         tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo, overviewTiles
       )
-      val assetMetadata = setupAssetMetadata(bandLabels, preProcessResult._2, preprocessedRdd.metadata.crs, Array(gridBounds.height, gridBounds.width), bandStatistics)
+      val assetMetadata = setupAssetMetadata(fo.getBandNames, preProcessResult._2, preprocessedRdd.metadata.crs, Array(gridBounds.height, gridBounds.width), bandStatistics)
       (geoTiffResultObject, timestamp, croppedExtent, bandIndices, assetMetadata)
     }.collect()
     val res = geotiffResults.map {

@@ -1240,7 +1240,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
       val items = saveRDDAllowAssetPerBand(spatialLayer,3, outputFile.toString, 6, Some(extent), formatOptions)
 
-      val (assetCount, bandCount, assetName) = if (separateAssetPerBand) (3,1,"B02") else (1,3,"openEO")
+      val (assetCount, bandCount, assetName) = if (separateAssetPerBand) (3,1,"B03") else (1,3,"openEO")
 
       assertEquals(1, items.size())
       items.forEach(item => {
@@ -1273,8 +1273,9 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     testStatistics(arrayTile = arrayTile0, addStatistics = false)
   }
 
-  @Test
-  def testMetadataSaveRddTemporalAllowAssetPerBand(@TempDir tempDir: Path): Unit = {
+  @ParameterizedTest
+  @MethodSource(Array("assetPerBandParams"))
+  def testMetadataSaveRddTemporalAllowAssetPerBand(separateAssetPerBand: Boolean, @TempDir tempDir: Path): Unit = {
     def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, extent: Extent = LatLng.worldExtent, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
       val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 1, 1, nbDates = 1)
 
@@ -1282,22 +1283,25 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
       val options = new GTiffOptions()
       options.setAddBandStatistics(addStatistics)
+      options.setSeparateAssetPerBand(separateAssetPerBand)
       options.addBandTag(0, "DESCRIPTION", "B02")
       options.addBandTag(1, "DESCRIPTION", "B03")
       options.addBandTag(2, "DESCRIPTION", "B04")
       val items = saveRDDTemporalAllowAssetPerBandInternal(layer, outputFile.toString, formatOptions = options)
 
+      val (assetCount, bandCount, assetName) = if (separateAssetPerBand) (3,1,"B03") else (1,3,"openEO")
+
       assertEquals(1, items.size())
       items.forEach(item => {
         val assets = item.assets
-        assertEquals(1, assets.size())
-        val metadata = assets.get("openEO").metadata
+        assertEquals(assetCount, assets.size())
+        val metadata = assets.get(assetName).metadata
         assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
         assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
         val bbox = Array[Double](extent.xmin, extent.ymin, extent.xmax, extent.ymax)
         assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.01)
         val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
-        assertEquals(3, bands.size())
+        assertEquals(bandCount, bands.size())
         bands.forEach(band => {
           assertTrue(band.containsKey("name"))
           assertEquals(addStatistics, band.containsKey("statistics"))
