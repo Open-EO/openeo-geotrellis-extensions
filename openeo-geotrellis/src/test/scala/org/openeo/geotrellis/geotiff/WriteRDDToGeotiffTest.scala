@@ -1228,7 +1228,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   @MethodSource(Array("assetPerBandParams"))
   def testMetadataSaveRddAllowAssetPerBand(separateAssetPerBand: Boolean, @TempDir tempDir: Path): Unit = {
     def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, extent: Extent = LatLng.worldExtent, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
-      val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 1, 1, nbDates = 1)
+      val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 1)
       val spatialLayer = layer.toSpatial()
       val outputFile = tempDir.resolve("tiffStat.tif")
       val formatOptions = new GTiffOptions
@@ -1277,7 +1277,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   @MethodSource(Array("assetPerBandParams"))
   def testMetadataSaveRddTemporalAllowAssetPerBand(separateAssetPerBand: Boolean, @TempDir tempDir: Path): Unit = {
     def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, extent: Extent = LatLng.worldExtent, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
-      val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 1, 1, nbDates = 1)
+      val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 1)
 
       val outputFile = tempDir.resolve("tiffStat.tif")
 
