@@ -188,8 +188,27 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
 
-  def compute_reduction_timeseries_from_spatial_datacube(cube: MultibandTileLayerRDD[SpatialKey], reducer: String): JList[Double] = {
-    val aggregateBandTile: Tile => Double = reducer match {
+  def compute_reduction_from_spatial_datacube(cube: MultibandTileLayerRDD[SpatialKey], reducer: String): JList[Double] = {
+    val aggregate = aggregateBandTile(reducer)
+    val combine = combineBandValues(reducer)
+
+    val bandAggregatesPerTile = cube
+      .map { case (_, multibandTile) => multibandTile.bands.map(aggregate) }
+
+    val bandAggregates = bandAggregatesPerTile.fold(Vector[Double]()) { (bandAggregatesLeft, bandAggregatesRight) =>
+      if (bandAggregatesLeft.isEmpty) bandAggregatesRight
+      else if (bandAggregatesRight.isEmpty) bandAggregatesLeft
+      else bandAggregatesLeft.zip(bandAggregatesRight)
+        .map { case (leftAggregate, rightAggregate) =>
+          combine(leftAggregate, rightAggregate)
+        }
+    }
+
+    bandAggregates.asJava
+  }
+
+  private def aggregateBandTile(reducer: String): Tile => Double =
+    reducer match {
       case "max" => tile => { val (_, max) = tile.findMinMaxDouble; max }
       case "min" => tile => { val (min, _) = tile.findMinMaxDouble; min }
       case "sum" => tile => {
@@ -211,31 +230,48 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
         count
       }
-    }
+  }
 
-    val combineBandValues: (Double, Double) => Double = reducer match {
+  private def combineBandValues(reducer: String): (Double, Double) => Double =
+    reducer match {
       case "max" => _ max _
       case "min" => _ min _
       case "sum" => _ + _
       case "count" => _ + _
     }
 
-    val bandAggregatesPerTile = cube
-      .map { case (_, multibandTile) => multibandTile.bands.map(aggregateBandTile) }
+  def compute_reduction_timeseries_from_spatiotemporal_datacube(cube: MultibandTileLayerRDD[SpaceTimeKey], reducer: String): JMap[String, JList[Double]] = {
+    val aggregate = aggregateBandTile(reducer)
+    val combine = combineBandValues(reducer)
 
-    val bandAggregates = bandAggregatesPerTile.fold(Vector[Double]()) { (bandAggregatesLeft, bandAggregatesRight) =>
-      if (bandAggregatesLeft.isEmpty) bandAggregatesRight
-      else if (bandAggregatesRight.isEmpty) bandAggregatesLeft
-      else bandAggregatesLeft.zip(bandAggregatesRight)
-        .map { case (leftAggregate, rightAggregate) =>
-          combineBandValues(leftAggregate, rightAggregate)
+    val timestampedBandAggregates = cube
+      .groupBy { case (SpaceTimeKey(_, _, timestamp), _) => timestamp.toString } // TODO: properly format timestamp
+      .mapValues { keyedMultibandTiles =>
+        val multibandTiles = keyedMultibandTiles.map { case (_, multibandTile) => multibandTile }
+
+        val bandAggregatesPerTile = multibandTiles
+          .map { multibandTile =>
+            multibandTile.bands.map(aggregate)
+          }
+
+        val bandAggregates = bandAggregatesPerTile.fold(Vector[Double]()) { (bandAggregatesLeft, bandAggregatesRight) =>
+          if (bandAggregatesLeft.isEmpty) bandAggregatesRight
+          else if (bandAggregatesRight.isEmpty) bandAggregatesLeft
+          else bandAggregatesLeft.zip(bandAggregatesRight)
+            .map { case (leftAggregate, rightAggregate) =>
+              combine(leftAggregate, rightAggregate)
+            }
         }
-    }
 
-    bandAggregates.asJava
+        bandAggregates
+      }
+
+    timestampedBandAggregates.collectAsMap()
+      .view
+      .mapValues(bandValues => bandValues.asJava)
+      .toMap
+      .asJava
   }
-
-
 
   private def sc: SparkContext = SparkContext.getOrCreate()
 
