@@ -1,6 +1,5 @@
 package org.openeo.geotrellis
 
-import ai.onnxruntime.{OrtEnvironment, OrtSession, TensorInfo}
 import geotrellis.layer.SpatialKey._
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
@@ -22,7 +21,6 @@ import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
-import org.apache.commons.io.FileUtils
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
@@ -32,13 +30,11 @@ import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIg
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrellis.onnx.StacModelParser
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
 
 import java.io.File
-import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.format.DateTimeFormatter
@@ -56,6 +52,23 @@ object OpenEOProcesses{
   private val DEFAULT_MAX_PARTITION_SIZE_IN_MB = 500.0
   private val DEFAULT_BAND_COUNT = 6
   private val DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT = 10
+
+  /**
+    * Convolve a single tile with the given kernel, choosing between a direct spatial
+    * convolution and an FFT-based convolution depending on kernel size.
+    * This is the reusable "kernel operation" also used by [[OpenEOProcesses#apply_kernel]],
+    * factored out so it can be reused by other single-tile operations such as majority-vote
+    * postprocessing (see [[org.openeo.geotrellis.MajorityVote]]).
+    */
+  private[geotrellis] def convolveTile(tile: Tile, kernelTile: Tile, bounds: Option[GridBounds[Int]] = None): Tile = {
+    if (kernelTile.cols > 10 || kernelTile.rows > 10) {
+      val convolved = FFTConvolve(tile, kernelTile)
+      bounds.map(convolved.crop).getOrElse(convolved)
+    } else {
+      val k = new Kernel(kernelTile)
+      Convolve(tile, k, bounds, TargetCell.All)
+    }
+  }
 
   private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)],cellType: CellType) = {
     MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)).map( t => {
@@ -201,7 +214,7 @@ class OpenEOProcesses extends Serializable {
       transformTimeDimension(datacube,applyToTimeseries,reduce)
     }
 
-  private def transformTimeDimension[KT](datacube: MultibandTileLayerRDD[SpaceTimeKey],applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[KT, MultibandTile],  reduce:Boolean ): RDD[(KT, MultibandTile)] = {
+  private[geotrellis] def transformTimeDimension[KT](datacube: MultibandTileLayerRDD[SpaceTimeKey],applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[KT, MultibandTile],  reduce:Boolean ): RDD[(KT, MultibandTile)] = {
     val index: Option[PartitionerIndex[SpaceTimeKey]] = maybePartitionerIndex(datacube)
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val rdd: RDD[(SpaceTimeKey, MultibandTile)] =
@@ -223,9 +236,7 @@ class OpenEOProcesses extends Serializable {
               }
             val reduction =
               if (datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time) {
-                val tileSizeInMb: Double = (bandCount * datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes).toDouble / (1024 * 1024)
-                val maxRecordsPerPartition: Double = math.min(DEFAULT_MAX_PARTITION_SIZE_IN_MB / tileSizeInMb, 1024)
-                math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
+                DatacubeSupport.computeReductionForTileSize(datacube.metadata.tileCols, datacube.metadata.tileRows,bandCount, datacube.metadata.cellType.bits, DEFAULT_MAX_PARTITION_SIZE_IN_MB.intValue)
               } else {
                 val maybeKeys = findPartitionerKeys(datacube)
                 val distinctTemporalKeyCount: Int =
@@ -1491,13 +1502,8 @@ class OpenEOProcesses extends Serializable {
     datacube.sparkContext.setCallSite(s"apply_kernel")
     val k = new Kernel(kernel)
     val outputCellType = datacube.convert(cellTypeUnionWithNoData(datacube.metadata.cellType, kernel.cellType))
-    if (kernel.cols > 10 || kernel.rows > 10) {
-      MultibandFocalOperation(outputCellType, k, None) { (tile, bounds: Option[GridBounds[Int]]) => {
-        FFTConvolve(tile, kernel).crop(bounds.get)
-      }
-      }
-    } else {
-      MultibandFocalOperation(outputCellType, k, None) { (tile, bounds) => Convolve(tile, k, bounds, TargetCell.All) }
+    MultibandFocalOperation(outputCellType, k, None) { (tile, bounds: Option[GridBounds[Int]]) =>
+      OpenEOProcesses.convolveTile(tile, kernel, bounds)
     }
   }
 
