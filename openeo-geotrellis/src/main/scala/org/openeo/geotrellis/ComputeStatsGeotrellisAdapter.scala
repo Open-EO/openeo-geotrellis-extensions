@@ -2,11 +2,13 @@ package org.openeo.geotrellis
 
 import geotrellis.layer._
 import geotrellis.proj4.CRS
+import geotrellis.raster.{Tile, isData}
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
 import geotrellis.spark._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder, intern}
@@ -187,6 +189,118 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
 
+  def compute_reduction_from_spatial_datacube(cube: MultibandTileLayerRDD[SpatialKey], reducer: String): JList[Double] = {
+    def reduce(reducer: String): Vector[Double] = {
+      val aggregate = aggregateBandTile(reducer)
+      val combine = combineBandValues(reducer)
+
+      val bandAggregatesPerTile = cube
+        .map { case (_, multibandTile) => multibandTile.bands.map(aggregate) }
+
+      val bandAggregates = bandAggregatesPerTile.fold(Vector[Double]()) { (bandAggregatesLeft, bandAggregatesRight) =>
+        if (bandAggregatesLeft.isEmpty) bandAggregatesRight
+        else if (bandAggregatesRight.isEmpty) bandAggregatesLeft
+        else bandAggregatesLeft.zip(bandAggregatesRight)
+          .map { case (leftAggregate, rightAggregate) =>
+            combine(leftAggregate, rightAggregate)
+          }
+      }
+
+      bandAggregates
+    }
+
+    val result = reducer match {
+      case "mean" =>
+        cube.cache()
+        reduce("sum")
+          .zip(reduce("count"))
+          .map { case (sum, count) => sum / count }
+      case _ => reduce(reducer)
+    }
+
+    result.asJava
+  }
+
+  private def aggregateBandTile(reducer: String): Tile => Double =
+    reducer match {
+      case "max" => tile => { val (_, max) = tile.findMinMaxDouble; max }
+      case "min" => tile => { val (min, _) = tile.findMinMaxDouble; min }
+      case "sum" => tile => {
+        var sum = Double.NaN
+
+        tile.foreachDouble { v =>
+          if (isData(v)) {
+            if (sum.isNaN) sum = v
+            else sum += v
+          }
+        }
+
+        sum
+      }
+      case "count" => tile => {
+        var count = 0
+
+        tile.foreachDouble { v => if (isData(v)) count += 1 }
+
+        count
+      }
+  }
+
+  private def combineBandValues(reducer: String): (Double, Double) => Double =
+    reducer match {
+      case "max" => _ max _
+      case "min" => _ min _
+      case "sum" => _ + _
+      case "count" => _ + _
+    }
+
+  def compute_reduction_timeseries_from_spatiotemporal_datacube(cube: MultibandTileLayerRDD[SpaceTimeKey], reducer: String): JMap[String, JList[Double]] = {
+    def reduce(reducer: String): RDD[(String, Vector[Double])] = {
+      val aggregate = aggregateBandTile(reducer)
+      val combine = combineBandValues(reducer)
+
+      val timestampedBandAggregates = cube
+        .groupBy { case (SpaceTimeKey(_, _, timestamp), _) => timestamp.toString } // TODO: properly format timestamp
+        .mapValues { keyedMultibandTiles =>
+          val multibandTiles = keyedMultibandTiles.map { case (_, multibandTile) => multibandTile }
+
+          val bandAggregatesPerTile = multibandTiles
+            .map { multibandTile =>
+              multibandTile.bands.map(aggregate)
+            }
+
+          val bandAggregates = bandAggregatesPerTile.fold(Vector[Double]()) { (bandAggregatesLeft, bandAggregatesRight) =>
+            if (bandAggregatesLeft.isEmpty) bandAggregatesRight
+            else if (bandAggregatesRight.isEmpty) bandAggregatesLeft
+            else bandAggregatesLeft.zip(bandAggregatesRight)
+              .map { case (leftAggregate, rightAggregate) =>
+                combine(leftAggregate, rightAggregate)
+              }
+          }
+
+          bandAggregates
+        }
+
+      timestampedBandAggregates
+    }
+
+    val results = reducer match {
+      case "mean" =>
+        cube.cache()
+        reduce("sum")
+          .join(reduce("count"))
+          .mapValues { case (sums, counts) =>
+            sums.zip(counts).map { case (sum, count) => sum / count }
+          }
+      case _ => reduce(reducer)
+    }
+
+    results.collectAsMap()
+      .view
+      .mapValues(bandValues => bandValues.asJava)
+      .toMap
+      .asJava
+  }
 
   private def sc: SparkContext = SparkContext.getOrCreate()
 
