@@ -12,10 +12,9 @@ import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withGeometryClipToGr
 import geotrellis.vector.{MultiPolygon, Polygon, ReprojectMutliPolygon}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.RDDInfo
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelPerSecondHistogram, megapixelMeter}
+import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelPerSecondMeter, megapixelMeter}
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, autoUtmEpsg, time}
@@ -154,7 +153,7 @@ case class RasterTileLoader() {
             val megaPixels = totalPixelsPartition / (1024 * 1024)
             megapixelMeter.add(megaPixels)
             val megaPixelsPerSecond = megaPixels / (durationMillis / 1000.0)
-            megapixelPerSecondHistogram.record(megaPixelsPerSecond)
+            megapixelPerSecondMeter.set(megaPixelsPerSecond)
             loadedPartitions
           }
           val withEmptyTiles = if (retainNoDataTiles) {
@@ -276,7 +275,7 @@ case class RasterTileLoader() {
           loadingTimeAcc.add(secondsPerChunk)
           val megapixelPerSecond = (partitionPixels / (1024.0 * 1024)) / durationSeconds
           megapixelMeter.add(megaPixels)
-          megapixelPerSecondHistogram.record(megapixelPerSecond)
+          megapixelPerSecondMeter.set(megapixelPerSecond)
         }
         loadedPartition
       },
