@@ -8,7 +8,7 @@ import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{BitCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{BitCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, IntUserDefinedNoDataCellType, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -953,13 +953,13 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
           val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
-          val dataType = link.datatype
+          val dataType = Some(IntUserDefinedNoDataCellType(750))
           val nodata =
             if(link.nodata.isEmpty && (link.title.contains("SCENECLASSIFICATION") || link.title.contains("SCL"))) Some(0.0)
             else link.nodata
 
           val cellTypeSTAC = if (dataType.isDefined){
-            Some(ConvertTargetCellType(dataType.get.withNoData(nodata)))
+            Some(ConvertTargetCellType(dataType.get))
           }
           else None
 
