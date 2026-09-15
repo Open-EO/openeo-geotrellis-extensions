@@ -5,7 +5,7 @@ import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster
 import geotrellis.raster._
-import geotrellis.spark.MultibandTileLayerRDD
+import geotrellis.spark._
 import geotrellis.spark.store.hadoop.KeyPartitioner
 import geotrellis.store.s3.AmazonS3URI
 import geotrellis.util._
@@ -78,8 +78,21 @@ object NetCDFRDDWriter {
     rdd match {
       case rdd1 if rdd.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
         saveSingleNetCDFGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], path, options)
-      case rdd2 if rdd.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
-        saveSingleNetCDFGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], path, options)
+      case rdd2: MultibandTileLayerRDD[SpaceTimeKey] if rdd2.metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        val checkeredRdd = rdd2/*.withContext { rdd =>
+          val checkeredPositions = Seq((0, 0), (1, 1))
+
+          rdd.mapPartitions(tiles => tiles.map { case (key, tile) =>
+            if (checkeredPositions.contains((key.col % 2, key.row % 2)))
+              key -> tile
+            else {
+              println(s"!!! tile is ${tile.dimensions}; center value is ${tile.band(0).getDouble(tile.cols / 2, tile.rows / 2)}")
+              key -> tile.mapDouble((_: Int, _: Double) => if (key.row == 0 && key.col == 3) 188.0 else 99.0)
+            }
+          }, preservesPartitioning = true)
+        }*/
+
+        saveSingleNetCDFGeneric(checkeredRdd, path, options)
       case _ => throw new IllegalArgumentException("Unsupported rdd type to write to netCDF: ${rdd}")
     }
 
@@ -898,7 +911,7 @@ object NetCDFRDDWriter {
     if (longName != null) netcdfFile.addVariableAttribute(variableName, "long_name", longName)
     if (units != null) netcdfFile.addVariableAttribute(variableName, "units", units)
     if (axis != null) netcdfFile.addVariableAttribute(variableName, "axis", axis)
-    if (fillValue != Integer.MIN_VALUE) netcdfFile.addVariableAttribute(variableName, "_FillValue", fillValue)
+    if (fillValue.intValue() != Integer.MIN_VALUE) netcdfFile.addVariableAttribute(variableName, "_FillValue", fillValue) // warning: will silently omit variable if value doesn't fit
     if (coordinates != null) netcdfFile.addVariableAttribute(variableName, "coordinates", coordinates)
   }
 
