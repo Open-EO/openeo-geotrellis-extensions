@@ -28,14 +28,16 @@ object ReduceSpatialTest {
     Arguments.of("max", Seq(5.0, 9.0)),
     Arguments.of("min", Seq(1.0, 6.0)),
     Arguments.of("sum", Seq(27.0, 90.0)),
-    Arguments.of("count", Seq(9, 12))
+    Arguments.of("count", Seq(9, 12)),
+    Arguments.of("mean", Seq(3.0, 7.5)),
   )
 
   def reduceSpatiotemporalDataCubeParams(): JStream[Arguments] = JStream.of(
     Arguments.of("max", Seq(5.0, 9.0), Seq(6.0, 10.0)),
     Arguments.of("min", Seq(1.0, 6.0), Seq(2.0, 7.0)),
     Arguments.of("sum", Seq(27.0, 90.0), Seq(36.0, 102.0)),
-    Arguments.of("count", Seq(9, 12), Seq(9, 12))
+    Arguments.of("count", Seq(9, 12), Seq(9, 12)),
+    Arguments.of("mean", Seq(3.0, 7.5), Seq(4.0, 8.5)),
   )
 }
 
