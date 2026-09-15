@@ -805,6 +805,33 @@ class OpenEOProcessesSpec extends RasterMatchers {
   }
 
   @Test
+  def transformTimeDimensionUsesMetadataBounds(): Unit = {
+    val timestamp = ZonedDateTime.parse("2019-01-21T00:00:00Z")
+    val layer = LayerFixtures.randomNoiseLayer(
+      pixelType = PixelType.Short,
+      dates = Some(List(timestamp)),
+      cols = 64,
+      rows = 64
+    )
+    val partitioned = new ContextRDD(layer.partitionBy(SpacePartitioner(layer.metadata.bounds.get)), layer.metadata)
+    val lazyFailure = new ContextRDD(
+      partitioned.mapPartitions[(SpaceTimeKey, MultibandTile)](
+        _ => throw new IllegalStateException("RDD should stay lazy"),
+        preservesPartitioning = true
+      ),
+      partitioned.metadata
+    )
+
+    val transformed = new OpenEOProcesses().transformTimeDimension[SpaceTimeKey](
+      lazyFailure,
+      timeseries => timeseries.iterator.map { case (key, tile) => key -> tile }.toMap,
+      reduce = false
+    )
+
+    assertNotNull(transformed)
+  }
+
+  @Test
   def relabelTemporalTest(): Unit = {
     val pixelType = PixelType.Short
     val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType,cols = 64,rows=64)
@@ -1274,17 +1301,25 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val tileSize = 256
 
     def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
-      val modelPath = IOUtils.toString(getClass.getResource(path), "UTF-8")
-      val model = new ObjectMapper().readValue(modelPath, classOf[util.Map[String, Any]])
-      val modelString = new ObjectMapper().writeValueAsString(model)
+      val modelPath = getClass.getResource(path)
+      val modelAsString = IOUtils.toString(modelPath, "UTF-8")
+      val modelAsMap = new ObjectMapper().readValue(modelAsString, classOf[util.Map[String, Any]])
+      val modelAsJson = new ObjectMapper().writeValueAsString(modelAsMap)
 
       val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tile.cols/layoutCols, tile.rows/layoutRows))
-      val resultCube = onnx.predictONNXSTAC(datacube,modelString)
+      val resultCube = onnx.predictONNXSTAC(datacube,modelAsJson)
       assertEquals(expectedType, resultCube.metadata.cellType)
       val theResultTile = resultCube.stitch().tile
       assertEquals(expectedNBands,theResultTile.bandCount)
       (0 until expectedNBands).foreach {n =>
         assertArrayEquals(expectedBands(n), theResultTile.band(n).toArray())
+      }
+      val resultCubeFile = onnx.predictONNXSTACFile(datacube, modelPath.toString)
+      assertEquals(expectedType, resultCubeFile.metadata.cellType)
+      val theResultTileFile = resultCubeFile.stitch().tile
+      assertEquals(expectedNBands,theResultTileFile.bandCount)
+      (0 until expectedNBands).foreach {n =>
+        assertArrayEquals(expectedBands(n), theResultTileFile.band(n).toArray())
       }
     }
     val tileFloat = (i:Float) => FloatArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)

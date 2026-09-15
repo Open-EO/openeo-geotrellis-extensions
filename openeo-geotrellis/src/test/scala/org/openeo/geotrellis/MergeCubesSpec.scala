@@ -281,7 +281,7 @@ class MergeCubesSpec {
       assertEquals(5, item._2.band(3).get(0, 0))
       assertEquals(5, item._2.band(4).get(0, 0))
     }
-    assertEquals(CellType.fromName("uint16"), merged.metadata.cellType)
+    assertEquals(CellType.fromName("int32ud-128"), merged.metadata.cellType)
   }
 
 
