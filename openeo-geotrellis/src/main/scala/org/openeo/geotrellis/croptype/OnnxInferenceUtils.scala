@@ -4,6 +4,7 @@ import ai.onnxruntime.OrtSession.SessionOptions.ExecutionMode
 import ai.onnxruntime.{OrtEnvironment, OrtSession}
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.raster._
+import org.openeo.geotrellis.croptype.CroptypeInference.TargetDatatype
 
 import java.net.URL
 import java.nio.file.{Files, Paths}
@@ -12,6 +13,7 @@ object OnnxInferenceUtils {
 
   val NODATA: Float = 65535f
   val NOCROP_VALUE: Float = 254f
+  val ubyteCellType = UByteCellType
 
   val sessionCache =
     new java.util.concurrent.ConcurrentHashMap[String, OrtSession]()
@@ -132,25 +134,25 @@ object OnnxInferenceUtils {
    * based on the 99th percentile of the absolute embedding values.
    * Decode formula: embedding ~= (quantized_uint8 - 128) * scale
    *
-   * The CroptypeInference output layer uses a single float32 cell type for all
-   * bands, so the quantized (byte-range) values are stored as float32 rather
-   * than as an actual uint8 cell type; a downstream export step is expected to
-   * cast these bands to uint8 on write. Returns a MultibandTile with D
-   * quantized embedding bands (values in [0, 255]) followed by one extra band
-   * holding the per-pixel scale factor.
+   * For float output, the quantized values and scale are stored directly as
+   * FloatArrayTile to avoid truncating the scale factor.
    */
   def buildQuantizedEmbeddingTile(
     embeddings: Array[Float],
     B:          Int,
     cols:       Int,
-    rows:       Int
+    rows:       Int,
+    targetDatatype: TargetDatatype
   ): MultibandTile = {
     require(embeddings.length % B == 0,
       s"Embeddings length ${embeddings.length} is not divisible by B=$B")
     val D = embeddings.length / B
 
-    val quantizedBands = Array.ofDim[Float](D, B)
-    val scaleBand       = new Array[Float](B)
+    val useFloat = targetDatatype.isFloat
+    val quantizedBandsF = if (useFloat) Array.ofDim[Float](D, B) else null
+    val quantizedBandsS = if (useFloat) null else Array.ofDim[Short](D, B)
+    val scaleBandF      = if (useFloat) new Array[Float](B) else null
+    val scaleBandS      = if (useFloat) null else new Array[Short](B)
     val absValues       = new Array[Float](D)
 
     var p = 0
@@ -158,23 +160,27 @@ object OnnxInferenceUtils {
       var d = 0
       while (d < D) { absValues(d) = math.abs(embeddings(p * D + d)); d += 1 }
       val scale = math.max(percentile99(absValues) / 127.0f, 1e-6f)
-      scaleBand(p) = scale
+      if (useFloat) scaleBandF(p) = scale else scaleBandS(p) = (1000.0 * scale).toShort
 
       d = 0
       while (d < D) {
         val v          = embeddings(p * D + d)
         val qSignedRaw = math.round(v / scale)
         val qSigned    = math.max(-128, math.min(127, qSignedRaw))
-        quantizedBands(d)(p) = (qSigned + 128).toFloat
+        if (useFloat) quantizedBandsF(d)(p) = (qSigned + 128).toFloat
+        else quantizedBandsS(d)(p) = (qSigned + 128).toShort
         d += 1
       }
       p += 1
     }
 
-    val embeddingTiles = Array.tabulate(D) { d =>
-      FloatArrayTile(quantizedBands(d), cols, rows): Tile
+    val embeddingTiles: Array[Tile] = Array.tabulate(D) { d =>
+      if (useFloat) FloatArrayTile(quantizedBandsF(d), cols, rows): Tile
+      else ShortArrayTile(quantizedBandsS(d), cols, rows, ShortConstantNoDataCellType).convert(ubyteCellType): Tile
     }
-    val bands = embeddingTiles :+ (FloatArrayTile(scaleBand, cols, rows): Tile)
+    val bands: Seq[Tile] =
+      if (useFloat) embeddingTiles.toSeq :+ (FloatArrayTile(scaleBandF, cols, rows): Tile)
+      else embeddingTiles.toSeq :+ (ShortArrayTile(scaleBandS, cols, rows, ShortConstantNoDataCellType).convert(ubyteCellType): Tile)
     MultibandTile(bands)
   }
 
