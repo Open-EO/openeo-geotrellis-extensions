@@ -739,6 +739,20 @@ class MergeCubesSpec {
     // SpatialToSpacetimeJoinRdd's custom narrow Dependency is wired up correctly when it's used.
     assertShuffleBehaviour(variant, leftCube, merged)
 
+    // Strategy 2: explicitly verify the overarching partitioner-index invariant across all
+    // variants: the left cube's index class must be retained in the merged result, EXCEPT for
+    // "sparseNoKeys", whose index (SparseSpaceTimePartitioner without known keys) can't be
+    // reused and is therefore replaced (with a ConfigurableSpaceTimePartitioner).
+    val leftIndexClass = leftCube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.getClass
+    val mergedIndexClass = merged.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.getClass
+    if (variant == "sparseNoKeys") {
+      assertNotEquals(leftIndexClass, mergedIndexClass,
+        s"variant '$variant': partitioner index class should NOT be retained (its index isn't reusable)")
+    } else {
+      assertEquals(leftIndexClass, mergedIndexClass,
+        s"variant '$variant': partitioner index class should be retained as-is")
+    }
+
     val collected = merged.collect()
 
     // All left spacetime keys must be preserved in the result, regardless of right-side overlap.
