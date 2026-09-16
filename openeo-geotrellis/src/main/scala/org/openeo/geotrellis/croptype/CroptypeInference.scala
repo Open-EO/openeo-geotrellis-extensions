@@ -9,6 +9,7 @@ import geotrellis.vector.Extent
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.OpenEOProcesses
+import org.openeo.geotrellis.croptype.OnnxInferenceUtils.ubyteCellType
 import org.openeo.geotrelliscommon.DatacubeSupport.maybeBandLabels
 import org.openeo.geotrelliscommon.OpenEOProcess
 import org.slf4j.LoggerFactory
@@ -54,6 +55,19 @@ object CroptypeInference {
   private val P_TEMP    = 12; private val P_PRECIP  = 13
   private val P_ELEV    = 14; private val P_SLOPE   = 15; private val P_NDVI    = 16
 
+  sealed trait TargetDatatype {
+    def cellType: CellType
+    def isFloat: Boolean
+  }
+  case object TargetDatatypeFloat extends TargetDatatype {
+    override val cellType: CellType = FloatConstantNoDataCellType
+    override val isFloat: Boolean = true
+  }
+  case object TargetDatatypeUByte extends TargetDatatype {
+    override val cellType: CellType = ubyteCellType
+    override val isFloat: Boolean = false
+  }
+
   /** Resolved input band positions in the source datacube, derived dynamically from band labels. */
   private case class InputBandIndices(
     b2: Int, b3: Int, b4: Int, b5: Int, b6: Int, b7: Int, b8: Int, b8a: Int, b11: Int, b12: Int,
@@ -73,7 +87,7 @@ object CroptypeInference {
     val scalaContext = args.getOrDefault("context", Collections.emptyMap()).asInstanceOf[java.util.Map[String,Any]].asScala
     logger.info(s"CroptypeInference: Starting WorldCereal ONNX inference over datacube with ${scalaContext.mkString(",")}" )
     val onnxModelPath = scalaContext
-      .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu.onnx")
+      .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu_bup.onnx")
       .asInstanceOf[String]
     val outputEmbeddingsEnabled = scalaContext.getOrElse("output_embeddings", true)
     logger.info(s"CroptypeINference: output_embeddings = $outputEmbeddingsEnabled - ${outputEmbeddingsEnabled.asInstanceOf[Boolean]}")
@@ -97,6 +111,11 @@ object CroptypeInference {
     val majorityVoteKernelSize = scalaContext.getOrElse("majority_vote_kernel_size", 5).asInstanceOf[Int]
     val majorityVoteCropland = scalaContext.getOrElse("majority_vote_cropland", true).asInstanceOf[Boolean]
     val majorityVoteCroptype = scalaContext.getOrElse("majority_vote_croptype", true).asInstanceOf[Boolean]
+    val targetDatatype = scalaContext.get("target_datatype").map {
+      case "float" => TargetDatatypeFloat
+      case "uint8" => TargetDatatypeUByte
+      case other => throw new IllegalArgumentException(s"Unsupported target_datatype '$other', expected 'float' or 'uint8'")
+    }.getOrElse(TargetDatatypeFloat)
 
     val meta   = datacube.metadata
     val layout = meta.layout
@@ -120,6 +139,7 @@ object CroptypeInference {
     val majorityVoteKernelSizeBC = sc.broadcast(majorityVoteKernelSize)
     val majorityVoteCroplandBC = sc.broadcast(majorityVoteCropland)
     val majorityVoteCroptypeBC = sc.broadcast(majorityVoteCroptype)
+    val targetDatatypeBC = sc.broadcast(targetDatatype)
 
     val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[SpatialKey, MultibandTile] = {
       tiles =>
@@ -145,7 +165,8 @@ object CroptypeInference {
           majorityVoteEnabled = majorityVoteEnabledBC.value,
           majorityVoteKernelSize = majorityVoteKernelSizeBC.value,
           majorityVoteCropland = majorityVoteCroplandBC.value,
-          majorityVoteCroptype = majorityVoteCroptypeBC.value
+          majorityVoteCroptype = majorityVoteCroptypeBC.value,
+          targetDatatype = targetDatatypeBC.value
         )
         Map(spatialKey -> result)
     }
@@ -169,7 +190,7 @@ object CroptypeInference {
     ContextRDD(
       resultRDD,
       new TileLayerMetadata[SpaceTimeKey](
-        cellType = UByteCellType,
+        cellType = targetDatatype.cellType,
         layout = layout,
         extent = meta.extent,
         crs = crs,
@@ -198,7 +219,8 @@ object CroptypeInference {
     majorityVoteEnabled:    Boolean,
     majorityVoteKernelSize: Int,
     majorityVoteCropland:   Boolean,
-    majorityVoteCroptype:   Boolean
+    majorityVoteCroptype:   Boolean,
+    targetDatatype:         TargetDatatype
   ): MultibandTile = {
 
     val sorted  = OnnxInferenceUtils.sortByTime(tiles)
@@ -238,7 +260,9 @@ object CroptypeInference {
     val landcoverAccum = new ArrayBuffer[Float]()
     val croptypeAccum  = new ArrayBuffer[Float]()
     // One (scaled) NDVI value per pixel per monthly timestep, indexed as p * T + t.
-    val ndviAccum: Array[Float] = if (outputNdvi) new Array[Float](B * T) else null
+    // Stored as Short (values range up to 250, which exceeds signed byte range) to avoid
+    // holding a much larger Float array; narrowed to his father's skirtUByte only when building output tiles.
+    val ndviAccum: Array[Short] = if (outputNdvi) new Array[Short](B * T) else null
 
     var detectedLcClasses = numLcClassesOverride.getOrElse(-1)
     var detectedCtClasses = numCtClassesOverride.getOrElse(-1)
@@ -363,12 +387,13 @@ object CroptypeInference {
 
     val outputTiles = new ArrayBuffer[Tile]()
     if (outputEmbeddings) {
-      outputTiles ++= OnnxInferenceUtils.buildQuantizedEmbeddingTile(embeddingAccum.toArray, B, cols, rows).bands
+      val bands = OnnxInferenceUtils.buildQuantizedEmbeddingTile(embeddingAccum.toArray, B, cols, rows, targetDatatype).bands
+      outputTiles ++= (if (targetDatatype.isFloat) bands.map(_.convert(targetDatatype.cellType)) else bands)
       logger.info(s"CroptypeInference: added embeddings ${outputTiles.length} ")
     }
     if (outputProbabilities) {
       outputTiles ++= buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
-        detectedLcClasses, detectedCtClasses, numSeasons).bands
+        detectedLcClasses, detectedCtClasses, numSeasons, targetDatatype).bands
       logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
     }
     if (outputClassification) {
@@ -385,15 +410,19 @@ object CroptypeInference {
         majorityVoteEnabled = majorityVoteEnabled,
         majorityVoteKernelSize = majorityVoteKernelSize,
         majorityVoteCropland = majorityVoteCropland,
-        majorityVoteCroptype = majorityVoteCroptype
+        majorityVoteCroptype = majorityVoteCroptype,
+        targetDatatype = targetDatatype
       ).bands
     }
     if (outputNdvi) {
-      outputTiles ++= buildNdviTiles(ndviAccum, cols, rows, T)
+      outputTiles ++= buildNdviTiles(ndviAccum, cols, rows, T).map {
+        case t if targetDatatype.isFloat => t.convert(targetDatatype.cellType)
+        case t => t
+      }
       logger.info(s"CroptypeInference: added ndvi ${T} monthly bands.")
     }
     logger.info(s"CroptypeInference: Finished for tile at extent $tileExtent, output bands: ${outputTiles.length} outputEmbeddings=$outputEmbeddings, outputProbabilities=$outputProbabilities, outputClassification=$outputClassification")
-    MultibandTile(outputTiles.toSeq).convert(UByteCellType)
+    MultibandTile(outputTiles.toSeq)
   }
 
   /**
@@ -431,28 +460,28 @@ object CroptypeInference {
    * Clip NDVI to [-0.08, 0.92] and rescale to a [0, 250] integral value suitable for a
    * uint8 output cube: ndvi_scaled = (clip(ndvi, -0.08, 0.92) + 0.08) / 0.004.
    */
-  private def scaleNdviToByte(ndvi: Float): Float = {
+  private def scaleNdviToByte(ndvi: Float): Short = {
     val clipped = math.max(-0.08f, math.min(0.92f, ndvi))
-    math.round((clipped + 0.08f) / 0.004f).toFloat
+    math.round((clipped + 0.08f) / 0.004f).toShort
   }
 
   /** Build one band per monthly timestep from a [B * T] (pixel-major) NDVI accumulator. */
-  private def buildNdviTiles(ndviAccum: Array[Float], cols: Int, rows: Int, T: Int): Seq[Tile] = {
+  private def buildNdviTiles(ndviAccum: Array[Short], cols: Int, rows: Int, T: Int): Seq[Tile] = {
     val B = cols * rows
     (0 until T).map { t =>
-      val bandData = new Array[Float](B)
+      val bandData = new Array[Short](B)
       var p = 0
       while (p < B) {
         bandData(p) = ndviAccum(p * T + t)
         p += 1
       }
-      FloatArrayTile(bandData, cols, rows): Tile
+      ShortArrayTile(bandData, cols, rows).convert(ubyteCellType): Tile
     }
   }
 
   /** Scale a [0,1] probability to a [0,100] integral value suitable for a uint8 cube. */
-  private def scaleProbabilityToByte(prob: Float): Float =
-    math.round(math.max(0f, math.min(1f, prob)) * 100f).toFloat
+  private def scaleProbabilityToByte(prob: Float): Byte =
+    math.round(math.max(0f, math.min(1f, prob)) * 100f).toByte
 
   /**
    * Output all raw probability values as bands for inspection, scaled from [0,1] to [0,100]
@@ -466,22 +495,25 @@ object CroptypeInference {
     rows:         Int,
     numLcClasses: Int,
     numCtClasses: Int,
-    numSeasons:   Int
+    numSeasons:   Int,
+    targetDatatype: TargetDatatype
   ): MultibandTile = {
     val B = rows * cols
-    val totalBands = numLcClasses + numSeasons * numCtClasses
+    val totalBands = numSeasons * numCtClasses
     val bands = Array.tabulate(totalBands) { band =>
-      val data = new Array[Float](B)
+      val data = new Array[Byte](B)
       for (p <- 0 until B) {
-        val prob = if (band < numLcClasses) {
-          lcProbs(p * numLcClasses + band)
+        if (band < numLcClasses) {
+          //lcProbs(p * numLcClasses + band)
+          //skip
         } else {
           val ctBand = band - numLcClasses
-          ctProbs(p * numSeasons * numCtClasses + ctBand)
+          val prob = ctProbs(p * numSeasons * numCtClasses + ctBand)
+          data(p) = scaleProbabilityToByte(prob)
         }
-        data(p) = scaleProbabilityToByte(prob)
+
       }
-      FloatArrayTile(data, cols, rows): Tile
+      if (targetDatatype.isFloat) FloatArrayTile(data.map(_.toFloat), cols, rows) else UByteArrayTile(data, cols, rows, ubyteCellType): Tile
     }
     MultibandTile(bands)
   }
@@ -536,14 +568,17 @@ object CroptypeInference {
     majorityVoteEnabled:    Boolean = true,
     majorityVoteKernelSize: Int = 5,
     majorityVoteCropland:   Boolean = true,
-    majorityVoteCroptype:   Boolean = true
+    majorityVoteCroptype:   Boolean = true,
+    targetDatatype:         TargetDatatype
   ): MultibandTile = {
 
     val B = rows * cols
-    val croplandClass = new Array[Float](B)
-    val croplandProb  = new Array[Float](B)
-    val croptypeClassPerSeason = Array.fill(numSeasons)(new Array[Float](B))
-    val croptypeProbPerSeason  = Array.fill(numSeasons)(new Array[Float](B))
+    val croplandClass = new Array[Byte](B)
+    val croplandProb  = new Array[Byte](B)
+    val otherProb     = new Array[Byte](B)
+    val croptypeClassPerSeason = Array.fill(numSeasons)(new Array[Byte](B))
+    val croptypeProbPerSeason  = Array.fill(numSeasons)(new Array[Byte](B))
+    val nocropValueByte = OnnxInferenceUtils.NOCROP_VALUE.toByte
 
     for (p <- 0 until B) {
       val lcOffset = p * numLcClasses
@@ -552,21 +587,23 @@ object CroptypeInference {
       //println(s"Pixel $p: lcPred = $lcPred, lcSlice = ${lcSlice.mkString("[", ",", "]")}")
       val isCrop = croplandClassSet.contains(lcPred)
 
-      croplandClass(p) = if (isCrop) 1f else 0f
-      croplandProb(p) = scaleProbabilityToByte(croplandClassSet.foldLeft(0f) { (acc, idx) =>
+      croplandClass(p) = if (isCrop) 1.toByte else 0.toByte
+      val croplandProbability = croplandClassSet.foldLeft(0f) { (acc, idx) =>
         if (idx < numLcClasses) acc + lcSlice(idx) else acc
-      })
+      }
+      croplandProb(p) = scaleProbabilityToByte(croplandProbability)
+      otherProb(p) = scaleProbabilityToByte(1f - croplandProbability)
 
       var s = 0
       while (s < numSeasons) {
         if (maskCropland && !isCrop ) {
-          croptypeClassPerSeason(s)(p) = OnnxInferenceUtils.NOCROP_VALUE
-          croptypeProbPerSeason(s)(p) = 0f
+          croptypeClassPerSeason(s)(p) = 255.toByte // 'no crop' sentinel
+          croptypeProbPerSeason(s)(p) = 0.toByte
         } else {
           val ctOffset = (p * numSeasons + s) * numCtClasses
           val ctSlice = java.util.Arrays.copyOfRange(ctProbs, ctOffset, ctOffset + numCtClasses)
           val ctPred = OnnxInferenceUtils.argmax(ctSlice)
-          croptypeClassPerSeason(s)(p) = ctPred.toFloat
+          croptypeClassPerSeason(s)(p) = ctPred.toByte
           croptypeProbPerSeason(s)(p) = scaleProbabilityToByte(ctSlice(ctPred))
         }
         s += 1
@@ -575,9 +612,12 @@ object CroptypeInference {
 
     val croplandClassTile: Tile =
       if (majorityVoteEnabled && majorityVoteCropland)
-        MajorityVote(FloatArrayTile(croplandClass, cols, rows), majorityVoteKernelSize, Set.empty[Int])
+        MajorityVote(UByteArrayTile(croplandClass, cols, rows, ubyteCellType), majorityVoteKernelSize, Set.empty[Int])
       else
-        FloatArrayTile(croplandClass, cols, rows)
+        UByteArrayTile(croplandClass, cols, rows, ubyteCellType)
+    val croplandClassOut: Tile =
+      if (targetDatatype.isFloat) croplandClassTile.convert(targetDatatype.cellType)
+      else croplandClassTile
 
     // Croptype labels exclude the "no crop" sentinel from voting, matching the python
     // reference's POSTPROCESSING_EXCLUDED_VALUES handling for croptype postprocessing.
@@ -585,20 +625,24 @@ object CroptypeInference {
     val seasonBands = Array.tabulate(numSeasons) { s =>
       val croptypeClassTile: Tile =
         if (majorityVoteEnabled && majorityVoteCroptype)
-          MajorityVote(FloatArrayTile(croptypeClassPerSeason(s), cols, rows), majorityVoteKernelSize, croptypeExcludedValues)
+          MajorityVote(UByteArrayTile(croptypeClassPerSeason(s), cols, rows, ubyteCellType), majorityVoteKernelSize, croptypeExcludedValues)
         else
-          FloatArrayTile(croptypeClassPerSeason(s), cols, rows)
+          UByteArrayTile(croptypeClassPerSeason(s), cols, rows, ubyteCellType)
+      val croptypeClassOut: Tile =
+        if (targetDatatype.isFloat) croptypeClassTile.convert(targetDatatype.cellType)
+        else croptypeClassTile
       Array[Tile](
-        croptypeClassTile,
-        FloatArrayTile(croptypeProbPerSeason(s), cols, rows): Tile
+        croptypeClassOut,
+        if (targetDatatype.isFloat) FloatArrayTile(croptypeProbPerSeason(s).map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(croptypeProbPerSeason(s), cols, rows, ubyteCellType): Tile
       )
     }.flatten
 
 
     MultibandTile(
       (Array[Tile](
-        croplandClassTile,
-        FloatArrayTile(croplandProb, cols, rows): Tile
+        croplandClassOut,
+        if (targetDatatype.isFloat) FloatArrayTile(croplandProb.map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(croplandProb, cols, rows, ubyteCellType): Tile,
+        if (targetDatatype.isFloat) FloatArrayTile(otherProb.map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(otherProb, cols, rows, ubyteCellType): Tile
       ) ++ seasonBands): _*
     )
   }
