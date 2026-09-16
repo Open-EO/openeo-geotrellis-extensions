@@ -366,13 +366,9 @@ object CroptypeInference {
       outputTiles ++= OnnxInferenceUtils.buildQuantizedEmbeddingTile(embeddingAccum.toArray, B, cols, rows).bands
       logger.info(s"CroptypeInference: added embeddings ${outputTiles.length} ")
     }
-    if (outputProbabilities) {
-      outputTiles ++= buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
-        detectedLcClasses, detectedCtClasses, numSeasons).bands
-      logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
-    }
-    if (outputClassification) {
-      outputTiles ++= buildClassificationTileFromProbs(
+
+    val classificationBands =
+      if (outputClassification) Some(buildClassificationTileFromProbs(
         lcProbs = landcoverAccum.toArray,
         ctProbs = croptypeAccum.toArray,
         cols = cols,
@@ -386,7 +382,29 @@ object CroptypeInference {
         majorityVoteKernelSize = majorityVoteKernelSize,
         majorityVoteCropland = majorityVoteCropland,
         majorityVoteCroptype = majorityVoteCroptype
-      ).bands
+      ).bands)
+      else None
+
+    val probabilityBands =
+      if (outputProbabilities) Some(buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
+        detectedLcClasses, detectedCtClasses, numSeasons, croplandClassSet).bands)
+      else None
+
+    (classificationBands, probabilityBands) match {
+      case (Some(cBands), Some(pBands)) =>
+        outputTiles ++= cBands.take(1)
+        outputTiles ++= pBands.take(2)
+        outputTiles ++= cBands.drop(1)
+        outputTiles ++= pBands.drop(2)
+      case (Some(cBands), None) =>
+        outputTiles ++= cBands
+      case (None, Some(pBands)) =>
+        outputTiles ++= pBands
+      case _ =>
+    }
+
+    if (outputProbabilities) {
+      logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
     }
     if (outputNdvi) {
       outputTiles ++= buildNdviTiles(ndviAccum, cols, rows, T)
@@ -455,9 +473,14 @@ object CroptypeInference {
     math.round(math.max(0f, math.min(1f, prob)) * 100f).toFloat
 
   /**
-   * Output all raw probability values as bands for inspection, scaled from [0,1] to [0,100]
-   * so the result fits a uint8 output cube.
-   * Bands: [lc_0 .. lc_N, ct_s0_0 .. ct_s0_M, ct_s1_0 .. ct_s1_M, ...]
+   * Probability output section matching the Python reference structure:
+   * [cropland probability, other probability,
+   *  ct_s0_probability, ct_s0_class_0..class_N,
+   *  ct_s1_probability, ct_s1_class_0..class_N, ...]
+   *
+   * The final assembly reorders the full multiband tile to:
+   * cropland_classification, probability_cropland, probability_other,
+   * croptype_classification:tc-sX, croptype_probability:tc-sX, ...
    */
   private def buildProbabilityTile(
     lcProbs:      Array[Float],
@@ -466,24 +489,53 @@ object CroptypeInference {
     rows:         Int,
     numLcClasses: Int,
     numCtClasses: Int,
-    numSeasons:   Int
+    numSeasons:   Int,
+    croplandClassSet: Set[Int]
   ): MultibandTile = {
     val B = rows * cols
-    val totalBands = numLcClasses + numSeasons * numCtClasses
-    val bands = Array.tabulate(totalBands) { band =>
-      val data = new Array[Float](B)
-      for (p <- 0 until B) {
-        val prob = if (band < numLcClasses) {
-          lcProbs(p * numLcClasses + band)
-        } else {
-          val ctBand = band - numLcClasses
-          ctProbs(p * numSeasons * numCtClasses + ctBand)
-        }
-        data(p) = scaleProbabilityToByte(prob)
+
+    val croplandProb = new Array[Float](B)
+    val otherProb = new Array[Float](B)
+    for (p <- 0 until B) {
+      val lcOffset = p * numLcClasses
+      val lcSlice = java.util.Arrays.copyOfRange(lcProbs, lcOffset, lcOffset + numLcClasses)
+      val cropProb = croplandClassSet.foldLeft(0f) { (acc, idx) =>
+        if (idx < numLcClasses) acc + lcSlice(idx) else acc
       }
-      FloatArrayTile(data, cols, rows): Tile
+      croplandProb(p) = scaleProbabilityToByte(cropProb)
+      otherProb(p) = scaleProbabilityToByte(1f - cropProb)
     }
-    MultibandTile(bands)
+
+    val seasonBands = Array.tabulate(numSeasons) { s =>
+      val seasonProb = new Array[Float](B)
+      val classProbs = Array.tabulate(numCtClasses) { c =>
+        val data = new Array[Float](B)
+        var p = 0
+        while (p < B) {
+          val ctOffset = (p * numSeasons + s) * numCtClasses
+          val ctSlice = java.util.Arrays.copyOfRange(ctProbs, ctOffset, ctOffset + numCtClasses)
+          data(p) = scaleProbabilityToByte(ctSlice(c))
+          p += 1
+        }
+        FloatArrayTile(data, cols, rows): Tile
+      }
+      var p = 0
+      while (p < B) {
+        val ctOffset = (p * numSeasons + s) * numCtClasses
+        val ctSlice = java.util.Arrays.copyOfRange(ctProbs, ctOffset, ctOffset + numCtClasses)
+        val ctPred = OnnxInferenceUtils.argmax(ctSlice)
+        seasonProb(p) = scaleProbabilityToByte(ctSlice(ctPred))
+        p += 1
+      }
+      Array[Tile](
+        FloatArrayTile(seasonProb, cols, rows): Tile,
+      ) ++ classProbs
+    }.flatten
+
+    MultibandTile((Array[Tile](
+      FloatArrayTile(croplandProb, cols, rows): Tile,
+      FloatArrayTile(otherProb, cols, rows): Tile
+    ) ++ seasonBands): _*)
   }
 
   /**
@@ -588,18 +640,11 @@ object CroptypeInference {
           MajorityVote(FloatArrayTile(croptypeClassPerSeason(s), cols, rows), majorityVoteKernelSize, croptypeExcludedValues)
         else
           FloatArrayTile(croptypeClassPerSeason(s), cols, rows)
-      Array[Tile](
-        croptypeClassTile,
-        FloatArrayTile(croptypeProbPerSeason(s), cols, rows): Tile
-      )
+      Array[Tile](croptypeClassTile)
     }.flatten
 
-
     MultibandTile(
-      (Array[Tile](
-        croplandClassTile,
-        FloatArrayTile(croplandProb, cols, rows): Tile
-      ) ++ seasonBands): _*
+      (Array[Tile](croplandClassTile) ++ seasonBands): _*
     )
   }
 
