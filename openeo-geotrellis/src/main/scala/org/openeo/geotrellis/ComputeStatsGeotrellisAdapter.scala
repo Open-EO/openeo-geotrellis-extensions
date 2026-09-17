@@ -2,13 +2,14 @@ package org.openeo.geotrellis
 
 import geotrellis.layer._
 import geotrellis.proj4.CRS
-import geotrellis.raster.{Tile, isData}
+import geotrellis.raster.{Tile, isData, isNoData}
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
 import geotrellis.spark._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.types.{DoubleType, IntegerType, StructField, StructType, TimestampType}
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder, intern}
@@ -300,6 +301,49 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       .mapValues(bandValues => bandValues.asJava)
       .toMap
       .asJava
+  }
+
+  def reduce_spatial(cube: MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder: SparkAggregateScriptBuilder): Unit = {
+    // TODO: support spatial cube
+    import org.apache.spark.sql._
+
+    val isFloatingPoint = cube.metadata.cellType.isFloatingPoint
+    val bandCount = new OpenEOProcesses().RDDBandCount(cube)
+
+    val pixelRdd: RDD[Row] = for {
+      keyedMultibandTile <- cube
+      (spaceTimeKey, multibandTile) = keyedMultibandTile // odd that this doesn't work directly
+      date = java.sql.Timestamp.from(spaceTimeKey.time.toInstant)
+      row <- 0 until multibandTile.rows
+      col <- 0 until multibandTile.cols
+      bandValues = multibandTile.bands.map { tile =>
+        if (isFloatingPoint) {
+          val value = tile.getDouble(col, row)
+          if (isNoData(value)) null else value
+        } else {
+          val value = tile.get(col, row)
+          if (isNoData(value)) null else value
+        }
+      }
+    } yield Row.fromSeq(date +: bandValues)
+
+    val dataType = if (isFloatingPoint) DoubleType else IntegerType
+    val bandColumns = (0 until bandCount).map(bandIndex => s"band_$bandIndex") // TODO: use actual band names
+
+    val bandStructs = bandColumns.map(StructField(_, dataType))
+    val dateStruct = StructField("date", TimestampType)
+
+    val spark = SparkSession.builder().config(sc.getConf).getOrCreate()
+    val df = spark.createDataFrame(pixelRdd, schema = StructType(dateStruct +: bandStructs))
+
+    val expressionBuilder = scriptBuilder.generateFunction()
+    val expressionColumns = for {
+      colName <- bandColumns
+      expressionColumn <- expressionBuilder(df.col(colName), colName)
+    } yield expressionColumn
+
+    val aggregated = df.groupBy("date").agg(expressionColumns.head, expressionColumns.tail: _*)
+    aggregated.show() // TODO: write to CSV
   }
 
   private def sc: SparkContext = SparkContext.getOrCreate()
