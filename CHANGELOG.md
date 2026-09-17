@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support BigTiff output ([#792](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/792))
 - Support treating missing angle bands file as soft error ([#692](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/692))
 - Fail fast when produced GeoTiff is corrupt ([#794](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/794))
+- Avoid GDAL warning: `TIFFReadDirectory:Sum of Photometric type-related color channels and ExtraSamples doesn't match SamplesPerPixel. Defining non-color channels as ExtraSamples.` ([#757](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/757))
 
 ### Changed
 
