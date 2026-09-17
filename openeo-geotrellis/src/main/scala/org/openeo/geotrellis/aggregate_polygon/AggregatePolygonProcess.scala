@@ -11,7 +11,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, Row, SaveMode, SparkSession}
-import org.openeo.geotrellis.SpatialToSpacetimeJoinRdd
+import org.openeo.geotrellis.OpenEOProcesses
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.creo.CreoS3Utils
@@ -112,10 +112,14 @@ class AggregatePolygonProcess {
       .map { case (geom, index) => Feature(geom, index) }
 
     val geometryRDD = sc.parallelize(indexedFeatures).clipToGrid(datacube.metadata).groupByKey()
-    val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, geometryRDD)
+    // Use leftJoinSpacetimeSpatial instead of instantiating SpatialToSpacetimeJoinRdd directly:
+    // it dispatches to the correct join strategy for whichever SpacePartitioner variant (plain,
+    // ByTile, sparse-with-known-keys, ...) the datacube happens to use, which the raw
+    // SpatialToSpacetimeJoinRdd fallback does not handle correctly in all cases.
+    val combinedRDD = new OpenEOProcesses().leftJoinSpacetimeSpatial(datacube, geometryRDD, leftOuterJoin = false)
 
     val pixelRDD: RDD[Row] = combinedRDD.flatMap {
-      case (key: SpaceTimeKey, (tile: MultibandTile, geoms: Iterable[Feature[Geometry,Int]])) => {
+      case (key: SpaceTimeKey, (tile: MultibandTile, Some(geoms: Iterable[Feature[Geometry,Int]]))) => {
         val result: ListBuffer[Row] = ListBuffer()
         val bands = checkTileBandCount(tile.bandCount, bandCount)
 
@@ -154,6 +158,7 @@ class AggregatePolygonProcess {
         }
         result
       }
+      case (_, (_, None)) => Seq.empty
     }
     val cellType = datacube.metadata.cellType
     val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
@@ -261,10 +266,10 @@ class AggregatePolygonProcess {
     try {
       val polygonMappingBC = sc.broadcast(invertedMapping)
       val spatiallyPartitionedIndexMaskLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = ContextRDD(byIndexMask.persist(MEMORY_ONLY_2), byIndexMask.metadata)
-      val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, spatiallyPartitionedIndexMaskLayer)
+      val combinedRDD = new OpenEOProcesses().leftJoinSpacetimeSpatial(datacube, spatiallyPartitionedIndexMaskLayer, leftOuterJoin = false)
       combinedRDD.name = "aggregate_spatial: datacube masked with geometries"
       val pixelRDD: RDD[Row] = combinedRDD.flatMap{
-        case (key: SpaceTimeKey,( tile: MultibandTile,zones: Tile)) => {
+        case (key: SpaceTimeKey,( tile: MultibandTile,Some(zones: Tile))) => {
           val rows  = tile.rows
           val cols  = tile.cols
           val bands = checkTileBandCount(tile.bandCount, bandCount)
@@ -315,6 +320,7 @@ class AggregatePolygonProcess {
 
           result
         }
+        case (_, (_, None)) => Seq.empty
       }
       val cellType = datacube.metadata.cellType
       val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
@@ -397,8 +403,11 @@ class AggregatePolygonProcess {
 
     try {
       val spatiallyPartitionedIndexMaskLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = ContextRDD(byIndexMask.persist(MEMORY_ONLY_2), byIndexMask.metadata)
-      val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, spatiallyPartitionedIndexMaskLayer)
-      val zonalStats: RDD[(ZonedDateTime, Iterable[((ZonedDateTime, Int), Seq[RunningTotal])])] = combinedRDD.flatMap { case (date, (t1:MultibandTile, t2:Tile)) => ZonalRunningTotal(t1, t2).map(index_total => ((date.time,index_total._1),index_total._2)).filterKeys(_._2>=0) }
+      val combinedRDD = new OpenEOProcesses().leftJoinSpacetimeSpatial(datacube, spatiallyPartitionedIndexMaskLayer, leftOuterJoin = false)
+      val zonalStats: RDD[(ZonedDateTime, Iterable[((ZonedDateTime, Int), Seq[RunningTotal])])] = combinedRDD.flatMap {
+        case (date, (t1: MultibandTile, Some(t2: Tile))) => ZonalRunningTotal(t1, t2).map(index_total => ((date.time,index_total._1),index_total._2)).filterKeys(_._2>=0)
+        case (_, (_, None)) => Map.empty[(ZonedDateTime, Int), Seq[RunningTotal]]
+      }
         .reduceByKey((a,b) =>a.zip(b).map({ case (total_a,total_b) => total_a + total_b})).groupBy(_._1._1)
 
       val statsByDate: collection.Map[ZonedDateTime, Map[Int, Seq[MeanResult]]] = zonalStats.mapValues(_.map{

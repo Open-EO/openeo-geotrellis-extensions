@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Fixed potential bug in merge of spacetime to spatial data cube, which could have effect when Spark does partial stage recomputes.
+
 ### Added
 
 - Support OpenTelemetry Prometheus exporter for metrics scraping ([#717](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/717), [#750](https://github.com/Open-EO/openeo-geotrellis-extensions/pull/750))
