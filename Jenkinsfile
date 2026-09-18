@@ -218,7 +218,7 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
 
             rtMavenSAS.deployer server: serverSAS, releaseRepo: releaseRepoSAS, snapshotRepo: snapshotRepoSAS
             rtMavenSAS.tool = maven
-            rtMavenSAS.opts = rtMaven.opts
+            rtMavenSAS.opts = rtMaven.opts + ' -DskipTests=true -DskipSentinelHubTests=true'
             rtMavenSAS.deployer.deployArtifacts = true
             //use '--projects StatisticsMapReduce' in 'goals' to build specific module
             try {
@@ -234,7 +234,7 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
                         print e.message
                     }
 
-                    buildInfoSAS = rtMavenSAS.run pom: 'pom.xml', goals: '-P default,wmts -U clean install' + rtMavenSAS.opts
+                    buildInfoSAS = rtMavenSAS.run pom: 'pom.xml', goals: '-P default,wmts -U deploy' + rtMavenSAS.opts
                     try {
                         if (rtMavenSAS.deployer.deployArtifacts)
                             serverSAS.publishBuildInfo buildInfoSAS
