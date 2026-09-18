@@ -2,11 +2,14 @@ package org.openeo.geotrellis
 
 import geotrellis.layer._
 import geotrellis.proj4.CRS
+import geotrellis.raster.{Tile, isData, isNoData}
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
 import geotrellis.spark._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.types.{DoubleType, IntegerType, StructField, StructType, TimestampType}
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder, intern}
@@ -187,6 +190,161 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
 
+  def compute_reduction_from_spatial_datacube(cube: MultibandTileLayerRDD[SpatialKey], reducer: String): JList[Double] = {
+    def reduce(reducer: String): Vector[Double] = {
+      val aggregate = aggregateBandTile(reducer)
+      val combine = combineBandValues(reducer)
+
+      val bandAggregatesPerTile = cube
+        .map { case (_, multibandTile) => multibandTile.bands.map(aggregate) }
+
+      val bandAggregates = bandAggregatesPerTile.fold(Vector[Double]()) { (bandAggregatesLeft, bandAggregatesRight) =>
+        if (bandAggregatesLeft.isEmpty) bandAggregatesRight
+        else if (bandAggregatesRight.isEmpty) bandAggregatesLeft
+        else bandAggregatesLeft.zip(bandAggregatesRight)
+          .map { case (leftAggregate, rightAggregate) =>
+            combine(leftAggregate, rightAggregate)
+          }
+      }
+
+      bandAggregates
+    }
+
+    val result = reducer match {
+      case "mean" =>
+        cube.cache()
+        reduce("sum")
+          .zip(reduce("count"))
+          .map { case (sum, count) => sum / count }
+      case _ => reduce(reducer)
+    }
+
+    result.asJava
+  }
+
+  private def aggregateBandTile(reducer: String): Tile => Double =
+    reducer match {
+      case "max" => tile => { val (_, max) = tile.findMinMaxDouble; max }
+      case "min" => tile => { val (min, _) = tile.findMinMaxDouble; min }
+      case "sum" => tile => {
+        var sum = Double.NaN
+
+        tile.foreachDouble { v =>
+          if (isData(v)) {
+            if (sum.isNaN) sum = v
+            else sum += v
+          }
+        }
+
+        sum
+      }
+      case "count" => tile => {
+        var count = 0
+
+        tile.foreachDouble { v => if (isData(v)) count += 1 }
+
+        count
+      }
+  }
+
+  private def combineBandValues(reducer: String): (Double, Double) => Double =
+    reducer match {
+      case "max" => _ max _
+      case "min" => _ min _
+      case "sum" => _ + _
+      case "count" => _ + _
+    }
+
+  def compute_reduction_timeseries_from_spatiotemporal_datacube(cube: MultibandTileLayerRDD[SpaceTimeKey], reducer: String): JMap[String, JList[Double]] = {
+    def reduce(reducer: String): RDD[(String, Vector[Double])] = {
+      val aggregate = aggregateBandTile(reducer)
+      val combine = combineBandValues(reducer)
+
+      val timestampedBandAggregates = cube
+        .groupBy { case (SpaceTimeKey(_, _, timestamp), _) => timestamp.toString } // TODO: properly format timestamp
+        .mapValues { keyedMultibandTiles =>
+          val multibandTiles = keyedMultibandTiles.map { case (_, multibandTile) => multibandTile }
+
+          val bandAggregatesPerTile = multibandTiles
+            .map { multibandTile =>
+              multibandTile.bands.map(aggregate)
+            }
+
+          val bandAggregates = bandAggregatesPerTile.fold(Vector[Double]()) { (bandAggregatesLeft, bandAggregatesRight) =>
+            if (bandAggregatesLeft.isEmpty) bandAggregatesRight
+            else if (bandAggregatesRight.isEmpty) bandAggregatesLeft
+            else bandAggregatesLeft.zip(bandAggregatesRight)
+              .map { case (leftAggregate, rightAggregate) =>
+                combine(leftAggregate, rightAggregate)
+              }
+          }
+
+          bandAggregates
+        }
+
+      timestampedBandAggregates
+    }
+
+    val results = reducer match {
+      case "mean" =>
+        cube.cache()
+        reduce("sum")
+          .join(reduce("count"))
+          .mapValues { case (sums, counts) =>
+            sums.zip(counts).map { case (sum, count) => sum / count }
+          }
+      case _ => reduce(reducer)
+    }
+
+    results.collectAsMap()
+      .view
+      .mapValues(bandValues => bandValues.asJava)
+      .toMap
+      .asJava
+  }
+
+  def reduce_spatial(cube: MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder: SparkAggregateScriptBuilder): Unit = {
+    // TODO: support spatial cube
+    import org.apache.spark.sql._
+
+    val isFloatingPoint = cube.metadata.cellType.isFloatingPoint
+    val bandCount = new OpenEOProcesses().RDDBandCount(cube)
+
+    val pixelRdd: RDD[Row] = for {
+      keyedMultibandTile <- cube
+      (spaceTimeKey, multibandTile) = keyedMultibandTile // odd that this doesn't work directly
+      date = java.sql.Timestamp.from(spaceTimeKey.time.toInstant)
+      row <- 0 until multibandTile.rows
+      col <- 0 until multibandTile.cols
+      bandValues = multibandTile.bands.map { tile =>
+        if (isFloatingPoint) {
+          val value = tile.getDouble(col, row)
+          if (isNoData(value)) null else value
+        } else {
+          val value = tile.get(col, row)
+          if (isNoData(value)) null else value
+        }
+      }
+    } yield Row.fromSeq(date +: bandValues)
+
+    val dataType = if (isFloatingPoint) DoubleType else IntegerType
+    val bandColumns = (0 until bandCount).map(bandIndex => s"band_$bandIndex") // TODO: use actual band names
+
+    val bandStructs = bandColumns.map(StructField(_, dataType))
+    val dateStruct = StructField("date", TimestampType)
+
+    val spark = SparkSession.builder().config(sc.getConf).getOrCreate()
+    val df = spark.createDataFrame(pixelRdd, schema = StructType(dateStruct +: bandStructs))
+
+    val expressionBuilder = scriptBuilder.generateFunction()
+    val expressionColumns = for {
+      colName <- bandColumns
+      expressionColumn <- expressionBuilder(df.col(colName), colName)
+    } yield expressionColumn
+
+    val aggregated = df.groupBy("date").agg(expressionColumns.head, expressionColumns.tail: _*)
+    aggregated.show() // TODO: write to CSV
+  }
 
   private def sc: SparkContext = SparkContext.getOrCreate()
 
