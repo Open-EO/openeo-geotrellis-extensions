@@ -1492,9 +1492,11 @@ class OpenEOProcesses extends Serializable {
       }
     } else {
       val maybeKeys = findPartitionerKeys(left)
+      logger.info(s"leftJoinSpacetimeSpatial: Found ${maybeKeys.map(_.size).getOrElse(0)} keys in left cube for partitioner ${maybePartitioner.getOrElse("None")}")
       if (maybeKeys.isDefined) {
         val spatialKeys = maybeKeys.get.map(_.spatialKey).toSet
-        val timestamps = maybeKeys.get.map(_.temporalKey).toSet
+        val timestamps = left.map(_._1.temporalKey).distinct().collect().toSet
+        logger.info(s"leftJoinSpacetimeSpatial: Timestamps in left cube: ${timestamps}")
         val spatialKeysBC = sc.broadcast(spatialKeys)
         val rightAsSpacetime = right
           .filter { case (spatialKey, _) => spatialKeysBC.value.contains(spatialKey) }
