@@ -337,15 +337,27 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     val dateStruct = StructField("date", TimestampType)
 
     val spark = SparkSession.builder().config(sc.getConf).getOrCreate()
-    val df = spark.createDataFrame(pixelRdd, schema = StructType(dateStruct +: bandStructs))
+    val df = spark
+      .createDataFrame(pixelRdd, schema = StructType(dateStruct +: bandStructs))
+
+    val filteredDf =
+      if (scriptBuilder.nodataIsIgnored)
+        df.filter(bandColumns
+          .map { colName =>
+            val col = df.col(colName)
+            col.isNotNull and !col.isNaN
+          }
+          .reduce {_ or _}
+        )
+      else df
 
     val expressionBuilder = scriptBuilder.generateFunction()
     val expressionColumns = for {
       colName <- bandColumns
-      expressionColumn <- expressionBuilder(df.col(colName), colName)
+      expressionColumn <- expressionBuilder(filteredDf.col(colName), colName)
     } yield expressionColumn
 
-    val aggregated = df
+    val aggregated = filteredDf
       .groupBy("date")
       .agg(expressionColumns.head, expressionColumns.tail: _*)
 
@@ -391,13 +403,24 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     val spark = SparkSession.builder().config(sc.getConf).getOrCreate()
     val df = spark.createDataFrame(pixelRdd, schema = StructType(bandStructs))
 
+    val filteredDf =
+      if (scriptBuilder.nodataIsIgnored)
+        df.filter(bandColumns
+          .map { colName =>
+            val col = df.col(colName)
+            col.isNotNull and !col.isNaN
+          }
+          .reduce {_ or _}
+        )
+      else df
+
     val expressionBuilder = scriptBuilder.generateFunction()
     val expressionColumns = for {
       colName <- bandColumns
-      expressionColumn <- expressionBuilder(df.col(colName), colName)
+      expressionColumn <- expressionBuilder(filteredDf.col(colName), colName)
     } yield expressionColumn
 
-    val aggregated = df.agg(expressionColumns.head, expressionColumns.tail: _*)
+    val aggregated = filteredDf.agg(expressionColumns.head, expressionColumns.tail: _*)
 
     aggregated
       .coalesce(1)
