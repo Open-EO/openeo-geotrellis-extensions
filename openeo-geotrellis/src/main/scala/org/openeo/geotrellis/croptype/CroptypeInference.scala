@@ -391,11 +391,7 @@ object CroptypeInference {
       outputTiles ++= (if (targetDatatype.isFloat) bands.map(_.convert(targetDatatype.cellType)) else bands)
       logger.info(s"CroptypeInference: added embeddings ${outputTiles.length} ")
     }
-    if (outputProbabilities) {
-      outputTiles ++= buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
-        detectedLcClasses, detectedCtClasses, numSeasons, targetDatatype).bands
-      logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
-    }
+
     if (outputClassification) {
       outputTiles ++= buildClassificationTileFromProbs(
         lcProbs = landcoverAccum.toArray,
@@ -413,6 +409,11 @@ object CroptypeInference {
         majorityVoteCroptype = majorityVoteCroptype,
         targetDatatype = targetDatatype
       ).bands
+    }
+    if (outputProbabilities) {
+      outputTiles ++= buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
+        detectedLcClasses, detectedCtClasses, numSeasons, targetDatatype).bands
+      logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
     }
     if (outputNdvi) {
       outputTiles ++= buildNdviTiles(ndviAccum, cols, rows, T).map {
