@@ -303,8 +303,8 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       .asJava
   }
 
+  //noinspection ScalaUnusedSymbol
   def reduce_spatial(cube: MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder: SparkAggregateScriptBuilder): Unit = {
-    // TODO: support spatial cube
     import org.apache.spark.sql._
 
     val isFloatingPoint = cube.metadata.cellType.isFloatingPoint
@@ -343,6 +343,47 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     } yield expressionColumn
 
     val aggregated = df.groupBy("date").agg(expressionColumns.head, expressionColumns.tail: _*)
+    aggregated.show() // TODO: write to CSV
+  }
+
+  //noinspection ScalaUnusedSymbol
+  def reduce_spatial_spatial_cube(cube: MultibandTileLayerRDD[SpatialKey], scriptBuilder: SparkAggregateScriptBuilder): Unit = {
+    // TODO: reduce code duplication with reduce_spatial
+    import org.apache.spark.sql._
+
+    val isFloatingPoint = cube.metadata.cellType.isFloatingPoint
+    val bandCount = new OpenEOProcesses().RDDBandCount(cube)
+
+    val pixelRdd: RDD[Row] = for {
+      multibandTile <- cube.values
+      row <- 0 until multibandTile.rows
+      col <- 0 until multibandTile.cols
+      bandValues = multibandTile.bands.map { tile =>
+        if (isFloatingPoint) {
+          val value = tile.getDouble(col, row)
+          if (isNoData(value)) null else value
+        } else {
+          val value = tile.get(col, row)
+          if (isNoData(value)) null else value
+        }
+      }
+    } yield Row.fromSeq(bandValues)
+
+    val dataType = if (isFloatingPoint) DoubleType else IntegerType
+    val bandColumns = (0 until bandCount).map(bandIndex => s"band_$bandIndex") // TODO: use actual band names
+
+    val bandStructs = bandColumns.map(StructField(_, dataType))
+
+    val spark = SparkSession.builder().config(sc.getConf).getOrCreate()
+    val df = spark.createDataFrame(pixelRdd, schema = StructType(bandStructs))
+
+    val expressionBuilder = scriptBuilder.generateFunction()
+    val expressionColumns = for {
+      colName <- bandColumns
+      expressionColumn <- expressionBuilder(df.col(colName), colName)
+    } yield expressionColumn
+
+    val aggregated = df.agg(expressionColumns.head, expressionColumns.tail: _*)
     aggregated.show() // TODO: write to CSV
   }
 
