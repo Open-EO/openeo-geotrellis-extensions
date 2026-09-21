@@ -145,8 +145,7 @@ object CubeProcessRegistry {
     if (fb.method.getParameterCount == 1)
       fb.method.invoke(fb.instance, cube)
     else {
-      val scalaArgs: Map[String, Any] = args.asScala.toMap.asInstanceOf[Map[String, Any]]
-      fb.method.invoke(fb.instance, cube, scalaArgs)
+      fb.method.invoke(fb.instance, cube, args)
     }
   }
 
