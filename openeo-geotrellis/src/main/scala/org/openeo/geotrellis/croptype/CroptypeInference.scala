@@ -300,8 +300,9 @@ object CroptypeInference {
           val rawElv = raw(inputBandIndices.elev); xBuf.put(base + P_ELEV, normalizeBand(P_ELEV, rawElv)); maskBuf.put(base + P_ELEV, if (OnnxInferenceUtils.isNodata(rawElv)) 1L else 0L)
           val rawSlope = raw(inputBandIndices.slope); xBuf.put(base + P_SLOPE, normalizeBand(P_SLOPE,rawSlope)); maskBuf.put(base + P_SLOPE, if (OnnxInferenceUtils.isNodata(rawSlope)) 1L else 0L)
           xBuf.put(base + P_NDVI, computeNdvi(xBuf.get(base + P_B8), xBuf.get(base + P_B4)))
-          maskBuf.put(base + P_NDVI, if (OnnxInferenceUtils.isNodata(rawB8) || OnnxInferenceUtils.isNodata(rawB4) || (rawB8 + rawB4) == 0f) 1L else 0L)
-          if (outputNdvi) ndviAccum(p * T + t) = scaleNdviToByte(xBuf.get(base + P_NDVI))
+          val ndviIsNoData = OnnxInferenceUtils.isNodata(rawB8) || OnnxInferenceUtils.isNodata(rawB4) || (rawB8 + rawB4) == 0f
+          maskBuf.put(base + P_NDVI, if (ndviIsNoData) 1L else 0L)
+          if (outputNdvi) ndviAccum(p * T + t) =  if (!ndviIsNoData )scaleNdviToByte(xBuf.get(base + P_NDVI)) else 255
 
           pi += 1
         }
