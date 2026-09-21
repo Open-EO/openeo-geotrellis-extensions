@@ -305,7 +305,8 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
   //noinspection ScalaUnusedSymbol
-  def reduce_spatial(cube: MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder: SparkAggregateScriptBuilder): Unit = {
+  def reduce_spatial(cube: MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder: SparkAggregateScriptBuilder,
+                     outputDir: String): Unit = {
     import org.apache.spark.sql._
 
     val isFloatingPoint = cube.metadata.cellType.isFloatingPoint
@@ -344,12 +345,22 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       expressionColumn <- expressionBuilder(df.col(colName), colName)
     } yield expressionColumn
 
-    val aggregated = df.groupBy("date").agg(expressionColumns.head, expressionColumns.tail: _*)
-    aggregated.show() // TODO: write to CSV
+    val aggregated = df
+      .groupBy("date")
+      .agg(expressionColumns.head, expressionColumns.tail: _*)
+
+    aggregated
+      .coalesce(1)
+      .write
+      .option("header", value = true)
+      .option("emptyValue", "")
+      .mode(SaveMode.Overwrite)
+      .csv(s"file://$outputDir")
   }
 
   //noinspection ScalaUnusedSymbol
-  def reduce_spatial_spatial_cube(cube: MultibandTileLayerRDD[SpatialKey], scriptBuilder: SparkAggregateScriptBuilder): Unit = {
+  def reduce_spatial_spatial_cube(cube: MultibandTileLayerRDD[SpatialKey], scriptBuilder: SparkAggregateScriptBuilder,
+                                  outputDir: String): Unit = {
     // TODO: reduce code duplication with reduce_spatial
     import org.apache.spark.sql._
 
@@ -387,7 +398,14 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     } yield expressionColumn
 
     val aggregated = df.agg(expressionColumns.head, expressionColumns.tail: _*)
-    aggregated.show() // TODO: write to CSV
+
+    aggregated
+      .coalesce(1)
+      .write
+      .option("header", value = true)
+      .option("emptyValue", "")
+      .mode(SaveMode.Overwrite)
+      .csv(s"file://$outputDir")
   }
 
   private def sc: SparkContext = SparkContext.getOrCreate()
