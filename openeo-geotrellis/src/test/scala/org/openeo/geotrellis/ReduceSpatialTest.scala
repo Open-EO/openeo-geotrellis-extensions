@@ -1,22 +1,25 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, SpatialKey}
-import geotrellis.raster.{ArrayMultibandTile, IntConstantNoDataArrayTile, MultibandTile, NODATA, TileLayout, isNoData}
+import geotrellis.raster.{ArrayMultibandTile, IntConstantNoDataArrayTile, MultibandTile, NODATA, TileLayout}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
 import org.apache.spark._
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.types.{DoubleType, IntegerType, StructField, StructType, TimestampType}
-import org.apache.spark.sql.{Row, SparkSession}
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
+import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
 
+import java.nio.file.Path
 import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
+import java.util
 import java.util.stream.{Stream => JStream}
-import scala.jdk.CollectionConverters._
+import scala.io.Source
+import scala.jdk.StreamConverters._
+import scala.util.Using
 
 object ReduceSpatialTest {
   private implicit var sc: SparkContext = _
@@ -42,6 +45,20 @@ object ReduceSpatialTest {
     Arguments.of("count", Seq(9.0, 12.0), Seq(9.0, 12.0)),
     Arguments.of("mean", Seq(3.0, 7.5), Seq(4.0, 8.5)),
   )
+
+  private def csvLines(dir: Path): Seq[String] = {
+    for {
+      csvFile <- java.nio.file.Files.list(dir).toScala(Seq) if csvFile.toString.endsWith(".csv")
+      lines = Using.resource(Source.fromFile(csvFile.toFile)) { resource => resource.getLines().toSeq }
+      line <- lines.drop(1)
+    } yield line
+  }
+
+  private def scriptBuilder(operator: String): SparkAggregateScriptBuilder = {
+    val scriptBuilder = new SparkAggregateScriptBuilder
+    scriptBuilder.expressionEnd(operator, arguments = util.Collections.emptyMap())
+    scriptBuilder
+  }
 }
 
 class ReduceSpatialTest extends TileLayerRDDBuilders {
@@ -75,31 +92,29 @@ class ReduceSpatialTest extends TileLayerRDDBuilders {
 
   @ParameterizedTest
   @MethodSource(Array("reduceSpatialDataCubeParams"))
-  def reduceSpatialDataCube(reducer: String, expectedBandValues: Seq[Double]): Unit = {
+  def reduceSpatialDataCube(reducer: String, expectedBandValues: Seq[Double], @TempDir tempDir: Path): Unit = {
     val spatialCube = createMultibandTileLayerRDD(sc, multibandTile, tileLayout)
-    val actualBandValues = new ComputeStatsGeotrellisAdapter().compute_reduction_from_spatial_datacube(spatialCube, reducer)
+    new ComputeStatsGeotrellisAdapter().reduce_spatial_spatial_cube(spatialCube, scriptBuilder(reducer), outputDir = tempDir.toString)
 
-    assertEquals(expectedBandValues, actualBandValues.asScala)
+    val Seq(csvLine) = csvLines(tempDir)
+
+    assertEquals(expectedBandValues, csvLine.split(",").toSeq.map(_.toDouble))
   }
 
   @ParameterizedTest
   @MethodSource(Array("reduceSpatiotemporalDataCubeParams"))
-  def reduceSpatiotemporalDataCube(reducer: String, expectedTimestamp0BandValues: Seq[Double], expectedTimestamp1BandValues: Seq[Double]): Unit = {
+  def reduceSpatiotemporalDataCube(reducer: String, expectedTimestamp0BandValues: Seq[Double], expectedTimestamp1BandValues: Seq[Double], @TempDir tempDir: Path): Unit = {
     val timestamp0 = LocalDate.of(1981, 4, 24).atStartOfDay(ZoneOffset.UTC)
     val timestamp1 = timestamp0.plusDays(1)
 
     val spaceTimeCube = this.spaceTimeCube(timestamp0, timestamp1)
-    val actualBandValues = new ComputeStatsGeotrellisAdapter().compute_reduction_timeseries_from_spatiotemporal_datacube(spaceTimeCube, reducer)
 
-    assertEquals(
-      expectedTimestamp0BandValues,
-      actualBandValues.get(timestamp0.toInstant.toEpochMilli.toString).asScala
-    )
+    new ComputeStatsGeotrellisAdapter().reduce_spatial(spaceTimeCube, scriptBuilder(reducer), outputDir = tempDir.toString)
 
-    assertEquals(
-      expectedTimestamp1BandValues,
-      actualBandValues.get(timestamp1.toInstant.toEpochMilli.toString).asScala
-    )
+    val linesSortedByDate = csvLines(tempDir).sorted
+
+    assertEquals(expectedTimestamp0BandValues, linesSortedByDate.head.split(",").toSeq.drop(1).map(_.toDouble))
+    assertEquals(expectedTimestamp1BandValues, linesSortedByDate.last.split(",").toSeq.drop(1).map(_.toDouble))
   }
 
   private def spaceTimeCube(timestamp0: ZonedDateTime, timestamp1: ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] = {
@@ -117,59 +132,5 @@ class ReduceSpatialTest extends TileLayerRDDBuilders {
     })
 
     ContextRDD(spaceTimeRdd, metadata)
-  }
-
-  @ParameterizedTest
-  @MethodSource(Array("reduceSpatiotemporalDataCubeParams"))
-  def reduceSpatialDataCubeWithDataFrames(reducer: String, expectedTimestamp0BandValues: Seq[Double], expectedTimestamp1BandValues: Seq[Double]): Unit = {
-    val timestamp0 = LocalDate.of(1981, 4, 24).atStartOfDay(ZoneOffset.UTC)
-    val timestamp1 = timestamp0.plusDays(1)
-
-    val spaceTimeCube = this.spaceTimeCube(timestamp0, timestamp1)
-
-    val isFloatingPoint = spaceTimeCube.metadata.cellType.isFloatingPoint
-
-    val pixelRdd: RDD[Row] = for {
-      keyedMultibandTile <- spaceTimeCube
-      (spaceTimeKey, multibandTile) = keyedMultibandTile // odd that this doesn't work directly
-      date = java.sql.Timestamp.from(spaceTimeKey.time.toInstant)
-      row <- 0 until multibandTile.rows
-      col <- 0 until multibandTile.cols
-      bandValues = multibandTile.bands.map { tile =>
-        if (isFloatingPoint) {
-          val value = tile.getDouble(col, row)
-          if (isNoData(value)) null else value
-        } else {
-          val value = tile.get(col, row)
-          if (isNoData(value)) null else value
-        }
-      }
-    } yield Row.fromSeq(date +: bandValues)
-
-    val dataType = if (isFloatingPoint) DoubleType else IntegerType
-    val bandColumns = (0 until multibandTile.bandCount).map(bandIndex => s"band_$bandIndex")
-
-    val bandStructs = bandColumns.map(StructField(_, dataType))
-    val dateStruct = StructField("date", TimestampType)
-
-    val spark = SparkSession.builder().config(sc.getConf).getOrCreate()
-    val df = spark.createDataFrame(pixelRdd, schema = StructType(dateStruct +: bandStructs))
-
-    val actualBandValues = df
-      .groupBy("date")
-      .agg(bandColumns.map((_, reducer)).toMap)
-      .sort("date")
-      .drop("date")
-      .collect()
-
-    for ((expectedBandValue, i) <- expectedTimestamp0BandValues.zipWithIndex) {
-      val actualBandValue = actualBandValues.head.getAs[Number](i).doubleValue()
-      assertEquals(expectedBandValue, actualBandValue)
-    }
-
-    for ((expectedBandValue, i) <- expectedTimestamp1BandValues.zipWithIndex) {
-      val actualBandValue = actualBandValues.last.getAs[Number](i).doubleValue()
-      assertEquals(expectedBandValue, actualBandValue)
-    }
   }
 }
