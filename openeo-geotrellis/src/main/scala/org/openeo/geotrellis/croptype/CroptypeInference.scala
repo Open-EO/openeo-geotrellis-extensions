@@ -503,14 +503,9 @@ object CroptypeInference {
     val bands = Array.tabulate(totalBands) { band =>
       val data = new Array[Byte](B)
       for (p <- 0 until B) {
-        if (band < numLcClasses) {
-          //lcProbs(p * numLcClasses + band)
-          //skip
-        } else {
-          val ctBand = band - numLcClasses
+          val ctBand = band
           val prob = ctProbs(p * numSeasons * numCtClasses + ctBand)
           data(p) = scaleProbabilityToByte(prob)
-        }
 
       }
       if (targetDatatype.isFloat) FloatArrayTile(data.map(_.toFloat), cols, rows) else UByteArrayTile(data, cols, rows, ubyteCellType): Tile
