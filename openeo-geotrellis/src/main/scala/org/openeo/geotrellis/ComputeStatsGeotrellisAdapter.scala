@@ -13,6 +13,7 @@ import org.apache.spark.sql.types.{DoubleType, IntegerType, StructField, StructT
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder, intern}
+import org.openeo.geotrelliscommon.DatacubeSupport
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.File
@@ -328,7 +329,8 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     } yield Row.fromSeq(date +: bandValues)
 
     val dataType = if (isFloatingPoint) DoubleType else IntegerType
-    val bandColumns = (0 until bandCount).map(bandIndex => s"band_$bandIndex") // TODO: use actual band names
+    val bandColumns = DatacubeSupport.maybeBandLabels(cube)
+      .getOrElse((0 until bandCount).map(bandIndex => s"band_$bandIndex"))
 
     val bandStructs = bandColumns.map(StructField(_, dataType))
     val dateStruct = StructField("date", TimestampType)
@@ -370,7 +372,8 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     } yield Row.fromSeq(bandValues)
 
     val dataType = if (isFloatingPoint) DoubleType else IntegerType
-    val bandColumns = (0 until bandCount).map(bandIndex => s"band_$bandIndex") // TODO: use actual band names
+    val bandColumns = DatacubeSupport.maybeBandLabels(cube)
+      .getOrElse((0 until bandCount).map(bandIndex => s"band_$bandIndex"))
 
     val bandStructs = bandColumns.map(StructField(_, dataType))
 
