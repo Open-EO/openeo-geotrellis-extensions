@@ -618,7 +618,7 @@ object CroptypeInference {
     // Croptype labels exclude the "no crop" sentinel from voting, matching the python
     // reference's POSTPROCESSING_EXCLUDED_VALUES handling for croptype postprocessing.
     val croptypeExcludedValues = Set(OnnxInferenceUtils.NOCROP_VALUE.toInt)
-    val seasonBands = Array.tabulate(numSeasons) { s =>
+    val seasonClassificationBands = Array.tabulate(numSeasons) { s =>
       val croptypeClassTile: Tile =
         if (majorityVoteEnabled && majorityVoteCroptype)
           MajorityVote(UByteArrayTile(croptypeClassPerSeason(s), cols, rows, ubyteCellType), majorityVoteKernelSize, croptypeExcludedValues)
@@ -627,11 +627,13 @@ object CroptypeInference {
       val croptypeClassOut: Tile =
         if (targetDatatype.isFloat) croptypeClassTile.convert(targetDatatype.cellType)
         else croptypeClassTile
-      Array[Tile](
-        croptypeClassOut,
-        if (targetDatatype.isFloat) FloatArrayTile(croptypeProbPerSeason(s).map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(croptypeProbPerSeason(s), cols, rows, ubyteCellType): Tile
-      )
-    }.flatten
+      croptypeClassOut
+    }
+    val seasonProbabilityBands = Array.tabulate(numSeasons) { s =>
+      if (targetDatatype.isFloat) FloatArrayTile(croptypeProbPerSeason(s).map(b => (b & 0xff).toFloat), cols, rows)
+      else UByteArrayTile(croptypeProbPerSeason(s), cols, rows, ubyteCellType): Tile
+    }
+    val seasonBands = seasonClassificationBands ++ seasonProbabilityBands
 
 
     MultibandTile(
