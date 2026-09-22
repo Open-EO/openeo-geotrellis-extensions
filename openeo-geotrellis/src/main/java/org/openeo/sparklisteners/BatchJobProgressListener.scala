@@ -1,20 +1,16 @@
 package org.openeo.sparklisteners;
 
-import org.apache.spark.executor.TaskMetrics
-import org.apache.spark.scheduler.cluster.ExecutorInfo
-import org.apache.spark.scheduler.{SparkListener, SparkListenerApplicationEnd, SparkListenerExecutorAdded, SparkListenerExecutorRemoved, SparkListenerStageCompleted, SparkListenerStageSubmitted}
-import org.apache.spark.util.AccumulatorV2
 import io.circe.Json
 import io.circe.syntax._
-import org.openeo.sparklisteners.BatchJobProgressListener.{CPU_UTILIZATION_RATIO, TOTAL_EXECUTOR_ALLOCATION_TIME, TOTAL_STAGE_RUNTIME, USAGE_METRICS_FILENAME}
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
+import org.apache.spark.scheduler._
+import org.openeo.sparklisteners.BatchJobProgressListener.{CPU_UTILIZATION_RATIO, SPARK_EXECUTION_METRICS_FILENAME, TOTAL_EXECUTOR_ALLOCATION_TIME, TOTAL_STAGE_RUNTIME}
+import org.slf4j.{Logger, LoggerFactory}
 
-import scala.collection.mutable
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
-import java.time.Duration;
+import java.time.Duration
+import scala.collection.mutable;
 
 object BatchJobProgressListener {
 
@@ -23,7 +19,7 @@ object BatchJobProgressListener {
     val TOTAL_STAGE_RUNTIME = "total_stage_runtime"
     val TOTAL_EXECUTOR_ALLOCATION_TIME = "total_executor_allocation_time"
     val CPU_UTILIZATION_RATIO = "cpu_utilization_ratio"
-    val USAGE_METRICS_FILENAME = "usage_metrics.json"
+    val SPARK_EXECUTION_METRICS_FILENAME = "spark_execution_metrics.json"
 }
 
 class BatchJobProgressListener extends SparkListener {
@@ -177,7 +173,7 @@ class BatchJobProgressListener extends SparkListener {
       CPU_UTILIZATION_RATIO -> cpuUtilizationRatio.asJson,
     )
 
-    val usageMetricsFile = Paths.get("").toAbsolutePath.resolve(USAGE_METRICS_FILENAME)
+    val usageMetricsFile = Paths.get("").toAbsolutePath.resolve(SPARK_EXECUTION_METRICS_FILENAME)
 
     try {
       Files.write(usageMetricsFile, usageMetrics.spaces2.getBytes(StandardCharsets.UTF_8))
