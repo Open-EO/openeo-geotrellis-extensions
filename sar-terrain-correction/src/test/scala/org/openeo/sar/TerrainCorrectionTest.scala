@@ -7,13 +7,14 @@ import geotrellis.raster.{CellSize, RasterSource}
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.condition.EnabledIf
-import org.junit.jupiter.api.{Assumptions, Test}
+import org.junit.jupiter.api.{Assumptions, Disabled, Test}
 import org.openeo.geotrelliscommon.TestConditions
 import org.openeo.sar.backend.nativ.NativeBackend
 import org.openeo.sar.metadata.Polarisation
 
 import java.net.URI
 
+@Disabled("Jenkins has no valid S3 credentials, so this test fails with 403 Forbidden")
 class TerrainCorrectionTest {
 
   private val runOnline = false  // requires CDSE S3 + STAC access
