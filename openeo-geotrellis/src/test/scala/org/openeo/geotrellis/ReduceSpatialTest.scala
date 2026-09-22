@@ -94,7 +94,7 @@ class ReduceSpatialTest extends TileLayerRDDBuilders {
   @MethodSource(Array("reduceSpatialDataCubeParams"))
   def reduceSpatialDataCube(reducer: String, expectedBandValues: Seq[Double], @TempDir tempDir: Path): Unit = {
     val spatialCube = createMultibandTileLayerRDD(sc, multibandTile, tileLayout)
-    new ComputeStatsGeotrellisAdapter().reduce_spatial_spatial_cube(spatialCube, scriptBuilder(reducer), outputDir = tempDir.toString)
+    reduce_spatial.reduceSpatialCube(spatialCube, scriptBuilder(reducer), outputDir = tempDir.toString)
 
     val Seq(csvLine) = csvLines(tempDir)
 
@@ -109,7 +109,7 @@ class ReduceSpatialTest extends TileLayerRDDBuilders {
 
     val spaceTimeCube = this.spaceTimeCube(timestamp0, timestamp1)
 
-    new ComputeStatsGeotrellisAdapter().reduce_spatial(spaceTimeCube, scriptBuilder(reducer), outputDir = tempDir.toString)
+    reduce_spatial.reduceSpatiotemporalCube(spaceTimeCube, scriptBuilder(reducer), outputDir = tempDir.toString)
 
     val linesSortedByDate = csvLines(tempDir).sorted
 
