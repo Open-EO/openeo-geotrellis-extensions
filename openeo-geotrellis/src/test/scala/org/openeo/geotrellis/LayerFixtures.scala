@@ -16,15 +16,13 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.layers.{FileLayerProvider, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
-import org.openeo.opensearch.OpenSearchClient
-import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureBuilder, FeatureCollection}
-import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
+import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
 import spire.math.UShort
 
 import java.awt.image.DataBufferByte
 import java.io.File
-import java.net.{URI, URL}
+import java.net.URL
 import java.nio.file.Paths
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
@@ -33,7 +31,6 @@ import java.time.{LocalDate, ZonedDateTime}
 import java.util
 import java.util.Collections
 import java.util.Collections.singletonList
-import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
 import scala.io.{BufferedSource, Source}
 import scala.reflect.ClassTag
@@ -1476,6 +1473,65 @@ object LayerFixtures {
           val bytes = Array.fill[Byte](cols * rows / 8)(0)
           rand.nextBytes(bytes)
           BitArrayTile.apply(bytes, cols, rows)
+        case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
+      }
+      (
+        v.withNoData(Some(32767)),
+        date
+      )
+    }).toArray
+
+    implicit val sc = SparkContext.getOrCreate()
+
+    val layout = LayoutDefinition(RasterExtent(extent, cols, rows), 64, 64)
+    val rdd = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(timeSeries,layout.tileLayout,timeSeries(0)._1.cellType)
+
+    new ContextRDD(rdd.mapValues(t => MultibandTile(t)),rdd.metadata.copy(layout= rdd.metadata.layout.copy(extent=extent),extent = extent,crs=crs))
+  }
+
+  /**
+   * Builds a multi-date [[MultibandTileLayerRDD]] whose per-date content is fully
+   * predictable, unlike [[randomNoiseLayer]] which uses random noise.
+   *
+   * Each date is assigned one [[org.openeo.geotrellis.testutil.stac.RasterPattern]]
+   * (see `patterns`), reusing the exact pixel-value formulas from
+   * [[org.openeo.geotrellis.testutil.stac.StacTestGenerator]]. Because the value of
+   * every pixel, for every date, is a known deterministic function of (col, row,
+   * pattern), tests can compute the exact expected outcome of temporal aggregations
+   * (e.g. a per-pixel median) instead of only checking coarse statistics.
+   *
+   * Values are scaled from the StacTestGenerator's native [0, 10000] range into
+   * [20, 120], matching the value range historically used by [[randomNoiseLayer]].
+   */
+  def patternedTemporalLayer(pixelType: PixelType = PixelType.Byte,
+                             extent: Extent = ProjectedExtent(defaultExtent,LatLng).reproject(CRS.fromEpsgCode(32631)),
+                             crs: CRS = CRS.fromEpsgCode(32631),
+                             dates: List[ZonedDateTime],
+                             patterns: List[org.openeo.geotrellis.testutil.stac.RasterPattern],
+                             cols:Int = 256, rows:Int = 256
+                            ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    require(dates.size == patterns.size, "patternedTemporalLayer needs exactly one pattern per date")
+
+    // Native pattern value range is [0, 10000]; rescale to [20, 120].
+    def valueAt(col: Int, row: Int, pattern: org.openeo.geotrellis.testutil.stac.RasterPattern): Double =
+      20.0 + org.openeo.geotrellis.testutil.stac.StacTestGenerator.patternValue(col, row, cols, rows, pattern) / 100.0
+
+    val timeSeries: Array[(Tile, ZonedDateTime)] = dates.zip(patterns).map({ case (date, pattern) =>
+      val v: Tile = pixelType match {
+        case PixelType.Double => DoubleArrayTile.apply((for (row <- 0 until rows; col <- 0 until cols) yield valueAt(col, row, pattern)).toArray, cols, rows)
+        case PixelType.Float => FloatArrayTile.apply((for (row <- 0 until rows; col <- 0 until cols) yield valueAt(col, row, pattern).toFloat).toArray, cols, rows)
+        case PixelType.Int => IntArrayTile.apply((for (row <- 0 until rows; col <- 0 until cols) yield math.round(valueAt(col, row, pattern)).toInt).toArray, cols, rows)
+        case PixelType.Short => ShortArrayTile.apply((for (row <- 0 until rows; col <- 0 until cols) yield math.round(valueAt(col, row, pattern)).toShort).toArray, cols, rows)
+        case PixelType.Byte => ByteArrayTile.apply((for (row <- 0 until rows; col <- 0 until cols) yield math.round(valueAt(col, row, pattern)).toByte).toArray, cols, rows)
+        case PixelType.Bit =>
+          // No fractional values in a bit tile: threshold the pattern at its midpoint (5000).
+          val bytes = Array.fill[Byte](cols * rows / 8)(0)
+          val bitTile = BitArrayTile.apply(bytes, cols, rows)
+          for (row <- 0 until rows; col <- 0 until cols) {
+            val bit = if (org.openeo.geotrellis.testutil.stac.StacTestGenerator.patternValue(col, row, cols, rows, pattern) >= 5000.0) 1 else 0
+            bitTile.set(col, row, bit)
+          }
+          bitTile
         case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
       }
       (
