@@ -134,6 +134,8 @@ class BatchJobProgressListener extends SparkListener {
     } else {
       0d
     }
+    logger.info(f"CPU utilization ratio: $cpuUtilizationRatio")
+
 
     writeUsageMetrics(totalDuration.toMillis, executorTime, cpuUtilizationRatio)
 
