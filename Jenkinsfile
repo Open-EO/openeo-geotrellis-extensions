@@ -191,10 +191,16 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
             def releaseRepo = 'libs-release-public'
+            def serverSAS = Artifactory.server('artifactory-sas')
+            def rtMavenSAS = Artifactory.newMavenBuild()
+            def snapshotRepoSAS = 'openeo-maven-snapshot-local'
+            def releaseRepoSAS = 'openeo-maven-release-local'
             if (!publishable_branches.contains(env.BRANCH_NAME)) {
                 snapshotRepo = 'openeo-branch-builds'
                 //releaseRepo = 'openeo-branch-builds'
                 rtMaven.opts += " -Drevision=${env.BRANCH_NAME}"
+                snapshotRepoSAS = 'openeo-branch-builds'
+                //releaseRepoSAS = 'openeo-branch-builds'
             }
             rtMaven.deployer server: server, releaseRepo: releaseRepo, snapshotRepo: snapshotRepo
             rtMaven.tool = maven
@@ -209,6 +215,11 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
             }
 
             rtMaven.deployer.deployArtifacts = true
+
+            rtMavenSAS.deployer server: serverSAS, releaseRepo: releaseRepoSAS, snapshotRepo: snapshotRepoSAS
+            rtMavenSAS.tool = maven
+            rtMavenSAS.opts = rtMaven.opts + ' -DskipTests=true -DskipSentinelHubTests=true'
+            rtMavenSAS.deployer.deployArtifacts = true
             //use '--projects StatisticsMapReduce' in 'goals' to build specific module
             try {
                 withCredentials([
@@ -219,6 +230,14 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
                     try {
                         if (rtMaven.deployer.deployArtifacts)
                             server.publishBuildInfo buildInfo
+                    } catch (e) {
+                        print e.message
+                    }
+
+                    buildInfoSAS = rtMavenSAS.run pom: 'pom.xml', goals: '-P default,wmts -U deploy' + rtMavenSAS.opts
+                    try {
+                        if (rtMavenSAS.deployer.deployArtifacts)
+                            serverSAS.publishBuildInfo buildInfoSAS
                     } catch (e) {
                         print e.message
                     }
