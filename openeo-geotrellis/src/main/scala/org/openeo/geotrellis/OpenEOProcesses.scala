@@ -1703,8 +1703,7 @@ class OpenEOProcesses extends Serializable {
     val bufferedRDD: RDD[(SpaceTimeKey, BufferedTile[MultibandTile])] = datacube.bufferTiles(bufferInPixels)
     // Create mask.
     val mask: RDD[(SpaceTimeKey, MultibandTile)] = bufferedRDD.mapValues((tile: BufferedTile[MultibandTile]) => {
-      val originalBounds = tile.targetArea
-      MultibandTile(filter.createMask(tile.tile).crop(originalBounds))
+      MultibandTile(filter.createMask(tile.tile, tile.targetArea))
     })
     val updatedMetadata = datacube.metadata.copy(cellType = BitCellType)
     ContextRDD(new ShuffledRDD[SpaceTimeKey, MultibandTile,MultibandTile](mask,mask.partitioner.get), updatedMetadata)
