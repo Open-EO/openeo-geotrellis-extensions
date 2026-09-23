@@ -36,8 +36,6 @@ pipeline {
         PACKAGE_NAME = "${package_name}"
         WORKSPACE = "${env.WORKSPACE}"
     }
-    parameters {
-    }
     stages {
         stage("Trigger geotrellis_process_graph_test_helper container build") {
             when {
