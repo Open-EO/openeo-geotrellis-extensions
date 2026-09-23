@@ -31,7 +31,7 @@ import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, LegacySCLConvolutionFilter, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SCLMaskFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -1696,8 +1696,27 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(resultRDD, newMetadata)
   }
 
-  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val filter = new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+  /**
+   * Backwards-compatible entry point: keeps using the original FFT-based dilation
+   * (`useSeparableConvolution = false`), so existing callers (including Py4J call sites, which
+   * cannot see Scala default parameter values) are unaffected.
+   */
+  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] =
+    toSclDilationMask(datacube, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size, useSeparableConvolution = false)
+
+  /**
+   * @param useSeparableConvolution use the faster separable-convolution dilation
+   *                                 (SCLConvolutionFilter) instead of the original FFT-based one
+   *                                 (LegacySCLConvolutionFilter). The two are not bit-identical on
+   *                                 real data (occasional boundary-pixel flips near mask
+   *                                 thresholds, measured negligible in practice). Defaults to
+   *                                 false (unchanged legacy behaviour) until the fast path has
+   *                                 been validated on staging/production.
+   */
+  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int, useSeparableConvolution: Boolean): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val filter: SCLMaskFilter =
+      if (useSeparableConvolution) new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+      else new LegacySCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
     // Buffer each input tile so that the dilation is consistent across tile boundaries.
     val bufferInPixels: Int = filter.bufferInPixels
     val bufferedRDD: RDD[(SpaceTimeKey, BufferedTile[MultibandTile])] = datacube.bufferTiles(bufferInPixels)
