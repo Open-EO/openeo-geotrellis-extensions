@@ -190,8 +190,8 @@ object SCLConvolutionFilter {
    * NOT bit-identical to [[kernel]]: [[kernel]] truncates each cell to Int (via
    * `Kernel.gaussian`) before normalising, which is not a separable operation, so no choice of g
    * reproduces it exactly (~2.9e-4 of kernel mass differs, roughly constant across kernel sizes).
-   * This is an accepted, documented, measured-negligible-in-practice tradeoff — see
-   * docs/scl-dilation-mask-performance.md, "Root-cause finding" / "Decision" sections.
+   * This is an accepted tradeoff: measured negligible in practice on real data (occasional
+   * boundary-pixel flips near the mask thresholds, never in the interior of a masked region).
    */
   def kernel1D(windowSize: Int): Option[Array[Double]] = {
     if (windowSize <= 0) {
@@ -220,6 +220,17 @@ object SCLConvolutionFilter {
 }
 
 /**
+ * Common interface for the two SCL dilation mask implementations ([[SCLConvolutionFilter]], the
+ * fast separable-convolution version, and [[LegacySCLConvolutionFilter]], the original FFT-based
+ * version), so callers can pick one behind a flag without branching on the mask-creation call
+ * itself.
+ */
+trait SCLMaskFilter extends Serializable {
+  def bufferInPixels: Int
+  def createMask(sclTile: MultibandTile, targetArea: GridBounds[Int]): Tile
+}
+
+/**
  * This class is used create a mask from SCL data.
  * @param erosion_kernal_size size of the erosion kernel
  * @param kernel1Size size of the first convolution kernel
@@ -240,7 +251,7 @@ object SCLConvolutionFilter {
  * 10 thin cirrus
  * 11 snow
   */
-class SCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int) extends Serializable {
+class SCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int) extends SCLMaskFilter {
   import SCLConvolutionFilter._
 
   private val erosionKernel = erosion_kernel(erosion_kernal_size)
@@ -410,6 +421,94 @@ class SCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int]
       eroded.mapDouble(d => if (d > 0.5) 0.0 else 1.0).toArrayDouble()
     } else {
       binaryMask
+    }
+  }
+}
+
+/**
+ * The original (pre-optimization) FFT-based SCL dilation mask implementation, kept as a runtime
+ * option behind the `useSeparableConvolution` flag on `OpenEOProcesses.toSclDilationMask`, and as
+ * the reference implementation [[SCLConvolutionFilterSpec]] checks [[SCLConvolutionFilter]]
+ * against. Do not "fix" or simplify this class: it must stay an exact replica of the old
+ * algorithm.
+ */
+class LegacySCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int) extends SCLMaskFilter {
+  import SCLConvolutionFilter.{erosion_kernel, kernel}
+
+  private val erosionKernel = erosion_kernel(erosion_kernal_size)
+  private val kernel1 = kernel(kernel1Size)
+  private val kernel2 = kernel(kernel2Size)
+
+  def bufferInPixels: Int = (kernel2.get.cols / 2).floor.intValue()
+
+  def createMask(sclTile: MultibandTile, targetArea: GridBounds[Int]): Tile =
+    createMask(sclTile).crop(targetArea.colMin, targetArea.rowMin, targetArea.colMax, targetArea.rowMax)
+
+  def createMask(sclTile: MultibandTile): Tile = {
+    var allMasked = true
+    var nothingMasked = true
+    val maskTile = sclTile.band(0).convert(ShortConstantNoDataCellType)
+
+    val binaryMask1 = maskTile.map(value => {
+      if (mask1Values.contains(value)) {
+        allMasked = false
+        0
+      } else {
+        nothingMasked = false
+        1
+      }
+    })
+    val convolution1 =
+      if (!nothingMasked && kernel1.isDefined) {
+        val eroded1 = erode(binaryMask1)
+        val dilated1 = FFTConvolve(eroded1, kernel1.get)
+        allMasked = true
+        Some(dilated1.localIf({ d: Double => {
+          val res = d > 0.057
+          if (!res) {
+            allMasked = false
+          }
+          res
+        }
+        }, 1.0, 0.0))
+      } else {
+        if (nothingMasked) {
+          None
+        } else {
+          Some(binaryMask1)
+        }
+      }
+    if (allMasked) {
+      return convolution1.get.convert(BitCellType)
+    }
+
+    allMasked = true
+    val binaryMask2 = maskTile.map(value => {
+      if (mask2Values.contains(value)) {
+        1
+      } else {
+        allMasked = false
+        0
+      }
+    })
+    val convolution2 = if (!allMasked) {
+      val eroded2 = erode(binaryMask2)
+      val dilated2 = FFTConvolve(eroded2, kernel2.get)
+      dilated2.localIf({ d: Double => d > 0.025 }, 1.0, 0.0)
+    } else {
+      binaryMask2
+    }
+
+    convolution1.map(_.localOr(convolution2)).getOrElse(convolution2).convert(BitCellType)
+  }
+
+  private def erode(binaryMask2: Tile) = {
+    if (erosionKernel.isDefined) {
+      val maskInvert = binaryMask2.localSubtract(1).localPow(2)
+      val eroded = FFTConvolve(maskInvert, erosionKernel.get)
+      eroded.localIf({ d: Double => d > 0.5 }, 0.0, 1.0)
+    } else {
+      binaryMask2
     }
   }
 }

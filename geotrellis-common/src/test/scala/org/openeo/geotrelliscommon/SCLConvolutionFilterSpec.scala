@@ -1,94 +1,16 @@
 package org.openeo.geotrelliscommon
 
-import geotrellis.raster.{BitCellType, GridBounds, MultibandTile, ShortArrayTile, ShortConstantNoDataCellType, Tile}
+import geotrellis.raster.{GridBounds, MultibandTile, ShortArrayTile, ShortConstantNoDataCellType, Tile}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals}
 import org.junit.jupiter.api.Test
-import org.openeo.geotrelliscommon.SCLConvolutionFilter.{erosion_kernel, kernel}
 
 import java.util
 import scala.util.Random
 
-/**
- * Byte-for-byte reference implementation of the original (pre-optimization) FFT-based
- * SCLConvolutionFilter.createMask, kept here so the optimized implementation can be checked
- * against it. Do not "fix" or simplify this copy: it must stay an exact replica of the old
- * algorithm.
- */
-class LegacySCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int) extends Serializable {
-  private val erosionKernel = erosion_kernel(erosion_kernal_size)
-  private val kernel1 = kernel(kernel1Size)
-  private val kernel2 = kernel(kernel2Size)
-
-  def bufferInPixels: Int = (kernel2.get.cols / 2).floor.intValue()
-
-  def createMask(sclTile: MultibandTile): Tile = {
-    var allMasked = true
-    var nothingMasked = true
-    val maskTile = sclTile.band(0).convert(ShortConstantNoDataCellType)
-
-    val binaryMask1 = maskTile.map(value => {
-      if (mask1Values.contains(value)) {
-        allMasked = false
-        0
-      } else {
-        nothingMasked = false
-        1
-      }
-    })
-    val convolution1 =
-      if (!nothingMasked && kernel1.isDefined) {
-        val eroded1 = erode(binaryMask1)
-        val dilated1 = FFTConvolve(eroded1, kernel1.get)
-        allMasked = true
-        Some(dilated1.localIf({ d: Double => {
-          val res = d > 0.057
-          if (!res) {
-            allMasked = false
-          }
-          res
-        }
-        }, 1.0, 0.0))
-      } else {
-        if (nothingMasked) {
-          None
-        } else {
-          Some(binaryMask1)
-        }
-      }
-    if (allMasked) {
-      return convolution1.get.convert(BitCellType)
-    }
-
-    allMasked = true
-    val binaryMask2 = maskTile.map(value => {
-      if (mask2Values.contains(value)) {
-        1
-      } else {
-        allMasked = false
-        0
-      }
-    })
-    val convolution2 = if (!allMasked) {
-      val eroded2 = erode(binaryMask2)
-      val dilated2 = FFTConvolve(eroded2, kernel2.get)
-      dilated2.localIf({ d: Double => d > 0.025 }, 1.0, 0.0)
-    } else {
-      binaryMask2
-    }
-
-    convolution1.map(_.localOr(convolution2)).getOrElse(convolution2).convert(BitCellType)
-  }
-
-  private def erode(binaryMask2: Tile) = {
-    if (erosionKernel.isDefined) {
-      val maskInvert = binaryMask2.localSubtract(1).localPow(2)
-      val eroded = FFTConvolve(maskInvert, erosionKernel.get)
-      eroded.localIf({ d: Double => d > 0.5 }, 0.0, 1.0)
-    } else {
-      binaryMask2
-    }
-  }
-}
+// LegacySCLConvolutionFilter (the byte-for-byte reference implementation of the original,
+// pre-optimization FFT-based createMask) now lives in main (CloudFilterStrategy.scala), since it's
+// also used at runtime behind the useSeparableConvolution flag on
+// OpenEOProcesses.toSclDilationMask. Same package, so no import needed here.
 
 class SCLConvolutionFilterSpec {
 
