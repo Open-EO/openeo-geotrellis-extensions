@@ -9,7 +9,7 @@ import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.RequestContext
-import org.openeo.geotrelliscommon.ResampledTile
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ResampledTile}
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
 
@@ -22,6 +22,12 @@ import scala.collection.parallel.CollectionConverters._
 //  attach e.g. a date to a RasterSource.
 object BandCompositeRasterSource {
   private val logger = LoggerFactory.getLogger(classOf[BandCompositeRasterSource])
+  private val SOFT_ERROR_MEGAPIXEL_COUNTER = "SoftErrorMegaPixels"
+
+  {
+    val tracker = BatchJobMetadataTracker.tracker("")
+    tracker.registerCounter(SOFT_ERROR_MEGAPIXEL_COUNTER)
+  }
 
   private def retryWithBackoff[R](maxAttempts: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
     val retryPolicy = new RetryPolicy[R]
@@ -45,6 +51,7 @@ object BandCompositeRasterSource {
     } catch {
       case e: AbortedException => throw e
       case e: Exception if softErrors => {
+        BatchJobMetadataTracker.tracker("").add(SOFT_ERROR_MEGAPIXEL_COUNTER, bounds.size*bands.length / (1024 * 1024) )
         logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
         None
       }
@@ -83,6 +90,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       catch {
         case e: AbortedException => throw e
         case e: Exception if softErrors =>
+          val megapixels_failed =
+          if(predefinedExtent.isDefined) {
+            predefinedExtent.get.size*bands.length / (1024 * 1024)
+          }else{
+            //we don't know the size of the raster yet, return some value so that soft-errors counter is incremented
+            bands.length
+          }
+          BatchJobMetadataTracker.tracker("").add(SOFT_ERROR_MEGAPIXEL_COUNTER, megapixels_failed )
           logger.warn(s"load_collection: ignoring soft error for ${rs.name} - ${e.getMessage}", e)
           None
         case e: Exception => throw new IOException(s"load_collection: Error while reading: ${rs.name} - ${e.getMessage}", e)
@@ -159,6 +174,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       }
     }.iterator.to(Seq)
 
+    if (softErrors && singleBandRasters.isEmpty && selectedSources.nonEmpty)
+      logger.error(s"load_collection: soft errors left zero readable tiles for $extent from ${selectedSources.head.name}, returning empty result")
+
     if (singleBandRasters.size == selectedSources.size)
       Some(Raster(MultibandTile(singleBandRasters.map(raster => safeConvert(raster.tile, cellType))), singleBandRasters.head.extent))
     else None
@@ -193,6 +211,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
           Raster(safeConvert(raster.tile,sourceCellType), raster.extent)
         }
       }.toSeq
+
+    if (softErrors && singleBandRasters.isEmpty && sources.nonEmpty)
+      logger.error(s"load_collection: soft errors left zero readable tiles for $bounds from ${sources.head.name}, returning empty result")
 
     try {
       if (singleBandRasters.isEmpty) {
