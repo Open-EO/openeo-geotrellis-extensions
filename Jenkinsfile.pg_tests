@@ -37,8 +37,6 @@ pipeline {
         WORKSPACE = "${env.WORKSPACE}"
     }
     parameters {
-      booleanParam(name: 'skip_tests', defaultValue: false, description: 'Check this if you want to skip running tests.')
-      booleanParam(name: 'skip_sentinelhub_tests', defaultValue: false, description: 'Check this if you want to skip running Sentinel Hub tests.')
     }
     stages {
         stage("Trigger geotrellis_process_graph_test_helper container build") {
@@ -49,7 +47,7 @@ pipeline {
             }
             steps {
                 script {
-                    build(job: "container_images/geotrellis_process_graph_test_helper/master", wait: true, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
+                    build(job: "container_images/geotrellis_process_graph_test_helper", wait: true, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
                 }
             }
         }
