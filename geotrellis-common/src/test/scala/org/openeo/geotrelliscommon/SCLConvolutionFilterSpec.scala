@@ -7,11 +7,6 @@ import org.junit.jupiter.api.Test
 import java.util
 import scala.util.Random
 
-// LegacySCLConvolutionFilter (the byte-for-byte reference implementation of the original,
-// pre-optimization FFT-based createMask) now lives in main (CloudFilterStrategy.scala), since it's
-// also used at runtime behind the useSeparableConvolution flag on
-// OpenEOProcesses.toSclDilationMask. Same package, so no import needed here.
-
 class SCLConvolutionFilterSpec {
 
   private val mask1Values = util.Arrays.asList(2, 4, 5, 6, 7)
