@@ -134,8 +134,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   /**
    * Like [[assertRastersEqual]], but tolerates a small, bounded number of mask-boundary flips (a pixel that's
    * `NaN` on one side and a real value on the other). This is a deliberate, documented relaxation: separable
-   * convolution can't be made bit-identical to the FFT-based mask it replaces (see
-   * docs/scl-dilation-mask-performance.md, "Root-cause finding" / "Decision" sections), so pixels whose true
+   * convolution can't be made bit-identical to the FFT-based mask it replaces, so pixels whose true
    * convolution value sits within ~2e-4 of the 0.057/0.025 mask threshold can occasionally flip. Any other kind
    * of mismatch (both sides non-NaN but differing by more than `valueTolerance`) still fails immediately, same
    * as before.
@@ -681,9 +680,9 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val referenceTile = GeoTiffRasterSource(ref).read().get
     val actualTile = GeoTiffRasterSource(actual.toString).read().get
-    // Separable convolution (docs/scl-dilation-mask-performance.md) isn't bit-identical to the old FFT-based
-    // mask for large kernels; measured baseline for these kernel/buffer parameters is 6 flipped pixel
-    // locations (24 band-values, out of 6,553,600 pixels x 4 bands). Budget set with headroom above that.
+    // Separable convolution isn't bit-identical to the old FFT-based mask for large kernels; measured
+    // baseline for these kernel/buffer parameters is 6 flipped pixel locations (24 band-values, out of
+    // 6,553,600 pixels x 4 bands). Budget set with headroom above that.
     assertRastersEqualAllowingMaskBoundaryFlips(referenceTile, actualTile, 160.0, maxBoundaryFlips = 40)
     //because debug logging is enabled during tests, it actually runs more jobs and stages than done in production
     assertEquals(5, listener.getJobsCompleted, "unexpected number of jobs")
