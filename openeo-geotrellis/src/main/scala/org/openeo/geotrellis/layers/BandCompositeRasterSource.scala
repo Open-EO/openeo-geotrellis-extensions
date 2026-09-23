@@ -159,6 +159,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       }
     }.iterator.to(Seq)
 
+    if (softErrors && singleBandRasters.isEmpty && selectedSources.nonEmpty)
+      logger.error(s"load_collection: soft errors left zero readable tiles for $extent from ${selectedSources.head.name}, returning empty result")
+
     if (singleBandRasters.size == selectedSources.size)
       Some(Raster(MultibandTile(singleBandRasters.map(raster => safeConvert(raster.tile, cellType))), singleBandRasters.head.extent))
     else None
@@ -193,6 +196,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
           Raster(safeConvert(raster.tile,sourceCellType), raster.extent)
         }
       }.toSeq
+
+    if (softErrors && singleBandRasters.isEmpty && sources.nonEmpty)
+      logger.error(s"load_collection: soft errors left zero readable tiles for $bounds from ${sources.head.name}, returning empty result")
 
     try {
       if (singleBandRasters.isEmpty) {
