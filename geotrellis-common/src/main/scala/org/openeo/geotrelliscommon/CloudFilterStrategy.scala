@@ -184,8 +184,14 @@ object SCLConvolutionFilter {
   }
 
   /**
-   * The 1D Gaussian factor g such that outer(g, g) equals [[kernel]], up to rounding. Used for
-   * separable convolution instead of FFTConvolve: k² multiply-adds per pixel instead of an FFT.
+   * The 1D Gaussian factor g such that outer(g, g) approximates [[kernel]]. Used for separable
+   * convolution instead of FFTConvolve: k² multiply-adds per pixel instead of an FFT.
+   *
+   * NOT bit-identical to [[kernel]]: [[kernel]] truncates each cell to Int (via
+   * `Kernel.gaussian`) before normalising, which is not a separable operation, so no choice of g
+   * reproduces it exactly (~2.9e-4 of kernel mass differs, roughly constant across kernel sizes).
+   * This is an accepted, documented, measured-negligible-in-practice tradeoff — see
+   * docs/scl-dilation-mask-performance.md, "Root-cause finding" / "Decision" sections.
    */
   def kernel1D(windowSize: Int): Option[Array[Double]] = {
     if (windowSize <= 0) {
