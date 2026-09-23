@@ -426,11 +426,9 @@ class SCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int]
 }
 
 /**
- * The original (pre-optimization) FFT-based SCL dilation mask implementation, kept as a runtime
- * option behind the `useSeparableConvolution` flag on `OpenEOProcesses.toSclDilationMask`, and as
- * the reference implementation [[SCLConvolutionFilterSpec]] checks [[SCLConvolutionFilter]]
- * against. Do not "fix" or simplify this class: it must stay an exact replica of the old
- * algorithm.
+ * The original FFT-based SCL dilation mask, used behind `OpenEOProcesses.toSclDilationMask`'s
+ * `useSeparableConvolution` flag and as the reference [[SCLConvolutionFilterSpec]] checks
+ * [[SCLConvolutionFilter]] against. Must stay an exact replica of the old algorithm.
  */
 class LegacySCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int) extends SCLMaskFilter {
   import SCLConvolutionFilter.{erosion_kernel, kernel}

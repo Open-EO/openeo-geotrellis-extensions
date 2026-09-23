@@ -1696,22 +1696,15 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(resultRDD, newMetadata)
   }
 
-  /**
-   * Backwards-compatible entry point: keeps using the original FFT-based dilation
-   * (`useSeparableConvolution = false`), so existing callers (including Py4J call sites, which
-   * cannot see Scala default parameter values) are unaffected.
-   */
+  // Real overload, not a default parameter: Py4J callers must supply every argument, so a default
+  // value alone wouldn't keep them on the legacy path.
   def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] =
     toSclDilationMask(datacube, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size, useSeparableConvolution = false)
 
   /**
-   * @param useSeparableConvolution use the faster separable-convolution dilation
-   *                                 (SCLConvolutionFilter) instead of the original FFT-based one
-   *                                 (LegacySCLConvolutionFilter). The two are not bit-identical on
-   *                                 real data (occasional boundary-pixel flips near mask
-   *                                 thresholds, measured negligible in practice). Defaults to
-   *                                 false (unchanged legacy behaviour) until the fast path has
-   *                                 been validated on staging/production.
+   * @param useSeparableConvolution use the faster separable convolution instead of the original
+   *                                 FFT-based dilation. Not bit-identical on real data (rare
+   *                                 boundary-pixel flips near the mask thresholds).
    */
   def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int, useSeparableConvolution: Boolean): MultibandTileLayerRDD[SpaceTimeKey] = {
     val filter: SCLMaskFilter =
