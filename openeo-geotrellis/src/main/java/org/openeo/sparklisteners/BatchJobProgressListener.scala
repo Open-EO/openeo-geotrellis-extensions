@@ -178,11 +178,12 @@ class BatchJobProgressListener extends SparkListener {
     val usageMetricsFile = Paths.get("").toAbsolutePath.resolve(SPARK_EXECUTION_METRICS_FILENAME)
 
     try {
+      logger.debug(s"Trying to write usage metrics to $usageMetricsFile")
       Files.write(usageMetricsFile, usageMetrics.spaces2.getBytes(StandardCharsets.UTF_8))
       logger.debug(s"Wrote usage metrics to $usageMetricsFile")
     } catch {
       // the application is ending anyway: failing to write the metrics should not fail the job
-      case e: IOException => logger.warn(s"Failed to write usage metrics to $usageMetricsFile", e)
+      case e: Exception => logger.warn(s"Failed to write usage metrics to $usageMetricsFile", e)
     }
   }
 }
