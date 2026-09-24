@@ -1699,7 +1699,7 @@ class OpenEOProcesses extends Serializable {
   // Real overload, not a default parameter: Py4J callers must supply every argument, so a default
   // value alone wouldn't keep them on the legacy path.
   def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] =
-    toSclDilationMask(datacube, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size, useSeparableConvolution = false)
+    toSclDilationMask(datacube, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size, useSeparableConvolution = true)
 
   /**
    * @param useSeparableConvolution use the faster separable convolution instead of the original
