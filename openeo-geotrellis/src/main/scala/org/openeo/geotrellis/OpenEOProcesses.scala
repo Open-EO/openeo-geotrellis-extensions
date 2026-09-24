@@ -1503,7 +1503,7 @@ class OpenEOProcesses extends Serializable {
           }
         val rightWithMetadata: RDD[(SpaceTimeKey, T)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = ContextRDD(rightAsSpacetime, left.metadata)
         if (leftOuterJoin) {
-          left.leftOuterJoin(maybePartitioner.get(rightAsSpacetime), left.partitioner.get)
+          left.leftOuterJoin(maybePartitioner.get(rightWithMetadata), left.partitioner.get)
         } else {
           left.join(maybePartitioner.get(rightWithMetadata), maybePartitioner.get).mapValues { case (l, r) => (l, Some(r)) }
         }
