@@ -138,7 +138,7 @@ void runProcessGraphTests(){
             def snapshotRepo = 'libs-snapshot-public'
             def releaseRepo = 'libs-release-public'
             rtMaven.tool = maven
-            rtMaven.opts += ' -Dtest=TestProcessGraphJson -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false'
+            rtMaven.opts += ' -DRUN_PROCESS_GRAPH_REGRESSION_TESTS=true -Dtest=ProcessGraphRegressionTest -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false'
 
             try {
                 withCredentials([

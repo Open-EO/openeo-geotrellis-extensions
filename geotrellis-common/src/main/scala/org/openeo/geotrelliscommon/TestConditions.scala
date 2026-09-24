@@ -3,6 +3,7 @@ package org.openeo.geotrelliscommon
 import com.azavea.gdal.GDALWarp
 
 import java.nio.file.Path
+import scala.sys.env
 
 object TestConditions {
 
@@ -56,5 +57,20 @@ object TestConditions {
     } catch {
       case _: Throwable => false
     }
+  }
+
+  def hasDockerInstalled: Boolean = {
+    try {
+      val cmd = Seq("docker", "version")
+      val process = new ProcessBuilder(cmd: _*).start()
+      val exitCode = process.waitFor()
+      exitCode == 0
+    } catch {
+      case _: Throwable => false
+    }
+  }
+
+  def runProcessGraphRegressionTests: Boolean = {
+    hasDockerInstalled && System.getProperty("RUN_PROCESS_GRAPH_REGRESSION_TESTS") == "true"
   }
 }
