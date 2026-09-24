@@ -9,6 +9,7 @@ import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.RequestContext
+import org.openeo.geotrellis.layers.RasterTileLoader.SOFT_ERROR_MEGAPIXEL_COUNTER
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ResampledTile}
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
@@ -22,12 +23,8 @@ import scala.collection.parallel.CollectionConverters._
 //  attach e.g. a date to a RasterSource.
 object BandCompositeRasterSource {
   private val logger = LoggerFactory.getLogger(classOf[BandCompositeRasterSource])
-  private val SOFT_ERROR_MEGAPIXEL_COUNTER = "SoftErrorMegaPixels"
 
-  {
-    val tracker = BatchJobMetadataTracker.tracker("")
-    tracker.registerCounter(SOFT_ERROR_MEGAPIXEL_COUNTER)
-  }
+
 
   private def retryWithBackoff[R](maxAttempts: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
     val retryPolicy = new RetryPolicy[R]
