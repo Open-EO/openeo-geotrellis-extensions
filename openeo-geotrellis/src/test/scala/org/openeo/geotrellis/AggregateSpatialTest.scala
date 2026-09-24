@@ -1,18 +1,23 @@
 package org.openeo.geotrellis
 
-import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.layer.{Bounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{ByteCells, ByteConstantTile, MultibandTile}
 import geotrellis.spark._
+import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.util.SparkUtils
+import geotrellis.util.withGetComponentMethods
 import geotrellis.vector._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertTrue, fail}
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygon2}
 import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
+import org.openeo.geotrelliscommon.{SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
 
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
@@ -104,6 +109,17 @@ object AggregateSpatialTest {
   def tearDownSpark(): Unit = {
     sc.stop()
   }
+
+  /**
+   * Partitioner index variants used to exercise the single-point timeseries retrieval below,
+   * covering both the default partitioner and SparseSpaceTimePartitioner/SparseSpatialPartitioner
+   * with and without known keys.
+   */
+  def singlePointPartitionerVariants: java.util.stream.Stream[Arguments] = util.Arrays.stream(Array(
+    Arguments.of("default"),
+    Arguments.of("sparseWithKeys"),
+    Arguments.of("sparseNoKeys"),
+  ))
 }
 
 class AggregateSpatialTest {
@@ -124,6 +140,125 @@ class AggregateSpatialTest {
     )
 
     ContextRDD(datacube, updatedMetadata)
+  }
+
+  /**
+   * indexReduction used for the sparse partitioner variants below.
+   */
+  private val sparseIndexReduction = 7
+
+  /**
+   * Wraps a SpaceTimeKey cube with a fresh partitioner using the given index: reused from
+   * org.openeo.geotrellis.MergeCubesSpec#repartitionWithIndex.
+   */
+  private def repartitionSpaceTimeWithIndex(cube: MultibandTileLayerRDD[SpaceTimeKey], index: PartitionerIndex[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val kb: Bounds[SpaceTimeKey] = cube.metadata.getComponent[Bounds[SpaceTimeKey]]
+    val partitioner = SpacePartitioner[SpaceTimeKey](kb)(implicitly, implicitly, index)
+    ContextRDD(cube.partitionBy(partitioner), cube.metadata)
+  }
+
+  /** Same as repartitionSpaceTimeWithIndex, but for a pure spatial (SpatialKey) cube. */
+  private def repartitionSpatialWithIndex(cube: MultibandTileLayerRDD[SpatialKey], index: PartitionerIndex[SpatialKey]): MultibandTileLayerRDD[SpatialKey] = {
+    val kb: Bounds[SpatialKey] = cube.metadata.getComponent[Bounds[SpatialKey]]
+    val partitioner = SpacePartitioner[SpatialKey](kb)(implicitly, implicitly, index)
+    ContextRDD(cube.partitionBy(partitioner), cube.metadata)
+  }
+
+  /**
+   * Reuses the partitioner variant approach of org.openeo.geotrellis.MergeCubesSpec#withPartitionerVariant:
+   * "default" leaves the cube's own partitioner untouched, while "sparseWithKeys"/"sparseNoKeys"
+   * repartition it with a SparseSpaceTimePartitioner (indexReduction = sparseIndexReduction),
+   * with and without the known keys respectively.
+   */
+  private def withPartitionerVariantSpaceTime(cube: MultibandTileLayerRDD[SpaceTimeKey], variant: String): MultibandTileLayerRDD[SpaceTimeKey] = {
+    variant match {
+      case "default" => cube
+      case "sparseWithKeys" | "sparseNoKeys" =>
+        val allKeys = cube.map(_._1).distinct().collect()
+        val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, sparseIndexReduction)).distinct.sorted
+        val theKeys = if (variant == "sparseWithKeys") Some(allKeys) else None
+        repartitionSpaceTimeWithIndex(cube, new SparseSpaceTimePartitioner(indices, sparseIndexReduction, theKeys = theKeys))
+      case other =>
+        fail(s"Unknown partitioner variant: $other")
+    }
+  }
+
+  /** Same as withPartitionerVariantSpaceTime, but based on SparseSpatialPartitioner for a pure spatial cube. */
+  private def withPartitionerVariantSpatial(cube: MultibandTileLayerRDD[SpatialKey], variant: String): MultibandTileLayerRDD[SpatialKey] = {
+    variant match {
+      case "default" => cube
+      case "sparseWithKeys" | "sparseNoKeys" =>
+        val allKeys = cube.map(_._1).distinct().collect()
+        val indices = allKeys.map(SparseSpaceOnlyPartitioner.toIndex(_, sparseIndexReduction)).distinct.sorted
+        val theKeys = if (variant == "sparseWithKeys") Some(allKeys) else None
+        repartitionSpatialWithIndex(cube, new SparseSpatialPartitioner(indices, sparseIndexReduction, theKeys = theKeys))
+      case other =>
+        fail(s"Unknown partitioner variant: $other")
+    }
+  }
+
+  /**
+   * Covers retrieving a timeseries for a single point geometry, across the partitioner
+   * variants that can occur on a SpaceTimeKey input datacube: the default partitioner, and
+   * SparseSpaceTimePartitioner (indexReduction = 7) with and without known keys.
+   */
+  @ParameterizedTest
+  @MethodSource(Array("singlePointPartitionerVariants"))
+  def single_point_timeseries_from_spacetime_datacube(variant: String): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    val countMap = new util.HashMap[String, Object]()
+    countMap.put("condition", true.asInstanceOf[Object])
+    builder.expressionEnd("min", new util.HashMap[String, Object]())
+    builder.expressionEnd("mean", new util.HashMap[String, Object]())
+    builder.expressionEnd("count", countMap)
+
+    val from = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val cube = withPartitionerVariantSpaceTime(buildCubeRdd(from, to = ZonedDateTime.now()), variant)
+
+    val pointWkt = polygon1.getCentroid.toWKT()
+    val pointsCrs = LatLng
+
+    val outDir = s"/tmp/single_point_timeseries_from_spacetime_datacube_$variant"
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, cube,
+      util.Arrays.asList(pointWkt), s"EPSG:${pointsCrs.epsgCode.get}", outDir)
+
+    val groupedStats = parseCSV(outDir)
+
+    for ((_, stats) <- groupedStats) assertEqualTimeseriesStats(Seq(
+      Seq(10, 10, 1, Double.NaN, Double.NaN, 1)), // single point
+      stats)
+  }
+
+  /**
+   * Same as single_point_timeseries_from_spacetime_datacube, but for a pure spatial (SpatialKey)
+   * input datacube, covering the default partitioner and SparseSpatialPartitioner
+   * (indexReduction = 7) with and without known keys.
+   */
+  @ParameterizedTest
+  @MethodSource(Array("singlePointPartitionerVariants"))
+  def single_point_timeseries_from_spatial_datacube(variant: String): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd("min", new util.HashMap[String, Object]())
+    builder.expressionEnd("mean", new util.HashMap[String, Object]())
+
+    val from = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val spatialCubeBase = buildCubeRdd(from, to = ZonedDateTime.now()).toSpatial(from)
+    val spatialCube = withPartitionerVariantSpatial(spatialCubeBase, variant)
+
+    val pointWkt = polygon1.getCentroid.toWKT()
+    val geometriesCrs = LatLng
+
+    val outDir = s"/tmp/single_point_timeseries_from_spatial_datacube_$variant"
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_spatial_datacube(builder, spatialCube,
+      util.Arrays.asList(pointWkt), s"EPSG:${geometriesCrs.epsgCode.get}", outDir)
+
+    val groupedStats = parseCSV(outDir, spatioTemporal = false)
+
+    for ((_, stats) <- groupedStats) assertEqualTimeseriesStats(Seq(
+      Seq(10, 10.0, Double.NaN, Double.NaN)), // single point
+      stats)
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
