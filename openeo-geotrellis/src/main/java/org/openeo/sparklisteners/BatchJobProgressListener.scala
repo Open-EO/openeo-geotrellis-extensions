@@ -1,19 +1,25 @@
 package org.openeo.sparklisteners;
 
-import org.apache.spark.executor.TaskMetrics
-import org.apache.spark.scheduler.cluster.ExecutorInfo
-import org.apache.spark.scheduler.{SparkListener, SparkListenerApplicationEnd, SparkListenerExecutorAdded, SparkListenerExecutorRemoved, SparkListenerStageCompleted, SparkListenerStageSubmitted}
-import org.apache.spark.util.AccumulatorV2
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
+import io.circe.Json
+import io.circe.syntax._
+import org.apache.spark.scheduler._
+import org.openeo.sparklisteners.BatchJobProgressListener.{CPU_UTILIZATION_RATIO, SPARK_EXECUTION_METRICS_FILENAME, TOTAL_EXECUTOR_ALLOCATION_TIME, TOTAL_STAGE_RUNTIME}
+import org.slf4j.{Logger, LoggerFactory}
 
-import scala.collection.mutable
-import java.time.Duration;
+import java.io.IOException
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Paths}
+import java.time.Duration
+import scala.collection.mutable;
 
 object BatchJobProgressListener {
 
-    val logger = LoggerFactory.getLogger(BatchJobProgressListener.getClass)
+    val logger: Logger = LoggerFactory.getLogger(BatchJobProgressListener.getClass)
 
+    val TOTAL_STAGE_RUNTIME = "total_stage_runtime"
+    val TOTAL_EXECUTOR_ALLOCATION_TIME = "total_executor_allocation_time"
+    val CPU_UTILIZATION_RATIO = "cpu_utilization_ratio"
+    val SPARK_EXECUTION_METRICS_FILENAME = "spark_execution_metrics.json"
 }
 
 class BatchJobProgressListener extends SparkListener {
@@ -122,6 +128,17 @@ class BatchJobProgressListener extends SparkListener {
     logger.info(f"Total number of stages: $totalStages")
     logger.info(f"Total stage runtime: $timeString")
     logger.info(f"Total executor allocation time: $executorString")
+
+    val cpuUtilizationRatio: Double = if (executorTime > 0) {
+      totalDuration.toMillis.toDouble / executorTime.toDouble
+    } else {
+      0d
+    }
+    logger.info(f"CPU utilization ratio: $cpuUtilizationRatio")
+
+
+    writeUsageMetrics(totalDuration.toMillis, executorTime, cpuUtilizationRatio)
+
     if (totalStages > 0) {
       var tempDuration = 0.0
       var i = 0
@@ -146,6 +163,27 @@ class BatchJobProgressListener extends SparkListener {
         maxDurationToLog = duration
         i += 1
       }
+    }
+  }
+
+  /** Writes the job usage metrics as JSON to `usage_metrics.json` in the working directory of the driver. */
+  private def writeUsageMetrics(totalStageRuntimeMillis: Long, executorAllocationTimeMillis: Long,
+                                cpuUtilizationRatio: Double): Unit = {
+    val usageMetrics = Json.obj(
+      TOTAL_STAGE_RUNTIME -> totalStageRuntimeMillis.asJson,
+      TOTAL_EXECUTOR_ALLOCATION_TIME -> executorAllocationTimeMillis.asJson,
+      CPU_UTILIZATION_RATIO -> cpuUtilizationRatio.asJson,
+    )
+
+    val usageMetricsFile = Paths.get("").toAbsolutePath.resolve(SPARK_EXECUTION_METRICS_FILENAME)
+
+    try {
+      logger.debug(s"Trying to write usage metrics to $usageMetricsFile")
+      Files.write(usageMetricsFile, usageMetrics.spaces2.getBytes(StandardCharsets.UTF_8))
+      logger.debug(s"Wrote usage metrics to $usageMetricsFile")
+    } catch {
+      // the application is ending anyway: failing to write the metrics should not fail the job
+      case e: Exception => logger.warn(s"Failed to write usage metrics to $usageMetricsFile", e)
     }
   }
 }

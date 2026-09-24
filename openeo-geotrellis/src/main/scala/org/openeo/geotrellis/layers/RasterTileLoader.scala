@@ -13,7 +13,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelPerSecondMeter}
+import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelMeter, megapixelPerSecondMeter}
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, time}
@@ -31,6 +31,7 @@ object RasterTileLoader extends RasterTileLoader {
 case class RasterTileLoader() {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[RasterTileLoader])
   private val PIXEL_COUNTER = "InputPixels"
+  val SOFT_ERROR_MEGAPIXEL_COUNTER = "SoftErrorMegaPixels"
 
 
   def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams: Option[DataCubeParameters] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
@@ -130,6 +131,7 @@ case class RasterTileLoader() {
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val tracker = BatchJobMetadataTracker.tracker("")
     tracker.registerCounter(PIXEL_COUNTER)
+    tracker.registerCounter(SOFT_ERROR_MEGAPIXEL_COUNTER)
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val crs = metadata.crs
     val layout = metadata.layout
@@ -149,6 +151,10 @@ case class RasterTileLoader() {
               val secondsPerChunk = (durationMillis / 1000.0) / (totalPixelsPartition / (256 * 256))
               loadingTimeAcc.add(secondsPerChunk)
             }
+            val megaPixels = totalPixelsPartition / (1024 * 1024)
+            megapixelMeter.add(megaPixels)
+            val megaPixelsPerSecond = megaPixels / (durationMillis / 1000.0)
+            megapixelPerSecondMeter.set(megaPixelsPerSecond)
             loadedPartitions
           }
           val withEmptyTiles = if (retainNoDataTiles) {
@@ -255,23 +261,27 @@ case class RasterTileLoader() {
     val theCellType = metadata.cellType
     rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
     val partitionedBySource = byBandSource.groupByKey(new ByKeyPartitioner(allSources))
-    val value1 = partitionedBySource.mapPartitions((partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
+    val jobId: String = System.getenv("OPENEO_BATCH_JOB_ID")
 
-      val ((loadedPartition: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels), duration) = time {
-        loadPartitionBySource(partition, cloudFilterStrategy, totalChunksAcc, tracker, crs, layout, theCellType)
-      }
+    val value1 = partitionedBySource.mapPartitions(
+      (partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
+        val ((loadedPartition: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))], partitionPixels), duration) = time {
+          loadPartitionBySource(partition, cloudFilterStrategy, totalChunksAcc, tracker, crs, layout, theCellType)
+        }
 
-      if (partitionPixels > 0) {
-        val durationSeconds = duration.toMillis / 1000.0
-        val secondsPerChunk = durationSeconds / (partitionPixels / (256 * 256))
-        loadingTimeAcc.add(secondsPerChunk)
-        val megapixelPerSecond = (partitionPixels / (1024.0 * 1024)) / durationSeconds
-        logger.debug(s"totalPixelsPartition=$partitionPixels durationSeconds=$durationSeconds megapixelPerSecond=$megapixelPerSecond")
-        megapixelPerSecondMeter.set(megapixelPerSecond)
-      }
-      loadedPartition
-
-    }, preservesPartitioning = true)
+        if (partitionPixels > 0) {
+          val durationSeconds = duration.toMillis / 1000.0
+          val megaPixels = partitionPixels / (256 * 256)
+          val secondsPerChunk = durationSeconds / megaPixels
+          loadingTimeAcc.add(secondsPerChunk)
+          val megapixelPerSecond = (partitionPixels / (1024.0 * 1024)) / durationSeconds
+          megapixelMeter.add(megaPixels)
+          megapixelPerSecondMeter.set(megapixelPerSecond)
+        }
+        loadedPartition
+      },
+      preservesPartitioning = true
+    )
     val value = value1.groupByKey(partitioner)
     var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = value.mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
       val tuples: List[(Option[MultibandTile])] = tiles.groupBy(_._1)

@@ -300,8 +300,9 @@ object CroptypeInference {
           val rawElv = raw(inputBandIndices.elev); xBuf.put(base + P_ELEV, normalizeBand(P_ELEV, rawElv)); maskBuf.put(base + P_ELEV, if (OnnxInferenceUtils.isNodata(rawElv)) 1L else 0L)
           val rawSlope = raw(inputBandIndices.slope); xBuf.put(base + P_SLOPE, normalizeBand(P_SLOPE,rawSlope)); maskBuf.put(base + P_SLOPE, if (OnnxInferenceUtils.isNodata(rawSlope)) 1L else 0L)
           xBuf.put(base + P_NDVI, computeNdvi(xBuf.get(base + P_B8), xBuf.get(base + P_B4)))
-          maskBuf.put(base + P_NDVI, if (OnnxInferenceUtils.isNodata(rawB8) || OnnxInferenceUtils.isNodata(rawB4) || (rawB8 + rawB4) == 0f) 1L else 0L)
-          if (outputNdvi) ndviAccum(p * T + t) = scaleNdviToByte(xBuf.get(base + P_NDVI))
+          val ndviIsNoData = OnnxInferenceUtils.isNodata(rawB8) || OnnxInferenceUtils.isNodata(rawB4) || (rawB8 + rawB4) == 0f
+          maskBuf.put(base + P_NDVI, if (ndviIsNoData) 1L else 0L)
+          if (outputNdvi) ndviAccum(p * T + t) =  if (!ndviIsNoData )scaleNdviToByte(xBuf.get(base + P_NDVI)) else 255
 
           pi += 1
         }
@@ -391,11 +392,7 @@ object CroptypeInference {
       outputTiles ++= (if (targetDatatype.isFloat) bands.map(_.convert(targetDatatype.cellType)) else bands)
       logger.info(s"CroptypeInference: added embeddings ${outputTiles.length} ")
     }
-    if (outputProbabilities) {
-      outputTiles ++= buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
-        detectedLcClasses, detectedCtClasses, numSeasons, targetDatatype).bands
-      logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
-    }
+
     if (outputClassification) {
       outputTiles ++= buildClassificationTileFromProbs(
         lcProbs = landcoverAccum.toArray,
@@ -413,6 +410,11 @@ object CroptypeInference {
         majorityVoteCroptype = majorityVoteCroptype,
         targetDatatype = targetDatatype
       ).bands
+    }
+    if (outputProbabilities) {
+      outputTiles ++= buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
+        detectedLcClasses, detectedCtClasses, numSeasons, targetDatatype).bands
+      logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
     }
     if (outputNdvi) {
       outputTiles ++= buildNdviTiles(ndviAccum, cols, rows, T).map {
@@ -617,7 +619,7 @@ object CroptypeInference {
     // Croptype labels exclude the "no crop" sentinel from voting, matching the python
     // reference's POSTPROCESSING_EXCLUDED_VALUES handling for croptype postprocessing.
     val croptypeExcludedValues = Set(OnnxInferenceUtils.NOCROP_VALUE.toInt)
-    val seasonBands = Array.tabulate(numSeasons) { s =>
+    val seasonClassificationBands = Array.tabulate(numSeasons) { s =>
       val croptypeClassTile: Tile =
         if (majorityVoteEnabled && majorityVoteCroptype)
           MajorityVote(UByteArrayTile(croptypeClassPerSeason(s), cols, rows, ubyteCellType), majorityVoteKernelSize, croptypeExcludedValues)
@@ -626,11 +628,13 @@ object CroptypeInference {
       val croptypeClassOut: Tile =
         if (targetDatatype.isFloat) croptypeClassTile.convert(targetDatatype.cellType)
         else croptypeClassTile
-      Array[Tile](
-        croptypeClassOut,
-        if (targetDatatype.isFloat) FloatArrayTile(croptypeProbPerSeason(s).map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(croptypeProbPerSeason(s), cols, rows, ubyteCellType): Tile
-      )
-    }.flatten
+      croptypeClassOut
+    }
+    val seasonProbabilityBands = Array.tabulate(numSeasons) { s =>
+      if (targetDatatype.isFloat) FloatArrayTile(croptypeProbPerSeason(s).map(b => (b & 0xff).toFloat), cols, rows)
+      else UByteArrayTile(croptypeProbPerSeason(s), cols, rows, ubyteCellType): Tile
+    }
+    val seasonBands = seasonClassificationBands ++ seasonProbabilityBands
 
 
     MultibandTile(
