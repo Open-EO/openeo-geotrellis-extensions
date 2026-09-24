@@ -1501,14 +1501,11 @@ class OpenEOProcesses extends Serializable {
               (SpaceTimeKey(spatialKey.col, spatialKey.row, temporalKey), tile)
             }
           }
+        val rightWithMetadata: RDD[(SpaceTimeKey, T)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = ContextRDD(rightAsSpacetime, left.metadata)
         if (leftOuterJoin) {
-          left.leftOuterJoin(rightAsSpacetime, left.partitioner.get)
+          left.leftOuterJoin(maybePartitioner.get(rightAsSpacetime), left.partitioner.get)
         } else {
-          val joined: RDD[(SpaceTimeKey, (MultibandTile, Option[T]))] = left.join(rightAsSpacetime, left.partitioner.get).mapValues { case (l, r) => (l, Some(r)) }
-          if(logger.isDebugEnabled()) {
-            logger.debug(s"leftJoinSpacetimeSpatial: Joined ${joined.count()} records, partitioner: ${joined.partitioner}")
-          }
-          joined
+          left.join(maybePartitioner.get(rightWithMetadata), maybePartitioner.get).mapValues { case (l, r) => (l, Some(r)) }
         }
       } else {
         new SpatialToSpacetimeJoinRdd[T](left, right, leftOuterJoin)
