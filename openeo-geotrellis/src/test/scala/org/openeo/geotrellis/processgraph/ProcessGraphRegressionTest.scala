@@ -1,8 +1,7 @@
 package org.openeo.geotrellis.processgraph
 
-import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.condition.{EnabledIf, EnabledIfSystemProperty}
+import org.junit.jupiter.api.condition.EnabledIf
 
 @EnabledIf("org.openeo.geotrelliscommon.TestConditions#runProcessGraphRegressionTests")
 class ProcessGraphRegressionTest {
