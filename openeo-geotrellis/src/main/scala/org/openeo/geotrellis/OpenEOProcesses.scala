@@ -1494,11 +1494,8 @@ class OpenEOProcesses extends Serializable {
       val maybeKeys = findPartitionerKeys(left)
       logger.info(s"leftJoinSpacetimeSpatial: Found ${maybeKeys.map(_.size).getOrElse(0)} keys in left cube for partitioner ${maybePartitioner.getOrElse("None")}")
       if (maybeKeys.isDefined) {
-        val spatialKeys = maybeKeys.get.map(_.spatialKey).toSet
         val timestamps = maybeKeys.get.map(_.temporalKey).toSet
-        val spatialKeysBC = sc.broadcast(spatialKeys)
         val rightAsSpacetime = right
-          .filter { case (spatialKey, _) => spatialKeysBC.value.contains(spatialKey) }
           .flatMap { case (spatialKey, tile) =>
             timestamps.map { temporalKey =>
               (SpaceTimeKey(spatialKey.col, spatialKey.row, temporalKey), tile)
@@ -1507,7 +1504,11 @@ class OpenEOProcesses extends Serializable {
         if (leftOuterJoin) {
           left.leftOuterJoin(rightAsSpacetime, left.partitioner.get)
         } else {
-          left.join(rightAsSpacetime, left.partitioner.get).mapValues { case (l, r) => (l, Some(r)) }
+          val joined: RDD[(SpaceTimeKey, (MultibandTile, Option[T]))] = left.join(rightAsSpacetime, left.partitioner.get).mapValues { case (l, r) => (l, Some(r)) }
+          if(logger.isDebugEnabled()) {
+            logger.debug(s"leftJoinSpacetimeSpatial: Joined ${joined.count()} records, partitioner: ${joined.partitioner}")
+          }
+          joined
         }
       } else {
         new SpatialToSpacetimeJoinRdd[T](left, right, leftOuterJoin)
