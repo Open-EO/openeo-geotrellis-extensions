@@ -5,11 +5,15 @@ import ai.onnxruntime.{OrtEnvironment, OrtSession}
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.raster._
 import org.openeo.geotrellis.croptype.CroptypeInference.TargetDatatype
+import org.slf4j.LoggerFactory
 
 import java.net.URL
 import java.nio.file.{Files, Paths}
+import scala.jdk.CollectionConverters._
 
 object OnnxInferenceUtils {
+
+  private val logger = LoggerFactory.getLogger(getClass)
 
   val NODATA: Float = 65535f
   val NOCROP_VALUE: Float = 254f
@@ -58,9 +62,18 @@ object OnnxInferenceUtils {
       options.setInterOpNumThreads(3)
       options.setIntraOpNumThreads(1)
       options.setExecutionMode(ExecutionMode.PARALLEL)
-      env.createSession(bytes, options)
+      val session = env.createSession(bytes, options)
+      // Log input/output names once per model, right after the session is created (and cached).
+      logger.info(
+        s"CroptypeInference: loaded ONNX model '$mp' with inputs=[${session.getInputNames.asScala.mkString(", ")}], " +
+          s"outputs=[${session.getOutputNames.asScala.mkString(", ")}]"
+      )
+      session
     })
   }
+
+  /** Whether the given ONNX session declares a "latlons" input, so we know whether to compute and feed it. */
+  def hasLatLonsInput(session: OrtSession): Boolean = session.getInputNames.contains("latlons")
 
   def loadModelBytes(model: String): Array[Byte] = {
     val stream = Thread.currentThread().getContextClassLoader.getResourceAsStream(model)
