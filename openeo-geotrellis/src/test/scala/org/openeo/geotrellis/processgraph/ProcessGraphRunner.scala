@@ -13,6 +13,8 @@ object ProcessGraphRunner {
 
   val logger: Logger = LoggerFactory.getLogger(ProcessGraphRunner.getClass)
 
+  private val dockerImage = "vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
+
   def run(processGraphS: String): Unit = {
     run(new File(getClass.getResource(processGraphS).getFile))
   }
@@ -82,8 +84,6 @@ object ProcessGraphRunner {
 
     val debug = ManagementFactory.getRuntimeMXBean.getInputArguments.stream().anyMatch(_.contains("-agentlib:jdwp"))
 
-    val dockerImage = "vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
-
     val cmd =
       if (debug) {
         val debugPort = findFirstOpenPort(5005)
@@ -128,30 +128,37 @@ object ProcessGraphRunner {
     credentialsFile.map(f => f"-v ${f.getAbsolutePath}:/opt/openeo/http_credentials.json").getOrElse("")
   }
 
-  lazy val optionalDataMapping: String = {
-    val dataFolder = {
-      val file = new File("/data")
-      if (file.exists && file.isDirectory) {
-        Some(file)
-      } else {
-        None
-      }
+  lazy val optionalDataMapping: String =
+    optionalMapping("/data", Seq("-v", "/data:/data"))
+
+  lazy val optionalEODataMapping: String =
+    optionalMapping("/eodata", Seq("--mount", "type=bind,src=/eodata,dst=/eodata,readonly,bind-propagation=rslave"))
+
+  /**
+   * A folder that exists on this host is not necessarily mountable by the Docker daemon (e.g. FUSE mounts, mount
+   * propagation that is neither shared nor slave, or a confined/remote daemon), in which case "docker run" fails.
+   * Probing with the actual mount arguments keeps such an optional folder from breaking the whole test.
+   */
+  private def optionalMapping(path: String, dockerArgs: Seq[String]): String = {
+    val folder = new File(path)
+    if (!(folder.exists && folder.isDirectory)) {
+      ""
+    } else if (dockerDaemonCanMount(dockerArgs)) {
+      dockerArgs.mkString(" ")
+    } else {
+      logger.warn(f"Skipping mount of $path: the Docker daemon cannot mount it")
+      ""
     }
-    dataFolder.map(f => f"-v ${f.getAbsolutePath}:/data").getOrElse("")
   }
 
-  lazy val optionalEODataMapping: String = {
-    val dataFolder = {
-      val file = new File("/eodata")
-      if (file.exists && file.isDirectory) {
-        Some(file)
-      } else {
-        None
-      }
+  private def dockerDaemonCanMount(dockerArgs: Seq[String]): Boolean = {
+    val cmd = Seq("docker", "run", "--rm", "--entrypoint", "true") ++ dockerArgs :+ dockerImage
+    try {
+      cmd.!(ProcessLogger(_ => ())) == 0
+    } catch {
+      case _: Throwable => false
     }
-    dataFolder.map(f => f"--mount type=bind,src=${f.getAbsolutePath},dst=/eodata,readonly,bind-propagation=rslave").getOrElse("")
   }
-
 
   @tailrec
   def findFirstOpenPort(fromPort: Int): Int = {

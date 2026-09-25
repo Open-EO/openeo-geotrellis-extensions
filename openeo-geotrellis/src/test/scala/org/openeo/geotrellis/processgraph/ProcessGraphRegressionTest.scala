@@ -1,0 +1,18 @@
+package org.openeo.geotrellis.processgraph
+
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIf
+
+@EnabledIf("org.openeo.geotrelliscommon.TestConditions#runProcessGraphRegressionTests")
+class ProcessGraphRegressionTest {
+
+  @Test
+  def loadSyntheticData(): Unit = {
+    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_synthetic_data.json")
+  }
+
+  @Test
+  def loadSentinel1GrdGeoTiff(): Unit = {
+    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_sentinel1_grd_geotiff.json")
+  }
+}
