@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.layers
 
 import _root_.io.opentelemetry.api._
+import _root_.io.opentelemetry.api.trace.Tracer
 import cats.data.NonEmptyList
 import com.azavea.gdal.GDALWarp
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
@@ -895,7 +896,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
       val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(Option.empty).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
       val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
-      val dates = sources.map(_._2.nominalDate).distinct
+      val dates = sources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC"))).distinct
       val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
       val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
       Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(allKeys.toArray))))

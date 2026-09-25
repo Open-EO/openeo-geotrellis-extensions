@@ -235,6 +235,7 @@ object CroptypeInference {
 
     val session    = OnnxInferenceUtils.getOrCreateSession(onnxModelPath)
     val env        = OrtEnvironment.getEnvironment()
+    val hasLatLons = OnnxInferenceUtils.hasLatLonsInput(session)
 
     val seasonPattern = buildSeasonPattern(sorted, seasonWindows, numSeasons)
     val S = seasonPattern.length
@@ -312,17 +313,19 @@ object CroptypeInference {
         while (pi2 < batchB) { monthBuf.put(pi2 * T + t, m); pi2 += 1 }
       }
 
-      var pi = 0
-      while (pi < batchB) {
-        val p    = pStart + pi
-        val col  = p % cols
-        val row  = p / cols
-        val xCtr = tileExtent.xmin + (col + 0.5) * cellWidth
-        val yCtr = tileExtent.ymax - (row + 0.5) * cellHeight
-        val (lon, lat) = xform(xCtr, yCtr)
-        latlonBuf.put(pi * 2, lat.toFloat)
-        latlonBuf.put(pi * 2 + 1, lon.toFloat)
-        pi += 1
+      if (hasLatLons) {
+        var pi = 0
+        while (pi < batchB) {
+          val p    = pStart + pi
+          val col  = p % cols
+          val row  = p / cols
+          val xCtr = tileExtent.xmin + (col + 0.5) * cellWidth
+          val yCtr = tileExtent.ymax - (row + 0.5) * cellHeight
+          val (lon, lat) = xform(xCtr, yCtr)
+          latlonBuf.put(pi * 2, lat.toFloat)
+          latlonBuf.put(pi * 2 + 1, lon.toFloat)
+          pi += 1
+        }
       }
 
       xBuf.limit(batchB * T * NUM_BANDS)
@@ -333,19 +336,19 @@ object CroptypeInference {
 
       val xOnnx    = OnnxTensor.createTensor(env, xBuf, Array[Long](batchB, T, NUM_BANDS))
       val dwOnnx   = OnnxTensor.createTensor(env, dwBuf, Array[Long](batchB, T))
-      val llOnnx   = OnnxTensor.createTensor(env, latlonBuf, Array[Long](batchB, 2))
+      val llOnnx   = if (hasLatLons) OnnxTensor.createTensor(env, latlonBuf, Array[Long](batchB, 2)) else null
       val maskOnnx = OnnxTensor.createTensor(env, maskBuf, Array[Long](batchB, T, NUM_BANDS))
       val monOnnx  = OnnxTensor.createTensor(env, monthBuf, Array[Long](batchB, T))
       val smArray  = Array.tabulate(batchB, S, T) { (_, s, t) => seasonPattern(s)(t) }
       val smOnnx   = OnnxTensor.createTensor(env, smArray)
-      val inputs: java.util.Map[String, OnnxTensorLike] = java.util.Map.of(
-        "x", xOnnx.asInstanceOf[OnnxTensorLike],
-        "dynamic_world", dwOnnx.asInstanceOf[OnnxTensorLike],
-        "latlons", llOnnx.asInstanceOf[OnnxTensorLike],
-        "mask", maskOnnx.asInstanceOf[OnnxTensorLike],
-        "month", monOnnx.asInstanceOf[OnnxTensorLike],
-        "season_masks", smOnnx.asInstanceOf[OnnxTensorLike]
-      )
+      val inputsBuilder = new java.util.HashMap[String, OnnxTensorLike]()
+      inputsBuilder.put("x", xOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("dynamic_world", dwOnnx.asInstanceOf[OnnxTensorLike])
+      if (hasLatLons) inputsBuilder.put("latlons", llOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("mask", maskOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("month", monOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("season_masks", smOnnx.asInstanceOf[OnnxTensorLike])
+      val inputs: java.util.Map[String, OnnxTensorLike] = java.util.Collections.unmodifiableMap(inputsBuilder)
 
       val result = session.run(inputs)
       try {
@@ -371,7 +374,7 @@ object CroptypeInference {
         result.close()
         xOnnx.close()
         dwOnnx.close()
-        llOnnx.close()
+        if (llOnnx != null) llOnnx.close()
         maskOnnx.close()
         monOnnx.close()
         smOnnx.close()

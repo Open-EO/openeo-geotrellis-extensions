@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import _root_.io.opentelemetry.api.common.{AttributeKey, Attributes}
 import cats.data.NonEmptyList
 import geotrellis.layer.{LayoutDefinition, LayoutTileSource, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
@@ -14,10 +13,10 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelPerSecondMeter, megapixelMeter}
+import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelMeter, megapixelPerSecondMeter}
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, autoUtmEpsg, time}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, time}
 import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -32,6 +31,7 @@ object RasterTileLoader extends RasterTileLoader {
 case class RasterTileLoader() {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[RasterTileLoader])
   private val PIXEL_COUNTER = "InputPixels"
+  val SOFT_ERROR_MEGAPIXEL_COUNTER = "SoftErrorMegaPixels"
 
 
   def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams: Option[DataCubeParameters] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
@@ -131,6 +131,7 @@ case class RasterTileLoader() {
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val tracker = BatchJobMetadataTracker.tracker("")
     tracker.registerCounter(PIXEL_COUNTER)
+    tracker.registerCounter(SOFT_ERROR_MEGAPIXEL_COUNTER)
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val crs = metadata.crs
     val layout = metadata.layout
