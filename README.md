@@ -13,6 +13,20 @@ While the most important tests can be executed anywhere, without requiring depen
  * geotrellis-sentinelhub requires environment variables SENTINELHUB_CLIENT_ID and SENTINELHUB_CLIENT_SECRET to be set.
  * Some tests expect the Terrascope archive to be available under /data/MTDA
 
+## Run full process graph integration test
+
+A JUnit based test is available, [TestProcessGraphJson](https://github.com/Open-EO/openeo-geotrellis-extensions/blob/cef5ed3e44477a9f70daa897a71ed01a4b2d2968/openeo-geotrellis/src/test/scala/org/openeo/geotrellis/processgraph/TestProcessGraphJson.scala) that executes full process graphs, allowing to exactly reproduce end-to-end backend behavior.
+The test will use Docker to pull in a working runtime environment.
+
+For data access, it is possible to provide various types of credentials, for reading over http, or to work with locally mounted data.
+There are also synthetic data providers, which are very much recommend to make tests data independent if possible.
+
+Various process graphs in the [resources](https://github.com/Open-EO/openeo-geotrellis-extensions/blob/cef5ed3e44477a9f70daa897a71ed01a4b2d2968/openeo-geotrellis/src/test/resources/org/openeo/geotrellis/processgraph) folder provide examples.
+
+### Debugging full process graph
+
+For debugging, just run the test via your IDE in debug mode, it will start, but then wait for a remote debug session to be attached.
+Use your IDE to connect to the remote debug port (5005 by default), and the process graph execution will continue, allowing you to set breakpoints.
 
 ## Releasing new major version
 Setup clean local git repository with up to date develop and master branch.
