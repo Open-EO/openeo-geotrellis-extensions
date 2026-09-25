@@ -1,0 +1,78 @@
+{
+  "loadcollection1": {
+    "process_id": "load_collection",
+    "arguments": {
+      "id": "SENTINEL1_GRD",
+      "temporal_extent": [
+        "2022-09-13",
+        "2022-09-14"
+      ],
+      "spatial_extent": {
+        "west": 4.9,
+        "south": 50.9,
+        "east": 5.1,
+        "north": 51.1,
+        "crs": "EPSG:4326"
+      },
+      "bands": [
+        "VV",
+        "VH"
+      ],
+      "properties": {
+        "sat:orbit_state": {
+          "process_graph": {
+            "eq1": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "value"
+                },
+                "y": "DESCENDING"
+              },
+              "result": true
+            }
+          }
+        },
+        "polarisation": {
+          "process_graph": {
+            "eq2": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "value"
+                },
+                "y": "VV&VH"
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    }
+  },
+  "sarbackscatter1": {
+    "process_id": "sar_backscatter",
+    "arguments": {
+      "data": {
+        "from_node": "loadcollection1"
+      },
+      "coefficient": "sigma0-ellipsoid",
+      "elevation_model": "COPERNICUS_30",
+      "ellipsoid_incidence_angle": false,
+      "local_incidence_angle": false,
+      "noise_removal": true,
+      "contributing_area": false,
+      "mask": false
+    }
+  },
+  "saveresult1": {
+    "process_id": "save_result",
+    "arguments": {
+      "data": {
+        "from_node": "sarbackscatter1"
+      },
+      "format": "GTiff"
+    },
+    "result": true
+  }
+}
