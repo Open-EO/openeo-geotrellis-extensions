@@ -1,7 +1,7 @@
 package org.openeo.geotrelliscommon
 
 import geotrellis.raster.mapalgebra.focal.Kernel
-import geotrellis.raster.{BitCellType, DoubleConstantNoDataCellType, MultibandTile, NODATA, Raster, ShortConstantNoDataCellType, Tile}
+import geotrellis.raster.{BitArrayTile, BitCellType, DoubleConstantNoDataCellType, GridBounds, MultibandTile, NODATA, Raster, ShortConstantNoDataCellType, Tile}
 import org.openeo.geotrelliscommon.SCLConvolutionFilterStrategy._
 
 import java.util
@@ -183,6 +183,32 @@ object SCLConvolutionFilter {
     }
   }
 
+  /**
+   * The 1D Gaussian factor g such that outer(g, g) approximates [[kernel]]. Used for separable
+   * convolution instead of FFTConvolve: k² multiply-adds per pixel instead of an FFT.
+   *
+   * NOT bit-identical to [[kernel]]: [[kernel]] truncates each cell to Int (via
+   * `Kernel.gaussian`) before normalising, which is not a separable operation, so no choice of g
+   * reproduces it exactly (~2.9e-4 of kernel mass differs, roughly constant across kernel sizes).
+   * This is an accepted tradeoff: measured negligible in practice on real data (occasional
+   * boundary-pixel flips near the mask thresholds, never in the interior of a masked region).
+   */
+  def kernel1D(windowSize: Int): Option[Array[Double]] = {
+    if (windowSize <= 0) {
+      None
+    } else {
+      val sigma = windowSize / 6.0
+      val denom = 2.0 * sigma * sigma
+      val center = windowSize / 2
+      val g = Array.tabulate(windowSize) { i =>
+        val d = i - center
+        math.exp(-(d * d) / denom)
+      }
+      val sum = g.sum
+      Some(g.map(_ / sum))
+    }
+  }
+
   def erosion_kernel(windowSize: Int): Option[Tile] = {
     if (windowSize <= 0) {
       None
@@ -191,6 +217,17 @@ object SCLConvolutionFilter {
       Some(k.tile)
     }
   }
+}
+
+/**
+ * Common interface for the two SCL dilation mask implementations ([[SCLConvolutionFilter]], the
+ * fast separable-convolution version, and [[LegacySCLConvolutionFilter]], the original FFT-based
+ * version), so callers can pick one behind a flag without branching on the mask-creation call
+ * itself.
+ */
+trait SCLMaskFilter extends Serializable {
+  def bufferInPixels: Int
+  def createMask(sclTile: MultibandTile, targetArea: GridBounds[Int]): Tile
 }
 
 /**
@@ -214,21 +251,202 @@ object SCLConvolutionFilter {
  * 10 thin cirrus
  * 11 snow
   */
-class SCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int) extends Serializable {
+class SCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int) extends SCLMaskFilter {
   import SCLConvolutionFilter._
 
   private val erosionKernel = erosion_kernel(erosion_kernal_size)
   private val kernel1 = kernel(kernel1Size)
   private val kernel2 = kernel(kernel2Size)
+  private val kernel1g = kernel1D(kernel1Size)
+  private val kernel2g = kernel1D(kernel2Size)
+
+  // SCL values fit comfortably in a byte; NODATA (Int.MinValue) and any other out-of-range value
+  // fall through to the "not in the list" default, matching util.List#contains.
+  private val TABLE_SIZE = 256
+  private def lookupTable(values: util.List[Int]): Array[Boolean] = {
+    val table = new Array[Boolean](TABLE_SIZE)
+    val it = values.iterator()
+    while (it.hasNext) {
+      val v = it.next()
+      if (v >= 0 && v < TABLE_SIZE) table(v) = true
+    }
+    table
+  }
+  private val mask1Table = lookupTable(mask1Values)
+  private val mask2Table = lookupTable(mask2Values)
+  private def inTable(table: Array[Boolean], value: Int): Boolean = value >= 0 && value < TABLE_SIZE && table(value)
 
   def bufferInPixels = (kernel2.get.cols/2).floor.intValue()
+
+  def createMask(sclTile: MultibandTile): Tile =
+    createMask(sclTile, GridBounds(0, 0, sclTile.cols - 1, sclTile.rows - 1))
+
+  def createMask(sclTile: MultibandTile, targetArea: GridBounds[Int]): Tile = {
+    val maskTile = sclTile.band(0).convert(ShortConstantNoDataCellType)
+    val cols = maskTile.cols
+    val rows = maskTile.rows
+    val colMin = targetArea.colMin
+    val rowMin = targetArea.rowMin
+    val colMax = targetArea.colMax
+    val rowMax = targetArea.rowMax
+    val outCols = targetArea.width
+    val outRows = targetArea.height
+
+    var allMasked = true
+    var nothingMasked = true
+    val binaryMask1 = new Array[Double](cols * rows)
+    var i = 0
+    var r = 0
+    while (r < rows) {
+      var c = 0
+      while (c < cols) {
+        val value = maskTile.get(c, r)
+        if (inTable(mask1Table, value)) {
+          allMasked = false
+          binaryMask1(i) = 0.0
+        } else {
+          nothingMasked = false
+          binaryMask1(i) = 1.0
+        }
+        c += 1
+        i += 1
+      }
+      r += 1
+    }
+
+    // First erosion + dilation step, restricted to the target area.
+    val convolution1: Option[Array[Double]] =
+      if (!nothingMasked && kernel1.isDefined) {
+        val erodedArr = erode(binaryMask1, cols, rows)
+        val dilated1 = SeparableConvolve.convolve(erodedArr, cols, rows, kernel1g.get, colMin, rowMin, colMax, rowMax)
+        // First dilate, with a small kernel around everything that is not valid.
+        allMasked = true
+        var j = 0
+        while (j < dilated1.length) {
+          val res = dilated1(j) > 0.057
+          if (res) {
+            dilated1(j) = 1.0
+          } else {
+            dilated1(j) = 0.0
+            allMasked = false
+          }
+          j += 1
+        }
+        Some(dilated1)
+      } else {
+        if (nothingMasked) {
+          None
+        } else {
+          Some(sliceWindow(binaryMask1, cols, colMin, rowMin, colMax, rowMax)) //kernel size is 0, but there is still a basic binary mask
+        }
+      }
+    if (allMasked) {
+      return toBitTile(convolution1.get, outCols, outRows)
+    }
+
+    // Second erosion + dilation step, restricted to the target area.
+    allMasked = true
+    val binaryMask2 = new Array[Double](cols * rows)
+    i = 0
+    r = 0
+    while (r < rows) {
+      var c = 0
+      while (c < cols) {
+        val value = maskTile.get(c, r)
+        if (inTable(mask2Table, value)) {
+          binaryMask2(i) = 1.0
+        } else {
+          allMasked = false
+          binaryMask2(i) = 0.0
+        }
+        c += 1
+        i += 1
+      }
+      r += 1
+    }
+    val convolution2: Array[Double] = if (!allMasked) {
+      val erodedArr = erode(binaryMask2, cols, rows)
+      val dilated2 = SeparableConvolve.convolve(erodedArr, cols, rows, kernel2g.get, colMin, rowMin, colMax, rowMax)
+      var j = 0
+      while (j < dilated2.length) {
+        dilated2(j) = if (dilated2(j) > 0.025) 1.0 else 0.0
+        j += 1
+      }
+      dilated2
+    } else {
+      sliceWindow(binaryMask2, cols, colMin, rowMin, colMax, rowMax)
+    }
+
+    // Combine the two convolutions.
+    // Use bit celltype because of: https://github.com/locationtech/geotrellis/issues/3488
+    val result = convolution1 match {
+      case Some(conv1) =>
+        var j = 0
+        while (j < conv1.length) {
+          if (convolution2(j) != 0.0) conv1(j) = 1.0
+          j += 1
+        }
+        conv1
+      case None => convolution2
+    }
+    toBitTile(result, outCols, outRows)
+  }
+
+  private def sliceWindow(arr: Array[Double], cols: Int, colMin: Int, rowMin: Int, colMax: Int, rowMax: Int): Array[Double] = {
+    val outCols = colMax - colMin + 1
+    val outRows = rowMax - rowMin + 1
+    val out = new Array[Double](outCols * outRows)
+    var r = 0
+    while (r < outRows) {
+      System.arraycopy(arr, (rowMin + r) * cols + colMin, out, r * outCols, outCols)
+      r += 1
+    }
+    out
+  }
+
+  private def toBitTile(values: Array[Double], cols: Int, rows: Int): Tile = {
+    val tile = BitArrayTile.ofDim(cols, rows)
+    var i = 0
+    while (i < values.length) {
+      tile(i) = if (values(i) != 0.0) 1 else 0
+      i += 1
+    }
+    tile
+  }
+
+  private def erode(binaryMask: Array[Double], cols: Int, rows: Int): Array[Double] = {
+    if (erosionKernel.isDefined) {
+      val maskInvertTile = geotrellis.raster.DoubleArrayTile(binaryMask.map(v => (v - 1) * (v - 1)), cols, rows)
+      val eroded = FFTConvolve(maskInvertTile, erosionKernel.get)
+      eroded.mapDouble(d => if (d > 0.5) 0.0 else 1.0).toArrayDouble()
+    } else {
+      binaryMask
+    }
+  }
+}
+
+/**
+ * The original FFT-based SCL dilation mask, used behind `OpenEOProcesses.toSclDilationMask`'s
+ * `useSeparableConvolution` flag and as the reference [[SCLConvolutionFilterSpec]] checks
+ * [[SCLConvolutionFilter]] against. Must stay an exact replica of the old algorithm.
+ */
+class LegacySCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int) extends SCLMaskFilter {
+  import SCLConvolutionFilter.{erosion_kernel, kernel}
+
+  private val erosionKernel = erosion_kernel(erosion_kernal_size)
+  private val kernel1 = kernel(kernel1Size)
+  private val kernel2 = kernel(kernel2Size)
+
+  def bufferInPixels: Int = (kernel2.get.cols / 2).floor.intValue()
+
+  def createMask(sclTile: MultibandTile, targetArea: GridBounds[Int]): Tile =
+    createMask(sclTile).crop(targetArea.colMin, targetArea.rowMin, targetArea.colMax, targetArea.rowMax)
 
   def createMask(sclTile: MultibandTile): Tile = {
     var allMasked = true
     var nothingMasked = true
     val maskTile = sclTile.band(0).convert(ShortConstantNoDataCellType)
 
-    // First erosion + dilation step.
     val binaryMask1 = maskTile.map(value => {
       if (mask1Values.contains(value)) {
         allMasked = false
@@ -242,7 +460,6 @@ class SCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int]
       if (!nothingMasked && kernel1.isDefined) {
         val eroded1 = erode(binaryMask1)
         val dilated1 = FFTConvolve(eroded1, kernel1.get)
-        // First dilate, with a small kernel around everything that is not valid.
         allMasked = true
         Some(dilated1.localIf({ d: Double => {
           val res = d > 0.057
@@ -256,15 +473,13 @@ class SCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int]
         if (nothingMasked) {
           None
         } else {
-          Some(binaryMask1) //kernel size is 0, but there is still a basic binary mask
+          Some(binaryMask1)
         }
-
       }
     if (allMasked) {
       return convolution1.get.convert(BitCellType)
     }
 
-    // Second erosion + dilation step.
     allMasked = true
     val binaryMask2 = maskTile.map(value => {
       if (mask2Values.contains(value)) {
@@ -282,8 +497,6 @@ class SCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int]
       binaryMask2
     }
 
-    // Combine the two convolutions.
-    // Use bit celltype because of: https://github.com/locationtech/geotrellis/issues/3488
     convolution1.map(_.localOr(convolution2)).getOrElse(convolution2).convert(BitCellType)
   }
 
@@ -291,8 +504,7 @@ class SCLConvolutionFilter(erosion_kernal_size: Int, mask1Values: util.List[Int]
     if (erosionKernel.isDefined) {
       val maskInvert = binaryMask2.localSubtract(1).localPow(2)
       val eroded = FFTConvolve(maskInvert, erosionKernel.get)
-      val erodedInvert = eroded.localIf({ d: Double => d > 0.5 }, 0.0, 1.0)
-      erodedInvert
+      eroded.localIf({ d: Double => d > 0.5 }, 0.0, 1.0)
     } else {
       binaryMask2
     }
