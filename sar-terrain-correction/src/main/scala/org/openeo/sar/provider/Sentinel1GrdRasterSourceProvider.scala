@@ -59,6 +59,8 @@ class Sentinel1GrdRasterSourceProvider(
     new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString))
   }
 
+
+
   /** Serves all requested polarisation bands of one feature from a single [[S1GrdRasterSource]]: the
    *  scene (orbit/LUTs/RasterSources) is opened once and shared, and terrain correction for all
    *  polarisations is computed together in one pass, instead of once per band as `rasterSource` would. */

@@ -143,24 +143,22 @@ class MultibandRasterSourceProviderTest {
 
     val calls = ConstantMultibandRasterSource.readCalls(sceneId)
     assertTrue(calls.nonEmpty, "physical source must have been read at least once")
-    // Every physical read call must request a single band (current architecture: even a shared
-    // physical source is still read one output band at a time - see IndexedRasterSource).
-    assertTrue(calls.forall(_.size == 1), s"expected single-band read calls, got: $calls")
+    // Every physical read call must request ALL bands at once, in requested output order:
+    // requested bands C, A, B correspond to physical band indices 2, 0, 1. This guards the
+    // combined-read fast path in BandCompositeRasterSource (one physical read for all bands).
+    assertTrue(calls.forall(_ == Seq(2, 0, 1)),
+      s"expected combined multi-band read calls Seq(2, 0, 1), got: $calls")
 
     if (loadPerProduct) {
-      // "load per product" consolidates reads spatially: one physical read call per band, regardless
-      // of how many output tiles/keys are produced.
-      assertEquals(3, calls.size,
-        s"loadPerProduct=true should read each of the 3 bands exactly once regardless of tile count, got: $calls")
+      // "load per product" consolidates reads spatially: a single combined physical read for all
+      // bands, regardless of how many output tiles/keys are produced.
+      assertEquals(1, calls.size,
+        s"loadPerProduct=true should issue exactly one combined read regardless of tile count, got: $calls")
     } else {
-      // Without consolidation, the physical source is read once per band *per output tile*.
-      assertEquals(3 * tiles.length, calls.size,
-        s"loadPerProduct=false should read each band once per output tile, got: $calls")
+      // Without spatial consolidation, one combined read per output tile.
+      assertEquals(tiles.length, calls.size,
+        s"loadPerProduct=false should issue one combined read per output tile, got: $calls")
     }
-
-    // Regardless of consolidation strategy, exactly the 3 physical band indices {0,1,2} are read
-    // (possibly duplicated across tiles), never any extra/foreign index.
-    assertEquals(Set(0, 1, 2), calls.flatten.toSet)
   }
 
   @Test
