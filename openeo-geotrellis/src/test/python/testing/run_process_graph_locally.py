@@ -67,7 +67,6 @@ def _setup_local_spark(classpath: str, debug: bool):
     )
 
     spark_jars = conf.get("spark.jars").split(",")
-    logging.error(f"SPARK JARS {spark_jars}")
     # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
     spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
     conf.set(key="spark.jars", value=",".join(spark_jars))
@@ -155,10 +154,10 @@ def main():
     for f in classpath.split(':'):
         if f.endswith(".jar"):
             if not os.path.exists(f):
-                logging.error(f"Jar is missing: {f}")
+                logging.debug(f"Jar is missing: {f}")
         else:
             if not os.path.isdir(f):
-                logging.error(f"Classpath folder is missing: {f}")
+                logging.debug(f"Classpath folder is missing: {f}")
     run_graph_locally(process_graph_path, output_dir, classpath, debug)
 
 

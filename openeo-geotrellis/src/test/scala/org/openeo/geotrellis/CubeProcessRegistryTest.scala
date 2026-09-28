@@ -19,7 +19,7 @@ object CubeProcessRegistryTest {
   @BeforeAll
   def startSpark(): Unit = {
     val conf = new SparkConf()
-      .setMaster("local[1]")
+      .setMaster("local[1,2]")
       .setAppName(getClass.getSimpleName)
       .set("spark.driver.bindAddress", "127.0.0.1")
     _sc = Some(new SparkContext(conf))
@@ -71,6 +71,21 @@ class CubeProcessRegistryTest {
     val result = CubeProcessRegistry.invoke(cube, "aspect", Collections.emptyMap[String, AnyRef]())
 
     assertNotNull(result, "invoke('aspect') should return a non-null result")
+  }
+
+  @Test
+  def failOnceIsRegisteredAndPassesDataThrough(): Unit = {
+    CubeProcessRegistry.clear()
+    // Registering the provider's singleton mirrors what the SPI loader does on first use.
+    CubeProcessRegistry.register(new FaultInjectionProcessesProvider().getInstance())
+    assertTrue(CubeProcessRegistry.hasProcess("fail_once"))
+
+    val cube = demCube()
+    val result = CubeProcessRegistry.invoke(cube, "fail_once", Collections.emptyMap[String, AnyRef]())
+      .asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]]
+    // The first stage attempt fails, Spark retries it and the data passes through unchanged.
+    assertEquals(cube.count(), result.count())
+    assertEquals(cube.metadata, result.metadata)
   }
 
   @Test
