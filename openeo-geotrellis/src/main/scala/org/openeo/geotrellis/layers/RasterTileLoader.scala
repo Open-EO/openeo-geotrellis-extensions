@@ -57,6 +57,9 @@ case class RasterTileLoader() {
     val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
     val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
     val size = openSearchLinkTitlesWithBandId.size * metadata.layout.size
+    val tracker = BatchJobMetadataTracker.tracker("")
+    tracker.registerCounter(PIXEL_COUNTER)
+    tracker.registerCounter(SOFT_ERROR_MEGAPIXEL_COUNTER)
     logger.debug(s"Size: $size")
     if (!datacubeParams.exists(_.loadPerProduct) || theMaskStrategy != NoCloudFilterStrategy) {
       logger.debug("Load per product: false")
@@ -129,9 +132,7 @@ case class RasterTileLoader() {
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
     logger.info(s"Cube partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
-    val tracker = BatchJobMetadataTracker.tracker("")
-    tracker.registerCounter(PIXEL_COUNTER)
-    tracker.registerCounter(SOFT_ERROR_MEGAPIXEL_COUNTER)
+
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val crs = metadata.crs
     val layout = metadata.layout
@@ -198,8 +199,6 @@ case class RasterTileLoader() {
 
     logger.info(s"Cube partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
-    val tracker = BatchJobMetadataTracker.tracker("")
-    tracker.registerCounter(PIXEL_COUNTER)
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val crs = metadata.crs
     val layout = metadata.layout
