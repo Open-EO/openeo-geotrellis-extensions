@@ -49,7 +49,14 @@ object BandCompositeRasterSource {
     } catch {
       case e: AbortedException => throw e
       case e: Exception if softErrors => {
-        BatchJobMetadataTracker.tracker("").add(SOFT_ERROR_MEGAPIXEL_COUNTER, bounds.size*bands.length / (1024 * 1024) )
+
+        try{
+          val tracker = BatchJobMetadataTracker.tracker("")
+          tracker.add(SOFT_ERROR_MEGAPIXEL_COUNTER, bounds.size*bands.length / (1024 * 1024) )
+        }catch {
+          case e: Exception => logger.warn(s"load_collection: failed to increment soft error counter for ${source.name} - ${e.getMessage}", e)
+        }
+
         logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
         None
       }
