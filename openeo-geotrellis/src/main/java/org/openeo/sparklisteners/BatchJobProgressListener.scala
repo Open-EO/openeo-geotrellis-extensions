@@ -6,7 +6,6 @@ import org.apache.spark.scheduler._
 import org.openeo.sparklisteners.BatchJobProgressListener.{CPU_UTILIZATION_RATIO, SPARK_EXECUTION_METRICS_FILENAME, TOTAL_EXECUTOR_ALLOCATION_TIME, TOTAL_STAGE_RUNTIME}
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.Duration
@@ -28,6 +27,7 @@ class BatchJobProgressListener extends SparkListener {
 
     private val stagesInformation = new mutable.LinkedHashMap[String,mutable.Map[String,Any]]()
     private val executorInformation = new mutable.LinkedHashMap[String,(Long,Long)]
+    private var totalStageFailures = 0
 
     override def onStageSubmitted( stageSubmitted:SparkListenerStageSubmitted):Unit = {
         logger.info(s"Starting stage: ${stageSubmitted.stageInfo.stageId} - ${stageSubmitted.stageInfo.name}. \nStages may combine multiple processes." )
@@ -44,6 +44,7 @@ class BatchJobProgressListener extends SparkListener {
                |Your job may still complete if the failure was caused by a transient error, but will take more time. A common cause of transient errors is too little executor memory (overhead). Too low executor-memory can be seen by a high 'garbage collection' time, which was: ${Duration.ofMillis(taskMetrics.jvmGCTime).toSeconds / 1000.0} seconds.
                |""".stripMargin
           logs = ("warn", message) :: logs
+          totalStageFailures += 1
 
         }else{
           val duration = Duration.ofMillis(taskMetrics.executorRunTime)
@@ -173,6 +174,7 @@ class BatchJobProgressListener extends SparkListener {
       TOTAL_STAGE_RUNTIME -> totalStageRuntimeMillis.asJson,
       TOTAL_EXECUTOR_ALLOCATION_TIME -> executorAllocationTimeMillis.asJson,
       CPU_UTILIZATION_RATIO -> cpuUtilizationRatio.asJson,
+      "total_stage_failures" -> totalStageFailures.asJson,
     )
 
     val usageMetricsFile = Paths.get("").toAbsolutePath.resolve(SPARK_EXECUTION_METRICS_FILENAME)
