@@ -9,7 +9,8 @@ import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.util.withGetComponentMethods
 import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
-import org.apache.spark.{NarrowDependency, OneToOneDependency, ShuffleDependency, SparkConf, SparkContext}
+import org.apache.spark.scheduler.{SparkListener, SparkListenerStageCompleted, SparkListenerStageSubmitted}
+import org.apache.spark.{FetchFailedExceptionTestHelper, NarrowDependency, OneToOneDependency, ShuffleDependency, SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
@@ -23,6 +24,8 @@ import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
@@ -31,6 +34,7 @@ import scala.reflect.io.Directory
 object MergeCubesSpec {
 
   var sc: SparkContext = _
+  private val failFirstMergeAttempt = new AtomicBoolean(false)
 
   @BeforeAll
   def setupSpark(): Unit = {
@@ -1049,4 +1053,77 @@ class MergeCubesSpec {
     assertEquals(1,c2Tiles.length)
     assertEquals(localTiles(0)._2, MultibandTile(c1Tiles(0)._2.bands ++ c2Tiles(0)._2.bands))
   }
+
+  @Test def testMergeCompositesWithFetchFailure(): Unit = {
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)
+    val band3: ByteArrayTile = ByteArrayTile.fill(5.toByte, 256, 256)
+    val band4: ByteArrayTile = ByteArrayTile.fill(8.toByte, 256, 256)
+    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-03T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val cube2: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band3, band4), Seq("2020-01-02T00:00:00Z", "2020-02-02T00:00:00Z"))
+
+    val startDate = ZonedDateTime.parse("2020-01-01T00:00:00Z")
+    val intervals = Range(0, 3).flatMap { r => Seq(startDate.plusDays(10L * r), startDate.plusDays(10L * (r + 1))) }.map(DateTimeFormatter.ISO_INSTANT.format(_))
+    val labels = Range(0, 3).map { r => DateTimeFormatter.ISO_INSTANT.format(startDate.plusDays(10L * r)) }
+
+    case class StageExecution(stageId: Int, attemptNumber: Int, name: String, rddIds: Set[Int], failureReason: Option[String])
+    val submittedStages = new ConcurrentLinkedQueue[StageExecution]()
+    val completedStages = new ConcurrentLinkedQueue[StageExecution]()
+    def toExecution(info: org.apache.spark.scheduler.StageInfo) =
+      StageExecution(info.stageId, info.attemptNumber(), info.name, info.rddInfos.map(_.id).toSet, info.failureReason)
+    val listener = new SparkListener {
+      override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit =
+        submittedStages.add(toExecution(stageSubmitted.stageInfo))
+
+      override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit =
+        completedStages.add(toExecution(stageCompleted.stageInfo))
+    }
+
+    sc.addSparkListener(listener)
+    try {
+      val p = new OpenEOProcesses()
+      val medianProcess = TestOpenEOProcessScriptBuilder.createMedian(true,cube1.metadata.cellType)
+      assertEquals(cube1.metadata.cellType,medianProcess.getOutputCellType())
+      val composite1 = p.aggregateTemporal(cube1,intervals.asJava,labels.asJava,medianProcess, java.util.Collections.emptyMap())
+      val composite2 = p.aggregateTemporal(cube2,intervals.asJava,labels.asJava,medianProcess, java.util.Collections.emptyMap())
+      val merged = p.mergeCubes(p.filterEmptyTile(composite1), p.filterEmptyTile(composite2), operator = null)
+      failFirstMergeAttempt.set(true)
+      val mergeAttempt = merged.mapPartitions { tiles =>
+        if (MergeCubesSpec.failFirstMergeAttempt.compareAndSet(true, false)) {
+          FetchFailedExceptionTestHelper.throwFetchFailedException()
+        }
+        tiles
+      }
+      val expectedKey = SpaceTimeKey(0,0,1577836800000L)
+      val localTiles = mergeAttempt.filter(_._1==expectedKey).collect()
+      val c1Tiles = composite1.filter(_._1==expectedKey).collect()
+      val c2Tiles = composite2.filter(_._1==expectedKey).collect()
+
+      // Listener events are delivered asynchronously.
+      FetchFailedExceptionTestHelper.waitUntilListenerBusEmpty(sc)
+      val submitted = submittedStages.iterator().asScala.toSeq
+      val completed = completedStages.iterator().asScala.toSeq
+      completed.foreach(s => println(s"Stage ${s.stageId}.${s.attemptNumber} '${s.name}' rdds=${s.rddIds.toSeq.sorted.mkString(",")} failure=${s.failureReason.getOrElse("-")}"))
+
+      def stagesTouching(rddId: Int) = submitted.filter(_.rddIds.contains(rddId))
+      assertTrue(stagesTouching(composite1.id).nonEmpty, "aggregateTemporal stages of composite1 should be tracked")
+      assertTrue(stagesTouching(composite2.id).nonEmpty, "aggregateTemporal stages of composite2 should be tracked")
+
+      assertFalse(failFirstMergeAttempt.get(), "The initial merge attempt should fail with a fetch failure")
+      val mergeStageAttempts = stagesTouching(mergeAttempt.id).map(_.attemptNumber)
+      assertEquals(Seq(0, 1), mergeStageAttempts)
+      assertTrue(completed.exists(s => s.rddIds.contains(mergeAttempt.id) && s.attemptNumber == 0 && s.failureReason.isDefined),
+        "The first merge stage attempt should be reported as failed")
+      assertTrue(submitted.exists(s => s.name.startsWith("aggregate_temporal") && s.attemptNumber > 0),
+        "An aggregate_temporal stage should be resubmitted to recompute the lost shuffle output")
+
+      assertEquals(1,localTiles.length)
+      assertEquals(1,c1Tiles.length)
+      assertEquals(1,c2Tiles.length)
+      assertEquals(localTiles(0)._2, MultibandTile(c1Tiles(0)._2.bands ++ c2Tiles(0)._2.bands))
+    } finally {
+      sc.removeSparkListener(listener)
+    }
+  }
+
 }
