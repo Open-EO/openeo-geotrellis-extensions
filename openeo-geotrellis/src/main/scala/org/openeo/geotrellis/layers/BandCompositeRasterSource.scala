@@ -10,6 +10,7 @@ import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.RequestContext
 import org.openeo.geotrellis.layers.RasterTileLoader.SOFT_ERROR_MEGAPIXEL_COUNTER
+import org.openeo.geotrellis.layers.raster_source.IndexedRasterSource
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ResampledTile}
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
@@ -48,7 +49,14 @@ object BandCompositeRasterSource {
     } catch {
       case e: AbortedException => throw e
       case e: Exception if softErrors => {
-        BatchJobMetadataTracker.tracker("").add(SOFT_ERROR_MEGAPIXEL_COUNTER, bounds.size*bands.length / (1024 * 1024) )
+
+        try{
+          val tracker = BatchJobMetadataTracker.tracker("")
+          tracker.add(SOFT_ERROR_MEGAPIXEL_COUNTER, bounds.size*bands.length / (1024 * 1024) )
+        }catch {
+          case e: Exception => logger.warn(s"load_collection: failed to increment soft error counter for ${source.name} - ${e.getMessage}", e)
+        }
+
         logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
         None
       }
@@ -74,6 +82,45 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map {
     _.reproject(crs)
   }
+
+  /**
+   * If every requested band of this composite is an [[IndexedRasterSource]] wrapper around the same
+   * physical datasource (as produced by `RasterSourceProvider.multibandRasterSource`, e.g. all SAR
+   * polarisations served by one terrain-correction pass), that physical source can serve all requested
+   * bands in a single read call instead of one call per band. Returns the (un-reprojected) physical
+   * source of the first wrapper plus, per requested output band, the corresponding band index within it.
+   * Grouping is by [[SourceName]], consistent with `CompositeRasterSource.groupedBySource` (wrappers may
+   * hold distinct - but equivalent - instances after per-band resample/convert/reproject mapping).
+   */
+  private def sharedPhysicalSource(bands: Seq[Int]): Option[(RasterSource, Seq[Int])] = {
+    val selected = bands.map(sources.toList)
+    val indexed = selected.collect { case i: IndexedRasterSource => i }
+    if (indexed.size == selected.size && indexed.nonEmpty && indexed.map(_.rasterSource.name).distinct.size == 1)
+      Some((indexed.head.rasterSource, indexed.map(_.bandIndex)))
+    else None
+  }
+
+  /** Reprojects a shared physical source to this composite's CRS with the same retry/soft-error
+   * semantics as `reprojectedSources(bands)`. */
+  private def reprojectPhysical(rs: RasterSource, bandCount: Int): Option[RasterSource] = {
+    try Some(retryWithBackoff(maxRetries, (e: Exception) => logger.warn(s"attempt to reproject ${rs.name} to $crs failed", e)) {
+      rs.reproject(crs)
+    })
+    catch {
+      case e: AbortedException => throw e
+      case e: Exception if softErrors =>
+        val megapixelsFailed = predefinedExtent.map(_.size * bandCount / (1024 * 1024)).getOrElse(bandCount.toLong)
+        BatchJobMetadataTracker.tracker("").add(SOFT_ERROR_MEGAPIXEL_COUNTER, megapixelsFailed)
+        logger.warn(s"load_collection: ignoring soft error for ${rs.name} - ${e.getMessage}", e)
+        None
+      case e: Exception => throw new IOException(s"load_collection: Error while reading: ${rs.name} - ${e.getMessage}", e)
+    }
+  }
+
+  /** Converts each band of a combined multi-band read result to this composite's cellType,
+   * mirroring the per-band `safeConvert` of the band-by-band read paths. */
+  private def convertCombined(raster: Raster[MultibandTile]): Raster[MultibandTile] =
+    Raster(MultibandTile(raster.tile.bands.map(safeConvert(_, cellType))), raster.extent)
 
   protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = requestContext.apply {
     def reprojectRasterSourceAttemptFailed(source: RasterSource)(e: Exception): Unit =
@@ -139,18 +186,37 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       logger.debug(s"Special case - percentageToRead: $percentageToRead > 0.5, readFullTile: $readFullTile")
       readBoundsFullTile(bounds)
     } else {
-      val rastersByBounds = reprojectedSources.zipWithIndex.toList.flatMap(s => {
-        s._1.readBounds(bounds).zipWithIndex.map(raster_int => ((raster_int._2, (s._2, raster_int._1))))
-      }).groupBy(_._1)
-      rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
-        val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
-        Raster(MultibandTile(sortedRasters.map(raster => safeConvert(raster.tile.band(0), cellType))), sortedRasters.head.extent)
-      }).iterator
+      sharedPhysicalSource(sources.toList.indices) match {
+        case Some((physical, bandIndices)) =>
+          // single physical source serving all bands: read each bounds once with all band indices
+          reprojectPhysical(physical, bandIndices.size)
+            .map(_.readBounds(bounds.toSeq, bandIndices).map(convertCombined))
+            .getOrElse(Iterator.empty)
+        case None =>
+          val rastersByBounds = reprojectedSources.zipWithIndex.toList.flatMap(s => {
+            s._1.readBounds(bounds).zipWithIndex.map(raster_int => ((raster_int._2, (s._2, raster_int._1))))
+          }).groupBy(_._1)
+          rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
+            val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
+            Raster(MultibandTile(sortedRasters.map(raster => safeConvert(raster.tile.band(0), cellType))), sortedRasters.head.extent)
+          }).iterator
+      }
     }
 
   }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
+    sharedPhysicalSource(bands) match {
+      case Some((physical, bandIndices)) =>
+        // single combined read of all requested bands from the shared physical source
+        reprojectPhysical(physical, bandIndices.size)
+          .flatMap(_.read(extent, bandIndices))
+          .map(convertCombined)
+      case None => readBandByBand(extent, bands)
+    }
+  }
+
+  private def readBandByBand(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources: scala.collection.Seq[RasterSource] = reprojectedSources(bands)
 
     val singleBandRasters = {
@@ -181,6 +247,21 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = requestContext.apply {
+    sharedPhysicalSource(bands) match {
+      case Some((physical, bandIndices)) =>
+        // single combined read of all requested bands from the shared physical source
+        reprojectPhysical(physical, bandIndices.size)
+          .flatMap { rs =>
+            retryWithBackoff(maxRetries, (e: Exception) => logger.warn(s"attempt to read $bounds from ${rs.name} failed", e)) {
+              BandCompositeRasterSource.readBounds(rs, bounds, softErrors, bandIndices)
+            }
+          }
+          .map(convertCombined)
+      case None => readBandByBand(bounds, bands)
+    }
+  }
+
+  private def readBandByBand(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val sources = reprojectedSources(bands)
     val selectedSources: IterableOnce[RasterSource] =
       if (parallelRead) {
