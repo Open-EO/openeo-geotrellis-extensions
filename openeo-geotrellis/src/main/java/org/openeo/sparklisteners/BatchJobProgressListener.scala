@@ -6,7 +6,6 @@ import org.apache.spark.scheduler._
 import org.openeo.sparklisteners.BatchJobProgressListener.{CPU_UTILIZATION_RATIO, SPARK_EXECUTION_METRICS_FILENAME, TOTAL_EXECUTOR_ALLOCATION_TIME, TOTAL_STAGE_RUNTIME}
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.Duration
@@ -26,24 +25,26 @@ class BatchJobProgressListener extends SparkListener {
 
   import BatchJobProgressListener.logger
 
-  private val stagesInformation = new mutable.LinkedHashMap[String, mutable.Map[String, Any]]()
-  private val executorInformation = new mutable.LinkedHashMap[String, (Long, Long)]
+    private val stagesInformation = new mutable.LinkedHashMap[String,mutable.Map[String,Any]]()
+    private val executorInformation = new mutable.LinkedHashMap[String,(Long,Long)]
+    private var totalStageFailures = 0
 
   override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {
     logger.info(s"Starting stage: ${stageSubmitted.stageInfo.stageId} - ${stageSubmitted.stageInfo.name}. \nStages may combine multiple processes.")
   }
 
-  override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {
-    val taskMetrics = stageCompleted.stageInfo.taskMetrics
-    val stageInformation = new mutable.LinkedHashMap[String, Any]()
-    var logs = List[(String, String)]()
-    stageInformation += ("duration" -> Duration.ofMillis(taskMetrics.executorRunTime))
-    if (stageCompleted.stageInfo.failureReason.isDefined) {
-      val message =
-        f"""A part of the process graph failed, and will be retried, the reason was: "${stageCompleted.stageInfo.failureReason.get}"
-           |Your job may still complete if the failure was caused by a transient error, but will take more time. A common cause of transient errors is too little executor memory (overhead). Too low executor-memory can be seen by a high 'garbage collection' time, which was: ${Duration.ofMillis(taskMetrics.jvmGCTime).toSeconds / 1000.0} seconds.
-           |""".stripMargin
-      logs = ("warn", message) :: logs
+   override def onStageCompleted( stageCompleted: SparkListenerStageCompleted):Unit = {
+        val taskMetrics = stageCompleted.stageInfo.taskMetrics
+        val stageInformation = new mutable.LinkedHashMap[String,Any]()
+        var logs = List[(String, String)]()
+        stageInformation += ("duration" -> Duration.ofMillis(taskMetrics.executorRunTime))
+        if(stageCompleted.stageInfo.failureReason.isDefined){
+          val message =
+            f"""A part of the process graph failed, and will be retried, the reason was: "${stageCompleted.stageInfo.failureReason.get}"
+               |Your job may still complete if the failure was caused by a transient error, but will take more time. A common cause of transient errors is too little executor memory (overhead). Too low executor-memory can be seen by a high 'garbage collection' time, which was: ${Duration.ofMillis(taskMetrics.jvmGCTime).toSeconds / 1000.0} seconds.
+               |""".stripMargin
+          logs = ("warn", message) :: logs
+          totalStageFailures += 1
 
     } else {
       val duration = Duration.ofMillis(taskMetrics.executorRunTime)

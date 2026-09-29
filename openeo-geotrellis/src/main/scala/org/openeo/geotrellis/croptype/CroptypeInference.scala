@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory
 
 import java.nio.{ByteBuffer, ByteOrder}
 import java.time.LocalDate
+import java.util
 import java.util.Collections
 import scala.collection.mutable.ArrayBuffer
 import scala.jdk.CollectionConverters._
@@ -102,7 +103,7 @@ object CroptypeInference {
     val numCtClasses = scalaContext.get("num_croptype_classes").map(_.asInstanceOf[Int])
     val numSeasons = scalaContext.getOrElse("num_seasons", 2).asInstanceOf[Int]
     val seasonWindows = parseSeasonWindows(scalaContext.get("season_windows"))
-    val croplandClassSet = scalaContext.getOrElse("cropland_class_indices", Seq(0, 1, 2)).asInstanceOf[Seq[Int]].toSet
+    val croplandClassSet = scalaContext.getOrElse("cropland_class_indices", util.Arrays.asList(0, 1)).asInstanceOf[java.util.List[Int]].asScala.toSet
     val maskCropland = scalaContext.getOrElse("mask_cropland", true).asInstanceOf[Boolean]
     val batchSize = scalaContext.getOrElse("batch_size", 22 * 22).asInstanceOf[Int]
     // Majority-vote postprocessing (see MajorityVote), enabled by default on both the
