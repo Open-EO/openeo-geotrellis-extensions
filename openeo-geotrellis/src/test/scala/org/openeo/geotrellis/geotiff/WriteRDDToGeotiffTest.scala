@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assert
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.{Arguments, MethodSource}
+import org.junit.jupiter.params.provider.{Arguments, MethodSource, ValueSource}
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcesses, ProjectedPolygons}
@@ -65,11 +65,6 @@ object WriteRDDToGeotiffTest{
   def tiffTypeParams(): JStream[Arguments] = JStream.of(
     Arguments.of(false, Tiff),
     Arguments.of(true, BigTiff),
-  )
-
-  def assetPerBandParams(): JStream[Arguments] = JStream.of(
-    Arguments.of(false),
-    Arguments.of(true),
   )
 }
 
@@ -1225,7 +1220,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   }
 
   @ParameterizedTest
-  @MethodSource(Array("assetPerBandParams"))
+  @ValueSource(booleans = Array(true, false))
   def testMetadataSaveRddAllowAssetPerBand(separateAssetPerBand: Boolean, @TempDir tempDir: Path): Unit = {
     def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, extent: Extent = LatLng.worldExtent, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
       val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 1)
@@ -1274,7 +1269,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   }
 
   @ParameterizedTest
-  @MethodSource(Array("assetPerBandParams"))
+  @ValueSource(booleans = Array(true, false))
   def testMetadataSaveRddTemporalAllowAssetPerBand(separateAssetPerBand: Boolean, @TempDir tempDir: Path): Unit = {
     def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, extent: Extent = LatLng.worldExtent, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
       val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 1)

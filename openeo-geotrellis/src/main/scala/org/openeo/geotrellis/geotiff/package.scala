@@ -703,7 +703,7 @@ package object geotiff {
     val bandLabels = formatOptions.getBandNames
     try {
       val compression = determineCompression(formatOptions)
-      val (tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
+      val (tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int, statistics: scala.collection.mutable.Map[Int,(Double,Double,Double,Double,Int,Int)]) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
 
       val overviews =
         if (formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024))) {
@@ -720,7 +720,7 @@ package object geotiff {
               var zoom_rdd = Pyramid.up(nextOverviewLevel, scheme, level, Pyramid.Options(resampleMethod = method))
               nextOverviewLevel = zoom_rdd._2
               val overViewGridBounds = nextOverviewLevel.metadata.gridBoundsFor(croppedExtent, clamp = true).toGridType[Int]
-              val (overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel, overViewGridBounds, compression)
+              val (overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int, statistics: scala.collection.mutable.Map[Int,(Double,Double,Double,Double,Int,Int)]) = getCompressedTiles(nextOverviewLevel, overViewGridBounds, compression)
               val overviewTiff = toTiff(overViewTiffs, overViewGridBounds, nextOverviewLevel.metadata.tileLayout, compression, cellType, detectedBandCount, overViewSegmentCount)
               overviewTiff
             })
@@ -822,7 +822,7 @@ package object geotiff {
     }
   }
 
-  private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]], gridBounds: GridBounds[Int], compression: Compression): (collection.Map[Int, Array[Byte]], CellType, Double, Int) = {
+  private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]], gridBounds: GridBounds[Int], compression: Compression): (collection.Map[Int, Array[Byte]], CellType, Double, Int, scala.collection.mutable.Map[Int,(Double,Double,Double,Double,Int,Int)]) = {
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
     val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
@@ -837,6 +837,7 @@ package object geotiff {
     val totalBandCount = preprocessedRdd.sparkContext.longAccumulator("TotalBandCount")
     val typeAccumulator = new SetAccumulator[CellType]()
     preprocessedRdd.sparkContext.register(typeAccumulator, "CellType")
+    val bandStatistics = collection.mutable.Map[Int,(Double,Double,Double,Double,Int,Int)]()
     val tiffs: collection.Map[Int, Array[Byte]] = preprocessedRdd.flatMap { case (key: K, multibandTile: MultibandTile) => {
       var bandIndex = -1
       if (multibandTile.bandCount > 0) {
@@ -871,6 +872,18 @@ package object geotiff {
             }
           //tiff format seems to require that we provide 'full' tiles
           val compressedBytes = theCompressor.compress(bytes, 0)
+          val (tempMin, tempMax, tempSum, tempPowerSum, tempValidCount, totalCount) = tile.cellType match {
+            case _: FloatCells => statsDouble(tile)
+            case _: DoubleCells => statsDouble(tile)
+            case _: ShortCells => statsInt(tile)
+            case _: UShortCells => statsInt(tile)
+            case _: IntCells => statsInt(tile)
+          }
+          val result = if (bandStatistics.contains(bandIndex)) {
+            val (curMin,curMax,curSum,curPowerSum,curValidCount,size) = bandStatistics(bandIndex)
+            (Math.min(tempMin,curMin), Math.max(tempMax,curMax), tempSum+curSum, tempPowerSum+curPowerSum, tempValidCount+curValidCount, size+totalCount)
+          } else (tempMin,tempMax,tempSum,tempPowerSum,tempValidCount,totalCount)
+          bandStatistics.put(bandIndex, result)
           (index, compressedBytes)
         }
 
@@ -893,7 +906,7 @@ package object geotiff {
     println("Saving geotiff with Celltype: " + cellType)
     val detectedBandCount = if (totalBandCount.avg > 0) totalBandCount.avg else 1
     val segmentCount = (bandSegmentCount * detectedBandCount).toInt
-    (tiffs, cellType, detectedBandCount, segmentCount)
+    (tiffs, cellType, detectedBandCount, segmentCount, bandStatistics)
   }
 
 
