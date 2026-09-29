@@ -2,13 +2,16 @@ package org.openeo.geotrellis
 
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.raster.{ArrayMultibandTile, DoubleArrayTile, Tile}
-import geotrellis.spark.MultibandTileLayerRDD
-import org.apache.spark.{SparkConf, SparkContext}
+import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
+import org.apache.spark.scheduler.{SparkListener, SparkListenerTaskEnd}
+import org.apache.spark.{SparkConf, SparkContext, SparkTestHelper}
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrelliscommon.CubeProcessRegistry
 
 import java.util.Collections
+import java.util.concurrent.ConcurrentLinkedQueue
+import scala.jdk.CollectionConverters._
 
 object CubeProcessRegistryTest {
 
@@ -86,6 +89,44 @@ class CubeProcessRegistryTest {
     // The first stage attempt fails, Spark retries it and the data passes through unchanged.
     assertEquals(cube.count(), result.count())
     assertEquals(cube.metadata, result.metadata)
+  }
+
+  @Test
+  def failOnceFailsTheGivenPartition(): Unit = {
+    CubeProcessRegistry.clear()
+    CubeProcessRegistry.register(new FaultInjectionProcessesProvider().getInstance())
+
+    val demo = demCube()
+    val cube = ContextRDD(demo.repartition(3), demo.metadata)
+    val failedTasks = new ConcurrentLinkedQueue[(Int, Int)]()
+    val listener = new SparkListener {
+      override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit =
+        if (!taskEnd.taskInfo.successful) failedTasks.add((taskEnd.taskInfo.partitionId, taskEnd.taskInfo.attemptNumber))
+    }
+
+    // A Python int arrives as a java.lang.Integer or Long through py4j.
+    val args = Map[String, AnyRef]("partition" -> java.lang.Long.valueOf(2)).asJava
+    val result = CubeProcessRegistry.invoke(cube, "fail_once", args).asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]]
+    CubeProcessRegistryTest.sc.addSparkListener(listener)
+    try {
+      assertEquals(cube.count(), result.count())
+      SparkTestHelper.waitUntilListenerBusEmpty(CubeProcessRegistryTest.sc)
+    } finally {
+      CubeProcessRegistryTest.sc.removeSparkListener(listener)
+    }
+    assertEquals(Seq((2, 0)), failedTasks.asScala.toSeq, "Only the first attempt of the task for partition 2 should fail")
+  }
+
+  @Test
+  def failOnceRejectsPartitionOutOfRange(): Unit = {
+    CubeProcessRegistry.clear()
+    CubeProcessRegistry.register(new FaultInjectionProcessesProvider().getInstance())
+
+    val cube = demCube()
+    val args = Map[String, AnyRef]("partition" -> Integer.valueOf(cube.getNumPartitions)).asJava
+    val exception = assertThrows(classOf[java.lang.reflect.InvocationTargetException],
+      () => CubeProcessRegistry.invoke(cube, "fail_once", args))
+    assertTrue(exception.getCause.isInstanceOf[IllegalArgumentException])
   }
 
   @Test

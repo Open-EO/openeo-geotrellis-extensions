@@ -687,7 +687,7 @@ class OpenEOProcesses extends Serializable {
   /**
    * Fails the first attempt of the Spark stage that evaluates this datacube, to test recovery from failures.
    *
-   * Only the first attempt of the task for partition 0 in stage attempt 0
+   * Only the first attempt of the task for the given partition in stage attempt 0
    * (see [[org.apache.spark.scheduler.StageInfo#attemptNumber]]) fails: it calls System.exit, which kills a single
    * executor. Spark then reschedules the lost tasks and recomputes the shuffle output that was stored on that
    * executor; retried attempts pass the data through unchanged.
@@ -696,12 +696,18 @@ class OpenEOProcesses extends Serializable {
    * In local mode the executor runs inside the driver JVM, so exiting would stop the whole application. There, the
    * task throws a [[FailOnceException]] instead, which makes Spark retry the task. This requires task retries to be
    * enabled, e.g. with a `local[N,maxFailures]` master; a plain `local[N]` master does not retry failed tasks.
+   *
+   * @param partition index of the partition whose task fails, between 0 and the number of partitions - 1
    */
-  def failOnce[K: ClassTag](datacube: MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+  def failOnce[K: ClassTag](datacube: MultibandTileLayerRDD[K], partition: Int = 0): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    val numPartitions = datacube.getNumPartitions
+    require(partition >= 0 && partition < numPartitions,
+      s"failOnce: partition $partition is out of range, the datacube has $numPartitions partition(s)")
+
     datacube.withContext(_.mapPartitionsWithIndex({ (partitionIndex, tiles) =>
       val taskContext = TaskContext.get()
       // Only a single task fails, so only one executor is lost; its retry has a higher (stage or task) attempt number.
-      if (partitionIndex == 0 && taskContext.stageAttemptNumber() == 0 && taskContext.attemptNumber() == 0) {
+      if (partitionIndex == partition && taskContext.stageAttemptNumber() == 0 && taskContext.attemptNumber() == 0) {
         val executorId = SparkEnv.get.executorId
         if (executorId == "driver") {
           logger.warn(s"failOnce: failing attempt 0 of stage ${taskContext.stageId()} (partition $partitionIndex) with an exception, because this executor runs in the driver")
