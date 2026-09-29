@@ -24,7 +24,7 @@ import geotrellis.vector._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
-import org.apache.spark.{Partitioner, SparkContext}
+import org.apache.spark.{Partitioner, SparkContext, SparkEnv, TaskContext}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
@@ -52,6 +52,11 @@ object OpenEOProcesses{
   private val DEFAULT_MAX_PARTITION_SIZE_IN_MB = 500.0
   private val DEFAULT_BAND_COUNT = 6
   private val DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT = 10
+  /** Exit code used by [[OpenEOProcesses#failOnce]] to kill an executor. */
+  val FailOnceExitCode = 42
+
+  /** Thrown by [[OpenEOProcesses#failOnce]] when the task runs in the driver JVM (local mode). */
+  class FailOnceException(message: String) extends RuntimeException(message)
 
   /**
     * Convolve a single tile with the given kernel, choosing between a direct spatial
@@ -677,6 +682,43 @@ class OpenEOProcesses extends Serializable {
       }
 
     }),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
+  }
+
+  /**
+   * Fails the first attempt of the Spark stage that evaluates this datacube, to test recovery from failures.
+   *
+   * Only the first attempt of the task for the given partition in stage attempt 0
+   * (see [[org.apache.spark.scheduler.StageInfo#attemptNumber]]) fails: it calls System.exit, which kills a single
+   * executor. Spark then reschedules the lost tasks and recomputes the shuffle output that was stored on that
+   * executor; retried attempts pass the data through unchanged.
+   * Each Spark stage that evaluates the datacube starts again at attempt 0, so it fails once per such stage.
+   *
+   * In local mode the executor runs inside the driver JVM, so exiting would stop the whole application. There, the
+   * task throws a [[FailOnceException]] instead, which makes Spark retry the task. This requires task retries to be
+   * enabled, e.g. with a `local[N,maxFailures]` master; a plain `local[N]` master does not retry failed tasks.
+   *
+   * @param partition index of the partition whose task fails, between 0 and the number of partitions - 1
+   */
+  def failOnce[K: ClassTag](datacube: MultibandTileLayerRDD[K], partition: Int = 0): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    val numPartitions = datacube.getNumPartitions
+    require(partition >= 0 && partition < numPartitions,
+      s"failOnce: partition $partition is out of range, the datacube has $numPartitions partition(s)")
+
+    datacube.withContext(_.mapPartitionsWithIndex({ (partitionIndex, tiles) =>
+      val taskContext = TaskContext.get()
+      // Only a single task fails, so only one executor is lost; its retry has a higher (stage or task) attempt number.
+      if (partitionIndex == partition && taskContext.stageAttemptNumber() == 0 && taskContext.attemptNumber() == 0) {
+        val executorId = SparkEnv.get.executorId
+        if (executorId == "driver") {
+          logger.warn(s"failOnce: failing attempt 0 of stage ${taskContext.stageId()} (partition $partitionIndex) with an exception, because this executor runs in the driver")
+          throw new FailOnceException(s"failOnce: failing the first attempt of stage ${taskContext.stageId()} (partition $partitionIndex)")
+        } else {
+          logger.warn(s"failOnce: exiting executor $executorId during attempt 0 of stage ${taskContext.stageId()} (partition $partitionIndex)")
+          System.exit(FailOnceExitCode)
+        }
+      }
+      tiles
+    }, preservesPartitioning = true))
   }
 
   def filterEmptyTile[K:ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
