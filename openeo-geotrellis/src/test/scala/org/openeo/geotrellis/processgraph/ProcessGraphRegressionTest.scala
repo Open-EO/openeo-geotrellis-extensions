@@ -12,7 +12,9 @@ class ProcessGraphRegressionTest {
   }
 
   @Test
-  def loadSentinel1GrdGeoTiff(): Unit = {
-    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_sentinel1_grd_geotiff.json")
+  def loadSyntheticDataFailOnce(): Unit = {
+    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_synthetic_data_fail_once.json")
   }
+
+
 }
