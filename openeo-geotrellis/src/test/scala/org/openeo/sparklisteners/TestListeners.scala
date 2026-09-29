@@ -1,15 +1,11 @@
 package org.openeo.sparklisteners
 
-import io.circe.parser.parse
 import org.apache.spark.scheduler.cluster.ExecutorInfo
 import org.apache.spark.scheduler.{SparkListenerApplicationEnd, SparkListenerExecutorAdded, SparkListenerExecutorRemoved}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellis.LocalSparkContext
 import scala.collection.immutable.Map
-
-import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Paths}
 
 object TestListeners {}
 
@@ -33,36 +29,22 @@ class TestListeners extends LocalSparkContext {
   }
 
   @Test
-  def testUsageMetricsAreWrittenOnApplicationEnd(): Unit = {
-    val usageMetricsFile = Paths.get(BatchJobProgressListener.SPARK_EXECUTION_METRICS_FILENAME).toAbsolutePath
-    Files.deleteIfExists(usageMetricsFile)
+  def testUsageMetricsAreStoredOnApplicationEnd(): Unit = {
+    val listener = new BatchJobProgressListener()
+    val startedAt = System.currentTimeMillis()
 
-    try {
-      val listener = new BatchJobProgressListener()
-      val startedAt = System.currentTimeMillis()
+    listener.onExecutorAdded(SparkListenerExecutorAdded(
+      startedAt,
+      "executor-1",
+      new ExecutorInfo("localhost", 1, Map.empty[String, String])
+    ))
+    val stageInfo = buildStageInfo(startedAt, 2500L)
+    callStageCallback(listener, "onStageSubmitted", "org.apache.spark.scheduler.SparkListenerStageSubmitted", stageInfo, new java.util.Properties())
+    callStageCallback(listener, "onStageCompleted", "org.apache.spark.scheduler.SparkListenerStageCompleted", stageInfo)
+    listener.onExecutorRemoved(SparkListenerExecutorRemoved(startedAt + 2500L, "executor-1", "test"))
+    listener.onApplicationEnd(SparkListenerApplicationEnd(startedAt + 5000L))
 
-      listener.onExecutorAdded(SparkListenerExecutorAdded(
-        startedAt,
-        "executor-1",
-        new ExecutorInfo("localhost", 1, Map.empty[String, String])
-      ))
-      val stageInfo = buildStageInfo(startedAt, 2500L)
-      callStageCallback(listener, "onStageSubmitted", "org.apache.spark.scheduler.SparkListenerStageSubmitted", stageInfo, new java.util.Properties())
-      callStageCallback(listener, "onStageCompleted", "org.apache.spark.scheduler.SparkListenerStageCompleted", stageInfo)
-      listener.onExecutorRemoved(SparkListenerExecutorRemoved(startedAt + 2500L, "executor-1", "test"))
-      listener.onApplicationEnd(SparkListenerApplicationEnd(startedAt + 5000L))
-
-      assertTrue(Files.exists(usageMetricsFile), s"$usageMetricsFile was not written")
-
-      val json = parse(new String(Files.readAllBytes(usageMetricsFile), StandardCharsets.UTF_8))
-        .getOrElse(fail("usage metrics file is not valid JSON")).hcursor
-
-      assertEquals(Right(2500L), json.get[Long](BatchJobProgressListener.TOTAL_STAGE_RUNTIME))
-      assertEquals(Right(2500L), json.get[Long](BatchJobProgressListener.TOTAL_EXECUTOR_ALLOCATION_TIME))
-      assertEquals(Right(1.0), json.get[Double](BatchJobProgressListener.CPU_UTILIZATION_RATIO))
-    } finally {
-      Files.deleteIfExists(usageMetricsFile)
-    }
+    assertEquals(ExecutionMetrics(2500L, 2500L, 1.0, 0), ExecutionMetrics.get)
   }
 
   private def stageInfoDefault(methodName: String): Any = {
