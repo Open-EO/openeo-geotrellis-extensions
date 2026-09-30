@@ -34,8 +34,16 @@ class BatchJobProgressListener extends SparkListener {
   import BatchJobProgressListener.logger
 
     private val stagesInformation = new mutable.LinkedHashMap[String,mutable.Map[String,Any]]()
-    private val executorInformation = new mutable.LinkedHashMap[String,(Long,Long)]
+    // start time of currently allocated executors
+    private val runningExecutors = new mutable.LinkedHashMap[String, Long]
+    private var completedExecutorTimeMillis = 0L
+    // Executors may have been added before this listener was registered; use this as their start time.
+    private var trackingStartTime = System.currentTimeMillis()
     private val totalStageFailures = new AtomicInteger(0)
+
+  override def onApplicationStart(applicationStart: SparkListenerApplicationStart): Unit = synchronized {
+    trackingStartTime = applicationStart.time
+  }
 
   override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {
     logger.info(s"Starting stage: ${stageSubmitted.stageInfo.stageId} - ${stageSubmitted.stageInfo.name}. \nStages may combine multiple processes.")
@@ -82,22 +90,15 @@ class BatchJobProgressListener extends SparkListener {
     }
 
 
-  override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = {
-    val time = executorAdded.time
-    val executorId = executorAdded.executorId
-    if (executorInformation.contains(executorId)){
-      val (addedTime,removedTime) = executorInformation(executorId)
-      executorInformation += (executorId -> (addedTime+time,removedTime))
-    } else executorInformation += (executorId -> (time,0L))
-
+  override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = synchronized {
+    if (!runningExecutors.contains(executorAdded.executorId)) {
+      runningExecutors += (executorAdded.executorId -> executorAdded.time)
+    }
   }
-  override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = {
-    val time = executorRemoved.time
-    val executorId = executorRemoved.executorId
-    if(executorInformation.contains(executorId)){
-      val (addedTime, _) = executorInformation(executorId)
-      executorInformation += (executorId -> (addedTime, time))
-    }else executorInformation += (executorId ->(0L,time))
+
+  override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = synchronized {
+    val addedTime = runningExecutors.remove(executorRemoved.executorId).getOrElse(trackingStartTime)
+    completedExecutorTimeMillis += math.max(0L, executorRemoved.time - addedTime)
   }
 
   override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd):Unit={
@@ -107,15 +108,9 @@ class BatchJobProgressListener extends SparkListener {
       }
       (x._1 + 1, x._2.plus(duration))
     }
-    val executorTime = executorInformation.foldLeft(0L)((x,y) => {
-      val (_,(added,removed)) = y
-      val removedTime = if (removed == 0L) {
-        applicationEnd.time
-      } else {
-        removed
-      }
-      x + removedTime - added
-    })
+    val executorTime = synchronized {
+      completedExecutorTimeMillis + runningExecutors.values.map(added => math.max(0L, applicationEnd.time - added)).sum
+    }
     val executorString = if (executorTime > 60*1000 ){
       f"${(executorTime /(60*1000)).toInt} minutes"
     }else{
