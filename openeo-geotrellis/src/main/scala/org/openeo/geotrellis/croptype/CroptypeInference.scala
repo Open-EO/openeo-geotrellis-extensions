@@ -233,8 +233,9 @@ object CroptypeInference {
 
     require(T > 0, "No timesteps found for spatial key")
     if (refTile.bandCount < 15) {
+      val spatialKey = tiles.head._1.spatialKey
       throw new IllegalArgumentException(
-        s"Expected at least 15 input bands, got ${refTile.bandCount}. ${describeSampleNonNodataPixel(refTile)}")
+        s"Expected at least 15 input bands, got ${refTile.bandCount}. ${describeSampleNonNodataPixel(refTile)} - $spatialKey - tileExtent=$tileExtent")
     }
 
     val session    = OnnxInferenceUtils.getOrCreateSession(onnxModelPath)
