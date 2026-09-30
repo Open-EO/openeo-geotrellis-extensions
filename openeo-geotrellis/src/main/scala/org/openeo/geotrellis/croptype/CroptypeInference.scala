@@ -6,8 +6,8 @@ import geotrellis.proj4.{CRS, Transform}
 import geotrellis.raster._
 import geotrellis.spark._
 import geotrellis.vector.Extent
-import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.{SparkContext, TaskContext}
 import org.openeo.geotrellis.OpenEOProcesses
 import org.openeo.geotrellis.croptype.OnnxInferenceUtils.ubyteCellType
 import org.openeo.geotrelliscommon.DatacubeSupport.maybeBandLabels
@@ -282,8 +282,8 @@ object CroptypeInference {
     if (invalidPixelCount > 0) {
       val invalidPct = invalidPixelCount.toDouble / B * 100.0
       logger.info(f"CroptypeInference: $invalidPixelCount%d of $B%d pixels ($invalidPct%.2f%%) have no valid " +
-        f"Sentinel-1 (VV/VH) or Sentinel-2 (B2-B12) observation in $tileExtent - $spatialKey and will be " +
-        f"skipped in ONNX inference and set to nodata in the output.")
+        f"Sentinel-1 (VV/VH) or Sentinel-2 (B2-B12) observation in $tileExtent - $spatialKey (${taskContextInfo()}) " +
+        f"and will be skipped in ONNX inference and set to nodata in the output.")
     }
 
     val session    = OnnxInferenceUtils.getOrCreateSession(onnxModelPath)
@@ -426,20 +426,16 @@ object CroptypeInference {
 
       var result: ai.onnxruntime.OrtSession.Result = null
       try {
-        result =
-          try {
-            session.run(inputs)
-          } catch {
-            case e: OrtException =>
-              val firstP = validIndices(pStart)
-              val sampleValues = (0 until NUM_BANDS).map(b => s"${BAND_NAMES(b)}=${xBuf.get(b)}").mkString(", ")
-              throw new RuntimeException(
-                s"CroptypeInference: ONNX session.run failed for spatialKey=$spatialKey, tileExtent=$tileExtent, " +
-                  s"batch pixels [$pStart,$pEnd) of $Bv valid ($B total), batchSize=$batchB, T=$T, " +
-                  s"first pixel (col=${firstP % cols}, row=${firstP / cols}) timestep=0 input sample: $sampleValues",
-                e
-              )
+        result = runOnnxSession(
+          session, inputs,
+          errorContext = {
+            val firstP = validIndices(pStart)
+            val sampleValues = (0 until NUM_BANDS).map(b => s"${BAND_NAMES(b)}=${xBuf.get(b)}").mkString(", ")
+            s"spatialKey=$spatialKey, tileExtent=$tileExtent, ${taskContextInfo()}, " +
+              s"batch pixels [$pStart,$pEnd) of $Bv valid ($B total), batchSize=$batchB, T=$T, " +
+              s"first pixel (col=${firstP % cols}, row=${firstP / cols}) timestep=0 input sample: $sampleValues"
           }
+        )
         if (outputEmbeddings) {
           val batchEmbeddings = flatten2d(result.get(0).getValue)
           if (embeddingsFull == null) {
@@ -497,8 +493,88 @@ object CroptypeInference {
       pStart = pEnd
     }
 
-    // No valid pixels were found at all (fully invalid tile): fall back to safe defaults so
-    // downstream tile builders still produce a consistently-shaped, all-nodata output.
+    // A fully-invalid tile (Bv == 0) never runs a real batch above, so output dimensions
+    // (embedding size / class counts) may still be unresolved at this point. Probe the model
+    // once with a single synthetic, fully-masked pixel (mask=1 for every band/timestep, the
+    // model's own designed mechanism for "no observation") purely to read the output shapes.
+    // This cannot trigger the data-related failures that real invalid pixels cause, since no
+    // actual (potentially problematic) pixel values are used. The probe's output values
+    // themselves are discarded; only its shapes are used, and the final tile is still stamped
+    // entirely with nodata via validPixel below.
+    // TODO; the special case below is generated, can't we really do this more easily
+    // Maybe EmptyMultiBandTile can be returned in some cases...
+    val needsEmbeddingDim = outputEmbeddings && embeddingDim < 0
+    val needsClassDims    = (outputProbabilities || outputClassification) && (detectedLcClasses < 0 || detectedCtClasses < 0)
+    if (Bv == 0 && (needsEmbeddingDim || needsClassDims)) {
+      val probeBatchB = 1
+      var t = 0
+      while (t < T) {
+        var b = 0
+        while (b < NUM_BANDS) { xBuf.put(t * NUM_BANDS + b, 0f); maskBuf.put(t * NUM_BANDS + b, 1L); b += 1 }
+        monthBuf.put(t, monthValues(t))
+        t += 1
+      }
+      if (hasLatLons) { latlonBuf.put(0, 0f); latlonBuf.put(1, 0f) }
+
+      xBuf.limit(probeBatchB * T * NUM_BANDS)
+      maskBuf.limit(probeBatchB * T * NUM_BANDS)
+      latlonBuf.limit(probeBatchB * 2)
+      monthBuf.limit(probeBatchB * T)
+      dwBuf.limit(probeBatchB * T)
+
+      val xOnnx    = OnnxTensor.createTensor(env, xBuf, Array[Long](probeBatchB, T, NUM_BANDS))
+      val dwOnnx   = OnnxTensor.createTensor(env, dwBuf, Array[Long](probeBatchB, T))
+      val llOnnx   = if (hasLatLons) OnnxTensor.createTensor(env, latlonBuf, Array[Long](probeBatchB, 2)) else null
+      val maskOnnx = OnnxTensor.createTensor(env, maskBuf, Array[Long](probeBatchB, T, NUM_BANDS))
+      val monOnnx  = OnnxTensor.createTensor(env, monthBuf, Array[Long](probeBatchB, T))
+      val smArray  = Array.tabulate(probeBatchB, S, T) { (_, s, t) => seasonPattern(s)(t) }
+      val smOnnx   = OnnxTensor.createTensor(env, smArray)
+      val inputsBuilder = new java.util.HashMap[String, OnnxTensorLike]()
+      inputsBuilder.put("x", xOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("dynamic_world", dwOnnx.asInstanceOf[OnnxTensorLike])
+      if (hasLatLons) inputsBuilder.put("latlons", llOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("mask", maskOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("month", monOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("season_masks", smOnnx.asInstanceOf[OnnxTensorLike])
+      val inputs: java.util.Map[String, OnnxTensorLike] = java.util.Collections.unmodifiableMap(inputsBuilder)
+
+      var result: ai.onnxruntime.OrtSession.Result = null
+      try {
+        result = runOnnxSession(
+          session, inputs,
+          errorContext = s"spatialKey=$spatialKey, tileExtent=$tileExtent, ${taskContextInfo()}, " +
+            s"shape-probe batch (fully-invalid tile, 0 of $B pixels valid)"
+        )
+        if (embeddingDim < 0) {
+          embeddingDim = result.get(0).getInfo.asInstanceOf[TensorInfo].getShape.last.toInt
+        }
+        if (detectedLcClasses < 0) {
+          detectedLcClasses = result.get(2).getInfo.asInstanceOf[TensorInfo].getShape.last.toInt
+        }
+        if (detectedCtClasses < 0) {
+          detectedCtClasses = result.get(3).getInfo.asInstanceOf[TensorInfo].getShape.last.toInt
+        }
+        logger.info(s"CroptypeInference: resolved output dimensions via shape-probe for fully-invalid tile " +
+          s"$tileExtent - $spatialKey: embeddingDim=$embeddingDim, lcClasses=$detectedLcClasses, ctClasses=$detectedCtClasses")
+      } finally {
+        if (result != null) result.close()
+        xOnnx.close()
+        dwOnnx.close()
+        if (llOnnx != null) llOnnx.close()
+        maskOnnx.close()
+        monOnnx.close()
+        smOnnx.close()
+      }
+
+      xBuf.limit(xBuf.capacity())
+      maskBuf.limit(maskBuf.capacity())
+      latlonBuf.limit(latlonBuf.capacity())
+      monthBuf.limit(monthBuf.capacity())
+      dwBuf.limit(dwBuf.capacity())
+    }
+
+    // Dimensions may still be unresolved if the corresponding output isn't requested at all;
+    // default to 0 in that case so array allocation below doesn't fail.
     if (detectedLcClasses < 0) detectedLcClasses = 0
     if (detectedCtClasses < 0) detectedCtClasses = 0
     if (embeddingDim < 0) embeddingDim = 0
@@ -567,6 +643,38 @@ object CroptypeInference {
           !date.isBefore(start) && !date.isAfter(end)
         }
       }.toArray
+    }
+  }
+
+  /**
+   * Describes the current Spark task (stage id, partition/task id, attempt numbers) for
+   * correlating log messages and errors with the Spark UI, when running inside a Spark task.
+   */
+  private def taskContextInfo(): String = {
+    Option(TaskContext.get()) match {
+      case Some(tc) =>
+        s"stageId=${tc.stageId()}, stageAttemptNumber=${tc.stageAttemptNumber()}, " +
+          s"partitionId=${tc.partitionId()}, taskAttemptId=${tc.taskAttemptId()}, attemptNumber=${tc.attemptNumber()}"
+      case None => "taskContext=unavailable"
+    }
+  }
+
+  /**
+   * Runs the given ONNX session with the given inputs, wrapping any OrtException with the
+   * lazily-evaluated errorContext string (e.g. spatial key, tile extent, task/stage ids, and a
+   * sample of the offending input) to make failures easier to diagnose and correlate with the
+   * Spark UI.
+   */
+  private def runOnnxSession(
+    session: OrtSession,
+    inputs:  java.util.Map[String, OnnxTensorLike],
+    errorContext: => String
+  ): ai.onnxruntime.OrtSession.Result = {
+    try {
+      session.run(inputs)
+    } catch {
+      case e: OrtException =>
+        throw new RuntimeException(s"CroptypeInference: ONNX session.run failed for $errorContext", e)
     }
   }
 
