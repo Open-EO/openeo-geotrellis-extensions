@@ -1146,6 +1146,9 @@ class OpenEOProcesses extends Serializable {
     if(operator == null) {
       val outputCellType = cellTypeUnionWithNoData(leftCube.metadata.cellType,resampled.metadata.cellType)
       //TODO: what if extent of joined cube is larger than left cube?
+      leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${rightCube.name}")
+      val rightBandCount = RDDBandCount(rightCube)
+      leftCube.sparkContext.clearJobGroup()
       val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
       return new ContextRDD(rdd.mapValues({case (l,rOpt) =>
         rOpt match {
@@ -1157,7 +1160,11 @@ class OpenEOProcesses extends Serializable {
             }
           case None =>
             // No matching right-hand tile for this spacetime key: keep the left bands as-is.
-            MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
+            if(swapOperands) {
+              MultibandTile(Vector.fill(rightBandCount)(ArrayTile.empty(updatedMetadata.cellType, l.cols, l.rows)) ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
+            }else{
+              MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ Vector.fill(rightBandCount)(ArrayTile.empty(updatedMetadata.cellType, l.cols, l.rows)))
+            }
         }
       }), updatedMetadata)
     }else{

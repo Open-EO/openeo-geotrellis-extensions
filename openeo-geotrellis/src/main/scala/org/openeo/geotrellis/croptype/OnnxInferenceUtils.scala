@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.croptype
 
 import ai.onnxruntime.OrtSession.SessionOptions.ExecutionMode
-import ai.onnxruntime.{OrtEnvironment, OrtSession}
+import ai.onnxruntime.{OrtEnvironment, OrtSession, TensorInfo}
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.raster._
 import org.openeo.geotrellis.croptype.CroptypeInference.TargetDatatype
@@ -74,6 +74,20 @@ object OnnxInferenceUtils {
 
   /** Whether the given ONNX session declares a "latlons" input, so we know whether to compute and feed it. */
   def hasLatLonsInput(session: OrtSession): Boolean = session.getInputNames.contains("latlons")
+
+  /**
+   * Static output shape for the output at the given positional index, read from the session's
+   * output metadata without running inference. Returns None if the index is out of range or the
+   * output isn't a tensor. Dynamic dimensions (e.g. batch/time) are reported as -1 by onnxruntime.
+   */
+  def staticOutputShape(session: OrtSession, outputIndex: Int): Option[Array[Long]] = {
+    val names = session.getOutputNames.asScala.toIndexedSeq
+    if (outputIndex < 0 || outputIndex >= names.length) None
+    else session.getOutputInfo.get(names(outputIndex)).getInfo match {
+      case ti: TensorInfo => Some(ti.getShape)
+      case _ => None
+    }
+  }
 
   def loadModelBytes(model: String): Array[Byte] = {
     val stream = Thread.currentThread().getContextClassLoader.getResourceAsStream(model)
@@ -172,7 +186,10 @@ object OnnxInferenceUtils {
     while (p < B) {
       var d = 0
       while (d < D) { absValues(d) = math.abs(embeddings(p * D + d)); d += 1 }
-      val scale = math.max(percentile99(absValues) / 127.0f, 1e-6f)
+      // D == 0 can occur if the model's embedding dimension could not be determined (e.g. a
+      // spatial tile with no valid pixels at all, so inference never ran); percentile99 requires
+      // a non-empty array, so fall back to a harmless default scale in that degenerate case.
+      val scale = if (D == 0) 1e-6f else math.max(percentile99(absValues) / 127.0f, 1e-6f)
       if (useFloat) scaleBandF(p) = scale else scaleBandS(p) = (1000.0 * scale).toShort
 
       d = 0
