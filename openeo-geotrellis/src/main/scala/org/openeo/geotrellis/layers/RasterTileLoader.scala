@@ -5,7 +5,7 @@ import geotrellis.layer.{LayoutDefinition, LayoutTileSource, Metadata, SpaceTime
 import geotrellis.proj4.CRS
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterRegion, RasterSource, SourceName, Tile}
+import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterRegion, RasterSource, SourceName}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withGeometryClipToGridMethods}
 import geotrellis.vector.{MultiPolygon, Polygon, ReprojectMutliPolygon}
@@ -298,7 +298,8 @@ case class RasterTileLoader() {
       val bandCount = math.max(expectedBandCount, if (mergedBands.isEmpty) 0 else mergedBands.keys.max + 1)
       for (x <- 0 until bandCount) {
         if (!mergedBands.contains(x)) {
-          logger.warn("Band " + x + " is missing in the input data. Filling with empty tile.")
+          val allSources = bandsByPosition.map(_._2._2).toSet
+          logger.warn("Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", "))
           val someTile = mergedBands.head._2
           mergedBands = mergedBands + (x -> someTile.prototype(someTile.cols, someTile.rows))
         }
