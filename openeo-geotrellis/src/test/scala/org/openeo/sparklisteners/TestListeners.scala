@@ -41,9 +41,12 @@ class TestListeners extends LocalSparkContext {
     val stageInfo = buildStageInfo(startedAt, 2500L)
     callStageCallback(listener, "onStageSubmitted", "org.apache.spark.scheduler.SparkListenerStageSubmitted", stageInfo, new java.util.Properties())
     callStageCallback(listener, "onStageCompleted", "org.apache.spark.scheduler.SparkListenerStageCompleted", stageInfo)
-    listener.onExecutorRemoved(SparkListenerExecutorRemoved(startedAt + 2500L, "executor-1", "test"))
-    listener.onApplicationEnd(SparkListenerApplicationEnd(startedAt + 5000L))
+    assertEquals(ExecutionMetrics(2500L, 2500L, 1.0, 0), ExecutionMetrics.get)
 
+    listener.onExecutorRemoved(SparkListenerExecutorRemoved(startedAt + 2500L, "executor-1", "test"))
+    assertEquals(ExecutionMetrics(2500L, 2500L, 1.0, 0), ExecutionMetrics.get)
+
+    listener.onApplicationEnd(SparkListenerApplicationEnd(startedAt + 5000L))
     assertEquals(ExecutionMetrics(2500L, 2500L, 1.0, 0), ExecutionMetrics.get)
   }
 
