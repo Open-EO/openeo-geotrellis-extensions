@@ -9,9 +9,9 @@ import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTi
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withGeometryClipToGridMethods}
 import geotrellis.vector.{MultiPolygon, Polygon, ReprojectMutliPolygon}
-import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
+import org.apache.spark.{SparkContext, TaskContext}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelMeter, megapixelPerSecondMeter}
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
@@ -287,7 +287,7 @@ case class RasterTileLoader() {
         val bandPositions: Seq[Int] =
           if (positions.size == bands.size) positions
           else if (positions.size == 1) bands.indices.map(_ + positions.head)
-          else throw new IllegalStateException(s"Band count mismatch for $sourceName: expected band positions $positions but got ${bands.size} bands")
+          else throw new IllegalStateException(s"load_collection/load_stac: Band count mismatch for $sourceName: expected band positions $positions but got ${bands.size} bands")
         bandPositions.zip(bands).map { case (position, band) => (position, (MultibandTile(band), sourceName)) }
       }
       var mergedBands: Map[Int, MultibandTile] = bandsByPosition
@@ -299,7 +299,7 @@ case class RasterTileLoader() {
       for (x <- 0 until bandCount) {
         if (!mergedBands.contains(x)) {
           val allSources = bandsByPosition.map(_._2._2).toSet
-          logger.warn("Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", "))
+          logger.warn(s"load_collection/load_stac: Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", ") + s" stage ${TaskContext.get().stageId()} - attempt ${TaskContext.get().attemptNumber()}")
           val someTile = mergedBands.head._2
           mergedBands = mergedBands + (x -> someTile.prototype(someTile.cols, someTile.rows))
         }
