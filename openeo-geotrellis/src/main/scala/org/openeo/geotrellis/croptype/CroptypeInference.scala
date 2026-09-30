@@ -175,7 +175,7 @@ object CroptypeInference {
           majorityVoteCroptype = majorityVoteCroptypeBC.value,
           targetDatatype = targetDatatypeBC.value
         )
-        Map(spatialKey -> result)
+        result.map(tile => Map(spatialKey -> tile)).getOrElse(Map.empty)
     }
 
     val processes = new OpenEOProcesses()
@@ -228,7 +228,7 @@ object CroptypeInference {
     majorityVoteCropland:   Boolean,
     majorityVoteCroptype:   Boolean,
     targetDatatype:         TargetDatatype
-  ): MultibandTile = {
+  ): Option[MultibandTile] = {
 
     val sorted  = OnnxInferenceUtils.sortByTime(tiles)
     val T       = sorted.length
@@ -286,6 +286,14 @@ object CroptypeInference {
         f"and will be skipped in ONNX inference and set to nodata in the output.")
     }
 
+    // No pixel in this tile has any valid observation: skip ONNX inference entirely (some
+    // invalid pixel values are known to make session.run fail) and emit nothing for this
+    // spatial key, rather than trying to synthesize a correctly-shaped, all-nodata tile.
+    if (Bv == 0) {
+      logger.info(s"CroptypeInference: skipping fully-invalid tile $tileExtent - $spatialKey (${taskContextInfo()}), no output will be produced for this spatial key.")
+      return None
+    }
+
     val session    = OnnxInferenceUtils.getOrCreateSession(onnxModelPath)
     val env        = OrtEnvironment.getEnvironment()
     val hasLatLons = OnnxInferenceUtils.hasLatLonsInput(session)
@@ -311,13 +319,10 @@ object CroptypeInference {
     while (i < bsz * T) { dwBuf.put(i, DYNAMIC_WORLD_UNKNOWN); i += 1 }
 
     // Full-size (B-indexed) result accumulators, scattered into from each batch using
-    // validIndices. Dimensions (D / numLcClasses / numCtClasses) are ideally known upfront from
-    // the model's static output shapes (read from session metadata, without running inference),
-    // so a fully-invalid tile (Bv == 0, no batch ever runs) can still produce correctly-shaped,
-    // all-nodata output. Falls back to detecting them from the first batch's actual output if the
-    // model declares those dimensions as dynamic.
+    // validIndices. Dimensions (D / numLcClasses / numCtClasses) are only known once the
+    // first batch's ONNX output is available, so these are allocated lazily below.
     var embeddingsFull: Array[Float] = null
-    var embeddingDim = OnnxInferenceUtils.staticOutputShape(session, 0).map(_.last.toInt).filter(_ > 0).getOrElse(-1)
+    var embeddingDim = -1
     var landcoverFull: Array[Float] = null
     var croptypeFull:  Array[Float] = null
     // One (scaled) NDVI value per pixel per monthly timestep, indexed as p * T + t.
@@ -336,10 +341,8 @@ object CroptypeInference {
       }
     }
 
-    var detectedLcClasses = numLcClassesOverride.getOrElse(
-      OnnxInferenceUtils.staticOutputShape(session, 2).map(_.last.toInt).filter(_ > 0).getOrElse(-1))
-    var detectedCtClasses = numCtClassesOverride.getOrElse(
-      OnnxInferenceUtils.staticOutputShape(session, 3).map(_.last.toInt).filter(_ > 0).getOrElse(-1))
+    var detectedLcClasses = numLcClassesOverride.getOrElse(-1)
+    var detectedCtClasses = numCtClassesOverride.getOrElse(-1)
 
     var pStart = 0
     while (pStart < Bv) {
@@ -493,88 +496,9 @@ object CroptypeInference {
       pStart = pEnd
     }
 
-    // A fully-invalid tile (Bv == 0) never runs a real batch above, so output dimensions
-    // (embedding size / class counts) may still be unresolved at this point. Probe the model
-    // once with a single synthetic, fully-masked pixel (mask=1 for every band/timestep, the
-    // model's own designed mechanism for "no observation") purely to read the output shapes.
-    // This cannot trigger the data-related failures that real invalid pixels cause, since no
-    // actual (potentially problematic) pixel values are used. The probe's output values
-    // themselves are discarded; only its shapes are used, and the final tile is still stamped
-    // entirely with nodata via validPixel below.
-    // TODO; the special case below is generated, can't we really do this more easily
-    // Maybe EmptyMultiBandTile can be returned in some cases...
-    val needsEmbeddingDim = outputEmbeddings && embeddingDim < 0
-    val needsClassDims    = (outputProbabilities || outputClassification) && (detectedLcClasses < 0 || detectedCtClasses < 0)
-    if (Bv == 0 && (needsEmbeddingDim || needsClassDims)) {
-      val probeBatchB = 1
-      var t = 0
-      while (t < T) {
-        var b = 0
-        while (b < NUM_BANDS) { xBuf.put(t * NUM_BANDS + b, 0f); maskBuf.put(t * NUM_BANDS + b, 1L); b += 1 }
-        monthBuf.put(t, monthValues(t))
-        t += 1
-      }
-      if (hasLatLons) { latlonBuf.put(0, 0f); latlonBuf.put(1, 0f) }
-
-      xBuf.limit(probeBatchB * T * NUM_BANDS)
-      maskBuf.limit(probeBatchB * T * NUM_BANDS)
-      latlonBuf.limit(probeBatchB * 2)
-      monthBuf.limit(probeBatchB * T)
-      dwBuf.limit(probeBatchB * T)
-
-      val xOnnx    = OnnxTensor.createTensor(env, xBuf, Array[Long](probeBatchB, T, NUM_BANDS))
-      val dwOnnx   = OnnxTensor.createTensor(env, dwBuf, Array[Long](probeBatchB, T))
-      val llOnnx   = if (hasLatLons) OnnxTensor.createTensor(env, latlonBuf, Array[Long](probeBatchB, 2)) else null
-      val maskOnnx = OnnxTensor.createTensor(env, maskBuf, Array[Long](probeBatchB, T, NUM_BANDS))
-      val monOnnx  = OnnxTensor.createTensor(env, monthBuf, Array[Long](probeBatchB, T))
-      val smArray  = Array.tabulate(probeBatchB, S, T) { (_, s, t) => seasonPattern(s)(t) }
-      val smOnnx   = OnnxTensor.createTensor(env, smArray)
-      val inputsBuilder = new java.util.HashMap[String, OnnxTensorLike]()
-      inputsBuilder.put("x", xOnnx.asInstanceOf[OnnxTensorLike])
-      inputsBuilder.put("dynamic_world", dwOnnx.asInstanceOf[OnnxTensorLike])
-      if (hasLatLons) inputsBuilder.put("latlons", llOnnx.asInstanceOf[OnnxTensorLike])
-      inputsBuilder.put("mask", maskOnnx.asInstanceOf[OnnxTensorLike])
-      inputsBuilder.put("month", monOnnx.asInstanceOf[OnnxTensorLike])
-      inputsBuilder.put("season_masks", smOnnx.asInstanceOf[OnnxTensorLike])
-      val inputs: java.util.Map[String, OnnxTensorLike] = java.util.Collections.unmodifiableMap(inputsBuilder)
-
-      var result: ai.onnxruntime.OrtSession.Result = null
-      try {
-        result = runOnnxSession(
-          session, inputs,
-          errorContext = s"spatialKey=$spatialKey, tileExtent=$tileExtent, ${taskContextInfo()}, " +
-            s"shape-probe batch (fully-invalid tile, 0 of $B pixels valid)"
-        )
-        if (embeddingDim < 0) {
-          embeddingDim = result.get(0).getInfo.asInstanceOf[TensorInfo].getShape.last.toInt
-        }
-        if (detectedLcClasses < 0) {
-          detectedLcClasses = result.get(2).getInfo.asInstanceOf[TensorInfo].getShape.last.toInt
-        }
-        if (detectedCtClasses < 0) {
-          detectedCtClasses = result.get(3).getInfo.asInstanceOf[TensorInfo].getShape.last.toInt
-        }
-        logger.info(s"CroptypeInference: resolved output dimensions via shape-probe for fully-invalid tile " +
-          s"$tileExtent - $spatialKey: embeddingDim=$embeddingDim, lcClasses=$detectedLcClasses, ctClasses=$detectedCtClasses")
-      } finally {
-        if (result != null) result.close()
-        xOnnx.close()
-        dwOnnx.close()
-        if (llOnnx != null) llOnnx.close()
-        maskOnnx.close()
-        monOnnx.close()
-        smOnnx.close()
-      }
-
-      xBuf.limit(xBuf.capacity())
-      maskBuf.limit(maskBuf.capacity())
-      latlonBuf.limit(latlonBuf.capacity())
-      monthBuf.limit(monthBuf.capacity())
-      dwBuf.limit(dwBuf.capacity())
-    }
-
-    // Dimensions may still be unresolved if the corresponding output isn't requested at all;
-    // default to 0 in that case so array allocation below doesn't fail.
+    // Dimensions not covered by the loop above (e.g. the corresponding output wasn't
+    // requested at all) default to 0 so array allocation below doesn't fail. Since Bv > 0
+    // (checked earlier), at least one real batch always ran when its output is requested.
     if (detectedLcClasses < 0) detectedLcClasses = 0
     if (detectedCtClasses < 0) detectedCtClasses = 0
     if (embeddingDim < 0) embeddingDim = 0
@@ -621,7 +545,7 @@ object CroptypeInference {
       logger.info(s"CroptypeInference: added ndvi ${T} monthly bands.")
     }
     logger.info(s"CroptypeInference: Finished for tile at extent $tileExtent, output bands: ${outputTiles.length} outputEmbeddings=$outputEmbeddings, outputProbabilities=$outputProbabilities, outputClassification=$outputClassification")
-    MultibandTile(outputTiles.toSeq)
+    Some(MultibandTile(outputTiles.toSeq))
   }
 
   /**
