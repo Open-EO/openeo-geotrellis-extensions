@@ -52,18 +52,19 @@ case class RasterTileLoader() {
                                 datacubeParams: Option[DataCubeParameters],
                                 sources: Seq[(RasterSource, Feature)],
                                 openSearchLinkTitlesWithBandId: Seq[(String, Int)],
-                                softErrors: Boolean
+                                softErrors: Boolean,
+                                collectionRef: String
                               ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
     val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
     val size = openSearchLinkTitlesWithBandId.size * metadata.layout.size
     logger.debug(s"Size: $size")
     if (!datacubeParams.exists(_.loadPerProduct) || theMaskStrategy != NoCloudFilterStrategy) {
-      logger.debug("Load per product: false")
+      logger.debug(s"Load per product: false - $collectionRef")
       rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
     } else {
-      logger.debug("Load per product: true")
-      rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size, sources, softErrors)
+      logger.debug(s"Load per product: true - $collectionRef")
+      rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size, sources, softErrors, collectionRef)
     }
   }
 
@@ -188,15 +189,16 @@ case class RasterTileLoader() {
                                                          expectedBandCount: Int = -1,
                                                          sources: Seq[(RasterSource, Feature)],
                                                          softErrors: Boolean,
+                                                         collectionRef: String
                                                         ): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
 
     if (cloudFilterStrategy != NoCloudFilterStrategy) {
-      throw new IllegalArgumentException("load_collection: mask_l1c or mask_scl_dilation are not supported by the 'load per product' strategy. Consider using 'to_scl_dilation_mask'.")
+      throw new IllegalArgumentException(s"load_collection - $collectionRef: mask_l1c or mask_scl_dilation are not supported by the 'load per product' strategy. Consider using 'to_scl_dilation_mask'.")
     }
 
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
 
-    logger.info(s"Cube partitioner index: ${partitioner.index}")
+    logger.info(s"Cube $collectionRef partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val tracker = BatchJobMetadataTracker.tracker("")
     tracker.registerCounter(PIXEL_COUNTER)
@@ -223,7 +225,7 @@ case class RasterTileLoader() {
       }
     }).distinct.toArray
 
-    rasterRegionRDD.sparkContext.setCallSite("load_collection: group by input product")
+    rasterRegionRDD.sparkContext.setCallSite(s"load_collection $collectionRef: group by input product")
     val parallelRead = datacubeParams.forall(!_.loadPerProduct)
     val byBandSource: RDD[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] = rasterRegionRDD.flatMap(key_region_sourcename => {
       val key: SpaceTimeKey = key_region_sourcename._1
@@ -256,7 +258,7 @@ case class RasterTileLoader() {
 
 
     val theCellType = metadata.cellType
-    rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
+    rasterRegionRDD.sparkContext.setCallSite(s"load_collection $collectionRef: read by input product")
     val partitionedBySource = byBandSource.groupByKey(new ByKeyPartitioner(allSources))
     val jobId: String = System.getenv("OPENEO_BATCH_JOB_ID")
 
@@ -287,7 +289,7 @@ case class RasterTileLoader() {
         val bandPositions: Seq[Int] =
           if (positions.size == bands.size) positions
           else if (positions.size == 1) bands.indices.map(_ + positions.head)
-          else throw new IllegalStateException(s"load_collection/load_stac: Band count mismatch for $sourceName: expected band positions $positions but got ${bands.size} bands")
+          else throw new IllegalStateException(s"load_collection/load_stac - $collectionRef: Band count mismatch for $sourceName: expected band positions $positions but got ${bands.size} bands")
         bandPositions.zip(bands).map { case (position, band) => (position, (MultibandTile(band), sourceName)) }
       }
       var mergedBands: Map[Int, MultibandTile] = bandsByPosition
@@ -299,7 +301,7 @@ case class RasterTileLoader() {
       for (x <- 0 until bandCount) {
         if (!mergedBands.contains(x)) {
           val allSources = bandsByPosition.map(_._2._2).toSet
-          logger.warn(s"load_collection/load_stac: Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", ") + s" stage ${TaskContext.get().stageId()} - attempt ${TaskContext.get().attemptNumber()}")
+          logger.warn(s"load_collection/load_stac - $collectionRef: Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", ") + s" stage ${TaskContext.get().stageId()} - attempt ${TaskContext.get().attemptNumber()}")
           val someTile = mergedBands.head._2
           mergedBands = mergedBands + (x -> someTile.prototype(someTile.cols, someTile.rows))
         }
@@ -315,7 +317,7 @@ case class RasterTileLoader() {
     }
     tiledRDD = withEmptyTiles.filter { case (_, tile) => retainNoDataTiles || !tile.bands.forall(_.isNoDataTile) }
 
-    rasterRegionRDD.sparkContext.setCallSite("load_collection: apply mask pixel wise")
+    rasterRegionRDD.sparkContext.setCallSite(s"load_collection - $collectionRef: apply mask pixel wise")
     tiledRDD = DatacubeSupport.applyDataMask(datacubeParams, tiledRDD, metadata, pixelwiseMasking = true)
     rasterRegionRDD.sparkContext.clearCallSite()
     val cRDD = ContextRDD(tiledRDD, metadata)
