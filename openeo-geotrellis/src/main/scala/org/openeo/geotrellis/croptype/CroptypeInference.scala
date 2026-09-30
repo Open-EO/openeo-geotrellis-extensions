@@ -311,10 +311,13 @@ object CroptypeInference {
     while (i < bsz * T) { dwBuf.put(i, DYNAMIC_WORLD_UNKNOWN); i += 1 }
 
     // Full-size (B-indexed) result accumulators, scattered into from each batch using
-    // validIndices. Dimensions (D / numLcClasses / numCtClasses) are only known once the
-    // first batch's ONNX output is available, so these are allocated lazily below.
+    // validIndices. Dimensions (D / numLcClasses / numCtClasses) are ideally known upfront from
+    // the model's static output shapes (read from session metadata, without running inference),
+    // so a fully-invalid tile (Bv == 0, no batch ever runs) can still produce correctly-shaped,
+    // all-nodata output. Falls back to detecting them from the first batch's actual output if the
+    // model declares those dimensions as dynamic.
     var embeddingsFull: Array[Float] = null
-    var embeddingDim = -1
+    var embeddingDim = OnnxInferenceUtils.staticOutputShape(session, 0).map(_.last.toInt).filter(_ > 0).getOrElse(-1)
     var landcoverFull: Array[Float] = null
     var croptypeFull:  Array[Float] = null
     // One (scaled) NDVI value per pixel per monthly timestep, indexed as p * T + t.
@@ -333,8 +336,10 @@ object CroptypeInference {
       }
     }
 
-    var detectedLcClasses = numLcClassesOverride.getOrElse(-1)
-    var detectedCtClasses = numCtClassesOverride.getOrElse(-1)
+    var detectedLcClasses = numLcClassesOverride.getOrElse(
+      OnnxInferenceUtils.staticOutputShape(session, 2).map(_.last.toInt).filter(_ > 0).getOrElse(-1))
+    var detectedCtClasses = numCtClassesOverride.getOrElse(
+      OnnxInferenceUtils.staticOutputShape(session, 3).map(_.last.toInt).filter(_ > 0).getOrElse(-1))
 
     var pStart = 0
     while (pStart < Bv) {
