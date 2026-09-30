@@ -232,7 +232,10 @@ object CroptypeInference {
     val B       = rows * cols
 
     require(T > 0, "No timesteps found for spatial key")
-    require(refTile.bandCount >= 15, s"Expected at least 15 input bands, got ${refTile.bandCount}")
+    if (refTile.bandCount < 15) {
+      throw new IllegalArgumentException(
+        s"Expected at least 15 input bands, got ${refTile.bandCount}. ${describeSampleNonNodataPixel(refTile)}")
+    }
 
     val session    = OnnxInferenceUtils.getOrCreateSession(onnxModelPath)
     val env        = OrtEnvironment.getEnvironment()
@@ -474,6 +477,28 @@ object CroptypeInference {
         }
       }.toArray
     }
+  }
+
+  /**
+   * Scans the tile for one pixel that is not fully nodata and returns a description of the
+   * available band values, to help diagnose an unexpectedly low band count.
+   */
+  private def describeSampleNonNodataPixel(tile: MultibandTile): String = {
+    val bandCount = tile.bandCount
+    var row = 0
+    while (row < tile.rows) {
+      var col = 0
+      while (col < tile.cols) {
+        val values = (0 until bandCount).map(b => tile.band(b).getDouble(col, row).toFloat)
+        if (values.exists(v => !OnnxInferenceUtils.isNodata(v))) {
+          val formatted = values.zipWithIndex.map { case (v, b) => s"band$b=$v" }.mkString(", ")
+          return s"Values of available bands for pixel ($col, $row): $formatted"
+        }
+        col += 1
+      }
+      row += 1
+    }
+    "No pixel with valid (non-nodata) data found in the tile."
   }
 
   private def normalizeBand(prestoIdx: Int, value: Float): Float =
