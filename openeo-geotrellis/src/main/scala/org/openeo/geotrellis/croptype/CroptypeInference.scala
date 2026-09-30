@@ -314,7 +314,7 @@ object CroptypeInference {
               !OnnxInferenceUtils.isNodata(rawB8)  || !OnnxInferenceUtils.isNodata(rawB8A) ||
               !OnnxInferenceUtils.isNodata(rawB11) || !OnnxInferenceUtils.isNodata(rawB12)
             val hasValidS1 = !OnnxInferenceUtils.isNodata(rawVV) || !OnnxInferenceUtils.isNodata(rawVH)
-            if (hasValidS2 || hasValidS1) validPixel(p) = true
+            if (hasValidS2 || hasValidS1) validPixel(p) = true else logger.info(s"CroptypeInference: invalid pixel in $tileExtent - ${tiles.head._1.spatialKey}")
           }
           val rawTmp = raw(inputBandIndices.temp); xBuf.put(base + P_TEMP, normalizeBand(P_TEMP, OnnxInferenceUtils.rescaleTemperature(rawTmp))); maskBuf.put(base + P_TEMP, if (OnnxInferenceUtils.isNodata(rawTmp)) 1L else 0L)
           val rawPrc = raw(inputBandIndices.precip); xBuf.put(base + P_PRECIP, normalizeBand(P_PRECIP, OnnxInferenceUtils.rescalePrecipitation(rawPrc))); maskBuf.put(base + P_PRECIP, if (OnnxInferenceUtils.isNodata(rawPrc)) 1L else 0L)
