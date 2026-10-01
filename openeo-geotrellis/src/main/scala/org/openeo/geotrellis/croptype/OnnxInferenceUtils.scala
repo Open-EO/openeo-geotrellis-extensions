@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.croptype
 
 import ai.onnxruntime.OrtSession.SessionOptions.ExecutionMode
-import ai.onnxruntime.{OrtEnvironment, OrtSession}
+import ai.onnxruntime.{OrtEnvironment, OrtSession, TensorInfo}
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.raster._
 import org.openeo.geotrellis.croptype.CroptypeInference.TargetDatatype
@@ -75,6 +75,20 @@ object OnnxInferenceUtils {
 
   /** Whether the given ONNX session declares a "latlons" input, so we know whether to compute and feed it. */
   def hasLatLonsInput(session: OrtSession): Boolean = session.getInputNames.contains("latlons")
+
+  /**
+   * Static output shape for the output at the given positional index, read from the session's
+   * output metadata without running inference. Returns None if the index is out of range or the
+   * output isn't a tensor. Dynamic dimensions (e.g. batch/time) are reported as -1 by onnxruntime.
+   */
+  def staticOutputShape(session: OrtSession, outputIndex: Int): Option[Array[Long]] = {
+    val names = session.getOutputNames.asScala.toIndexedSeq
+    if (outputIndex < 0 || outputIndex >= names.length) None
+    else session.getOutputInfo.get(names(outputIndex)).getInfo match {
+      case ti: TensorInfo => Some(ti.getShape)
+      case _ => None
+    }
+  }
 
   def loadModelBytes(model: String): Array[Byte] = {
     val stream = Thread.currentThread().getContextClassLoader.getResourceAsStream(model)

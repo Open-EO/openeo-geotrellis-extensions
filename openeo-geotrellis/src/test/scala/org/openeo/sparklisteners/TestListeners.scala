@@ -5,6 +5,7 @@ import org.apache.spark.scheduler.{SparkListenerApplicationEnd, SparkListenerExe
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellis.LocalSparkContext
+import org.openeo.geotrelliscommon.ExecutionMetrics
 import scala.collection.immutable.Map
 
 object TestListeners {}
