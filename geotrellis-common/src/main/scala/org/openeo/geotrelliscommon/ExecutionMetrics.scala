@@ -12,12 +12,18 @@ object ExecutionMetrics {
 
   def get: ExecutionMetrics = current
 
-  def asMap(): Map[String, Any] = Map(
-    "totalStageRuntimeMillis" -> current.totalStageRuntimeMillis,
-    "executorAllocationTimeMillis" -> current.executorAllocationTimeMillis,
-    "cpuUtilizationRatio" -> current.cpuUtilizationRatio,
-    "totalStageFailures" -> current.totalStageFailures
-  )
+  def asMap(): Map[String, Any] = {
+    if (current.totalStageRuntimeMillis == 0) {
+      Map.empty
+    } else {
+      Map(
+        "totalStageRuntimeMillis" -> current.totalStageRuntimeMillis,
+        "executorAllocationTimeMillis" -> current.executorAllocationTimeMillis,
+        "cpuUtilizationRatio" -> current.cpuUtilizationRatio,
+        "totalStageFailures" -> current.totalStageFailures
+      )
+    }
+  }
 
   private[openeo] def store(metrics: ExecutionMetrics): Unit = {
     current = metrics
