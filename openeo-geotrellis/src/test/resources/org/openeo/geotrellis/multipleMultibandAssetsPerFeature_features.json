@@ -1,0 +1,73 @@
+{
+  "features": [
+    {
+      "type": "Feature",
+      "id": "multimulti",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              21.870576,
+              44.421219
+            ],
+            [
+              21.870576,
+              46.332985
+            ],
+            [
+              18.598059,
+              46.332985
+            ],
+            [
+              18.598059,
+              44.421219
+            ],
+            [
+              21.870576,
+              44.421219
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        18.598059,
+        44.421219,
+        21.870576,
+        46.332985
+      ],
+      "properties": {
+        "date": "2024-04-07T00:00:00.000Z",
+        "updated": "2024-04-22T20:59:12.782Z",
+        "available": "2024-04-22T20:59:13Z",
+        "published": "2024-04-22T20:59:13Z",
+        "status": "ARCHIVED",
+        "parentIdentifier": "urn:eop:VITO:TERRASCOPE_WHATEVER_PARENT",
+        "title": "Whatever",
+        "identifier": "urn:eop:VITO:TERRASCOPE_WHATEVER",
+        "links": {
+          "data": [
+            {
+              "href": "https://whatever1.tif",
+              "type": "image/tiff",
+              "length": 666,
+              "title": "part1",
+              "bandNames": [
+                "B1", "B2"
+              ]
+            },
+            {
+              "href": "https://whatever2.tif",
+              "type": "image/tiff",
+              "length": 666,
+              "title": "part2",
+              "bandNames": [
+                "B3", "B4"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

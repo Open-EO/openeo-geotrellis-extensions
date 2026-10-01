@@ -5,8 +5,10 @@
 set -eo pipefail
 
 curl --request POST \
-  --url 'http://epod-tsservice.vgt.vito.be:8080/v1.0/ts/S2_FAPAR/geometries?startDate=2017-11-01&endDate=2017-11-16' \
+  --fail \
+  --url 'https://viewer.terrascope.be/proxy/timeseries/v1.0/ts/S2_FAPAR_FILE/geometries?startDate=2025-11-01&endDate=2025-11-16' \
   --header 'Content-Type: application/json' \
+  --header 'Referer: https://viewer.terrascope.be' \
   --data '{
   "type": "GeometryCollection",
   "geometries": [

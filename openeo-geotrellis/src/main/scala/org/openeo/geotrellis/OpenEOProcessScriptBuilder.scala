@@ -12,6 +12,7 @@ import org.apache.spark.ml
 import org.apache.spark.mllib.linalg
 import org.apache.spark.mllib.tree.model.RandomForestModel
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase, Modulo}
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion,safeConvert}
 import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor
@@ -68,18 +69,6 @@ object OpenEOProcessScriptBuilder{
       composed
     } else
       wrapSimpleProcess(f)
-  }
-
-  /**
-   * Works around geotrellis issue.
-   * https://github.com/locationtech/geotrellis/issues/3525
-   */
-  def safeConvert(tile: Tile,ct:CellType): Tile = {
-    if(tile.isInstanceOf[ConstantTile] && tile.getDouble(0,0).isNaN ){
-      EmptyMultibandTile.empty(ct, tile.cols, tile.rows)
-    }else{
-      tile.convert(ct)
-    }
   }
 
 
@@ -430,11 +419,25 @@ object OpenEOProcessScriptBuilder{
       else math.max(z1, z2)
   }
 
+  object MeanIgnoreNoData extends LocalTileBinaryOp {
+    def combine(z1:Int,z2:Int) =
+      if( isNoData(z1) && isNoData(z2)) NODATA
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else (z1 + z2) / 2
+
+    def combine(z1:Double,z2:Double) =
+      if( isNoData(z1) && isNoData(z2)) NaN
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else (z1 + z2) / 2.0
+  }
+
 
   private def unifyCellType(combined: Seq[Tile]) = {
     if (combined.nonEmpty) {
       val unionCelltype = combined.map(_.cellType).reduce(cellTypeUnion)
-      combined.map(_.convert(unionCelltype))
+      combined.map(safeConvert(_, unionCelltype))
     } else {
       combined
     }
@@ -703,7 +706,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     unaryFunction(argName, (tiles: Seq[Tile]) => {
       val converted =
         if(forceFloat) {
-          tiles.map(_.convert(FloatConstantNoDataCellType))
+          tiles.map(safeConvert(_, FloatConstantNoDataCellType))
         } else{
           tiles
         }
@@ -907,7 +910,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
       def convertBitCellsOp(aTile: Tile):Tile ={
         if(convertBitCells && aTile.cellType.bits == 1) {
-          aTile.convert(ByteUserDefinedNoDataCellType(127.byteValue()))
+          safeConvert(aTile, ByteUserDefinedNoDataCellType(127.byteValue()))
         }else{
           aTile
         }
@@ -918,8 +921,8 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       if(!combinedCellType.getOrElse(BitCellType).isFloatingPoint && forceFloat) {
         combinedCellType = Some(FloatConstantNoDataCellType)
       }
-      x_input = x_input.map(_.convert(combinedCellType.getOrElse(BitCellType)))
-      y_input = y_input.map(_.convert(combinedCellType.getOrElse(BitCellType)))
+      x_input = x_input.map(safeConvert(_, combinedCellType.getOrElse(BitCellType)))
+      y_input = y_input.map(safeConvert(_, combinedCellType.getOrElse(BitCellType)))
       if(x_input.size == y_input.size) {
         x_input.zip(y_input).map(t=>operator(t._1,t._2))
       }else if(x_input.size == 1) {
@@ -1456,7 +1459,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     resultingDataType = targetType
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val data = evaluateToTiles(dataFunction, context, tiles)
-      Seq.fill(repeat)(data).flatten.map(_.convert(targetType))
+      Seq.fill(repeat)(data).flatten.map(safeConvert(_, targetType))
     }
     bandFunction
   }
@@ -1711,7 +1714,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       val input = evaluateToTiles(inputFunction, context, tiles)
       val castedInput =
         if (doTypeCast)
-          input.map(_.convert(FloatConstantNoDataCellType))
+          input.map(safeConvert(_,FloatConstantNoDataCellType))
         else
           input
       castedInput.map(_.mapIfSetDouble(x => {
@@ -1757,8 +1760,8 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     val clipFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val inputTiles = evaluateToTiles(inputFunction, context, tiles)
       if(inputTiles.head.cellType.isFloatingPoint) {
-        val input = inputTiles.map(_.convert(FloatConstantNoDataCellType))
-        input.map(_.mapIfSetDouble(_.toInt).convert(IntConstantNoDataCellType))
+        val input = inputTiles.map(safeConvert(_, FloatConstantNoDataCellType))
+        input.map(tile => safeConvert(tile.mapIfSetDouble(_.toInt),IntConstantNoDataCellType))
       }else{
         inputTiles
       }

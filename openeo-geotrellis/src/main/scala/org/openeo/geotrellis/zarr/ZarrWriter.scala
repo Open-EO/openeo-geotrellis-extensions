@@ -7,6 +7,7 @@ import com.bc.zarr.storage.FileSystemStore
 import geotrellis.layer.{Boundable, SpaceTimeKey, SpatialComponent, SpatialKey}
 import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, ShortCellType, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.spark.MultibandTileLayerRDD
+import org.apache.spark.storage.StorageLevel
 import org.slf4j.LoggerFactory
 import ucar.ma2.Array.factory
 
@@ -29,6 +30,8 @@ object ZarrWriter {
   }
 
   def saveZarrGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions):Unit= {
+    rdd.persist(StorageLevel.MEMORY_AND_DISK)
+
     val metadataContent = new java.util.HashMap[String,Object]()
     if (zarrOptions.numberBands > 1) {
       checkBandNames(zarrOptions.bandNames)
@@ -50,6 +53,7 @@ object ZarrWriter {
 
     val xValues = for (x <- 0 until metadata.cols.toInt) yield metadata.extent.xmin + x * metadata.cellwidth + metadata.cellwidth / 2.0
     val yValues = for (y <- 0 until metadata.rows.toInt) yield metadata.extent.ymax - y * metadata.cellheight - metadata.cellheight / 2.0
+
     val keys = rdd.keys.collect()
     val shapeOri = Array[Int](metadata.rows.toInt, metadata.cols.toInt)
     val chunkOri = Array[Int](tileRows, tileCols)

@@ -5,6 +5,7 @@ import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, Ort
 import geotrellis.raster.{DoubleArrayTile, FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, Tile, UShortArrayTile, isData}
 import io.circe.generic.auto._
 import org.apache.commons.math3.linear.MatrixUtils
+import org.openeo.geotrellis.GeneralUtils.safeConvert
 import org.openeo.geotrelliscommon.{CirceException, ResampledTile}
 
 import java.nio.file.{Path, Paths}
@@ -107,9 +108,9 @@ package object corsa {
     val interpolated = (MatrixUtils.createRealMatrix(mRows) add MatrixUtils.createRealMatrix(tRows).transpose())
       .scalarMultiply(0.5)
 
-    DoubleArrayTile(interpolated.getData.flatten, cols = bandTile.cols, rows = bandTile.rows)
+    val doubleArrayTile = DoubleArrayTile(interpolated.getData.flatten, cols = bandTile.cols, rows = bandTile.rows)
       .mapDouble((x: Double) => if (isData(x)) x else 0)
-      .convert(FloatConstantNoDataCellType)
+    safeConvert(doubleArrayTile, FloatConstantNoDataCellType)
   }
 
   private[corsa] def interpolateNaN(row: Array[Double], limit: Int): Unit = { // modifies row in-place

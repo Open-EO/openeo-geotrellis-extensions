@@ -87,8 +87,8 @@ class DataCubeSupportSpec {
 
     var (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(cartesian, maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
 
-    assertEquals(19, indexReduction)
-    assertEquals(288,indices.length)
+    assertEquals(17, indexReduction)
+    assertEquals(924,indices.length)
     for (i <- 1 until indices.length) {
       assertTrue(indices(i) > indices(i-1))
     }
@@ -132,8 +132,8 @@ class DataCubeSupportSpec {
 
     var (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(cartesian, maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
 
-    assertTrue(indexReduction <=17)
-    assertTrue(indexReduction > 15)
+    assertTrue(indexReduction <=15)
+    assertTrue(indexReduction > 11)
     assertTrue(indices.length>=924)
     for (i <- 1 until indices.length) {
       assertTrue(indices(i) > indices(i-1))

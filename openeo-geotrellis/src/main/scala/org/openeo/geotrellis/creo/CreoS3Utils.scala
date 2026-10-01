@@ -1,11 +1,12 @@
 package org.openeo.geotrellis.creo
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.store.s3.AmazonS3URI
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 import org.openeo.geotrelliss3.S3Utils
 import org.slf4j.LoggerFactory
-import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
+import software.amazon.awssdk.auth.credentials.{AnonymousCredentialsProvider, AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
@@ -15,18 +16,24 @@ import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model._
 import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Client, S3Configuration}
+import software.amazon.awssdk.services.sts.StsClient
+import software.amazon.awssdk.services.sts.auth.StsWebIdentityTokenFileCredentialsProvider
 import software.amazon.awssdk.transfer.s3.S3TransferManager
 import software.amazon.awssdk.transfer.s3.model.UploadFileRequest
 
 import java.net.URI
 import java.nio.file.{Files, Path}
 import java.time.Duration
+import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters._
+import scala.compat.java8.FunctionConverters._
 import scala.collection.immutable.Iterable
 import scala.util.control.Breaks.{break, breakable}
 
 object CreoS3Utils {
   private val logger = LoggerFactory.getLogger(getClass)
+  private val objectMapper = new ObjectMapper()
+  private val proxyS3ClientCache = new ConcurrentHashMap[String, S3Client]()
 
   private val cloudFerroRegion: Region = Region.of("RegionOne")
 
@@ -47,6 +54,79 @@ object CreoS3Utils {
       .build();
   }
 
+  // Return a Client that goes through the S3 proxy if S3 proxy is available for the execution environment and
+  // if the job received a bucket configuration.
+  // Results are cached per bucket name; failures (null) are not cached and will be retried on the next call.
+  def getProxyS3Client(bucketName: String): S3Client = {
+    if (bucketName == null || bucketName.isEmpty) return null
+    proxyS3ClientCache.computeIfAbsent(bucketName, (buildProxyS3Client _).asJava)
+  }
+
+  private def buildProxyS3Client(bucketName: String): S3Client = {
+    val tokenFile = Path.of(sys.env.getOrElse("OPENEO_WEB_IDENTITY_TOKEN_FILE", "/opt/job_config/token"))
+    if (!Files.isRegularFile(tokenFile) || !Files.isReadable(tokenFile)) {
+      logger.info(s"Skip proxy S3 client for bucket $bucketName: web identity token file is not readable: $tokenFile")
+      return null
+    }
+
+    val bucketConfigFile = Path.of(sys.env.getOrElse("OPENEO_BUCKET_CONFIG_FILE", "/opt/job_config/bucket_config.json"))
+    if (!Files.isRegularFile(bucketConfigFile) || !Files.isReadable(bucketConfigFile)) {
+      logger.info(s"Skip proxy S3 client for bucket $bucketName: bucket config file is not readable: $bucketConfigFile")
+      return null
+    }
+
+    val bucketConfig = readProxyBucketConfig(bucketName, bucketConfigFile)
+    if (bucketConfig == null) {
+      return null
+    }
+
+    val stsEndpoint = getRequiredUri("S3PROXY_STS_ENDPOINT_URL")
+    if (stsEndpoint == null) {
+      return null
+    }
+
+    val s3Endpoint = getRequiredUri("S3PROXY_S3_ENDPOINT_URL")
+    if (s3Endpoint == null) {
+      return null
+    }
+
+    try {
+      val region = Region.of(bucketConfig.region)
+      val stsClient = StsClient.builder()
+        .credentialsProvider(AnonymousCredentialsProvider.create())
+        .region(region)
+        .endpointOverride(stsEndpoint)
+        .build()
+
+      // Use the STS-backed variant so the web identity exchange can target a custom endpoint.
+      val credentialsProvider = StsWebIdentityTokenFileCredentialsProvider.builder()
+        .stsClient(stsClient)
+        .roleArn(bucketConfig.roleArn)
+        .roleSessionName(proxyRoleSessionName(bucketName))
+        .webIdentityTokenFile(tokenFile)
+        .build()
+
+      S3Client.builder()
+        .credentialsProvider(credentialsProvider)
+        .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
+        .overrideConfiguration(overrideConfig)
+        .forcePathStyle(true)
+        .region(region)
+        .endpointOverride(s3Endpoint)
+        .build()
+    } catch {
+      case e: Exception =>
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: ${e.getMessage}", e)
+        null
+    }
+  }
+
+  def getS3Client(uri: AmazonS3URI): S3Client = {
+    val proxy = getProxyS3Client(uri.getBucket)
+    if (proxy != null) proxy else getCreoS3Client()
+  }
+
+  //Prefer using getS3Client with an S3 URI
   def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
     val endpointURI = if (region != cloudFerroRegion) this.getCFEndpoin(region) else URI.create(sys.env("SWIFT_URL"))
     val credProvider = if (region.toString.contains("waw")) credentialsProviderWAW else credentialsProvider
@@ -104,9 +184,71 @@ object CreoS3Utils {
     overrideConfig
   }
 
+  private case class ProxyBucketConfig(region: String, roleArn: String)
+
+  private def readProxyBucketConfig(bucketName: String, bucketConfigFile: Path): ProxyBucketConfig = {
+    try {
+      val bucketConfigRoot = objectMapper.readTree(bucketConfigFile.toFile)
+      if (bucketConfigRoot == null || !bucketConfigRoot.isObject) {
+        logger.info(s"Skip proxy S3 client for bucket $bucketName: bucket config file does not contain a JSON object: $bucketConfigFile")
+        return null
+      }
+
+      val bucketNode = bucketConfigRoot.path(bucketName)
+      if (bucketNode.isMissingNode || !bucketNode.isObject) {
+        logger.info(s"Skip proxy S3 client for bucket $bucketName: bucket config file has no object entry for this bucket: $bucketConfigFile")
+        return null
+      }
+
+      val region = Option(bucketNode.path("region").asText(null)).map(_.trim).filter(_.nonEmpty).orNull
+      if (region == null) {
+        //Warn because this should not happen
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config entry has no region: $bucketConfigFile")
+        return null
+      }
+
+      val roleArn = Option(bucketNode.path("role_arn").asText(null)).map(_.trim).filter(_.nonEmpty).orNull
+      if (roleArn == null) {
+        //Warn because this should not happen
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config entry has no role_arn: $bucketConfigFile")
+        return null
+      }
+
+      ProxyBucketConfig(region, roleArn)
+    } catch {
+      case e: Exception =>
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: failed to read bucket config file $bucketConfigFile: ${e.getMessage}", e)
+        null
+    }
+  }
+
+  private def getRequiredUri(envName: String): URI = {
+    val endpointValue = sys.env.get(envName).map(_.trim).filter(_.nonEmpty).orNull
+    if (endpointValue == null) {
+      logger.warn(s"Cannot build proxy S3 client: environment variable $envName is not set.")
+      return null
+    }
+
+    try {
+      URI.create(endpointValue)
+    } catch {
+      case e: IllegalArgumentException =>
+        logger.warn(s"Cannot build proxy S3 client: environment variable $envName does not contain a valid URI: $endpointValue", e)
+        null
+    }
+  }
+
+  private def proxyRoleSessionName(bucketName: String): String = {
+    val podName = sys.env.getOrElse("SPARK_EXECUTOR_POD_NAME", "unknown-sparkappid")
+    val sparkAppId = podName.split("-").slice(0, 2).mkString("-")
+    val executorId = sys.env.getOrElse("SPARK_EXECUTOR_ID", "00")
+
+    s"$sparkAppId-$executorId-$bucketName".take(64)
+  }
+
   //noinspection ScalaWeakerAccess
   def deleteCreoSubFolder(bucket_name: String, subfolder: String): Unit = {
-    val s3Client = getCreoS3Client()
+    val s3Client = getS3Client(new AmazonS3URI(s"s3://$bucket_name"))
     S3Utils.deleteSubFolder(s3Client, bucket_name, subfolder)
   }
 
@@ -156,7 +298,7 @@ object CreoS3Utils {
         .bucket(s3Uri.getBucket)
         .delete(Delete.builder.objects(keys.map(key => ObjectIdentifier.builder.key(key).build).asJavaCollection).build)
         .build
-      getCreoS3Client().deleteObjects(deleteObjectsRequest)
+      getS3Client(s3Uri).deleteObjects(deleteObjectsRequest)
     } else {
       val p = Path.of(path)
       if (Files.isDirectory(p)) {
@@ -174,7 +316,7 @@ object CreoS3Utils {
         .bucket(s3Uri.getBucket)
         .prefix(s3Uri.getKey)
         .build
-      val listObjectsResponse = getCreoS3Client().listObjects(listObjectsRequest)
+      val listObjectsResponse = getS3Client(s3Uri).listObjects(listObjectsRequest)
       listObjectsResponse.contents.asScala.map(o => f"s3://${s3Uri.getBucket}/${o.key}").toSet
     } else {
       Files.list(Path.of(path)).toArray.map(_.toString).toSet
@@ -190,7 +332,7 @@ object CreoS3Utils {
           .bucket(s3Uri.getBucket)
           .key(s3Uri.getKey)
           .build
-        getCreoS3Client().headObject(objectRequest)
+        getS3Client(s3Uri).headObject(objectRequest)
         true
       } catch {
         case _: NoSuchKeyException => false
@@ -210,7 +352,12 @@ object CreoS3Utils {
         .destinationBucket(s3UriDestination.getBucket)
         .destinationKey(s3UriDestination.getKey)
         .build
-      getCreoS3Client().copyObject(copyRequest)
+      val originClient = getS3Client(s3UriOrigin)
+      val destClient = getS3Client(s3UriDestination)
+      if (originClient.serviceClientConfiguration().region() == destClient.serviceClientConfiguration().region() ) {
+        throw new IllegalArgumentException(f"S3->S3 cross region not supported yet ($pathOrigin, $pathDestination)")
+      }
+      originClient.copyObject(copyRequest)
     } else if (!isS3(pathOrigin) && !isS3(pathDestination)) {
       Files.copy(Path.of(pathOrigin), Path.of(pathDestination))
     } else if (!isS3(pathOrigin) && isS3(pathDestination)) {
@@ -279,7 +426,7 @@ object CreoS3Utils {
       .key(s3Uri.getKey)
       .build
 
-    getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(localFile))
+    getS3Client(s3Uri).putObject(objectRequest, RequestBody.fromFile(localFile))
     s3Path
   }
 
@@ -332,7 +479,7 @@ object CreoS3Utils {
         .bucket(s3Uri.getBucket)
         .key(s3Uri.getKey)
         .build
-      val response = getCreoS3Client().getObject(objectRequest)
+      val response = getS3Client(s3Uri).getObject(objectRequest)
       val content = response.readAllBytes()
       new String(content)
     } else {
@@ -349,7 +496,7 @@ object CreoS3Utils {
         .build
       val tempFile = Files.createTempFile("tmp_writeStringToFile", ".txt")
       Files.writeString(tempFile, content)
-      getCreoS3Client().putObject(objectRequest, tempFile)
+      getS3Client(s3Uri).putObject(objectRequest, tempFile)
       Files.delete(tempFile)
     } else {
       Files.writeString(Path.of(path), content)
