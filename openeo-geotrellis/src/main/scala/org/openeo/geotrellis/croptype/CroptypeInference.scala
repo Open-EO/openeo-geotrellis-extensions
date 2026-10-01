@@ -9,7 +9,7 @@ import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkContext, TaskContext}
 import org.openeo.geotrellis.OpenEOProcesses
-import org.openeo.geotrellis.croptype.OnnxInferenceUtils.ubyteCellType
+import org.openeo.geotrellis.croptype.OnnxInferenceUtils.{ubyteCellType, ubyteWithNodataCellType}
 import org.openeo.geotrelliscommon.DatacubeSupport.maybeBandLabels
 import org.openeo.geotrelliscommon.OpenEOProcess
 import org.slf4j.LoggerFactory
@@ -643,16 +643,18 @@ object CroptypeInference {
   }
 
   /** Build one band per monthly timestep from a [B * T] (pixel-major) NDVI accumulator. */
-  private def buildNdviTiles(ndviAccum: Array[Short], cols: Int, rows: Int, T: Int): Seq[Tile] = {
+  private[croptype] def buildNdviTiles(ndviAccum: Array[Short], cols: Int, rows: Int, T: Int): Seq[Tile] = {
     val B = cols * rows
     (0 until T).map { t =>
-      val bandData = new Array[Short](B)
+      val bandData = new Array[Byte](B)
       var p = 0
       while (p < B) {
-        bandData(p) = ndviAccum(p * T + t)
+        // ndviAccum values are in [0, 254] (valid) or 255 (nodata); 255.toByte wraps to -1,
+        // which is exactly the raw byte representation of 255 under ubyteWithNodataCellType.
+        bandData(p) = ndviAccum(p * T + t).toByte
         p += 1
       }
-      ShortArrayTile(bandData, cols, rows).convert(ubyteCellType): Tile
+      UByteArrayTile(bandData, cols, rows, ubyteWithNodataCellType): Tile
     }
   }
 
@@ -804,9 +806,9 @@ object CroptypeInference {
     // smoothing so they neither get overwritten by, nor contribute votes to, neighboring pixels.
     val croplandClassTile: Tile =
       if (majorityVoteEnabled && majorityVoteCropland)
-        MajorityVote(UByteArrayTile(croplandClass, cols, rows, ubyteCellType), majorityVoteKernelSize, Set(255))
+        MajorityVote(UByteArrayTile(croplandClass, cols, rows, ubyteWithNodataCellType), majorityVoteKernelSize, Set(255))
       else
-        UByteArrayTile(croplandClass, cols, rows, ubyteCellType)
+        UByteArrayTile(croplandClass, cols, rows, ubyteWithNodataCellType)
     val croplandClassOut: Tile =
       if (targetDatatype.isFloat) croplandClassTile.convert(targetDatatype.cellType)
       else croplandClassTile
@@ -818,9 +820,9 @@ object CroptypeInference {
     val seasonClassificationBands = Array.tabulate(numSeasons) { s =>
       val croptypeClassTile: Tile =
         if (majorityVoteEnabled && majorityVoteCroptype)
-          MajorityVote(UByteArrayTile(croptypeClassPerSeason(s), cols, rows, ubyteCellType), majorityVoteKernelSize, croptypeExcludedValues)
+          MajorityVote(UByteArrayTile(croptypeClassPerSeason(s), cols, rows, ubyteWithNodataCellType), majorityVoteKernelSize, croptypeExcludedValues)
         else
-          UByteArrayTile(croptypeClassPerSeason(s), cols, rows, ubyteCellType)
+          UByteArrayTile(croptypeClassPerSeason(s), cols, rows, ubyteWithNodataCellType)
       val croptypeClassOut: Tile =
         if (targetDatatype.isFloat) croptypeClassTile.convert(targetDatatype.cellType)
         else croptypeClassTile
@@ -828,7 +830,7 @@ object CroptypeInference {
     }
     val seasonProbabilityBands = Array.tabulate(numSeasons) { s =>
       if (targetDatatype.isFloat) FloatArrayTile(croptypeProbPerSeason(s).map(b => (b & 0xff).toFloat), cols, rows)
-      else UByteArrayTile(croptypeProbPerSeason(s), cols, rows, ubyteCellType): Tile
+      else UByteArrayTile(croptypeProbPerSeason(s), cols, rows, ubyteWithNodataCellType): Tile
     }
     val seasonBands = seasonClassificationBands ++ seasonProbabilityBands
 
@@ -836,8 +838,8 @@ object CroptypeInference {
     MultibandTile(
       (Array[Tile](
         croplandClassOut,
-        if (targetDatatype.isFloat) FloatArrayTile(croplandProb.map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(croplandProb, cols, rows, ubyteCellType): Tile,
-        if (targetDatatype.isFloat) FloatArrayTile(otherProb.map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(otherProb, cols, rows, ubyteCellType): Tile
+        if (targetDatatype.isFloat) FloatArrayTile(croplandProb.map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(croplandProb, cols, rows, ubyteWithNodataCellType): Tile,
+        if (targetDatatype.isFloat) FloatArrayTile(otherProb.map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(otherProb, cols, rows, ubyteWithNodataCellType): Tile
       ) ++ seasonBands): _*
     )
   }
