@@ -4,8 +4,10 @@ import org.apache.spark.scheduler._
 import org.openeo.geotrelliscommon.ExecutionMetrics
 import org.slf4j.{Logger, LoggerFactory}
 
+import java.lang.management.ManagementFactory
 import java.time.Duration
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import scala.collection.mutable;
 
 object BatchJobProgressListener {
@@ -24,6 +26,11 @@ class BatchJobProgressListener extends SparkListener {
   // Executors may have been added before this listener was registered; use this as their start time.
   private var trackingStartTime = System.currentTimeMillis()
   private val totalStageFailures = new AtomicInteger(0)
+
+  // (stage ID, attempt number) -> executor run time of that stage attempt; used to compute ExecutionMetrics
+  // incrementally and thread-safely, independently of stagesInformation above.
+  private val stageRuntimes = new ConcurrentHashMap[(Int, Int), java.lang.Long]()
+  private val totalStageRuntimeMillis = new AtomicLong(0L)
 
   override def onApplicationStart(applicationStart: SparkListenerApplicationStart): Unit = synchronized {
     trackingStartTime = applicationStart.time
@@ -70,7 +77,12 @@ class BatchJobProgressListener extends SparkListener {
     }
     stageInformation += ("logs" -> logs)
     stagesInformation += (stageCompleted.stageInfo.stageId.toString -> stageInformation)
+    logger.debug(s"BatchJobProgressListener.onStageCompleted() called in JVM process ${ManagementFactory.getRuntimeMXBean.getName}")
 
+    val runtimeMillis = taskMetrics.executorRunTime
+    val previousRuntime = stageRuntimes.put((stageCompleted.stageInfo.stageId, stageCompleted.stageInfo.attemptNumber()), runtimeMillis)
+    totalStageRuntimeMillis.addAndGet(runtimeMillis - Option(previousRuntime).map(_.longValue).getOrElse(0L))
+    storeExecutionMetricsIfChanged(stageCompleted.stageInfo.completionTime.getOrElse(System.currentTimeMillis()))
   }
 
 
@@ -83,6 +95,7 @@ class BatchJobProgressListener extends SparkListener {
   override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = synchronized {
     val addedTime = runningExecutors.remove(executorRemoved.executorId).getOrElse(trackingStartTime)
     completedExecutorTimeMillis += math.max(0L, executorRemoved.time - addedTime)
+    storeExecutionMetricsIfChanged(executorRemoved.time)
   }
 
   override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit = {
@@ -129,7 +142,7 @@ class BatchJobProgressListener extends SparkListener {
     logger.info(f"CPU utilization ratio: $cpuUtilizationRatio")
 
 
-    storeExecutionMetrics(totalDuration.toMillis, executorTime, cpuUtilizationRatio)
+    storeExecutionMetricsIfChanged(applicationEnd.time)
 
     if (totalStages > 0) {
       var tempDuration = 0.0
@@ -158,14 +171,26 @@ class BatchJobProgressListener extends SparkListener {
     }
   }
 
-  /** Stores the latest job execution metrics for access by other driver components. */
-  private def storeExecutionMetrics(totalStageRuntimeMillis: Long, executorAllocationTimeMillis: Long,
-                                    cpuUtilizationRatio: Double): Unit = {
-    ExecutionMetrics.store(ExecutionMetrics(
-      totalStageRuntimeMillis = totalStageRuntimeMillis,
-      executorAllocationTimeMillis = executorAllocationTimeMillis,
+  /** Recomputes ExecutionMetrics and stores them if they changed since the last store. */
+  private def storeExecutionMetricsIfChanged(now: Long): Unit = {
+    val stageRuntimeMillis = totalStageRuntimeMillis.get()
+    val executorTimeMillis = synchronized {
+      completedExecutorTimeMillis + runningExecutors.values.map(added => math.max(0L, now - added)).sum
+    }
+    val cpuUtilizationRatio =
+      if (executorTimeMillis > 0) stageRuntimeMillis.toDouble / executorTimeMillis.toDouble
+      else 0d
+
+    val metrics = ExecutionMetrics(
+      totalStageRuntimeMillis = stageRuntimeMillis,
+      executorAllocationTimeMillis = executorTimeMillis,
       cpuUtilizationRatio = cpuUtilizationRatio,
       totalStageFailures = totalStageFailures.get()
-    ))
+    )
+
+    val previous = ExecutionMetrics.getAndStore(metrics)
+    if (metrics != previous) {
+      logger.debug(s"Stored $metrics")
+    }
   }
 }

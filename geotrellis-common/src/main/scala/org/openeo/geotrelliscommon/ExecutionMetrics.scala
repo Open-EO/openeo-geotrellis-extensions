@@ -1,5 +1,10 @@
 package org.openeo.geotrelliscommon
 
+import java.lang.management.ManagementFactory
+import java.util.concurrent.atomic.AtomicReference
+
+import org.slf4j.LoggerFactory
+
 final case class ExecutionMetrics(
   totalStageRuntimeMillis: Long,
   executorAllocationTimeMillis: Long,
@@ -8,24 +13,31 @@ final case class ExecutionMetrics(
 )
 
 object ExecutionMetrics {
-  @volatile private var current = ExecutionMetrics(0L, 0L, 0d, 0)
+  private val logger = LoggerFactory.getLogger(getClass)
+  private val current = new AtomicReference(ExecutionMetrics(0L, 0L, 0d, 0))
 
-  def get: ExecutionMetrics = current
+  def get: ExecutionMetrics = current.get()
 
   def asMap(): Map[String, Any] = {
-    if (current.totalStageRuntimeMillis == 0) {
+    logger.debug(s"ExecutionMetrics.asMap() called in JVM process ${ManagementFactory.getRuntimeMXBean.getName}")
+    val metrics = current.get()
+    if (metrics.totalStageRuntimeMillis == 0) {
       Map.empty
     } else {
       Map(
-        "totalStageRuntimeMillis" -> current.totalStageRuntimeMillis,
-        "executorAllocationTimeMillis" -> current.executorAllocationTimeMillis,
-        "cpuUtilizationRatio" -> current.cpuUtilizationRatio,
-        "totalStageFailures" -> current.totalStageFailures
+        "totalStageRuntimeMillis" -> metrics.totalStageRuntimeMillis,
+        "executorAllocationTimeMillis" -> metrics.executorAllocationTimeMillis,
+        "cpuUtilizationRatio" -> metrics.cpuUtilizationRatio,
+        "totalStageFailures" -> metrics.totalStageFailures
       )
     }
   }
 
   private[openeo] def store(metrics: ExecutionMetrics): Unit = {
-    current = metrics
+    current.set(metrics)
   }
+
+  /** Atomically stores `metrics` and returns the previously stored value. */
+  private[openeo] def getAndStore(metrics: ExecutionMetrics): ExecutionMetrics =
+    current.getAndSet(metrics)
 }
