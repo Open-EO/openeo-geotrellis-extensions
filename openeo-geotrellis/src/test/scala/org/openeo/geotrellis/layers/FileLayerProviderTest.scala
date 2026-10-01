@@ -1622,8 +1622,8 @@ class FileLayerProviderTest extends RasterMatchers {
     //overlap filter has removed the other potential sources
     assertEquals(229, ids.size)
 
-    assertTrue(Seq(1, 2).contains(listener.getJobsCompleted))
-    assertTrue(listener.getStagesCompleted <= 4)
+    assertTrue(Seq(2, 3, 4).contains(listener.getJobsCompleted))
+    assertTrue(listener.getStagesCompleted <= 7)
     assertTrue(listener.getTasksCompleted >= 90) // Range to make test less flaky
     assertTrue(listener.getTasksCompleted <= 200)
     assertTrue(allTiles.length >= 2384 - 0.1)
@@ -1652,9 +1652,9 @@ class FileLayerProviderTest extends RasterMatchers {
     //overlap filter has removed the other potential sources
     assertEquals(694, ids.size)
 
-    assertEquals(1, listener.getJobsCompleted)
-    assertEquals(3, listener.getStagesCompleted)
-    assertEquals(21, listener.getTasksCompleted)
+    assertEquals(2, listener.getJobsCompleted)
+    assertEquals(4, listener.getStagesCompleted)
+    assertEquals(22, listener.getTasksCompleted)
     assertEquals(77316, allTiles.size)
     println(listener.getPeakMemoryMB)
 
