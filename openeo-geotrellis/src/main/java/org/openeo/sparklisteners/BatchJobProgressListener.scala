@@ -1,28 +1,12 @@
 package org.openeo.sparklisteners;
 
 import org.apache.spark.scheduler._
+import org.openeo.geotrelliscommon.ExecutionMetrics
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.Duration
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.mutable;
-
-final case class ExecutionMetrics(
-  totalStageRuntimeMillis: Long,
-  executorAllocationTimeMillis: Long,
-  cpuUtilizationRatio: Double,
-  totalStageFailures: Int
-)
-
-object ExecutionMetrics {
-  @volatile private var current = ExecutionMetrics(0L, 0L, 0d, 0)
-
-  def get: ExecutionMetrics = current
-
-  private[sparklisteners] def store(metrics: ExecutionMetrics): Unit = {
-    current = metrics
-  }
-}
 
 object BatchJobProgressListener {
 
