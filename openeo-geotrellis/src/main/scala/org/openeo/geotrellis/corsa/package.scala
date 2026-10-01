@@ -5,9 +5,10 @@ import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, Ort
 import geotrellis.raster.{DoubleArrayTile, FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, Tile, UShortArrayTile, isData}
 import io.circe.generic.auto._
 import org.apache.commons.math3.linear.MatrixUtils
+import org.openeo.geotrellis.GeneralUtils.safeConvert
 import org.openeo.geotrelliscommon.{CirceException, ResampledTile}
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Path, Paths}
 import java.util
 import java.util.concurrent.ConcurrentHashMap
 import scala.io.Source
@@ -107,9 +108,9 @@ package object corsa {
     val interpolated = (MatrixUtils.createRealMatrix(mRows) add MatrixUtils.createRealMatrix(tRows).transpose())
       .scalarMultiply(0.5)
 
-    DoubleArrayTile(interpolated.getData.flatten, cols = bandTile.cols, rows = bandTile.rows)
+    val doubleArrayTile = DoubleArrayTile(interpolated.getData.flatten, cols = bandTile.cols, rows = bandTile.rows)
       .mapDouble((x: Double) => if (isData(x)) x else 0)
-      .convert(FloatConstantNoDataCellType)
+    safeConvert(doubleArrayTile, FloatConstantNoDataCellType)
   }
 
   private[corsa] def interpolateNaN(row: Array[Double], limit: Int): Unit = { // modifies row in-place
@@ -198,8 +199,6 @@ package object corsa {
   }
 
   private def processWindowOnnx(cubeArrayNormalized: MultibandTile, modelPath: Path): (Tile, Tile)  = {
-    require(Files.exists(modelPath))
-
     val data = reshape(cubeArrayNormalized)
     require(data.length == 1)
     require(data.head.length == Bands.size)
@@ -338,7 +337,6 @@ package object corsa {
     val patchSize = tile.cols
 
     val modelPath = Paths.get(s"/data/users/Private/vdboschj/onnx/corsa_mtc_160k_64b_${patchSize}p/encoder.onnx")
-    require(Files.exists(modelPath))
 
     val EncodeSessionDetails(encodeSession, encodeInputName) = encodeSessionDetails(modelPath, patchSize)
 
@@ -369,7 +367,6 @@ package object corsa {
     val patchSize = tile.cols * 2
 
     val modelPath = Paths.get(s"/data/users/Private/vdboschj/onnx/corsa_mtc_160k_64b_${patchSize}p/decoder.onnx")
-    require(Files.exists(modelPath), modelPath.toString)
 
     val level0 = tile.band(0).map(nanTo0 _)
     val level1 = ResampledTile(tile.band(1).map(nanTo0 _), sourceCols = level0.cols, sourceRows = level0.rows, targetCols = level0.cols / 2, targetRows = level0.rows / 2)

@@ -205,7 +205,7 @@ object SCLConvolutionFilter {
  * 1: saturated
  * 2: dark area or cast shadows??
  * 3 cloud shadow
- * 4 vegetatin
+ * 4 vegetation
  * 5 no vegetation
  * 6 water
  * 7 unclassified

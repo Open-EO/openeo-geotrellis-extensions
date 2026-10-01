@@ -6,6 +6,12 @@ import org.junit.jupiter.api.{Disabled, Test}
 class TestProcessGraphJson {
 
   @Test
+  def loadSyntheticDataFailOnce(): Unit = {
+    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_synthetic_data_fail_once.json")
+  }
+
+
+  @Test
   def loadSyntheticData(): Unit = {
     ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_synthetic_data.json")
   }

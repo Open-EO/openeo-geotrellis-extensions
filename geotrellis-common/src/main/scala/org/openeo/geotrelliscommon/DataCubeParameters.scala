@@ -4,6 +4,7 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.ResampleMethod
 import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.vector.{Extent, ProjectedExtent}
+import org.openeo.geotrelliscommon.UdfLanguage.UdfLanguage
 
 import java.util
 import java.util.Collections
@@ -25,7 +26,7 @@ class DataCubeParameters extends Serializable {
   var useNewFeatureExtentIntersection2: Boolean = true
   var timeDimensionFilter: Option[java.io.Serializable] = Option.empty
   var allowEmptyCube: Boolean = false
-  var useRasterSourceProviders: Boolean = false
+  var useRasterSourceProviders: Boolean = true
   var loadPerProduct: Boolean = false
   var rasterSource: Option[String] = Option.empty
 
@@ -130,5 +131,5 @@ class DataCubeParameters extends Serializable {
   }
 }
 
-case class SyntheticDataOverride(cellType: String, udf: Option[String])
+case class SyntheticDataOverride(cellType: String, udf: Option[String], language: UdfLanguage = UdfLanguage.Python)
 

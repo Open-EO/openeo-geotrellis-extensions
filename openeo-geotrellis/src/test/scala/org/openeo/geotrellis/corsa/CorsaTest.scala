@@ -11,6 +11,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+import org.openeo.geotrellis.GeneralUtils.safeConvert
 import org.openeo.geotrellis.corsa
 
 import java.nio.file.{Files, Path, Paths}
@@ -46,12 +47,12 @@ class CorsaTest extends RasterMatchers {
     SinglebandGeoTiff(level1, extent, crs).write(f"/tmp/level1_40m.tif")
 
     assertRastersEqual(
-      actual = Raster(level0.convert(FloatConstantNoDataCellType), extent),
+      actual = Raster(safeConvert(level0, FloatConstantNoDataCellType), extent),
       expected = MultibandGeoTiff(testResourcePath("level0_20m_2021-09-07Z_ref.tif")).raster
     )
 
     assertRastersEqual(
-      actual = Raster(level1.convert(FloatConstantNoDataCellType), extent),
+      actual = Raster(safeConvert(level1, FloatConstantNoDataCellType), extent),
       expected = MultibandGeoTiff(testResourcePath("level1_40m_2021-09-07Z_ref.tif")).raster
     )
   }

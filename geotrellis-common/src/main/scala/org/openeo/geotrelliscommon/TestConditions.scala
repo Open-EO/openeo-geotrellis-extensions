@@ -3,6 +3,7 @@ package org.openeo.geotrelliscommon
 import com.azavea.gdal.GDALWarp
 
 import java.nio.file.Path
+import scala.sys.env
 
 object TestConditions {
 
@@ -39,6 +40,11 @@ object TestConditions {
     folder.exists && folder.isDirectory && folder.list() != null && !folder.list().isEmpty
   }
 
+  def hasEodataData(): Boolean = {
+    val folder = Path.of("/eodata").toFile
+    folder.exists && folder.isDirectory && folder.list() != null && !folder.list().isEmpty
+  }
+
   def hasHttpCredentials: Boolean = {
     val credentialsFile = Path.of(Option(System.getProperty("http.credentials.file")).getOrElse("./http_credentials.json")).toFile
     credentialsFile.isFile && credentialsFile.exists
@@ -51,5 +57,20 @@ object TestConditions {
     } catch {
       case _: Throwable => false
     }
+  }
+
+  def hasDockerInstalled: Boolean = {
+    try {
+      val cmd = Seq("docker", "version")
+      val process = new ProcessBuilder(cmd: _*).start()
+      val exitCode = process.waitFor()
+      exitCode == 0
+    } catch {
+      case _: Throwable => false
+    }
+  }
+
+  def runProcessGraphRegressionTests: Boolean = {
+    hasDockerInstalled && System.getProperty("RUN_PROCESS_GRAPH_REGRESSION_TESTS") == "true"
   }
 }

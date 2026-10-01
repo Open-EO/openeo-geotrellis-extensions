@@ -8,6 +8,7 @@ import org.openeo.geotrellis.layers.raster_source.SentinelXMLMetadataRasterSourc
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 import org.slf4j.LoggerFactory
 
+import java.io.FileNotFoundException
 import scala.language.postfixOps
 import scala.xml.XML
 
@@ -17,7 +18,7 @@ object SentinelXMLMetadataRasterSource {
   def forAngleBand(xlmPath: String,
                    angleBandIndex: Int,
                    targetProjectedExtent: Option[ProjectedExtent] = None,
-                   cellSize: Option[CellSize] = None
+                   cellSize: Option[CellSize] = None,
                   ): SentinelXMLMetadataRasterSource = {
     // TODO: write forAngleBands in terms of forAngleBand instead
     forAngleBands(xlmPath, Seq(angleBandIndex), targetProjectedExtent, cellSize).head
@@ -29,16 +30,15 @@ object SentinelXMLMetadataRasterSource {
   def forAngleBands(xlmPath: String,
                     angleBandIndices: Seq[Int] = Seq(0, 1, 2, 3), // SAA, SZA, VAA, VZA
                     targetProjectedExtent: Option[ProjectedExtent] = None,
-                    cellSize: Option[CellSize] = None
+                    cellSize: Option[CellSize] = None,
                    ): Seq[SentinelXMLMetadataRasterSource] = {
     require(angleBandIndices.forall(index => index >= 0 && index <= 3))
 
     val theResolution = cellSize.getOrElse(CellSize(10, 10))
 
     val path = CreoFeatureCollection.loadMetadata(xlmPath)
-    if (path == null) {
-      throw new Exception("Could not load metadata file for angle bands: " + xlmPath)
-    }
+    if (path == null) throw new FileNotFoundException(s"metadata file for angle bands $xlmPath does not exist")
+
     val xmlDoc = XML.load(path)
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"
@@ -80,7 +80,6 @@ case class SentinelXMLMetadataRasterSource(
                                             gridExtent: GridExtent[Long],
                                             sourcePathName: OpenEoSourcePath,
                                           ) extends RasterSource {
-
   val targetCellType: Option[TargetCellType] = None
 
   override def metadata: RasterMetadata = this

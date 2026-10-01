@@ -1,12 +1,12 @@
 package org.openeo.geotrellis.icor
 
 import java.util
-
 import geotrellis.layer._
 import geotrellis.raster.resample.Average
 import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, NODATA, Tile}
 import geotrellis.spark._
 import org.apache.spark.api.java.JavaSparkContext
+import org.openeo.geotrellis.GeneralUtils.safeConvert
 import org.openeo.geotrellis.smac.SMACCorrection
 import org.openeo.geotrellis.water_vapor.{CWVProvider, ConstantCWVProvider}
 import org.slf4j.LoggerFactory
@@ -76,7 +76,7 @@ class AtmosphericCorrection extends Serializable {
               {
 
                 def angleTile(index: Int, fallback: Double): Tile = {
-                  if (index >= 0) multibandtile._2.band(index).convert(FloatConstantNoDataCellType) 
+                  if (index >= 0) safeConvert(multibandtile._2.band(index), FloatConstantNoDataCellType) 
                   else {
                     if (fallback.isNaN) throw new IllegalArgumentException("Missing angle data.")
                     else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
@@ -122,12 +122,12 @@ class AtmosphericCorrection extends Serializable {
 
                 if (appendDebugBands)
                   MultibandTile(result.bands ++ Vector(
-                      (szaTile*100).convert(multibandtile._2.cellType).toArrayTile,
-                      (vzaTile*100).convert(multibandtile._2.cellType).toArrayTile,
-                      (raaTile*100).convert(multibandtile._2.cellType).toArrayTile,
-                      (demTile*100).convert(multibandtile._2.cellType).toArrayTile,
-                      (aotTile*100).convert(multibandtile._2.cellType).toArrayTile,
-                      (cwvTile*100).convert(multibandtile._2.cellType).toArrayTile
+                    safeConvert(szaTile*100,multibandtile._2.cellType).toArrayTile,
+                    safeConvert(vzaTile*100,multibandtile._2.cellType).toArrayTile,
+                    safeConvert(raaTile*100,multibandtile._2.cellType).toArrayTile,
+                    safeConvert(demTile*100, multibandtile._2.cellType).toArrayTile,
+                    safeConvert(aotTile*100,multibandtile._2.cellType).toArrayTile,
+                    safeConvert(cwvTile*100,multibandtile._2.cellType).toArrayTile
                   ))
                 else 
                   result
@@ -154,11 +154,11 @@ class AtmosphericCorrection extends Serializable {
       bandName match {
         case bandPattern(pattern) => {
           val bandIdx=sensorDescriptor.getBandFromName(pattern)
-          tile.convert(FloatConstantNoDataCellType).combineDouble(szaTile){
+          safeConvert(tile,FloatConstantNoDataCellType).combineDouble(szaTile){
             (src,sza) => sensorDescriptor.preScale(src, sza, multibandtile._1.time, bandIdx)
           }
         }
-        case _ => tile.convert(FloatConstantNoDataCellType)
+        case _ => safeConvert(tile,FloatConstantNoDataCellType)
       }
     })
     
@@ -175,9 +175,9 @@ class AtmosphericCorrection extends Serializable {
         case bandPattern(pattern) => {
           val bandIdx=sensorDescriptor.getBandFromName(pattern)
           val resultTile: Tile = MultibandTile(
-            tile.convert(FloatConstantNoDataCellType),
-            aotTile.convert(FloatConstantNoDataCellType),
-            demTile.convert(FloatConstantNoDataCellType),
+            safeConvert(tile, FloatConstantNoDataCellType),
+            safeConvert(aotTile, FloatConstantNoDataCellType),
+            safeConvert(demTile, FloatConstantNoDataCellType),
             szaTile,
             vzaTile,
             raaTile,
@@ -191,9 +191,9 @@ class AtmosphericCorrection extends Serializable {
               digitalNumberAsDouble
             }
           } ).toInt else NODATA }
-          resultTile.convert(multibandtile._2.cellType)
+          safeConvert(resultTile, multibandtile._2.cellType)
         }
-        case _ => tile.convert(multibandtile._2.cellType)
+        case _ => safeConvert(tile, multibandtile._2.cellType)
       }
     })
     
@@ -204,8 +204,8 @@ class AtmosphericCorrection extends Serializable {
       val resultt=result.bands
       val resultn=bandIds.asScala.toVector
       println("--- CHECKING PART ---: "+multibandtile._1.toString)
-      for (i <- inputt.indices)  println("IN_("+i.toString+") "+inputn(i)+ ": "+inputt(i).convert(FloatConstantNoDataCellType).resample(1, 1, Average).getDouble(0,0).toString)
-      for (i <- resultt.indices) println("OUT("+i.toString+") "+resultn(i)+": "+resultt(i).convert(FloatConstantNoDataCellType).resample(1, 1, Average).getDouble(0,0).toString)
+      for (i <- inputt.indices)  println("IN_("+i.toString+") "+inputn(i)+ ": "+safeConvert(inputt(i), FloatConstantNoDataCellType).resample(1, 1, Average).getDouble(0,0).toString)
+      for (i <- resultt.indices) println("OUT("+i.toString+") "+resultn(i)+": "+safeConvert(resultt(i),FloatConstantNoDataCellType).resample(1, 1, Average).getDouble(0,0).toString)
     }
     
     (cwvTile, result)

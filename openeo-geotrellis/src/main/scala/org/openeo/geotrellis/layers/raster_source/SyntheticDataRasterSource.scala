@@ -5,14 +5,17 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile}
 import geotrellis.vector.Extent
 import org.openeo.geotrellis.udf.SharedInterpreterFactory
+import org.openeo.geotrelliscommon.UdfLanguage
+import org.openeo.geotrelliscommon.UdfLanguage.UdfLanguage
 import org.slf4j.LoggerFactory
+
+import scala.reflect.ClassTag
 
 object SyntheticDataRasterSource {
   private val logger = LoggerFactory.getLogger(SyntheticDataRasterSource.getClass)
-  private val supportedBandIndices: Seq[Int] = Seq(0)
 }
 
-case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridExtent: GridExtent[Long], override val crs: CRS, udf: Option[String] = None) extends RasterSource {
+case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridExtent: GridExtent[Long], override val crs: CRS, udf: Option[String] = None, language: UdfLanguage = UdfLanguage.Python) extends RasterSource {
   import SyntheticDataRasterSource._
 
   val targetCellType: Option[TargetCellType] = None
@@ -33,7 +36,7 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
     """
       |for row in range(rows):
       |  for col in range(cols):
-      |    tile_array[row*col] = generate(row, col)
+      |    tile_array[row*cols + col] = generate(row, col)
       |""".stripMargin
 
   override def metadata: RasterMetadata = this
@@ -46,7 +49,6 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     logger.info(s"Loading synthetic data for ${itemId}")
-    require(bands == supportedBandIndices)
 
     extent.intersection(gridExtent.extent)
       .map { intersection =>
@@ -58,7 +60,6 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     logger.info(s"Loading synthetic data for ${itemId}")
-    require(bands == supportedBandIndices)
 
     bounds.intersection(gridExtent.dimensions)
       .map { intersection =>
@@ -70,47 +71,91 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
 
   private def syntheticDataTile(rows: Int, cols: Int): Tile = {
     cellTypeName match {
-      case "byte" | "int8" | "uint8" | "int8raw" | "uint8raw" => ArrayTile(syntheticData(cols, rows, new Array[Byte](rows*cols)), rows, cols)
-      case "short" | "int16" | "int16raw" | "uint16raw" => ArrayTile(syntheticData(cols, rows, new Array[Short](rows*cols)), rows, cols)
-      case "int" | "int32" => ArrayTile(syntheticData(cols, rows, new Array[Int](rows*cols)), rows, cols)
-      case "float" | "float32" | "float32raw" => ArrayTile(syntheticData(cols, rows, new Array[Float](rows*cols)), rows, cols)
-      case "double" | "float64" => ArrayTile(syntheticData(cols, rows, new Array[Double](rows*cols)), rows, cols)
+      case "byte" | "int8" | "uint8" | "int8raw" | "uint8raw" => ArrayTile(syntheticData(cols, rows, new Array[Byte](rows*cols), 1.toByte), rows, cols)
+      case "short" | "int16" | "int16raw" | "uint16raw" => ArrayTile(syntheticData(cols, rows, new Array[Short](rows*cols), 1.toShort), rows, cols)
+      case "int" | "int32" => ArrayTile(syntheticData(cols, rows, new Array[Int](rows*cols), 1), rows, cols)
+      case "float" | "float32" | "float32raw" => ArrayTile(syntheticData(cols, rows, new Array[Float](rows*cols), 1f), rows, cols)
+      case "double" | "float64" => ArrayTile(syntheticData(cols, rows, new Array[Double](rows*cols), 1d), rows, cols)
       case _ => throw new IllegalArgumentException("Unsupported CellType for synthetic data")
     }
   }
 
-  private def syntheticData[T <: AnyVal](cols: Int, rows: Int, arr: Array[T]): Array[T] = {
+  private def syntheticData[T <: AnyVal: scala.reflect.ClassTag](cols: Int, rows: Int, arr: Array[T], defaultValue: T): Array[T] = {
     val f = {
       if (udf.isDefined) {
-        val ip = SharedInterpreterFactory.create()
-        try {
-          ip.exec(DEFAULT_IMPORTS)
-          ip.set("rows", rows)
-          ip.set("cols", cols)
-          ip.set("tile_array", arr)
-          ip.exec(udf.get)
-          ip.exec(FILL_ARRAY)
-          ip.getValue("tile_array").asInstanceOf[arr.type]
-        } finally {
-          if (ip != null) {
-            ip.close()
-          }
+        language match {
+          case UdfLanguage.Python => usePython(cols, rows, arr)
+          case UdfLanguage.Scala => useScala(cols, rows, arr)
+          case _ => throw new IllegalArgumentException(s"Unsupported UDF language: $language")
         }
       } else {
-        logger.warn("No UDF defined for synthetic data override, using all 0's instead")
-        arr
+        logger.warn(s"No UDF defined for synthetic data override, using default value ($defaultValue) instead")
+        arr.map(_ => defaultValue)
       }
     }
     f
   }
 
+  private val SCALA_FILL_ARRAY =
+    """
+      |for (row <- 0 until rows; col <- 0 until cols) {
+      |  tile_array(row * cols + col) = generate(row, col)
+      |}
+      |""".stripMargin
+
+  private def useScala[T <: AnyVal : ClassTag](cols: Int, rows: Int, arr: Array[T]): Array[T] = {
+    import scala.tools.nsc.Settings
+    import scala.tools.nsc.interpreter.{IMain, ReplReporter}
+    import scala.tools.nsc.interpreter.shell.ReplReporterImpl
+
+    val settings = new Settings
+    settings.usejavacp.value = true
+
+    val interpreter = new IMain(settings, new ReplReporterImpl(settings))
+    try {
+      val tpeName = implicitly[ClassTag[T]].runtimeClass.getSimpleName match {
+        case "int"    => "Int"
+        case "double" => "Double"
+        case "float"  => "Float"
+        case "long"   => "Long"
+        case "short"  => "Short"
+        case "byte"   => "Byte"
+        case other    => other
+      }
+      interpreter.bind("rows", "Int", rows)
+      interpreter.bind("cols", "Int", cols)
+      interpreter.bind("tile_array", s"Array[$tpeName]", arr)
+      interpreter.interpret(udf.get)
+      interpreter.interpret(SCALA_FILL_ARRAY)
+      interpreter.valueOfTerm("tile_array").get.asInstanceOf[arr.type]
+    } finally {
+      interpreter.reset()
+    }
+  }
+
+    private def usePython[T <: AnyVal : ClassTag](cols: Int, rows: Int, arr: Array[T]) = {
+    val ip = SharedInterpreterFactory.create()
+    try {
+      ip.exec(DEFAULT_IMPORTS)
+      ip.set("rows", rows)
+      ip.set("cols", cols)
+      ip.set("tile_array", arr)
+      ip.exec(udf.get)
+      ip.exec(FILL_ARRAY)
+      ip.getValue("tile_array").asInstanceOf[arr.type]
+    } finally {
+      if (ip != null) {
+        ip.close()
+      }
+    }
+  }
 
   override def convert(targetCellType: TargetCellType): RasterSource =
     new SyntheticDataRasterSource(itemId, cellTypeName, gridExtent, crs, udf)
 
-  override def name: SourceName = toString
+  override def name: SourceName = itemId
 
-  override def bandCount: Int = supportedBandIndices.size
+  override def bandCount: Int = 1
 
   override def resolutions: List[CellSize] = List(gridExtent.cellSize)
 

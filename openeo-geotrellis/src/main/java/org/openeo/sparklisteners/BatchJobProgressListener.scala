@@ -1,31 +1,53 @@
 package org.openeo.sparklisteners;
 
-import org.apache.spark.executor.TaskMetrics
-import org.apache.spark.scheduler.cluster.ExecutorInfo
-import org.apache.spark.scheduler.{SparkListener, SparkListenerApplicationEnd, SparkListenerExecutorAdded, SparkListenerExecutorRemoved, SparkListenerStageCompleted, SparkListenerStageSubmitted}
-import org.apache.spark.util.AccumulatorV2
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
+import org.apache.spark.scheduler._
+import org.slf4j.{Logger, LoggerFactory}
 
-import scala.collection.mutable
-import java.time.Duration;
+import java.time.Duration
+import java.util.concurrent.atomic.AtomicInteger
+import scala.collection.mutable;
+
+final case class ExecutionMetrics(
+  totalStageRuntimeMillis: Long,
+  executorAllocationTimeMillis: Long,
+  cpuUtilizationRatio: Double,
+  totalStageFailures: Int
+)
+
+object ExecutionMetrics {
+  @volatile private var current = ExecutionMetrics(0L, 0L, 0d, 0)
+
+  def get: ExecutionMetrics = current
+
+  private[sparklisteners] def store(metrics: ExecutionMetrics): Unit = {
+    current = metrics
+  }
+}
 
 object BatchJobProgressListener {
 
-    val logger = LoggerFactory.getLogger(BatchJobProgressListener.getClass)
-
+  val logger: Logger = LoggerFactory.getLogger(BatchJobProgressListener.getClass)
 }
 
 class BatchJobProgressListener extends SparkListener {
 
-    import BatchJobProgressListener.logger
+  import BatchJobProgressListener.logger
 
     private val stagesInformation = new mutable.LinkedHashMap[String,mutable.Map[String,Any]]()
-    private val executorInformation = new mutable.LinkedHashMap[String,(Long,Long)]
+    // start time of currently allocated executors
+    private val runningExecutors = new mutable.LinkedHashMap[String, Long]
+    private var completedExecutorTimeMillis = 0L
+    // Executors may have been added before this listener was registered; use this as their start time.
+    private var trackingStartTime = System.currentTimeMillis()
+    private val totalStageFailures = new AtomicInteger(0)
 
-    override def onStageSubmitted( stageSubmitted:SparkListenerStageSubmitted):Unit = {
-        logger.info(s"Starting stage: ${stageSubmitted.stageInfo.stageId} - ${stageSubmitted.stageInfo.name}. \nStages may combine multiple processes." )
-    }
+  override def onApplicationStart(applicationStart: SparkListenerApplicationStart): Unit = synchronized {
+    trackingStartTime = applicationStart.time
+  }
+
+  override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {
+    logger.info(s"Starting stage: ${stageSubmitted.stageInfo.stageId} - ${stageSubmitted.stageInfo.name}. \nStages may combine multiple processes.")
+  }
 
    override def onStageCompleted( stageCompleted: SparkListenerStageCompleted):Unit = {
         val taskMetrics = stageCompleted.stageInfo.taskMetrics
@@ -38,6 +60,7 @@ class BatchJobProgressListener extends SparkListener {
                |Your job may still complete if the failure was caused by a transient error, but will take more time. A common cause of transient errors is too little executor memory (overhead). Too low executor-memory can be seen by a high 'garbage collection' time, which was: ${Duration.ofMillis(taskMetrics.jvmGCTime).toSeconds / 1000.0} seconds.
                |""".stripMargin
           logs = ("warn", message) :: logs
+          totalStageFailures.incrementAndGet()
 
         }else{
           val duration = Duration.ofMillis(taskMetrics.executorRunTime)
@@ -67,22 +90,15 @@ class BatchJobProgressListener extends SparkListener {
     }
 
 
-  override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = {
-    val time = executorAdded.time
-    val executorId = executorAdded.executorId
-    if (executorInformation.contains(executorId)){
-      val (addedTime,removedTime) = executorInformation(executorId)
-      executorInformation += (executorId -> (addedTime+time,removedTime))
-    } else executorInformation += (executorId -> (time,0L))
-
+  override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = synchronized {
+    if (!runningExecutors.contains(executorAdded.executorId)) {
+      runningExecutors += (executorAdded.executorId -> executorAdded.time)
+    }
   }
-  override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = {
-    val time = executorRemoved.time
-    val executorId = executorRemoved.executorId
-    if(executorInformation.contains(executorId)){
-      val (addedTime,removedTime) = executorInformation(executorId)
-      executorInformation += (executorId -> (addedTime,removedTime))
-    }else executorInformation += (executorId ->(0L,time))
+
+  override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = synchronized {
+    val addedTime = runningExecutors.remove(executorRemoved.executorId).getOrElse(trackingStartTime)
+    completedExecutorTimeMillis += math.max(0L, executorRemoved.time - addedTime)
   }
 
   override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd):Unit={
@@ -92,15 +108,9 @@ class BatchJobProgressListener extends SparkListener {
       }
       (x._1 + 1, x._2.plus(duration))
     }
-    val executorTime = executorInformation.foldLeft(0L)((x,y) => {
-      val (_,(added,removed)) = y
-      val removedTime = if (removed == 0L) {
-        applicationEnd.time
-      } else {
-        removed
-      }
-      x + removedTime - added
-    })
+    val executorTime = synchronized {
+      completedExecutorTimeMillis + runningExecutors.values.map(added => math.max(0L, applicationEnd.time - added)).sum
+    }
     val executorString = if (executorTime > 60*1000 ){
       f"${(executorTime /(60*1000)).toInt} minutes"
     }else{
@@ -122,6 +132,17 @@ class BatchJobProgressListener extends SparkListener {
     logger.info(f"Total number of stages: $totalStages")
     logger.info(f"Total stage runtime: $timeString")
     logger.info(f"Total executor allocation time: $executorString")
+
+    val cpuUtilizationRatio: Double = if (executorTime > 0) {
+      totalDuration.toMillis.toDouble / executorTime.toDouble
+    } else {
+      0d
+    }
+    logger.info(f"CPU utilization ratio: $cpuUtilizationRatio")
+
+
+    storeExecutionMetrics(totalDuration.toMillis, executorTime, cpuUtilizationRatio)
+
     if (totalStages > 0) {
       var tempDuration = 0.0
       var i = 0
@@ -147,5 +168,16 @@ class BatchJobProgressListener extends SparkListener {
         i += 1
       }
     }
+  }
+
+  /** Stores the latest job execution metrics for access by other driver components. */
+  private def storeExecutionMetrics(totalStageRuntimeMillis: Long, executorAllocationTimeMillis: Long,
+                                cpuUtilizationRatio: Double): Unit = {
+    ExecutionMetrics.store(ExecutionMetrics(
+      totalStageRuntimeMillis = totalStageRuntimeMillis,
+      executorAllocationTimeMillis = executorAllocationTimeMillis,
+      cpuUtilizationRatio = cpuUtilizationRatio,
+      totalStageFailures = totalStageFailures.get()
+    ))
   }
 }

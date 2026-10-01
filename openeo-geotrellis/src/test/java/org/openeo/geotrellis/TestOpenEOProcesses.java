@@ -333,6 +333,18 @@ public class TestOpenEOProcesses {
         assertEquals(FloatConstantNoDataCellType$.MODULE$,maxTile.cellType());
     }
 
+    @Test
+    public void testReduceTimeSingleTimestamp() {
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = LayerFixtures.sentinel2B04SingleTimestampLayer();
+        ContextRDD<SpatialKey, MultibandTile,TileLayerMetadata<SpatialKey>> reduced =
+                (ContextRDD<SpatialKey, MultibandTile,TileLayerMetadata<SpatialKey>>)new OpenEOProcesses().reduceTimeDimension(datacube1, createStandardDeviation(true,datacube1.metadata().cellType()), Collections.emptyMap());
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,reduced.metadata().cellType());
+        Object shouldBeSingleTile = reduced.collect();
+        assertEquals(1,((Tuple2<SpatialKey, MultibandTile>[])shouldBeSingleTile).length);
+        MultibandTile maxTile = ((Tuple2<SpatialKey, MultibandTile>[])shouldBeSingleTile)[0]._2;
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,maxTile.cellType());
+    }
+
     private ContextRDD<SpaceTimeKey, MultibandTile,TileLayerMetadata<SpaceTimeKey>> composite(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true,datacube1.metadata().cellType());
         return (ContextRDD<SpaceTimeKey, MultibandTile,TileLayerMetadata<SpaceTimeKey>>) new OpenEOProcesses().aggregateTemporal(datacube1,

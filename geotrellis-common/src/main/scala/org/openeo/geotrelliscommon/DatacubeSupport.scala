@@ -317,7 +317,7 @@ object DatacubeSupport {
     // retain only tiles where there is at least one valid pixel (mask value == 0), others will be fully removed
     val filtered = alignedMask.withContext {
       _.filter(t => {
-        keyBounds.includes(t._1) && t._2.band(0).toArray().exists(pixel => pixel == 0)
+        keyBounds.includes(t._1) && t._2.band(0).toArray().contains(0)
       })
     }
     filtered
@@ -334,6 +334,10 @@ object DatacubeSupport {
   def optimalReductionForSparseKeys(sparseKeys: Seq[SpaceTimeKey], maxPartitionSizeInMb: Int, tileSize: Int, cellTypeBits: Int, bandCount: Int) = {
     val tileSizeInMb: Double = (bandCount * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
     val maxRecordsPerPartition: Double = math.min(math.min(maxPartitionSizeInMb / tileSizeInMb, 1024), sparseKeys.length)
+    val temporalWeight = sparseKeys.map(_.time).distinct.length
+    logger.debug(s"Computing optimal reduction for maxPartitionSizeInMb $maxPartitionSizeInMb, size of the tile $tileSize, bits of cell type $cellTypeBits, and temporal steps $temporalWeight.")
+    val tileSizeInMb: Double = (bandCount * tileSize * cellTypeBits * temporalWeight).toDouble / (8 * 1024 * 1024)
+    val maxRecordsPerPartition: Double = math.min(math.min(maxPartitionSizeInMb / tileSizeInMb, 1024),sparseKeys.length)
     var indexReduction = math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
 
     def computeIndices(cartesian: Seq[SpaceTimeKey], indexReduction: Int): (Array[BigInt], Int) = {

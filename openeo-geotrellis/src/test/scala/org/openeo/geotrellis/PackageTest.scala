@@ -2,7 +2,6 @@ package org.openeo.geotrellis
 
 import geotrellis.proj4.{CRS, LatLng, Sinusoidal, WebMercator}
 import geotrellis.raster.io.geotiff.{GeoTiff, Int16GeoTiffMultibandTile}
-import geotrellis.raster.{ByteCellType, ByteUserDefinedNoDataCellType, FloatUserDefinedNoDataCellType, UByteCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.vector._
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
@@ -61,14 +60,6 @@ class PackageTest {
   import PackageTest._
 
   @Test
-  def testToSigned(): Unit = {
-    assertEquals(ByteCellType, toSigned(UByteCellType))
-    assertEquals(ByteUserDefinedNoDataCellType(42), toSigned(UByteUserDefinedNoDataCellType(42)))
-    assertEquals(FloatUserDefinedNoDataCellType(42), toSigned(FloatUserDefinedNoDataCellType(42)))
-    assertEquals(ByteUserDefinedNoDataCellType(42), toSigned(ByteUserDefinedNoDataCellType(42)))
-  }
-
-  @Test
   def testFileMove(): Unit = {
     val refFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference_average.tif")
     val refTiff = GeoTiff.readMultiband(refFile.getPath)
@@ -100,7 +91,7 @@ class PackageTest {
     val tiff = refTiff.withCompression(options)
     writeGeoTiff(tiff, zstdPath, gtiffOptions = None)
     val checkZstdTiff = GeoTiff.readMultiband(zstdPath)
-    assertEquals(336789, Files.size(path))
+    assertEquals(336807, Files.size(path))
     assertEquals(checkZstdTiff.tile.band(0).get(5,7), refTiff.tile.band(0).get(5,7))
     assertEquals(50000, checkZstdTiff.tile.asInstanceOf[Int16GeoTiffMultibandTile].decompressor.code)
     assertEquals(2, checkZstdTiff.tile.asInstanceOf[Int16GeoTiffMultibandTile].decompressor.predictorCode)
