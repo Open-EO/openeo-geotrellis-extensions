@@ -300,7 +300,7 @@ case class RasterTileLoader() {
       val bandCount = math.max(expectedBandCount, if (mergedBands.isEmpty) 0 else mergedBands.keys.max + 1)
       for (x <- 0 until bandCount) {
         if (!mergedBands.contains(x)) {
-          val allSources = bandsByPosition.map(_._2._2).toSet
+          val allSources = bandsByPosition.map(t=>(t._1,t._2._2)).toList.sortBy(_._1).distinct
           logger.warn(s"load_collection/load_stac - $collectionRef: Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", ") + s" stage ${TaskContext.get().stageId()} - attempt ${TaskContext.get().attemptNumber()}")
           val someTile = mergedBands.head._2
           mergedBands = mergedBands + (x -> someTile.prototype(someTile.cols, someTile.rows))
