@@ -915,9 +915,7 @@ object NetCDFRDDWriter {
     bandNames.forEach(name => {
       val rasterBands = new java.util.HashMap[String,Any]()
       rasterBands.put("name", name)
-      if (addBandStats) {
-        rasterBands.put("statistics", convertStatsToMap(bandStatistics(name)))
-      }
+      if (addBandStats) rasterBands.put("statistics", convertStatsToMap(bandStatistics(name)))
       bands.add(rasterBands)
     })
     assetMetadata.put("bands", bands)
@@ -947,9 +945,9 @@ object NetCDFRDDWriter {
 
   private def bandsStatistics(tile:Tile, bandStat:collection.mutable.Map[String,(Stats)], bandName:String): Unit = {
     val tempStats = computeStatsTile(tile)
-    val result = if (bandStat.contains(bandName)) {
-      combineStats(bandStat(bandName), tempStats)
-    } else tempStats
+    val result =
+      if (bandStat.contains(bandName)) combineStats(bandStat(bandName), tempStats)
+      else tempStats
     bandStat.update(bandName,result)
   }
 
@@ -962,12 +960,11 @@ object NetCDFRDDWriter {
         val bandStatistics = rasters.map(raster => computeStatsTile(raster.tile.band(bandId)))
         val combinedStats = bandStatistics.reduce { (accumulated, temporary) => combineStats(accumulated, temporary) }
         bands.put("statistics", convertStatsToMap(combinedStats))
-        metadata.add(bands)
       }
+      metadata.add(bands)
     }
     metadata
   }
-
 
   private def getNoDataValue(cellType: CellType): (DataType,Option[Number]) = {
     cellType match {

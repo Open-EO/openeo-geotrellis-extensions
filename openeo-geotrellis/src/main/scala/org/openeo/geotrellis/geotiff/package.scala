@@ -917,9 +917,7 @@ package object geotiff {
         if (statistics.contains(bandIndex)) statistics.update(bandIndex, combineStats(statistics(bandIndex), curStats))
         else statistics.update(bandIndex, curStats)
       }
-      statistics.map({ case (bandIndex, (min, max, sum, powerSum, validCount, totalCount)) =>
-        (bandIndex, convertStatsToMap(min, max, sum, powerSum, validCount, totalCount))
-      })
+      statistics.map({ case (bandIndex, stats) => (bandIndex, convertStatsToMap(stats))})
     } else {
       collection.mutable.Map[Int, java.util.HashMap[String, Any]]()
     }
@@ -953,11 +951,8 @@ package object geotiff {
     bandNames.foreach(name => {
       val rasterBands = new java.util.HashMap[String,Any]()
       rasterBands.put("name", name)
+      if (bandStatistics.contains(name)) rasterBands.put("statistics", bandStatistics(name))
       bands.add(rasterBands)
-      if (bandStatistics.contains(name)) {
-        val stats = bandStatistics(name)
-        rasterBands.put("statistics", stats)
-      }
     })
     if (!bands.isEmpty) assetMetadata.put("bands", bands)
 
@@ -1062,7 +1057,7 @@ package object geotiff {
                         tileLayout: TileLayout, compression: Compression, cellType: CellType,
                         detectedBandCount: Double, segmentCount: Int,
                         formatOptions: GTiffOptions = new GTiffOptions, overviews: List[GeoTiffMultibandTile] = Nil
-                       ):GeoTiffResultObject= {
+                       ):GeoTiffResultObject = {
     val tiffType = if (formatOptions.isBigTiff) BigTiff else Tiff
 
     logger.info(s"Writing $tiffType geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
