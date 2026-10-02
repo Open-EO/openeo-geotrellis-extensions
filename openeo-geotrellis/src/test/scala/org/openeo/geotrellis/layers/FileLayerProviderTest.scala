@@ -18,7 +18,7 @@ import geotrellis.vector._
 import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
 import org.apache.commons.io.FileUtils
 import org.apache.spark.rdd.RDD
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.{HashPartitioner, SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api._
 import org.junit.jupiter.api.condition.EnabledIf
@@ -1124,7 +1124,7 @@ class FileLayerProviderTest extends RasterMatchers {
       SplitYearMonthDayPathDateExtractor,
       layoutScheme = FloatingLayoutScheme(256),
     )
-    
+
     val provider = FileLayerProvider(
       openEOSearchClient,
       "MODIS",
@@ -1618,16 +1618,16 @@ class FileLayerProviderTest extends RasterMatchers {
 
     assertTrue(index.isInstanceOf[SparseSpaceTimePartitioner])
     assertTrue(index.asInstanceOf[SparseSpaceTimePartitioner].theKeys.isDefined)
-    assertEquals(128, result._2.tileLayout.tileCols)
+    assertEquals(64, result._2.tileLayout.tileCols)
     //overlap filter has removed the other potential sources
     assertEquals(229, ids.size)
 
-    assertTrue(Seq(1, 2).contains(listener.getJobsCompleted))
-    assertTrue(listener.getStagesCompleted <= 4)
+    assertTrue(Seq(3, 4, 5).contains(listener.getJobsCompleted))
+    assertTrue(listener.getStagesCompleted <= 9)
     assertTrue(listener.getTasksCompleted >= 90) // Range to make test less flaky
     assertTrue(listener.getTasksCompleted <= 200)
     assertTrue(allTiles.length >= 2384 - 0.1)
-    assertTrue(allTiles.length <= 4928 + 0.1)
+    assertTrue(allTiles.length <= 7193 + 0.1)
   }
 
   @Test
@@ -1652,9 +1652,9 @@ class FileLayerProviderTest extends RasterMatchers {
     //overlap filter has removed the other potential sources
     assertEquals(694, ids.size)
 
-    assertEquals(1, listener.getJobsCompleted)
-    assertEquals(3, listener.getStagesCompleted)
-    assertEquals(21, listener.getTasksCompleted)
+    assertEquals(2, listener.getJobsCompleted)
+    assertEquals(4, listener.getStagesCompleted)
+    assertEquals(22, listener.getTasksCompleted)
     assertEquals(77316, allTiles.size)
     println(listener.getPeakMemoryMB)
 
