@@ -1,6 +1,5 @@
 package org.openeo.geotrelliscommon
 
-import java.lang.management.ManagementFactory
 import java.util.concurrent.atomic.AtomicReference
 
 import org.slf4j.LoggerFactory
@@ -19,7 +18,6 @@ object ExecutionMetrics {
   def get: ExecutionMetrics = current.get()
 
   def asMap(): Map[String, Any] = {
-    logger.debug(s"ExecutionMetrics.asMap() called in JVM process ${ManagementFactory.getRuntimeMXBean.getName}")
     val metrics = current.get()
     if (metrics.totalStageRuntimeMillis == 0) {
       Map.empty

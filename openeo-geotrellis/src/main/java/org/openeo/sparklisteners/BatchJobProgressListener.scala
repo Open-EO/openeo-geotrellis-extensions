@@ -4,7 +4,6 @@ import org.apache.spark.scheduler._
 import org.openeo.geotrelliscommon.ExecutionMetrics
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.lang.management.ManagementFactory
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
@@ -77,7 +76,6 @@ class BatchJobProgressListener extends SparkListener {
     }
     stageInformation += ("logs" -> logs)
     stagesInformation += (stageCompleted.stageInfo.stageId.toString -> stageInformation)
-    logger.debug(s"BatchJobProgressListener.onStageCompleted() called in JVM process ${ManagementFactory.getRuntimeMXBean.getName}")
 
     val runtimeMillis = taskMetrics.executorRunTime
     val previousRuntime = stageRuntimes.put((stageCompleted.stageInfo.stageId, stageCompleted.stageInfo.attemptNumber()), runtimeMillis)
