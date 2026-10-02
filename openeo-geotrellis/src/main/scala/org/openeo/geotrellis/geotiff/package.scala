@@ -1306,7 +1306,7 @@ package object geotiff {
     val bandNames = fo.getBandNames
     val bandStatistics = 
       if (fo.addBandStatistics) {
-        val statistics = bandsStatistics(tileToWrite)
+        val statistics = tileToWrite.bands.map(band => convertStatsToMap(computeStatsTile(band)))
         bandNames.zipWithIndex.map({ case (name, index) =>
           if (index >= tileToWrite.bandCount) {
             logger.warn(f"Band name $name at index $index exceeds the number of bands ${tileToWrite.bandCount} in the stitched tile. Skipping statistics for this band.")
@@ -1661,25 +1661,6 @@ package object geotiff {
       logger.warn(s"${args mkString " "} failed; output was: $outputBufferString")
       None
     }
-  }
-
-  private def bandsStatistics(tile: MultibandTile): Array[java.util.HashMap[String,Any]] = {
-    val stats = tile.bands.map(band => {
-      val (min, max, sum, powerSum, validCount, totalCount) = band.cellType match {
-        case _: FloatCells => statsDouble(band)
-        case _: DoubleCells => statsDouble(band)
-        case _: ShortCells => statsInt(band)
-        case _: UShortCells => statsInt(band)
-        case _: IntCells => statsInt(band)
-      }
-      if (validCount==0) new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0))
-      else {
-        val stddev = Math.sqrt(powerSum / validCount - Math.pow(sum / validCount, 2))
-        new java.util.HashMap[String, Any](java.util.Map.of("mean", sum / validCount, "maximum", max, "minimum", min, "stddev", stddev, "valid_percent", validCount.toDouble / totalCount * 100))
-      }
-
-    }).toArray
-    stats
   }
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: LayoutDefinition) extends Seq[(K, V)] with Metadata[LayoutDefinition] {

@@ -14,7 +14,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkContext, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, fixBboxLargerThanWorld, safeConvert, statsDouble, statsInt}
+import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert, statsDouble, statsInt}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.geotiff.preProcess
 import org.openeo.geotrellis.stac.{Asset, Item}
@@ -911,27 +911,15 @@ object NetCDFRDDWriter {
     val assetMetadata = if (dates.nonEmpty) {
       new util.HashMap[String,Any](util.Map.of("time", new util.HashMap[String,Any](util.Map.of("type", "temporal", "extent",Array(dates.head, dates.last), "values", dates.toArray))))
     } else new java.util.HashMap[String,Any]()
-    val bands = if (addBandStats) {
-      val maps = new util.ArrayList[util.Map[String,Any]]()
-      bandStatistics.foreach {case (bandName,(min,max,sum,powerSum,validCount,size)) => {
-        val mapStatistics = if (validCount==0) new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))
-        else {
-          val stddev = Math.sqrt(powerSum / validCount - Math.pow(sum / validCount, 2))
-          new util.HashMap[String, Any](util.Map.of("maximum", max, "minimum", min, "mean", sum/validCount,"stddev",stddev, "valid_percent", validCount.toDouble/size*100))
-        }
-        val band = new util.HashMap[String,Any](util.Map.of("name", bandName, "statistics", mapStatistics))
-        maps.add(band)
-      }}
-      maps
-    } else {
-      val maps = new java.util.ArrayList[java.util.HashMap[String,Any]]()
-      bandNames.forEach(name => {
-        val rasterBands = new java.util.HashMap[String,Any]()
-        rasterBands.put("name", name)
-        maps.add(rasterBands)
-      })
-      maps
-    }
+    val bands = new util.ArrayList[util.Map[String,Any]]()
+    bandNames.forEach(name => {
+      val rasterBands = new java.util.HashMap[String,Any]()
+      rasterBands.put("name", name)
+      if (addBandStats) {
+        rasterBands.put("statistics", convertStatsToMap(bandStatistics(name)))
+      }
+      bands.add(rasterBands)
+    })
     assetMetadata.put("bands", bands)
     val croppedBbox =
       if (metadata.crs == LatLng) fixBboxLargerThanWorld(bbox)
@@ -947,18 +935,7 @@ object NetCDFRDDWriter {
     if (dates != null) {
       assetMetadata.put("time", Map("type" -> "temporal", "extent" -> Array(dates.head, dates.last), "values" -> dates.toArray))
     } else new util.HashMap[String,Any]()
-    val bands = if (addBandsStats) {
-      bandsStatistics(rasters, bandNames)
-    } else {
-      val maps = new util.ArrayList[java.util.HashMap[String,Any]]()
-      bandNames.forEach(name => {
-        val rasterBands = new java.util.HashMap[String,Any]()
-        rasterBands.put("name", name)
-        maps.add(rasterBands)
-      })
-      maps
-    }
-    assetMetadata.put("bands", bands)
+    assetMetadata.put("bands", bandMetadata(rasters, bandNames, addBandsStats))
     val bbox =
       if (metadata.crs == LatLng) fixBboxLargerThanWorld(rasters.head.extent)
       else rasters.head.extent
@@ -968,52 +945,27 @@ object NetCDFRDDWriter {
     assetMetadata
   }
 
-  private def bandsStatistics(tile:Tile, bandStat:collection.mutable.Map[String,(Double,Double,Double,Double,Int,Int)], bandName:String): Unit = {
-    val (tempMin,tempMax, tempSum, tempPowerSum, tempValidCount,totalCount) = tile.cellType match {
-      case _:FloatCells => statsDouble(tile)
-      case _:DoubleCells => statsDouble(tile)
-      case _:ShortCells => statsInt(tile)
-      case _:UShortCells => statsInt(tile)
-      case _:IntCells => statsInt(tile)
-    }
+  private def bandsStatistics(tile:Tile, bandStat:collection.mutable.Map[String,(Stats)], bandName:String): Unit = {
+    val tempStats = computeStatsTile(tile)
     val result = if (bandStat.contains(bandName)) {
-      val (curMin,curMax,curSum,curPowerSum,curValidCount,size) = bandStat(bandName)
-      (Math.min(tempMin,curMin), Math.max(tempMax,curMax), tempSum+curSum, tempPowerSum+curPowerSum, tempValidCount+curValidCount, size+totalCount)
-    } else (tempMin,tempMax,tempSum,tempPowerSum,tempValidCount,totalCount)
+      combineStats(bandStat(bandName), tempStats)
+    } else tempStats
     bandStat.update(bandName,result)
   }
 
-  private def bandsStatistics(rasters:Seq[Raster[MultibandTile]], bandNames: ArrayList[String]): java.util.ArrayList[java.util.HashMap[String,Any]] = {
-    val stats = new java.util.ArrayList[java.util.HashMap[String,Any]]()
+  private def bandMetadata(rasters:Seq[Raster[MultibandTile]], bandNames: ArrayList[String], addBandsStats:Boolean): java.util.ArrayList[java.util.HashMap[String,Any]] = {
+    val metadata = new java.util.ArrayList[java.util.HashMap[String,Any]]()
     for (bandId <- 0 until bandNames.size()){
-      val bandStatistics = rasters.map(raster => {
-        val tile = raster.tile.band(bandId)
-        val (min, max, sum, powerSum, validCount, totalCount) = tile.cellType match {
-          case _: FloatCells => statsDouble(tile)
-          case _: DoubleCells => statsDouble(tile)
-          case _: ShortCells => statsInt(tile)
-          case _: UShortCells => statsInt(tile)
-          case _: IntCells => statsInt(tile)
-        }
-        (min, max, sum, powerSum, validCount,totalCount)
-      })
-      val (min,max,sum, powerSum,validCount,size)= bandStatistics.reduce{(accumulated, temporary) => {
-        val (accMin, accMax, accSum, accPowerSum, accValidCount, accSize) = accumulated
-        val (tempMin, tempMax, tempSum, tempPowerSum, tempValidCount, tempSize) = temporary
-        (Math.min(accMin, tempMin), Math.max(accMax, tempMax), accSum+tempSum,accPowerSum+tempPowerSum, accValidCount + tempValidCount, accSize + tempSize)
-      }}
-      val rasterBands = new java.util.HashMap[String,Any]()
-      val bandStats = if (validCount==0) new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0))
-      else {
-        val stddev = Math.sqrt(powerSum / validCount - Math.pow(sum / validCount, 2))
-        new java.util.HashMap[String, Any](java.util.Map.of("mean", sum / validCount, "maximum", max, "minimum", min, "stddev", stddev , "valid_percent", validCount.toDouble / size * 100))
+      val bands = new java.util.HashMap[String,Any]()
+      bands.put("name",bandNames.get(bandId))
+      if (addBandsStats) {
+        val bandStatistics = rasters.map(raster => computeStatsTile(raster.tile.band(bandId)))
+        val combinedStats = bandStatistics.reduce { (accumulated, temporary) => combineStats(accumulated, temporary) }
+        bands.put("statistics", convertStatsToMap(combinedStats))
+        metadata.add(bands)
       }
-      logger.info(s"computed statistics for band ${bandNames.get(bandId)}: $bandStats")
-      rasterBands.put("statistics",bandStats)
-      rasterBands.put("name",bandNames.get(bandId))
-      stats.add(rasterBands)
     }
-    stats
+    metadata
   }
 
 
