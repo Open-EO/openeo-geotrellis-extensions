@@ -92,9 +92,7 @@ class Sentinel1GrdRasterSourceProvider(
     S1GrdPattern.matches(path)
 
   private def isS1GrdStacItem(definition: RasterSourceDefinition): Boolean = {
-    val collectionId = definition.feature.collectionId
-    if (collectionId == null) return false
-    val cid = collectionId.toLowerCase
+    val cid = definition.feature.collectionId.toLowerCase
     (cid.contains("sentinel-1") || cid.contains("sentinel1")) &&
     (cid.contains("grd") || definition.dataPath.toLowerCase.contains("grd"))
   }
