@@ -830,6 +830,11 @@ class OpenEOProcesses extends Serializable {
 
     val leftCount = maybeBandCount(leftCube)
     val rightCount = maybeBandCount(rightCube)
+
+    val leftBandNames = maybeBandNames(leftCube)
+    val rightBandNames = maybeBandNames(rightCube)
+    val sameNames = leftBandNames.isDefined && rightBandNames.isDefined && leftBandNames.get == rightBandNames.get
+    logger.info(s"Outer join of cubes with band counts: ${leftCount} - ${rightCount}, have same names = $sameNames, and band names: ${leftBandNames} - ${rightBandNames}")
     //fairly arbitrary heuristic if we're going to create a cube with a high number of bands
     val manyBands = leftCount.getOrElse(1) + rightCount.getOrElse(1) > 25
 
@@ -925,6 +930,15 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
+  def maybeBandNames[K](cube: RDD[(K, MultibandTile)]): Option[Seq[String]] = {
+    if (cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount > 0) {
+      val bandNames = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bands
+      logger.info(s"Computed band names ${bandNames} from metadata of ${cube}")
+      return Some(bandNames)
+    }else{
+      return None
+    }
+  }
 
 
   def maybeCellType[K](cube: RDD[(K, MultibandTile)]): Option[CellType] = {
