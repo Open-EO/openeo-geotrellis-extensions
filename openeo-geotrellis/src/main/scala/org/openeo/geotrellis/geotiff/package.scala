@@ -380,7 +380,7 @@ package object geotiff {
       val cellTypes = sequence.map(_._2._1).toSet
       val tiffs: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._2)).toMap
       val bandIndices = sequence.map(_._3).toSet.toList
-      val bandStatistics = sequence.map(s => (s._3,s._4)).toList
+      val bandStatisticsPerTile = sequence.map(s => (s._3,s._4)).toList
 
       val segmentCount = bandSegmentCount * tiffBands
 
@@ -420,21 +420,18 @@ package object geotiff {
         tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo, overviewTiles
       )
 
-      val statistics = collection.mutable.Map[Int, Stats]()
-      val bandStatistics2 = if (formatOptions.addBandStatistics) {
-        bandStatistics.foreach { case (bandIndex, curStats) =>
-          if (statistics.contains(bandIndex)) statistics.update(bandIndex, combineStats(statistics(bandIndex), curStats))
-          else statistics.update(bandIndex, curStats)
+      val statisticsPerBand = collection.mutable.Map[Int, Stats]()
+      val bandStatistics = if (formatOptions.addBandStatistics) {
+        bandStatisticsPerTile.foreach { case (bandIndex, curStats) =>
+          if (statisticsPerBand.contains(bandIndex)) statisticsPerBand.update(bandIndex, combineStats(statisticsPerBand(bandIndex), curStats))
+          else statisticsPerBand.update(bandIndex, curStats)
         }
-        statistics.map({ case (bandIndex, (min, max, sum, powerSum, validCount, totalCount)) =>
-          val bandName = bandLabels(bandIndex)
-          (bandName, convertStatsToMap(min, max, sum, powerSum, validCount, totalCount))
-        })
+        statisticsPerBand.map({ case (bandIndex, stats) => (bandLabels(bandIndex), convertStatsToMap(stats))})
       } else {
         collection.Map[String, java.util.HashMap[String, Any]]()
       }
 
-      val assetMetadata = setupAssetMetadata(fo.getBandNames, preProcessResult._2, preprocessedRdd.metadata.crs, Array(gridBounds.height, gridBounds.width), bandStatistics2)
+      val assetMetadata = setupAssetMetadata(fo.getBandNames, preProcessResult._2, preprocessedRdd.metadata.crs, Array(gridBounds.height, gridBounds.width), bandStatistics)
       (geoTiffResultObject, timestamp, croppedExtent, bandIndices.asJava, assetMetadata)
     }.collect()
     val res = geotiffResults.map {
