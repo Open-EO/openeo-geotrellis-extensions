@@ -301,9 +301,11 @@ case class RasterTileLoader() {
       for (x <- 0 until bandCount) {
         if (!mergedBands.contains(x)) {
           val allSources = bandsByPosition.map(t=>(t._1,t._2._2)).toList.sortBy(_._1).distinct
-          logger.warn(s"load_collection/load_stac - $collectionRef: Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", ") + s" stage ${TaskContext.get().stageId()} - attempt ${TaskContext.get().stageAttemptNumber()}")
-          val someTile = mergedBands.head._2
-          mergedBands = mergedBands + (x -> someTile.prototype(someTile.cols, someTile.rows))
+          val errorMsg = s"load_collection/load_stac - $collectionRef: Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", ") + s" stage ${TaskContext.get().stageId()} - attempt ${TaskContext.get().stageAttemptNumber()}"
+          logger.warn(errorMsg)
+          throw new RuntimeException(errorMsg)
+          //val someTile = mergedBands.head._2
+          //mergedBands = mergedBands + (x -> someTile.prototype(someTile.cols, someTile.rows))
         }
       }
       val mergedTile = MultibandTile(mergedBands.toSeq.sortBy(_._1).flatMap(_._2.bands))
