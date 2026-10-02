@@ -5,6 +5,7 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, isData, isNoData, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.vector.Extent
 import org.slf4j.LoggerFactory
+import java.util
 
 object GeneralUtils {
 
@@ -294,7 +295,22 @@ object GeneralUtils {
     )
   }
 
-  def statsDouble(tile: Tile): (Double,Double,Double,Double,Int,Int) = {
+  type Stats = (Double, Double, Double, Double, Int, Int) // min, max, sum, powerSum, validCount, totalCount
+
+  def computeStatsTile(tile:Tile): Stats = {
+    val (tempMin, tempMax, tempSum, tempPowerSum, tempValidCount, totalCount) = tile.cellType match {
+      case _: FloatCells => statsDouble(tile)
+      case _: DoubleCells => statsDouble(tile)
+      case _: ByteCells => statsInt(tile)
+      case _: UByteCells => statsInt(tile)
+      case _: ShortCells => statsInt(tile)
+      case _: UShortCells => statsInt(tile)
+      case _: IntCells => statsInt(tile)
+    }
+    (tempMin, tempMax, tempSum, tempPowerSum, tempValidCount, totalCount)
+  }
+
+  def statsDouble(tile: Tile): Stats = {
     var zmin = Double.NaN
     var zmax = Double.NaN
     var sum = 0.0
@@ -320,7 +336,7 @@ object GeneralUtils {
     (zmin,zmax,sum,powerSum,validCount,totalCount)
   }
   
-  def statsInt(tile:Tile): (Double,Double,Double,Double,Int,Int) = {
+  def statsInt(tile:Tile): Stats = {
     var zmin = Int.MaxValue
     var zmax = Int.MinValue
     var sum = 0
@@ -342,4 +358,25 @@ object GeneralUtils {
     (zmin,zmax,sum.toDouble,powerSum,validCount,totalCount)
   }
 
+  def combineStats(existingStats: Stats, curStats: Stats): Stats = {
+    val (existingMin, existingMax, existingSum, existingPowerSum, existingValidCount, existingTotalCount) = existingStats
+    val (tempMin, tempMax, tempSum, tempPowerSum, tempValidCount, totalCount) = curStats
+    val newMin = math.min(existingMin, tempMin)
+    val newMax = math.max(existingMax, tempMax)
+    val newSum = existingSum + tempSum
+    val newPowerSum = existingPowerSum + tempPowerSum
+    val newValidCount = existingValidCount + tempValidCount
+    val newTotalCount = existingTotalCount + totalCount
+    (newMin, newMax, newSum, newPowerSum, newValidCount, newTotalCount)
+  }
+
+  def convertStatsToMap(stats: Stats): util.HashMap[String,Any] = {
+    val (min, max, sum, powerSum, validCount, totalCount) = stats
+    if (validCount == 0) {
+      new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))
+    } else {
+      val stddev = Math.sqrt(powerSum / validCount - Math.pow(sum / validCount, 2))
+      new util.HashMap[String, Any](util.Map.of("maximum", max, "minimum", min, "mean", sum / validCount, "stddev", stddev, "valid_percent", validCount.toDouble / totalCount * 100))
+    }
+  }
 }
