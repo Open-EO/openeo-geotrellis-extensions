@@ -1,10 +1,11 @@
 package org.openeo.sparklisteners
 
 import org.apache.spark.scheduler.cluster.ExecutorInfo
-import org.apache.spark.scheduler.{SparkListenerApplicationEnd, SparkListenerExecutorAdded, SparkListenerExecutorRemoved}
+import org.apache.spark.scheduler.{SparkListener, SparkListenerApplicationEnd, SparkListenerExecutorAdded, SparkListenerExecutorRemoved}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellis.LocalSparkContext
+import org.openeo.geotrelliscommon.ExecutionMetrics
 import scala.collection.immutable.Map
 
 object TestListeners {}
@@ -41,13 +42,32 @@ class TestListeners extends LocalSparkContext {
     val stageInfo = buildStageInfo(startedAt, 2500L)
     callStageCallback(listener, "onStageSubmitted", "org.apache.spark.scheduler.SparkListenerStageSubmitted", stageInfo, new java.util.Properties())
     callStageCallback(listener, "onStageCompleted", "org.apache.spark.scheduler.SparkListenerStageCompleted", stageInfo)
-    assertEquals(ExecutionMetrics(2500L, 2500L, 1.0, 0), ExecutionMetrics.get)
-
     listener.onExecutorRemoved(SparkListenerExecutorRemoved(startedAt + 2500L, "executor-1", "test"))
+    listener.onApplicationEnd(SparkListenerApplicationEnd(startedAt + 5000L))
+
     assertEquals(ExecutionMetrics(2500L, 2500L, 1.0, 0), ExecutionMetrics.get)
+  }
+
+  @Test
+  def testBatchJobProgressListenerStoresMetricsOnChange(): Unit = {
+    val listener = new BatchJobProgressListener()
+    val startedAt = System.currentTimeMillis()
+
+    listener.onExecutorAdded(SparkListenerExecutorAdded(
+      startedAt,
+      "executor-1",
+      new ExecutorInfo("localhost", 1, Map.empty[String, String])
+    ))
+    val stageInfo = buildStageInfo(startedAt, 2000L)
+    callStageCallback(listener, "onStageSubmitted", "org.apache.spark.scheduler.SparkListenerStageSubmitted", stageInfo, new java.util.Properties())
+    callStageCallback(listener, "onStageCompleted", "org.apache.spark.scheduler.SparkListenerStageCompleted", stageInfo)
+    assertEquals(ExecutionMetrics(2000L, 2000L, 1.0, 0), ExecutionMetrics.get)
+
+    listener.onExecutorRemoved(SparkListenerExecutorRemoved(startedAt + 4000L, "executor-1", "test"))
+    assertEquals(ExecutionMetrics(2000L, 4000L, 0.5, 0), ExecutionMetrics.get)
 
     listener.onApplicationEnd(SparkListenerApplicationEnd(startedAt + 5000L))
-    assertEquals(ExecutionMetrics(2500L, 2500L, 1.0, 0), ExecutionMetrics.get)
+    assertEquals(ExecutionMetrics(2000L, 4000L, 0.5, 0), ExecutionMetrics.get)
   }
 
   private def stageInfoDefault(methodName: String): Any = {
@@ -86,7 +106,7 @@ class TestListeners extends LocalSparkContext {
     stageInfo
   }
 
-  private def callStageCallback(listener: BatchJobProgressListener, callback: String, eventClassName: String, args: AnyRef*): Unit = {
+  private def callStageCallback(listener: SparkListener, callback: String, eventClassName: String, args: AnyRef*): Unit = {
     val eventClass = Class.forName(eventClassName)
     val constructor = eventClass.getConstructors.find(_.getParameterCount == args.size).get
     val event = constructor.newInstance(args: _*)
