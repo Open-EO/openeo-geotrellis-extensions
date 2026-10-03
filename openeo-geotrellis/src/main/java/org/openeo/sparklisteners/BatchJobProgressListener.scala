@@ -41,6 +41,7 @@ class BatchJobProgressListener extends SparkListener {
   }
 
   override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {
+    logger.info(s"Ending stage: ${stageCompleted.stageInfo.stageId} - ${stageCompleted.stageInfo.name}.")
     val taskMetrics = stageCompleted.stageInfo.taskMetrics
     val stageInformation = new mutable.LinkedHashMap[String, Any]()
     var logs = List[(String, String)]()
@@ -87,18 +88,21 @@ class BatchJobProgressListener extends SparkListener {
 
 
   override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = synchronized {
+    logger.info(s"Added executor: ${executorAdded.executorId}.")
     if (!runningExecutors.contains(executorAdded.executorId)) {
       runningExecutors += (executorAdded.executorId -> executorAdded.time)
     }
   }
 
   override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = synchronized {
+    logger.info(s"Removed executor: ${executorRemoved.executorId}.")
     val addedTime = runningExecutors.remove(executorRemoved.executorId).getOrElse(trackingStartTime)
     completedExecutorTimeMillis += math.max(0L, executorRemoved.time - addedTime)
     storeExecutionMetricsIfChanged(executorRemoved.time)
   }
 
   override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit = {
+    logger.info(s"Application ended: ${applicationEnd.time}.")
     val (totalStages, totalDuration) = stagesInformation.foldLeft((0, Duration.ZERO)) { (x, y) =>
       val duration = y._2.getOrElse("duration", 0) match {
         case n: Duration => n
@@ -173,6 +177,7 @@ class BatchJobProgressListener extends SparkListener {
 
   /** Recomputes ExecutionMetrics and stores them if they changed since the last store. */
   private def storeExecutionMetricsIfChanged(now: Long): Unit = {
+    logger.info(s"Computing execution metrics")
     val stageRuntimeMillis = totalStageRuntimeMillis.get()
     val executorTimeMillis = synchronized {
       completedExecutorTimeMillis + runningExecutors.values.map(added => math.max(0L, now - added)).sum
@@ -188,9 +193,10 @@ class BatchJobProgressListener extends SparkListener {
       totalStageFailures = totalStageFailures.get()
     )
 
+    logger.info(s"Computed $metrics")
     val previous = ExecutionMetrics.getAndStore(metrics)
     if (metrics != previous) {
-      logger.debug(s"Stored $metrics")
+      logger.info(s"Stored $metrics")
     }
   }
 }
