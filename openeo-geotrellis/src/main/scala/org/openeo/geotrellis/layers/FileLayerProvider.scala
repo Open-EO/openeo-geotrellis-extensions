@@ -1,7 +1,6 @@
 package org.openeo.geotrellis.layers
 
 import _root_.io.opentelemetry.api._
-import _root_.io.opentelemetry.api.trace.Tracer
 import cats.data.NonEmptyList
 import com.azavea.gdal.GDALWarp
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
@@ -779,7 +778,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         datacubeParams,
         rasterRegionContext.sources,
         openSearchLinkTitlesWithBandId,
-        softErrors
+        softErrors,
+        openSearchCollectionId
       )
       logger.info(
         s"Created cube for $openSearchCollectionId with metadata ${cube.metadata} " +

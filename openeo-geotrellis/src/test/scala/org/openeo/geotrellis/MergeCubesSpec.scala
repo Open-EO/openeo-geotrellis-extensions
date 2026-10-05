@@ -10,7 +10,7 @@ import geotrellis.util.withGetComponentMethods
 import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler.{SparkListener, SparkListenerStageCompleted, SparkListenerStageSubmitted, SparkListenerTaskEnd}
-import org.apache.spark.{SparkTestHelper, NarrowDependency, OneToOneDependency, ShuffleDependency, SparkConf, SparkContext}
+import org.apache.spark.{NarrowDependency, OneToOneDependency, ShuffleDependency, SparkConf, SparkContext, SparkTestHelper}
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
@@ -771,6 +771,57 @@ class MergeCubesSpec {
         // Non-overlapping keys: the left-hand values are preserved unchanged.
         assertEquals(10, tile.band(0).get(0, 0))
         assertEquals(20, tile.band(1).get(0, 0))
+      }
+    }
+  }
+
+
+  @Test def testMergeCubeSpaceTimeSpatialPartialOverlapNoOp(): Unit = {
+    val leftBand1: ByteArrayTile = ByteArrayTile.fill(10.toByte, 256, 256)
+    val leftBand2: ByteArrayTile = ByteArrayTile.fill(20.toByte, 256, 256)
+    val dates = Seq("2020-01-01T00:00:00Z", "2020-02-01T00:00:00Z")
+    val leftCubeBase: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] =
+      buildSpatioTemporalDataCube(util.Arrays.asList(leftBand1, leftBand2), dates, tilingFactor = 4)
+
+    val allLeftSpatialKeys = leftCubeBase.map(_._1.spatialKey).distinct().collect().toSet
+    assertEquals(16, allLeftSpatialKeys.size) // sanity check: dense/continuous 4x4 grid
+
+    val rightBand1: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)
+    val rightBand2: ByteArrayTile = ByteArrayTile.fill(4.toByte, 256, 256)
+    val fullRight: MultibandTileLayerRDD[SpatialKey] =
+      TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(rightBand1, rightBand2), leftCubeBase.metadata.tileLayout)
+
+    // Sparse, non-adjacent subset of the left grid: the right cube does NOT fully overlap the left cube.
+    val desiredRightKeys = Set(SpatialKey(0, 0), SpatialKey(1, 1), SpatialKey(2, 3), SpatialKey(3, 0))
+    assertTrue(desiredRightKeys.subsetOf(allLeftSpatialKeys))
+    val sparseRight: MultibandTileLayerRDD[SpatialKey] = fullRight.withContext(_.filter { case (k, _) => desiredRightKeys.contains(k) })
+
+
+
+    val processes = new OpenEOProcesses()
+    val merged = processes.mergeCubes_SpaceTime_Spatial(leftCubeBase, sparseRight, null, swapOperands = false)
+
+
+    val collected = merged.collect()
+
+    // All left spacetime keys must be preserved in the result, regardless of right-side overlap.
+    assertEquals(allLeftSpatialKeys.size * dates.size, collected.length)
+    assertEquals(allLeftSpatialKeys, collected.map(_._1.spatialKey).toSet)
+
+    for ((key, tile) <- collected) {
+      assertEquals(4, tile.bandCount)
+      if (desiredRightKeys.contains(key.spatialKey)) {
+        // Overlapping keys: the overlap resolver ("subtract") is applied.
+        assertEquals(10 , tile.band(0).get(0, 0))
+        assertEquals(20, tile.band(1).get(0, 0))
+        assertEquals(3, tile.band(2).get(0, 0))
+        assertEquals(4, tile.band(3).get(0, 0))
+      } else {
+        // Non-overlapping keys: the left-hand values are preserved unchanged.
+        assertEquals(10, tile.band(0).get(0, 0))
+        assertEquals(20, tile.band(1).get(0, 0))
+        assertTrue( tile.band(2).getDouble(0, 0).isNaN)
+        assertTrue( tile.band(3).getDouble(0, 0).isNaN)
       }
     }
   }
