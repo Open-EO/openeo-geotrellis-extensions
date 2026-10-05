@@ -262,6 +262,27 @@ object StacTestGenerator {
   }
 
   /**
+   * Pure function computing the fill value (0 – 10 000, before any band-index
+   * offset) for a single pixel of the requested [[RasterPattern]].
+   *
+   * Exposed publicly so tests can compute the exact expected value of any
+   * pixel/date combination without having to write and re-read a raster
+   * (e.g. to verify aggregation results such as a temporal median).
+   */
+  def patternValue(col: Int, row: Int, cols: Int, rows: Int, pattern: RasterPattern): Double =
+    pattern match {
+      case XGradient =>
+        col.toDouble / math.max(1, cols - 1) * 10000.0
+      case YGradient =>
+        row.toDouble / math.max(1, rows - 1) * 10000.0
+      case Checkerboard =>
+        val blockSize = math.max(1, math.max(cols, rows) / 8)
+        if (((col / blockSize) + (row / blockSize)) % 2 == 0) 0.0 else 10000.0
+      case Diagonal =>
+        (col + row).toDouble / math.max(1, cols + rows - 2) * 10000.0
+    }
+
+  /**
    * Creates a raster tile filled according to the requested pattern.
    *
    * The `bandIndex` is added as a 10 000-unit offset so every band in a
@@ -272,18 +293,7 @@ object StacTestGenerator {
                        pattern: RasterPattern, cellType: CellType): MutableArrayTile = {
     val tile = ArrayTile.empty(cellType, cols, rows)
     for (row <- 0 until rows; col <- 0 until cols) {
-      val base: Double = pattern match {
-        case XGradient =>
-          col.toDouble / math.max(1, cols - 1) * 10000.0
-        case YGradient =>
-          row.toDouble / math.max(1, rows - 1) * 10000.0
-        case Checkerboard =>
-          val blockSize = math.max(1, math.max(cols, rows) / 8)
-          if (((col / blockSize) + (row / blockSize)) % 2 == 0) 0.0 else 10000.0
-        case Diagonal =>
-          (col + row).toDouble / math.max(1, cols + rows - 2) * 10000.0
-      }
-      tile.setDouble(col, row, base + bandIndex * 10000.0)
+      tile.setDouble(col, row, patternValue(col, row, cols, rows, pattern) + bandIndex * 10000.0)
     }
     tile
   }

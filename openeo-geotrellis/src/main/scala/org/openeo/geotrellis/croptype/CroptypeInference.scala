@@ -1,20 +1,22 @@
 package org.openeo.geotrellis.croptype
 
-import ai.onnxruntime.{OnnxTensor, OnnxTensorLike, OrtEnvironment, TensorInfo}
+import ai.onnxruntime._
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, Transform}
 import geotrellis.raster._
 import geotrellis.spark._
 import geotrellis.vector.Extent
-import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.{SparkContext, TaskContext}
 import org.openeo.geotrellis.OpenEOProcesses
+import org.openeo.geotrellis.croptype.OnnxInferenceUtils.{ubyteCellType, ubyteWithNodataCellType}
 import org.openeo.geotrelliscommon.DatacubeSupport.maybeBandLabels
 import org.openeo.geotrelliscommon.OpenEOProcess
 import org.slf4j.LoggerFactory
 
 import java.nio.{ByteBuffer, ByteOrder}
 import java.time.LocalDate
+import java.util
 import java.util.Collections
 import scala.collection.mutable.ArrayBuffer
 import scala.jdk.CollectionConverters._
@@ -54,6 +56,25 @@ object CroptypeInference {
   private val P_TEMP    = 12; private val P_PRECIP  = 13
   private val P_ELEV    = 14; private val P_SLOPE   = 15; private val P_NDVI    = 16
 
+  /** Names of the NUM_BANDS presto input bands, in P_* index order, for diagnostic messages. */
+  private val BAND_NAMES: Array[String] = Array(
+    "VV", "VH", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12",
+    "TEMP", "PRECIP", "ELEV", "SLOPE", "NDVI"
+  )
+
+  sealed trait TargetDatatype {
+    def cellType: CellType
+    def isFloat: Boolean
+  }
+  case object TargetDatatypeFloat extends TargetDatatype {
+    override val cellType: CellType = FloatConstantNoDataCellType
+    override val isFloat: Boolean = true
+  }
+  case object TargetDatatypeUByte extends TargetDatatype {
+    override val cellType: CellType = ubyteCellType
+    override val isFloat: Boolean = false
+  }
+
   /** Resolved input band positions in the source datacube, derived dynamically from band labels. */
   private case class InputBandIndices(
     b2: Int, b3: Int, b4: Int, b5: Int, b6: Int, b7: Int, b8: Int, b8a: Int, b11: Int, b12: Int,
@@ -73,7 +94,7 @@ object CroptypeInference {
     val scalaContext = args.getOrDefault("context", Collections.emptyMap()).asInstanceOf[java.util.Map[String,Any]].asScala
     logger.info(s"CroptypeInference: Starting WorldCereal ONNX inference over datacube with ${scalaContext.mkString(",")}" )
     val onnxModelPath = scalaContext
-      .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu.onnx")
+      .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu_bup.onnx")
       .asInstanceOf[String]
     val outputEmbeddingsEnabled = scalaContext.getOrElse("output_embeddings", true)
     logger.info(s"CroptypeINference: output_embeddings = $outputEmbeddingsEnabled - ${outputEmbeddingsEnabled.asInstanceOf[Boolean]}")
@@ -88,7 +109,7 @@ object CroptypeInference {
     val numCtClasses = scalaContext.get("num_croptype_classes").map(_.asInstanceOf[Int])
     val numSeasons = scalaContext.getOrElse("num_seasons", 2).asInstanceOf[Int]
     val seasonWindows = parseSeasonWindows(scalaContext.get("season_windows"))
-    val croplandClassSet = scalaContext.getOrElse("cropland_class_indices", Seq(0, 1, 2)).asInstanceOf[Seq[Int]].toSet
+    val croplandClassSet = scalaContext.getOrElse("cropland_class_indices", util.Arrays.asList(0, 1)).asInstanceOf[java.util.List[Int]].asScala.toSet
     val maskCropland = scalaContext.getOrElse("mask_cropland", true).asInstanceOf[Boolean]
     val batchSize = scalaContext.getOrElse("batch_size", 22 * 22).asInstanceOf[Int]
     // Majority-vote postprocessing (see MajorityVote), enabled by default on both the
@@ -97,6 +118,11 @@ object CroptypeInference {
     val majorityVoteKernelSize = scalaContext.getOrElse("majority_vote_kernel_size", 5).asInstanceOf[Int]
     val majorityVoteCropland = scalaContext.getOrElse("majority_vote_cropland", true).asInstanceOf[Boolean]
     val majorityVoteCroptype = scalaContext.getOrElse("majority_vote_croptype", true).asInstanceOf[Boolean]
+    val targetDatatype = scalaContext.get("target_datatype").map {
+      case "float" => TargetDatatypeFloat
+      case "uint8" => TargetDatatypeUByte
+      case other => throw new IllegalArgumentException(s"Unsupported target_datatype '$other', expected 'float' or 'uint8'")
+    }.getOrElse(TargetDatatypeFloat)
 
     val meta   = datacube.metadata
     val layout = meta.layout
@@ -120,6 +146,7 @@ object CroptypeInference {
     val majorityVoteKernelSizeBC = sc.broadcast(majorityVoteKernelSize)
     val majorityVoteCroplandBC = sc.broadcast(majorityVoteCropland)
     val majorityVoteCroptypeBC = sc.broadcast(majorityVoteCroptype)
+    val targetDatatypeBC = sc.broadcast(targetDatatype)
 
     val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[SpatialKey, MultibandTile] = {
       tiles =>
@@ -145,9 +172,10 @@ object CroptypeInference {
           majorityVoteEnabled = majorityVoteEnabledBC.value,
           majorityVoteKernelSize = majorityVoteKernelSizeBC.value,
           majorityVoteCropland = majorityVoteCroplandBC.value,
-          majorityVoteCroptype = majorityVoteCroptypeBC.value
+          majorityVoteCroptype = majorityVoteCroptypeBC.value,
+          targetDatatype = targetDatatypeBC.value
         )
-        Map(spatialKey -> result)
+        result.map(tile => Map(spatialKey -> tile)).getOrElse(Map.empty)
     }
 
     val processes = new OpenEOProcesses()
@@ -169,7 +197,7 @@ object CroptypeInference {
     ContextRDD(
       resultRDD,
       new TileLayerMetadata[SpaceTimeKey](
-        cellType = UByteCellType,
+        cellType = targetDatatype.cellType,
         layout = layout,
         extent = meta.extent,
         crs = crs,
@@ -198,8 +226,9 @@ object CroptypeInference {
     majorityVoteEnabled:    Boolean,
     majorityVoteKernelSize: Int,
     majorityVoteCropland:   Boolean,
-    majorityVoteCroptype:   Boolean
-  ): MultibandTile = {
+    majorityVoteCroptype:   Boolean,
+    targetDatatype:         TargetDatatype
+  ): Option[MultibandTile] = {
 
     val sorted  = OnnxInferenceUtils.sortByTime(tiles)
     val T       = sorted.length
@@ -209,10 +238,65 @@ object CroptypeInference {
     val B       = rows * cols
 
     require(T > 0, "No timesteps found for spatial key")
-    require(refTile.bandCount >= 15, s"Expected at least 15 input bands, got ${refTile.bandCount}")
+    if (refTile.bandCount < 15) {
+      val spatialKey = tiles.head._1.spatialKey
+      throw new IllegalArgumentException(
+        s"Expected at least 15 input bands, got ${refTile.bandCount}. ${describeSampleNonNodataPixel(refTile)} - $spatialKey - tileExtent=$tileExtent")
+    }
+
+    val spatialKey = tiles.head._1.spatialKey
+
+    // Per-pixel validity: a pixel is valid if it has at least one non-nodata Sentinel-2
+    // (B2..B12) or Sentinel-1 (VV/VH) observation in any timestep. Pixels without any such
+    // observation are invalid: they are never fed to the ONNX model (some invalid pixel
+    // values are known to make session.run fail) and are forced to nodata in all output bands.
+    val validPixel = new Array[Boolean](B)
+    locally {
+      var t = 0
+      while (t < T) {
+        val tile = sorted(t)._2
+        var p = 0
+        while (p < B) {
+          if (!validPixel(p)) {
+            val row = p / cols
+            val col = p % cols
+            def rawAt(band: Int): Float = if (band >= 0) tile.band(band).getDouble(col, row).toFloat else Float.NaN
+            val hasValidS2 =
+              !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.b2))  || !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.b3))  ||
+              !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.b4))  || !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.b5))  ||
+              !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.b6))  || !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.b7))  ||
+              !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.b8))  || !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.b8a)) ||
+              !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.b11)) || !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.b12))
+            val hasValidS1 =
+              !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.vv)) || !OnnxInferenceUtils.isNodata(rawAt(inputBandIndices.vh))
+            if (hasValidS2 || hasValidS1) validPixel(p) = true
+          }
+          p += 1
+        }
+        t += 1
+      }
+    }
+    val validIndices: Array[Int] = (0 until B).filter(validPixel).toArray
+    val Bv = validIndices.length
+    val invalidPixelCount = B - Bv
+    if (invalidPixelCount > 0) {
+      val invalidPct = invalidPixelCount.toDouble / B * 100.0
+      logger.info(f"CroptypeInference: $invalidPixelCount%d of $B%d pixels ($invalidPct%.2f%%) have no valid " +
+        f"Sentinel-1 (VV/VH) or Sentinel-2 (B2-B12) observation in $tileExtent - $spatialKey (${taskContextInfo()}) " +
+        f"and will be skipped in ONNX inference and set to nodata in the output.")
+    }
+
+    // No pixel in this tile has any valid observation: skip ONNX inference entirely (some
+    // invalid pixel values are known to make session.run fail) and emit nothing for this
+    // spatial key, rather than trying to synthesize a correctly-shaped, all-nodata tile.
+    if (Bv == 0) {
+      logger.info(s"CroptypeInference: skipping fully-invalid tile $tileExtent - $spatialKey (${taskContextInfo()}), no output will be produced for this spatial key.")
+      return None
+    }
 
     val session    = OnnxInferenceUtils.getOrCreateSession(onnxModelPath)
     val env        = OrtEnvironment.getEnvironment()
+    val hasLatLons = OnnxInferenceUtils.hasLatLonsInput(session)
 
     val seasonPattern = buildSeasonPattern(sorted, seasonWindows, numSeasons)
     val S = seasonPattern.length
@@ -224,7 +308,7 @@ object CroptypeInference {
     val cellWidth  = tileExtent.width / cols
     val cellHeight = tileExtent.height / rows
 
-    val bsz       = math.min(batchSize, B)
+    val bsz       = math.min(batchSize, math.max(Bv, 1))
     val xBuf      = ByteBuffer.allocateDirect(bsz * T * NUM_BANDS * java.lang.Float.BYTES).order(ByteOrder.nativeOrder()).asFloatBuffer()
     val maskBuf   = ByteBuffer.allocateDirect(bsz * T * NUM_BANDS * java.lang.Long.BYTES).order(ByteOrder.nativeOrder()).asLongBuffer()
     val latlonBuf = ByteBuffer.allocateDirect(bsz * 2 * java.lang.Float.BYTES).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -234,25 +318,42 @@ object CroptypeInference {
     var i = 0
     while (i < bsz * T) { dwBuf.put(i, DYNAMIC_WORLD_UNKNOWN); i += 1 }
 
-    val embeddingAccum = new ArrayBuffer[Float]()
-    val landcoverAccum = new ArrayBuffer[Float]()
-    val croptypeAccum  = new ArrayBuffer[Float]()
+    // Full-size (B-indexed) result accumulators, scattered into from each batch using
+    // validIndices. Dimensions (D / numLcClasses / numCtClasses) are only known once the
+    // first batch's ONNX output is available, so these are allocated lazily below.
+    var embeddingsFull: Array[Float] = null
+    var embeddingDim = -1
+    var landcoverFull: Array[Float] = null
+    var croptypeFull:  Array[Float] = null
     // One (scaled) NDVI value per pixel per monthly timestep, indexed as p * T + t.
-    val ndviAccum: Array[Float] = if (outputNdvi) new Array[Float](B * T) else null
+    // Stored as Short (values range up to 250, which exceeds signed byte range) to avoid
+    // holding a much larger Float array; narrowed to UByte only when building output tiles.
+    // Invalid pixels are pre-filled with the nodata sentinel (255) since they are skipped below.
+    val ndviAccum: Array[Short] = if (outputNdvi) new Array[Short](B * T) else null
+    if (outputNdvi) {
+      var p = 0
+      while (p < B) {
+        if (!validPixel(p)) {
+          var t = 0
+          while (t < T) { ndviAccum(p * T + t) = 255; t += 1 }
+        }
+        p += 1
+      }
+    }
 
     var detectedLcClasses = numLcClassesOverride.getOrElse(-1)
     var detectedCtClasses = numCtClassesOverride.getOrElse(-1)
 
     var pStart = 0
-    while (pStart < B) {
-      val pEnd   = math.min(pStart + bsz, B)
+    while (pStart < Bv) {
+      val pEnd   = math.min(pStart + bsz, Bv)
       val batchB = pEnd - pStart
 
       for (t <- 0 until T) {
         val tile = sorted(t)._2
         var pi   = 0
         while (pi < batchB) {
-          val p    = pStart + pi
+          val p    = validIndices(pStart + pi)
           val row  = p / cols
           val col  = p % cols
           val base = (pi * T + t) * NUM_BANDS
@@ -271,13 +372,15 @@ object CroptypeInference {
           val rawB12 = raw(inputBandIndices.b12); xBuf.put(base + P_B12, normalizeBand(P_B12, rawB12)); maskBuf.put(base + P_B12, if (OnnxInferenceUtils.isNodata(rawB12)) 1L else 0L)
           val rawVV  = raw(inputBandIndices.vv);  xBuf.put(base + P_VV, normalizeBand(P_VV, OnnxInferenceUtils.rescaleS1(rawVV))); maskBuf.put(base + P_VV, if (OnnxInferenceUtils.isNodata(rawVV)) 1L else 0L)
           val rawVH  = raw(inputBandIndices.vh);  xBuf.put(base + P_VH, normalizeBand(P_VH, OnnxInferenceUtils.rescaleS1(rawVH))); maskBuf.put(base + P_VH, if (OnnxInferenceUtils.isNodata(rawVH)) 1L else 0L)
+
           val rawTmp = raw(inputBandIndices.temp); xBuf.put(base + P_TEMP, normalizeBand(P_TEMP, OnnxInferenceUtils.rescaleTemperature(rawTmp))); maskBuf.put(base + P_TEMP, if (OnnxInferenceUtils.isNodata(rawTmp)) 1L else 0L)
           val rawPrc = raw(inputBandIndices.precip); xBuf.put(base + P_PRECIP, normalizeBand(P_PRECIP, OnnxInferenceUtils.rescalePrecipitation(rawPrc))); maskBuf.put(base + P_PRECIP, if (OnnxInferenceUtils.isNodata(rawPrc)) 1L else 0L)
           val rawElv = raw(inputBandIndices.elev); xBuf.put(base + P_ELEV, normalizeBand(P_ELEV, rawElv)); maskBuf.put(base + P_ELEV, if (OnnxInferenceUtils.isNodata(rawElv)) 1L else 0L)
           val rawSlope = raw(inputBandIndices.slope); xBuf.put(base + P_SLOPE, normalizeBand(P_SLOPE,rawSlope)); maskBuf.put(base + P_SLOPE, if (OnnxInferenceUtils.isNodata(rawSlope)) 1L else 0L)
           xBuf.put(base + P_NDVI, computeNdvi(xBuf.get(base + P_B8), xBuf.get(base + P_B4)))
-          maskBuf.put(base + P_NDVI, if (OnnxInferenceUtils.isNodata(rawB8) || OnnxInferenceUtils.isNodata(rawB4) || (rawB8 + rawB4) == 0f) 1L else 0L)
-          if (outputNdvi) ndviAccum(p * T + t) = scaleNdviToByte(xBuf.get(base + P_NDVI))
+          val ndviIsNoData = OnnxInferenceUtils.isNodata(rawB8) || OnnxInferenceUtils.isNodata(rawB4) || (rawB8 + rawB4) == 0f
+          maskBuf.put(base + P_NDVI, if (ndviIsNoData) 1L else 0L)
+          if (outputNdvi) ndviAccum(p * T + t) =  if (!ndviIsNoData )scaleNdviToByte(xBuf.get(base + P_NDVI)) else 255
 
           pi += 1
         }
@@ -287,17 +390,19 @@ object CroptypeInference {
         while (pi2 < batchB) { monthBuf.put(pi2 * T + t, m); pi2 += 1 }
       }
 
-      var pi = 0
-      while (pi < batchB) {
-        val p    = pStart + pi
-        val col  = p % cols
-        val row  = p / cols
-        val xCtr = tileExtent.xmin + (col + 0.5) * cellWidth
-        val yCtr = tileExtent.ymax - (row + 0.5) * cellHeight
-        val (lon, lat) = xform(xCtr, yCtr)
-        latlonBuf.put(pi * 2, lat.toFloat)
-        latlonBuf.put(pi * 2 + 1, lon.toFloat)
-        pi += 1
+      if (hasLatLons) {
+        var pi = 0
+        while (pi < batchB) {
+          val p    = validIndices(pStart + pi)
+          val col  = p % cols
+          val row  = p / cols
+          val xCtr = tileExtent.xmin + (col + 0.5) * cellWidth
+          val yCtr = tileExtent.ymax - (row + 0.5) * cellHeight
+          val (lon, lat) = xform(xCtr, yCtr)
+          latlonBuf.put(pi * 2, lat.toFloat)
+          latlonBuf.put(pi * 2 + 1, lon.toFloat)
+          pi += 1
+        }
       }
 
       xBuf.limit(batchB * T * NUM_BANDS)
@@ -308,24 +413,44 @@ object CroptypeInference {
 
       val xOnnx    = OnnxTensor.createTensor(env, xBuf, Array[Long](batchB, T, NUM_BANDS))
       val dwOnnx   = OnnxTensor.createTensor(env, dwBuf, Array[Long](batchB, T))
-      val llOnnx   = OnnxTensor.createTensor(env, latlonBuf, Array[Long](batchB, 2))
+      val llOnnx   = if (hasLatLons) OnnxTensor.createTensor(env, latlonBuf, Array[Long](batchB, 2)) else null
       val maskOnnx = OnnxTensor.createTensor(env, maskBuf, Array[Long](batchB, T, NUM_BANDS))
       val monOnnx  = OnnxTensor.createTensor(env, monthBuf, Array[Long](batchB, T))
       val smArray  = Array.tabulate(batchB, S, T) { (_, s, t) => seasonPattern(s)(t) }
       val smOnnx   = OnnxTensor.createTensor(env, smArray)
-      val inputs: java.util.Map[String, OnnxTensorLike] = java.util.Map.of(
-        "x", xOnnx.asInstanceOf[OnnxTensorLike],
-        "dynamic_world", dwOnnx.asInstanceOf[OnnxTensorLike],
-        "latlons", llOnnx.asInstanceOf[OnnxTensorLike],
-        "mask", maskOnnx.asInstanceOf[OnnxTensorLike],
-        "month", monOnnx.asInstanceOf[OnnxTensorLike],
-        "season_masks", smOnnx.asInstanceOf[OnnxTensorLike]
-      )
+      val inputsBuilder = new java.util.HashMap[String, OnnxTensorLike]()
+      inputsBuilder.put("x", xOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("dynamic_world", dwOnnx.asInstanceOf[OnnxTensorLike])
+      if (hasLatLons) inputsBuilder.put("latlons", llOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("mask", maskOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("month", monOnnx.asInstanceOf[OnnxTensorLike])
+      inputsBuilder.put("season_masks", smOnnx.asInstanceOf[OnnxTensorLike])
+      val inputs: java.util.Map[String, OnnxTensorLike] = java.util.Collections.unmodifiableMap(inputsBuilder)
 
-      val result = session.run(inputs)
+      var result: ai.onnxruntime.OrtSession.Result = null
       try {
+        result = runOnnxSession(
+          session, inputs,
+          errorContext = {
+            val firstP = validIndices(pStart)
+            val sampleValues = (0 until NUM_BANDS).map(b => s"${BAND_NAMES(b)}=${xBuf.get(b)}").mkString(", ")
+            s"spatialKey=$spatialKey, tileExtent=$tileExtent, ${taskContextInfo()}, " +
+              s"batch pixels [$pStart,$pEnd) of $Bv valid ($B total), batchSize=$batchB, T=$T, " +
+              s"first pixel (col=${firstP % cols}, row=${firstP / cols}) timestep=0 input sample: $sampleValues"
+          }
+        )
         if (outputEmbeddings) {
-          embeddingAccum ++= flatten2d(result.get(0).getValue)
+          val batchEmbeddings = flatten2d(result.get(0).getValue)
+          if (embeddingsFull == null) {
+            embeddingDim = batchEmbeddings.length / batchB
+            embeddingsFull = new Array[Float](B * embeddingDim)
+          }
+          var pi = 0
+          while (pi < batchB) {
+            val p = validIndices(pStart + pi)
+            System.arraycopy(batchEmbeddings, pi * embeddingDim, embeddingsFull, p * embeddingDim, embeddingDim)
+            pi += 1
+          }
         }
         if (outputProbabilities || outputClassification) {
           // Auto-detect class counts from ONNX output shapes on first batch
@@ -339,14 +464,24 @@ object CroptypeInference {
             detectedCtClasses = ctShape.last.toInt
             logger.info(s"CroptypeInference: detected $detectedCtClasses croptype classes from output shape ${ctShape.mkString("[", ",", "]")}")
           }
-          landcoverAccum ++= flatten2d(result.get(2).getValue)
-          croptypeAccum ++= flattenCroptype(result.get(3).getValue, batchB, numSeasons, detectedCtClasses)
+          val batchLandcover = flatten2d(result.get(2).getValue)
+          val batchCroptype  = flattenCroptype(result.get(3).getValue, batchB, numSeasons, detectedCtClasses)
+          if (landcoverFull == null) landcoverFull = new Array[Float](B * detectedLcClasses)
+          if (croptypeFull == null) croptypeFull = new Array[Float](B * numSeasons * detectedCtClasses)
+          val ctStride = numSeasons * detectedCtClasses
+          var pi = 0
+          while (pi < batchB) {
+            val p = validIndices(pStart + pi)
+            System.arraycopy(batchLandcover, pi * detectedLcClasses, landcoverFull, p * detectedLcClasses, detectedLcClasses)
+            System.arraycopy(batchCroptype, pi * ctStride, croptypeFull, p * ctStride, ctStride)
+            pi += 1
+          }
         }
       } finally {
-        result.close()
+        if (result != null) result.close()
         xOnnx.close()
         dwOnnx.close()
-        llOnnx.close()
+        if (llOnnx != null) llOnnx.close()
         maskOnnx.close()
         monOnnx.close()
         smOnnx.close()
@@ -361,20 +496,27 @@ object CroptypeInference {
       pStart = pEnd
     }
 
+    // Dimensions not covered by the loop above (e.g. the corresponding output wasn't
+    // requested at all) default to 0 so array allocation below doesn't fail. Since Bv > 0
+    // (checked earlier), at least one real batch always ran when its output is requested.
+    if (detectedLcClasses < 0) detectedLcClasses = 0
+    if (detectedCtClasses < 0) detectedCtClasses = 0
+    if (embeddingDim < 0) embeddingDim = 0
+    if (embeddingsFull == null) embeddingsFull = new Array[Float](B * embeddingDim)
+    if (landcoverFull == null) landcoverFull = new Array[Float](B * detectedLcClasses)
+    if (croptypeFull == null) croptypeFull = new Array[Float](B * numSeasons * detectedCtClasses)
+
     val outputTiles = new ArrayBuffer[Tile]()
     if (outputEmbeddings) {
-      outputTiles ++= OnnxInferenceUtils.buildQuantizedEmbeddingTile(embeddingAccum.toArray, B, cols, rows).bands
+      val bands = OnnxInferenceUtils.buildQuantizedEmbeddingTile(embeddingsFull, B, cols, rows, targetDatatype).bands
+      outputTiles ++= (if (targetDatatype.isFloat) bands.map(_.convert(targetDatatype.cellType)) else bands)
       logger.info(s"CroptypeInference: added embeddings ${outputTiles.length} ")
     }
-    if (outputProbabilities) {
-      outputTiles ++= buildProbabilityTile(landcoverAccum.toArray, croptypeAccum.toArray, cols, rows,
-        detectedLcClasses, detectedCtClasses, numSeasons).bands
-      logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
-    }
+
     if (outputClassification) {
       outputTiles ++= buildClassificationTileFromProbs(
-        lcProbs = landcoverAccum.toArray,
-        ctProbs = croptypeAccum.toArray,
+        lcProbs = landcoverFull,
+        ctProbs = croptypeFull,
         cols = cols,
         rows = rows,
         numLcClasses = detectedLcClasses,
@@ -385,15 +527,25 @@ object CroptypeInference {
         majorityVoteEnabled = majorityVoteEnabled,
         majorityVoteKernelSize = majorityVoteKernelSize,
         majorityVoteCropland = majorityVoteCropland,
-        majorityVoteCroptype = majorityVoteCroptype
+        majorityVoteCroptype = majorityVoteCroptype,
+        targetDatatype = targetDatatype,
+        validPixel = validPixel
       ).bands
     }
+    if (outputProbabilities) {
+      outputTiles ++= buildProbabilityTile(landcoverFull, croptypeFull, cols, rows,
+        detectedLcClasses, detectedCtClasses, numSeasons, targetDatatype, validPixel).bands
+      logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
+    }
     if (outputNdvi) {
-      outputTiles ++= buildNdviTiles(ndviAccum, cols, rows, T)
+      outputTiles ++= buildNdviTiles(ndviAccum, cols, rows, T).map {
+        case t if targetDatatype.isFloat => t.convert(targetDatatype.cellType)
+        case t => t
+      }
       logger.info(s"CroptypeInference: added ndvi ${T} monthly bands.")
     }
     logger.info(s"CroptypeInference: Finished for tile at extent $tileExtent, output bands: ${outputTiles.length} outputEmbeddings=$outputEmbeddings, outputProbabilities=$outputProbabilities, outputClassification=$outputClassification")
-    MultibandTile(outputTiles.toSeq).convert(UByteCellType)
+    Some(MultibandTile(outputTiles.toSeq))
   }
 
   /**
@@ -418,6 +570,60 @@ object CroptypeInference {
     }
   }
 
+  /**
+   * Describes the current Spark task (stage id, partition/task id, attempt numbers) for
+   * correlating log messages and errors with the Spark UI, when running inside a Spark task.
+   */
+  private def taskContextInfo(): String = {
+    Option(TaskContext.get()) match {
+      case Some(tc) =>
+        s"stageId=${tc.stageId()}, stageAttemptNumber=${tc.stageAttemptNumber()}, " +
+          s"partitionId=${tc.partitionId()}, taskAttemptId=${tc.taskAttemptId()}, attemptNumber=${tc.attemptNumber()}"
+      case None => "taskContext=unavailable"
+    }
+  }
+
+  /**
+   * Runs the given ONNX session with the given inputs, wrapping any OrtException with the
+   * lazily-evaluated errorContext string (e.g. spatial key, tile extent, task/stage ids, and a
+   * sample of the offending input) to make failures easier to diagnose and correlate with the
+   * Spark UI.
+   */
+  private def runOnnxSession(
+    session: OrtSession,
+    inputs:  java.util.Map[String, OnnxTensorLike],
+    errorContext: => String
+  ): ai.onnxruntime.OrtSession.Result = {
+    try {
+      session.run(inputs)
+    } catch {
+      case e: OrtException =>
+        throw new RuntimeException(s"CroptypeInference: ONNX session.run failed for $errorContext", e)
+    }
+  }
+
+  /**
+   * Scans the tile for one pixel that is not fully nodata and returns a description of the
+   * available band values, to help diagnose an unexpectedly low band count.
+   */
+  private def describeSampleNonNodataPixel(tile: MultibandTile): String = {
+    val bandCount = tile.bandCount
+    var row = 0
+    while (row < tile.rows) {
+      var col = 0
+      while (col < tile.cols) {
+        val values = (0 until bandCount).map(b => tile.band(b).getDouble(col, row).toFloat)
+        if (values.exists(v => !OnnxInferenceUtils.isNodata(v))) {
+          val formatted = values.zipWithIndex.map { case (v, b) => s"band$b=$v" }.mkString(", ")
+          return s"Values of available bands for pixel ($col, $row): $formatted"
+        }
+        col += 1
+      }
+      row += 1
+    }
+    "No pixel with valid (non-nodata) data found in the tile."
+  }
+
   private def normalizeBand(prestoIdx: Int, value: Float): Float =
     if (OnnxInferenceUtils.isNodata(value) || value.isNaN) 0f
     else (value + BANDS_ADD(prestoIdx)) / BANDS_DIV(prestoIdx)
@@ -431,28 +637,30 @@ object CroptypeInference {
    * Clip NDVI to [-0.08, 0.92] and rescale to a [0, 250] integral value suitable for a
    * uint8 output cube: ndvi_scaled = (clip(ndvi, -0.08, 0.92) + 0.08) / 0.004.
    */
-  private def scaleNdviToByte(ndvi: Float): Float = {
+  private def scaleNdviToByte(ndvi: Float): Short = {
     val clipped = math.max(-0.08f, math.min(0.92f, ndvi))
-    math.round((clipped + 0.08f) / 0.004f).toFloat
+    math.round((clipped + 0.08f) / 0.004f).toShort
   }
 
   /** Build one band per monthly timestep from a [B * T] (pixel-major) NDVI accumulator. */
-  private def buildNdviTiles(ndviAccum: Array[Float], cols: Int, rows: Int, T: Int): Seq[Tile] = {
+  private[croptype] def buildNdviTiles(ndviAccum: Array[Short], cols: Int, rows: Int, T: Int): Seq[Tile] = {
     val B = cols * rows
     (0 until T).map { t =>
-      val bandData = new Array[Float](B)
+      val bandData = new Array[Byte](B)
       var p = 0
       while (p < B) {
-        bandData(p) = ndviAccum(p * T + t)
+        // ndviAccum values are in [0, 254] (valid) or 255 (nodata); 255.toByte wraps to -1,
+        // which is exactly the raw byte representation of 255 under ubyteWithNodataCellType.
+        bandData(p) = ndviAccum(p * T + t).toByte
         p += 1
       }
-      FloatArrayTile(bandData, cols, rows): Tile
+      UByteArrayTile(bandData, cols, rows, ubyteWithNodataCellType): Tile
     }
   }
 
   /** Scale a [0,1] probability to a [0,100] integral value suitable for a uint8 cube. */
-  private def scaleProbabilityToByte(prob: Float): Float =
-    math.round(math.max(0f, math.min(1f, prob)) * 100f).toFloat
+  private def scaleProbabilityToByte(prob: Float): Byte =
+    math.round(math.max(0f, math.min(1f, prob)) * 100f).toByte
 
   /**
    * Output all raw probability values as bands for inspection, scaled from [0,1] to [0,100]
@@ -466,22 +674,24 @@ object CroptypeInference {
     rows:         Int,
     numLcClasses: Int,
     numCtClasses: Int,
-    numSeasons:   Int
+    numSeasons:   Int,
+    targetDatatype: TargetDatatype,
+    validPixel:   Array[Boolean]
   ): MultibandTile = {
     val B = rows * cols
-    val totalBands = numLcClasses + numSeasons * numCtClasses
+    val totalBands = numSeasons * numCtClasses
     val bands = Array.tabulate(totalBands) { band =>
-      val data = new Array[Float](B)
+      val data = new Array[Byte](B)
       for (p <- 0 until B) {
-        val prob = if (band < numLcClasses) {
-          lcProbs(p * numLcClasses + band)
+        if (!validPixel(p)) {
+          data(p) = 0.toByte
         } else {
-          val ctBand = band - numLcClasses
-          ctProbs(p * numSeasons * numCtClasses + ctBand)
+          val ctBand = band
+          val prob = ctProbs(p * numSeasons * numCtClasses + ctBand)
+          data(p) = scaleProbabilityToByte(prob)
         }
-        data(p) = scaleProbabilityToByte(prob)
       }
-      FloatArrayTile(data, cols, rows): Tile
+      if (targetDatatype.isFloat) FloatArrayTile(data.map(_.toFloat), cols, rows) else UByteArrayTile(data, cols, rows, ubyteCellType): Tile
     }
     MultibandTile(bands)
   }
@@ -523,7 +733,7 @@ object CroptypeInference {
     }
   }
 
-  private def buildClassificationTileFromProbs(
+  private[croptype] def buildClassificationTileFromProbs(
     lcProbs:          Array[Float],
     ctProbs:          Array[Float],
     cols:             Int,
@@ -536,69 +746,100 @@ object CroptypeInference {
     majorityVoteEnabled:    Boolean = true,
     majorityVoteKernelSize: Int = 5,
     majorityVoteCropland:   Boolean = true,
-    majorityVoteCroptype:   Boolean = true
+    majorityVoteCroptype:   Boolean = true,
+    targetDatatype:         TargetDatatype,
+    validPixel:             Array[Boolean]
   ): MultibandTile = {
 
     val B = rows * cols
-    val croplandClass = new Array[Float](B)
-    val croplandProb  = new Array[Float](B)
-    val croptypeClassPerSeason = Array.fill(numSeasons)(new Array[Float](B))
-    val croptypeProbPerSeason  = Array.fill(numSeasons)(new Array[Float](B))
+    val croplandClass = new Array[Byte](B)
+    val croplandProb  = new Array[Byte](B)
+    val otherProb     = new Array[Byte](B)
+    val croptypeClassPerSeason = Array.fill(numSeasons)(new Array[Byte](B))
+    val croptypeProbPerSeason  = Array.fill(numSeasons)(new Array[Byte](B))
+    val nocropValueByte = OnnxInferenceUtils.NOCROP_VALUE.toByte
+    val invalidPixelValue = 255.toByte
 
     for (p <- 0 until B) {
-      val lcOffset = p * numLcClasses
-      val lcSlice = java.util.Arrays.copyOfRange(lcProbs, lcOffset, lcOffset + numLcClasses)
-      val lcPred = OnnxInferenceUtils.argmax(lcSlice)
-      //println(s"Pixel $p: lcPred = $lcPred, lcSlice = ${lcSlice.mkString("[", ",", "]")}")
-      val isCrop = croplandClassSet.contains(lcPred)
-
-      croplandClass(p) = if (isCrop) 1f else 0f
-      croplandProb(p) = scaleProbabilityToByte(croplandClassSet.foldLeft(0f) { (acc, idx) =>
-        if (idx < numLcClasses) acc + lcSlice(idx) else acc
-      })
-
-      var s = 0
-      while (s < numSeasons) {
-        if (maskCropland && !isCrop ) {
-          croptypeClassPerSeason(s)(p) = OnnxInferenceUtils.NOCROP_VALUE
-          croptypeProbPerSeason(s)(p) = 0f
-        } else {
-          val ctOffset = (p * numSeasons + s) * numCtClasses
-          val ctSlice = java.util.Arrays.copyOfRange(ctProbs, ctOffset, ctOffset + numCtClasses)
-          val ctPred = OnnxInferenceUtils.argmax(ctSlice)
-          croptypeClassPerSeason(s)(p) = ctPred.toFloat
-          croptypeProbPerSeason(s)(p) = scaleProbabilityToByte(ctSlice(ctPred))
+      if (!validPixel(p)) {
+        croplandClass(p) = invalidPixelValue
+        croplandProb(p) = 0.toByte
+        otherProb(p) = 0.toByte
+        var s = 0
+        while (s < numSeasons) {
+          croptypeClassPerSeason(s)(p) = invalidPixelValue
+          croptypeProbPerSeason(s)(p) = 0.toByte
+          s += 1
         }
-        s += 1
+      } else {
+        val lcOffset = p * numLcClasses
+        val lcSlice = java.util.Arrays.copyOfRange(lcProbs, lcOffset, lcOffset + numLcClasses)
+        val lcPred = OnnxInferenceUtils.argmax(lcSlice)
+        //println(s"Pixel $p: lcPred = $lcPred, lcSlice = ${lcSlice.mkString("[", ",", "]")}")
+        val isCrop = croplandClassSet.contains(lcPred)
+
+        croplandClass(p) = if (isCrop) 1.toByte else 0.toByte
+        val croplandProbability = croplandClassSet.foldLeft(0f) { (acc, idx) =>
+          if (idx < numLcClasses) acc + lcSlice(idx) else acc
+        }
+        croplandProb(p) = scaleProbabilityToByte(croplandProbability)
+        otherProb(p) = scaleProbabilityToByte(1f - croplandProbability)
+
+        var s = 0
+        while (s < numSeasons) {
+          if (maskCropland && !isCrop) {
+            croptypeClassPerSeason(s)(p) = 255.toByte // 'no crop' sentinel
+            croptypeProbPerSeason(s)(p) = 0.toByte
+          } else {
+            val ctOffset = (p * numSeasons + s) * numCtClasses
+            val ctSlice = java.util.Arrays.copyOfRange(ctProbs, ctOffset, ctOffset + numCtClasses)
+            val ctPred = OnnxInferenceUtils.argmax(ctSlice)
+            croptypeClassPerSeason(s)(p) = ctPred.toByte
+            croptypeProbPerSeason(s)(p) = scaleProbabilityToByte(ctSlice(ctPred))
+          }
+          s += 1
+        }
       }
     }
 
+    // Invalid pixels are stamped with the 255 sentinel and must be excluded from majority-vote
+    // smoothing so they neither get overwritten by, nor contribute votes to, neighboring pixels.
     val croplandClassTile: Tile =
       if (majorityVoteEnabled && majorityVoteCropland)
-        MajorityVote(FloatArrayTile(croplandClass, cols, rows), majorityVoteKernelSize, Set.empty[Int])
+        MajorityVote(UByteArrayTile(croplandClass, cols, rows, ubyteWithNodataCellType), majorityVoteKernelSize, Set(255))
       else
-        FloatArrayTile(croplandClass, cols, rows)
+        UByteArrayTile(croplandClass, cols, rows, ubyteWithNodataCellType)
+    val croplandClassOut: Tile =
+      if (targetDatatype.isFloat) croplandClassTile.convert(targetDatatype.cellType)
+      else croplandClassTile
 
-    // Croptype labels exclude the "no crop" sentinel from voting, matching the python
-    // reference's POSTPROCESSING_EXCLUDED_VALUES handling for croptype postprocessing.
-    val croptypeExcludedValues = Set(OnnxInferenceUtils.NOCROP_VALUE.toInt)
-    val seasonBands = Array.tabulate(numSeasons) { s =>
+    // Croptype labels exclude the "no crop" sentinel and the invalid-pixel sentinel from
+    // voting, matching the python reference's POSTPROCESSING_EXCLUDED_VALUES handling for
+    // croptype postprocessing.
+    val croptypeExcludedValues = Set(OnnxInferenceUtils.NOCROP_VALUE.toInt, 255)
+    val seasonClassificationBands = Array.tabulate(numSeasons) { s =>
       val croptypeClassTile: Tile =
         if (majorityVoteEnabled && majorityVoteCroptype)
-          MajorityVote(FloatArrayTile(croptypeClassPerSeason(s), cols, rows), majorityVoteKernelSize, croptypeExcludedValues)
+          MajorityVote(UByteArrayTile(croptypeClassPerSeason(s), cols, rows, ubyteWithNodataCellType), majorityVoteKernelSize, croptypeExcludedValues)
         else
-          FloatArrayTile(croptypeClassPerSeason(s), cols, rows)
-      Array[Tile](
-        croptypeClassTile,
-        FloatArrayTile(croptypeProbPerSeason(s), cols, rows): Tile
-      )
-    }.flatten
+          UByteArrayTile(croptypeClassPerSeason(s), cols, rows, ubyteWithNodataCellType)
+      val croptypeClassOut: Tile =
+        if (targetDatatype.isFloat) croptypeClassTile.convert(targetDatatype.cellType)
+        else croptypeClassTile
+      croptypeClassOut
+    }
+    val seasonProbabilityBands = Array.tabulate(numSeasons) { s =>
+      if (targetDatatype.isFloat) FloatArrayTile(croptypeProbPerSeason(s).map(b => (b & 0xff).toFloat), cols, rows)
+      else UByteArrayTile(croptypeProbPerSeason(s), cols, rows, ubyteWithNodataCellType): Tile
+    }
+    val seasonBands = seasonClassificationBands ++ seasonProbabilityBands
 
 
     MultibandTile(
       (Array[Tile](
-        croplandClassTile,
-        FloatArrayTile(croplandProb, cols, rows): Tile
+        croplandClassOut,
+        if (targetDatatype.isFloat) FloatArrayTile(croplandProb.map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(croplandProb, cols, rows, ubyteWithNodataCellType): Tile,
+        if (targetDatatype.isFloat) FloatArrayTile(otherProb.map(b => (b & 0xff).toFloat), cols, rows) else UByteArrayTile(otherProb, cols, rows, ubyteWithNodataCellType): Tile
       ) ++ seasonBands): _*
     )
   }

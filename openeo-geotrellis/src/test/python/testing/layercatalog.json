@@ -1,5 +1,112 @@
 [
   {
+    "id": "SENTINEL1_GRD",
+    "name": "SENTINEL1_GRD",
+    "product_id": "SENTINEL1_GRD_SIGMA0",
+    "title": "Sentinel-1 SAR GRD test collection for native sigma0",
+    "description": "Test collection managed by J Dries, to be cleaned up after further integration. Not ready for prod use.",
+    "mission": "Sentinel-1",
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "use_stac_client": true,
+        "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-1-grd",
+        "load_stac_feature_flags": {
+          "polarization_filter_use_in_operator": false,
+          "stac_api_per_page_limit": 200,
+          "deduplicate_items": {
+            "duplication_properties": ["platform", "sat:absolute_orbit", "product:type", "sat:orbit_state"],
+            "score_property_preference": {"product:timeliness_category": ["Fast-24h", "NRT-3h", "NRT-10m"]}
+          },
+          "duplication_properties": ["platform", "sat:absolute_orbit", "product:type", "sat:orbit_state"],
+          "score_property_preference": {"product:timeliness_category": ["Fast-24h", "NRT-3h", "NRT-10m"]}
+        }
+      }
+    },
+    "keywords": [
+      "raster",
+      "systematic",
+      "satellite imagery",
+      "SAR",
+      "radar",
+      "backscattering",
+      "polarization",
+      "Copernicus",
+      "maritime monitoring",
+      "land monitoring",
+      "disaster response",
+      "open data"
+    ],
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "reference_system": {
+          "$schema": "https://proj.org/schemas/v0.2/projjson.schema.json",
+          "type": "GeodeticCRS",
+          "name": "AUTO 42001 (Universal Transverse Mercator)",
+          "datum": {"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984", "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137, "inverse_flattening": 298.257223563}},
+          "coordinate_system": {
+            "subtype": "ellipsoidal",
+            "axis": [
+              {"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"},
+              {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}
+            ]
+          },
+          "area": "World",
+          "bbox": {"south_latitude": -90, "west_longitude": -180, "north_latitude": 90, "east_longitude": 180},
+          "id": {"authority": "OGC", "version": "1.3", "code": "Auto42001"}
+        },
+        "step": 10
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "reference_system": {
+          "$schema": "https://proj.org/schemas/v0.2/projjson.schema.json",
+          "type": "GeodeticCRS",
+          "name": "AUTO 42001 (Universal Transverse Mercator)",
+          "datum": {"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984", "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137, "inverse_flattening": 298.257223563}},
+          "coordinate_system": {
+            "subtype": "ellipsoidal",
+            "axis": [
+              {"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"},
+              {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}
+            ]
+          },
+          "area": "World",
+          "bbox": {"south_latitude": -90, "west_longitude": -180, "north_latitude": 90, "east_longitude": 180},
+          "id": {"authority": "OGC", "version": "1.3", "code": "Auto42001"}
+        },
+        "step": 10
+      },
+      "t": {"type": "temporal"},
+      "bands": {"type": "bands", "values": ["hh", "hv", "vh", "vv"]}
+    },
+    "summaries": {
+      "polarisation": ["VV", "VV&VH", "HH", "HH&HV"],
+      "platform": ["sentinel-1a", "sentinel-1b"],
+      "instrument": ["c-sar"],
+      "constellation": ["sentinel-1"],
+      "sat:orbit_state": ["ascending", "descending"],
+      "sar:instrument_mode": ["SM", "IW", "EW", "WV"],
+      "sar:frequency_band": ["C"],
+      "sar:center_frequency": [5.405],
+      "sar:product_type": ["GRD"],
+      "sar:polarizations": ["HH", "HV", "VH", "VV"],
+      "sar:resolution_range": [9, 20, 23, 50, 52, 84, 88, 93],
+      "sar:resolution_azimuth": [9, 22, 23, 50, 51, 84, 87],
+      "sar:pixel_spacing_range": [3.5, 10, 25, 40],
+      "sar:pixel_spacing_azimuth": [3.5, 10, 25, 40],
+      "eo:bands": [
+        {"name": "hh", "type": "float", "unit": "1"},
+        {"name": "hv", "type": "float", "unit": "1"},
+        {"name": "vh", "type": "float", "unit": "1"},
+        {"name": "vv", "type": "float", "unit": "1"}
+      ]
+    }
+  },
+  {
     "id": "CGLS_SWI_V1_EUROPE",
     "title": "Copernicus Land Soil Water Index product V1 over Europe, 1km resolution, daily",
     "description": "Soil Water Index at 1km resolution over Europe, daily. The Soil Water Index quantifies the moisture condition at various depths in the soil. It is mainly driven by the precipitation via the process of infiltration. Soil moisture is a very heterogeneous variable and varies on small scales with soil properties and drainage patterns. Satellite measurements integrate over relative large-scale areas, with the presence of vegetation adding complexity to the interpretation.",

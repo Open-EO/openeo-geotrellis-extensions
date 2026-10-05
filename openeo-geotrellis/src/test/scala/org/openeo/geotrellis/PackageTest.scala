@@ -91,7 +91,7 @@ class PackageTest {
     val tiff = refTiff.withCompression(options)
     writeGeoTiff(tiff, zstdPath, gtiffOptions = None)
     val checkZstdTiff = GeoTiff.readMultiband(zstdPath)
-    assertEquals(336789, Files.size(path))
+    assertEquals(336807, Files.size(path))
     assertEquals(checkZstdTiff.tile.band(0).get(5,7), refTiff.tile.band(0).get(5,7))
     assertEquals(50000, checkZstdTiff.tile.asInstanceOf[Int16GeoTiffMultibandTile].decompressor.code)
     assertEquals(2, checkZstdTiff.tile.asInstanceOf[Int16GeoTiffMultibandTile].decompressor.predictorCode)

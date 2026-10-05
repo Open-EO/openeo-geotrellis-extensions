@@ -36,11 +36,19 @@ pipeline {
         PACKAGE_NAME = "${package_name}"
         WORKSPACE = "${env.WORKSPACE}"
     }
-    parameters {
-      booleanParam(name: 'skip_tests', defaultValue: false, description: 'Check this if you want to skip running tests.')
-      booleanParam(name: 'skip_sentinelhub_tests', defaultValue: false, description: 'Check this if you want to skip running Sentinel Hub tests.')
-    }
     stages {
+        stage("Trigger geotrellis_process_graph_test_helper container build") {
+            when {
+                expression {
+                    ["master", "develop"].contains(env.BRANCH_NAME)
+                }
+            }
+            steps {
+                script {
+                    build(job: "container_images/geotrellis_process_graph_test_helper", wait: true, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
+                }
+            }
+        }
         stage('Checkout') {
             steps {
                 script {
@@ -57,70 +65,8 @@ pipeline {
             steps {
                 script {
                     rel_version = getMavenVersion()
-                    buildIt(skipTests = params.skip_tests, skipSentinelHubTests = params.skip_sentinelhub_tests)
+                    runProcessGraphTests()
                     utils.setWorkspacePermissions()
-                }
-            }
-        }
-        stage('Input') {
-            when {
-                expression {
-                    deployable_branches.contains(env.BRANCH_NAME)
-                }
-            }
-            steps {
-                script {
-                    milestone()
-                    input "Release build ${rel_version}?"
-                    milestone()
-                }
-            }
-
-        }
-        stage('Releasing') {
-            when {
-                expression {
-                    deployable_branches.contains(env.BRANCH_NAME)
-                }
-            }
-            steps {
-                script {
-                    checkout scm
-                    rel_version = getReleaseVersion()
-                    withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
-                        sh "mvn versions:use-releases -DgenerateBackupPoms=false -DfailIfNotReplaced=true"
-                        echo "Removing SNAPSHOT from version for release"
-                        sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
-                    }
-                    echo "releasing version ${rel_version}"
-                    buildIt(skipTests = true)
-
-                    withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
-                        withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'BobDeBouwer', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
-                            //sh "git commit -a -m 'Set version v${rel_version} in pom for release'"
-                            //sh "git tag -a v${rel_version} -m 'version ${rel_version}'"
-                            //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git v${rel_version}"
-                            sh "git checkout ${env.BRANCH_NAME}"
-                            new_version = updateMavenVersion()
-                            sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${new_version}"
-                            //sh "git commit -a -m 'Raise version in pom to ${new_version}'"
-                            //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git ${env.BRANCH_NAME}"
-                        }
-                    }
-
-                    milestone()
-                }
-            }
-        }
-        stage("Trigger geopyspark driver master build") {
-            when {
-                expression {
-                    ["master", "develop"].contains(env.BRANCH_NAME)
-                }
-            }
-            steps {
-                script {
-                    build(job: "openEO/openeo-geopyspark-driver-python311/master", wait: false, parameters: [string(name: 'mail_address', value: env.MAIL_ADDRESS)])
                 }
             }
         }
@@ -178,7 +124,7 @@ String updateMavenVersion(){
     return v_snapshot
 }
 
-void buildIt(skipTests = false, skipSentinelHubTests = false){
+void runProcessGraphTests(){
     def publishable_branches = ["master", "develop"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-21-openjdk" ]
@@ -191,66 +137,22 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
             def releaseRepo = 'libs-release-public'
-            def serverSAS = Artifactory.server('artifactory-sas')
-            def rtMavenSAS = Artifactory.newMavenBuild()
-            def snapshotRepoSAS = 'openeo-maven-snapshot-local'
-            def releaseRepoSAS = 'openeo-maven-release-local'
-            if (!publishable_branches.contains(env.BRANCH_NAME)) {
-                snapshotRepo = 'openeo-branch-builds'
-                //releaseRepo = 'openeo-branch-builds'
-                rtMaven.opts += " -Drevision=${env.BRANCH_NAME}"
-                snapshotRepoSAS = 'openeo-branch-builds'
-                //releaseRepoSAS = 'openeo-branch-builds'
-            }
-            rtMaven.deployer server: server, releaseRepo: releaseRepo, snapshotRepo: snapshotRepo
             rtMaven.tool = maven
-            if (skipTests) {
-                print "Maven will skip all tests"
-                rtMaven.opts += ' -DskipTests=true -DskipSentinelHubTests=true'
-            } else if (skipSentinelHubTests) {
-                print "Maven will only skip Sentinel Hub tests"
-                rtMaven.opts += ' -DskipSentinelHubTests=true'
-            } else {
-                print "Maven will run all tests"
-            }
+            rtMaven.opts += ' -DRUN_PROCESS_GRAPH_REGRESSION_TESTS=true -Dtest=ProcessGraphRegressionTest -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false'
 
-            rtMaven.deployer.deployArtifacts = true
-
-            rtMavenSAS.deployer server: serverSAS, releaseRepo: releaseRepoSAS, snapshotRepo: snapshotRepoSAS
-            rtMavenSAS.tool = maven
-            rtMavenSAS.opts = rtMaven.opts + ' -DskipTests=true -DskipSentinelHubTests=true'
-            rtMavenSAS.deployer.deployArtifacts = true
-            //use '--projects StatisticsMapReduce' in 'goals' to build specific module
             try {
                 withCredentials([
                         [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
                         [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
                 ]) {
-                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts -U clean install' + rtMaven.opts
-                    try {
-                        if (rtMaven.deployer.deployArtifacts)
-                            server.publishBuildInfo buildInfo
-                    } catch (e) {
-                        print e.message
-                    }
-
-                    buildInfoSAS = rtMavenSAS.run pom: 'pom.xml', goals: '-P default,wmts -U deploy' + rtMavenSAS.opts
-                    try {
-                        if (rtMavenSAS.deployer.deployArtifacts)
-                            serverSAS.publishBuildInfo buildInfoSAS
-                    } catch (e) {
-                        print e.message
-                    }
+                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts -U test' + rtMaven.opts
                 }
             } catch(err){
                 notification.fail()
-
                 throw err
             }
             finally {
-                if (!skipTests) {
-                    junit '*/target/*-reports/*.xml'
-                }
+                junit '*/target/*-reports/*.xml'
                 sh "chown -R jenkins:vito ."
                 sh "chown -R jenkins:vito /localdata/M2"
             }

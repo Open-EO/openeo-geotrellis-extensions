@@ -24,7 +24,7 @@ import geotrellis.vector._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
-import org.apache.spark.{Partitioner, SparkContext}
+import org.apache.spark.{Partitioner, SparkContext, SparkEnv, TaskContext}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
@@ -52,6 +52,11 @@ object OpenEOProcesses{
   private val DEFAULT_MAX_PARTITION_SIZE_IN_MB = 500.0
   private val DEFAULT_BAND_COUNT = 6
   private val DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT = 10
+  /** Exit code used by [[OpenEOProcesses#failOnce]] to kill an executor. */
+  val FailOnceExitCode = 42
+
+  /** Thrown by [[OpenEOProcesses#failOnce]] when the task runs in the driver JVM (local mode). */
+  class FailOnceException(message: String) extends RuntimeException(message)
 
   /**
     * Convolve a single tile with the given kernel, choosing between a direct spatial
@@ -144,6 +149,38 @@ object OpenEOProcesses{
       }
     }
   }
+
+
+  def findPartitionerSpatialKeys[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): Option[Array[SpatialKey]] = {
+    val keys: Option[Array[SpatialKey]] = if (datacube.partitioner.isDefined && (datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] || datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpatialKey]])) {
+      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]].index
+      index match {
+        case value: SpatialKeysProvider =>
+          value.spatialKeys
+        case _ =>
+          Option.empty
+      }
+    } else {
+      Option.empty
+    }
+    keys
+  }
+
+  def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]): Option[Array[SpaceTimeKey]] = {
+    val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+      if (index.isInstanceOf[SparseSpaceTimePartitioner]) {
+        index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
+      } else if (index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+        index.asInstanceOf[SparseSpaceOnlyPartitioner].theKeys
+      } else {
+        Option.empty
+      }
+    } else {
+      Option.empty
+    }
+    keys
+  }
 }
 
 class OpenEOProcesses extends Serializable {
@@ -216,11 +253,13 @@ class OpenEOProcesses extends Serializable {
 
   private[geotrellis] def transformTimeDimension[KT](datacube: MultibandTileLayerRDD[SpaceTimeKey],applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[KT, MultibandTile],  reduce:Boolean ): RDD[(KT, MultibandTile)] = {
     val index: Option[PartitionerIndex[SpaceTimeKey]] = maybePartitionerIndex(datacube)
+    val metadataBounds = datacube.metadata.bounds
+    val singleTemporalSlice = metadataBounds.exists(bounds => bounds.maxKey.time == bounds.minKey.time)
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val rdd: RDD[(SpaceTimeKey, MultibandTile)] =
       if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner]
         || index.get.isInstanceOf[ByTileSpacetimePartitioner]
-        || (!datacube.getBounds.isEmpty && datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time))) {
+        || singleTemporalSlice)) {
         datacube
       } else {
         val keys: Option[Array[SpatialKey]] = findPartitionerSpatialKeys(datacube)
@@ -235,7 +274,7 @@ class OpenEOProcesses extends Serializable {
                 DEFAULT_BAND_COUNT
               }
             val reduction =
-              if (datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time) {
+              if (singleTemporalSlice) {
                 DatacubeSupport.computeReductionForTileSize(datacube.metadata.tileCols, datacube.metadata.tileRows,bandCount, datacube.metadata.cellType.bits, DEFAULT_MAX_PARTITION_SIZE_IN_MB.intValue)
               } else {
                 val maybeKeys = findPartitionerKeys(datacube)
@@ -364,36 +403,6 @@ class OpenEOProcesses extends Serializable {
     groupedOnTime
   }
 
-  def findPartitionerSpatialKeys[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): Option[Array[SpatialKey]] = {
-    val keys: Option[Array[SpatialKey]] = if (datacube.partitioner.isDefined && (datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] || datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpatialKey]])) {
-      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]].index
-      index match {
-        case value: SpatialKeysProvider =>
-          value.spatialKeys
-        case _ =>
-          Option.empty
-      }
-    } else {
-      Option.empty
-    }
-    keys
-  }
-
-  def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]): Option[Array[SpaceTimeKey]] = {
-    val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
-      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-      if (index.isInstanceOf[SparseSpaceTimePartitioner]) {
-        index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
-      } else if (index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
-        index.asInstanceOf[SparseSpaceOnlyPartitioner].theKeys
-      } else {
-        Option.empty
-      }
-    } else {
-      Option.empty
-    }
-    keys
-  }
 
   /**
    * @param datacube The datacube to be masked. The celltype is assumed to be Float with NoDataHandling.
@@ -673,6 +682,43 @@ class OpenEOProcesses extends Serializable {
       }
 
     }),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
+  }
+
+  /**
+   * Fails the first attempt of the Spark stage that evaluates this datacube, to test recovery from failures.
+   *
+   * Only the first attempt of the task for the given partition in stage attempt 0
+   * (see [[org.apache.spark.scheduler.StageInfo#attemptNumber]]) fails: it calls System.exit, which kills a single
+   * executor. Spark then reschedules the lost tasks and recomputes the shuffle output that was stored on that
+   * executor; retried attempts pass the data through unchanged.
+   * Each Spark stage that evaluates the datacube starts again at attempt 0, so it fails once per such stage.
+   *
+   * In local mode the executor runs inside the driver JVM, so exiting would stop the whole application. There, the
+   * task throws a [[FailOnceException]] instead, which makes Spark retry the task. This requires task retries to be
+   * enabled, e.g. with a `local[N,maxFailures]` master; a plain `local[N]` master does not retry failed tasks.
+   *
+   * @param partition index of the partition whose task fails, between 0 and the number of partitions - 1
+   */
+  def failOnce[K: ClassTag](datacube: MultibandTileLayerRDD[K], partition: Int = 0): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    val numPartitions = datacube.getNumPartitions
+    require(partition >= 0 && partition < numPartitions,
+      s"failOnce: partition $partition is out of range, the datacube has $numPartitions partition(s)")
+
+    datacube.withContext(_.mapPartitionsWithIndex({ (partitionIndex, tiles) =>
+      val taskContext = TaskContext.get()
+      // Only a single task fails, so only one executor is lost; its retry has a higher (stage or task) attempt number.
+      if (partitionIndex == partition && taskContext.stageAttemptNumber() == 0 && taskContext.attemptNumber() == 0) {
+        val executorId = SparkEnv.get.executorId
+        if (executorId == "driver") {
+          logger.warn(s"failOnce: failing attempt 0 of stage ${taskContext.stageId()} (partition $partitionIndex) with an exception, because this executor runs in the driver")
+          throw new FailOnceException(s"failOnce: failing the first attempt of stage ${taskContext.stageId()} (partition $partitionIndex)")
+        } else {
+          logger.warn(s"failOnce: exiting executor $executorId during attempt 0 of stage ${taskContext.stageId()} (partition $partitionIndex)")
+          System.exit(FailOnceExitCode)
+        }
+      }
+      tiles
+    }, preservesPartitioning = true))
   }
 
   def filterEmptyTile[K:ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
@@ -1092,33 +1138,50 @@ class OpenEOProcesses extends Serializable {
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, resampled)
+
+    // Every spacetime key of the left cube must be preserved in the result: a spatial key that is
+    // missing from the (possibly sparse) right cube simply means there is nothing to merge/combine
+    // for that key, not that the left data should be dropped.
+    val rdd = leftJoinSpacetimeSpatial(leftCube, resampled, leftOuterJoin = true)
     if(operator == null) {
       val outputCellType = cellTypeUnionWithNoData(leftCube.metadata.cellType,resampled.metadata.cellType)
       //TODO: what if extent of joined cube is larger than left cube?
+      leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${rightCube.name}")
+      val rightBandCount = RDDBandCount(rightCube)
+      leftCube.sparkContext.clearJobGroup()
       val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
-      return new ContextRDD(rdd.mapValues({case (l,r) =>
-        if(swapOperands) {
-          MultibandTile( r.bands.map(t=>safeConvert(t,updatedMetadata.cellType))  ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
-        }else{
-          MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ r.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
+      return new ContextRDD(rdd.mapValues({case (l,rOpt) =>
+        rOpt match {
+          case Some(r) =>
+            if(swapOperands) {
+              MultibandTile( r.bands.map(t=>safeConvert(t,updatedMetadata.cellType))  ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
+            }else{
+              MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ r.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
+            }
+          case None =>
+            // No matching right-hand tile for this spacetime key: keep the left bands as-is.
+            if(swapOperands) {
+              MultibandTile(Vector.fill(rightBandCount)(ArrayTile.empty(updatedMetadata.cellType, l.cols, l.rows)) ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
+            }else{
+              MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ Vector.fill(rightBandCount)(ArrayTile.empty(updatedMetadata.cellType, l.cols, l.rows)))
+            }
         }
       }), updatedMetadata)
     }else{
 
       val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
-      return new ContextRDD(rdd.mapValues({case (l,r) =>
-        if(l.bandCount != r.bandCount){
-          if(l.bandCount==0) {
-            r
-          }else if(r.bandCount==0) {
+      return new ContextRDD(rdd.mapValues({case (l,rOpt) =>
+        rOpt match {
+          case Some(r) =>
+            if(l.bandCount != r.bandCount){
+              throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.bandCount, r.bandCount))
+            }else{
+              MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
+            }
+          case None =>
+            // TODO: wrong interpretation, left should not be kept as-is, but rather the operator should be applied to left and a nodata tile
             l
-          }
-          throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.bandCount, r.bandCount))
-        }else{
-          MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
         }
-
       }), leftCube.metadata)
     }
   }
@@ -1446,23 +1509,84 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
+  /**
+   * Joins a SpaceTimeKey-indexed cube (left) with a SpatialKey-indexed cube (right).
+   *
+   * @param leftOuterJoin when true, every spacetime key of `left` is preserved in the result,
+   *                       even when `right` has no matching spatial key (paired with `None`).
+   *                       When false, only spacetime keys with a matching spatial key on `right`
+   *                       are kept (plain inner join).
+   */
+  def leftJoinSpacetimeSpatial[T : ClassTag](left: MultibandTileLayerRDD[SpaceTimeKey], right: RDD[(SpatialKey, T)], leftOuterJoin: Boolean): RDD[(SpaceTimeKey, (MultibandTile, Option[T]))] = {
+    val maybePartitioner = left.partitioner.collect {
+      case partitioner: SpacePartitioner[SpaceTimeKey] => partitioner
+    }
+    val maybeIndex = maybePartitioner.map(_.index)
+
+    if (maybeIndex.exists(_.isInstanceOf[ByTileSpacetimePartitioner])) {
+      val byTileIndex = maybeIndex.get.asInstanceOf[ByTileSpacetimePartitioner]
+      // The right (spatial) cube needs to be replicated over every distinct temporal key that
+      // occurs in the left cube, otherwise only the (arbitrary) single temporal key we'd pick
+      // would end up joined and all other dates would be silently dropped.
+      val timestamps = left.map(_._1.temporalKey).distinct().collect().toSet
+      val rightAsSpacetime = right
+        .flatMap { case (spatialKey, tile) =>
+          timestamps.map { temporalKey => (SpaceTimeKey(spatialKey.col, spatialKey.row, temporalKey), tile) }
+        }
+        .partitionBy(SpacePartitioner[SpaceTimeKey](left.metadata.bounds.get)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), byTileIndex))
+      if (leftOuterJoin) {
+        left.leftOuterJoin(rightAsSpacetime, maybePartitioner.get)
+      } else {
+        left.join(rightAsSpacetime, maybePartitioner.get).mapValues { case (l, r) => (l, Some(r)) }
+      }
+    } else {
+      val maybeKeys = findPartitionerKeys(left)
+      logger.info(s"leftJoinSpacetimeSpatial: Found ${maybeKeys.map(_.size).getOrElse(0)} keys in left cube for partitioner ${maybePartitioner.getOrElse("None")}")
+      if (maybeKeys.isDefined) {
+        val timestamps = maybeKeys.get.map(_.temporalKey).toSet
+        val rightAsSpacetime = right
+          .flatMap { case (spatialKey, tile) =>
+            timestamps.map { temporalKey =>
+              (SpaceTimeKey(spatialKey.col, spatialKey.row, temporalKey), tile)
+            }
+          }
+        val rightWithMetadata: RDD[(SpaceTimeKey, T)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = ContextRDD(rightAsSpacetime, left.metadata)
+        if (leftOuterJoin) {
+          left.leftOuterJoin(maybePartitioner.get(rightWithMetadata), left.partitioner.get)
+        } else {
+          left.join(maybePartitioner.get(rightWithMetadata), maybePartitioner.get).mapValues { case (l, r) => (l, Some(r)) }
+        }
+      } else {
+        new SpatialToSpacetimeJoinRdd[T](left, right, leftOuterJoin)
+      }
+    }
+  }
+
   def rasterMask_spacetime_spatial(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpatialKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpaceTimeKey] = {
     val resampledMask = resampleCubeSpatial_spatial(mask, datacube.metadata.crs, datacube.metadata.layout, ResampleMethods.NearestNeighbor, mask.partitioner.orNull)._2
-    val joined = new SpatialToSpacetimeJoinRdd[MultibandTile](datacube, resampledMask)
+    // Every spacetime key of the datacube must be preserved: a spatial key missing from the
+    // (possibly sparse) mask cube means there is no mask information for that key, so the data
+    // should be passed through unmodified rather than dropped.
+    val joined = leftJoinSpacetimeSpatial(datacube, resampledMask, leftOuterJoin = true)
 
     val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
     val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
     val masked = joined.mapValues(t => {
       val dataTile = t._1
 
-      val maskTile = t._2
-      var maskIndex = 0
-      dataTile.mapBands((index,tile) =>{
-        if(dataTile.bandCount == maskTile.bandCount){
-          maskIndex = index
-        }
-        tile.dualCombine(maskTile.band(maskIndex))((v1,v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1,v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
-      })
+      t._2 match {
+        case Some(maskTile) =>
+          var maskIndex = 0
+          dataTile.mapBands((index, tile) => {
+            if (dataTile.bandCount == maskTile.bandCount) {
+              maskIndex = index
+            }
+            tile.dualCombine(maskTile.band(maskIndex))((v1, v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1, v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
+          })
+        case None =>
+          // No mask information for this spacetime key: leave the data unmodified.
+          dataTile
+      }
 
     })
 
@@ -1719,6 +1843,3 @@ class OpenEOProcesses extends Serializable {
   }
 
 }
-
-
-
