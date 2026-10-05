@@ -1,5 +1,7 @@
 package org.openeo.sparklisteners;
 
+import io.opentelemetry.api.metrics.Meter
+import io.opentelemetry.api.{GlobalOpenTelemetry, OpenTelemetry}
 import org.apache.spark.scheduler._
 import org.openeo.geotrelliscommon.ExecutionMetrics
 import org.slf4j.{Logger, LoggerFactory}
@@ -13,11 +15,21 @@ import scala.collection.mutable;
 object BatchJobProgressListener {
 
   val logger: Logger = LoggerFactory.getLogger(BatchJobProgressListener.getClass)
+  private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
+  private lazy val meter: Meter = openTelemetry.meterBuilder("openeo.otel.scala").build()
+  private[sparklisteners] lazy val sparkStageFailureMeter = meter.counterBuilder("openeo_spark_stage_failures")
+    .setDescription("Number of failed Spark stage attempts").build()
+  private[sparklisteners] lazy val sparkExecutorTimeMeter = meter.counterBuilder("openeo_spark_executor_time")
+    .setDescription("Spark executor allocation time").setUnit("ms").build()
+  private[sparklisteners] lazy val sparkStageTimeMeter = meter.counterBuilder("openeo_spark_stage_time")
+    .setDescription("Spark stage executor run time").setUnit("ms").build()
+  private[sparklisteners] lazy val sparkCpuUtilizationMeter = meter.gaugeBuilder("openeo_spark_cpu_utilization")
+    .setDescription("Ratio of Spark stage run time to executor allocation time").build()
 }
 
 class BatchJobProgressListener extends SparkListener {
 
-  import BatchJobProgressListener.logger
+  import BatchJobProgressListener._
 
   private val stagesInformation = new mutable.LinkedHashMap[String, mutable.Map[String, Any]]()
   // start time of currently allocated executors
@@ -31,6 +43,11 @@ class BatchJobProgressListener extends SparkListener {
   // incrementally and thread-safely, independently of stagesInformation above.
   private val stageRuntimes = new ConcurrentHashMap[(Int, Int), java.lang.Long]()
   private val totalStageRuntimeMillis = new AtomicLong(0L)
+
+  // Totals already reported to the OTel counters, so only increases are added (counters must be monotonic).
+  private val reportedStageRuntimeMillis = new AtomicLong(0L)
+  private val reportedExecutorTimeMillis = new AtomicLong(0L)
+  private val reportedStageFailures = new AtomicLong(0L)
 
   override def onApplicationStart(applicationStart: SparkListenerApplicationStart): Unit = synchronized {
     trackingStartTime = applicationStart.time
@@ -198,5 +215,24 @@ class BatchJobProgressListener extends SparkListener {
     if (metrics != previous) {
       logger.info(s"Stored $metrics")
     }
+    reportExecutionMetrics(metrics)
+  }
+
+  private def reportExecutionMetrics(metrics: ExecutionMetrics): Unit = {
+    // Concurrent callers may compute totals out of order; reporting only the increase over the highest total
+    // reported so far keeps the counters monotonic.
+    def increase(reported: AtomicLong, total: Long): Long =
+      math.max(0L, total - reported.getAndAccumulate(total, math.max(_, _)))
+
+    val stageRuntimeIncrease = increase(reportedStageRuntimeMillis, metrics.totalStageRuntimeMillis)
+    if (stageRuntimeIncrease > 0) sparkStageTimeMeter.add(stageRuntimeIncrease)
+
+    val executorTimeIncrease = increase(reportedExecutorTimeMillis, metrics.executorAllocationTimeMillis)
+    if (executorTimeIncrease > 0) sparkExecutorTimeMeter.add(executorTimeIncrease)
+
+    val stageFailuresIncrease = increase(reportedStageFailures, metrics.totalStageFailures.toLong)
+    if (stageFailuresIncrease > 0) sparkStageFailureMeter.add(stageFailuresIncrease)
+
+    sparkCpuUtilizationMeter.set(metrics.cpuUtilizationRatio)
   }
 }
