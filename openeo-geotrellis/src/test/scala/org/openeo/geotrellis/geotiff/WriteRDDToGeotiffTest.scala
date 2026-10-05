@@ -1222,7 +1222,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   @ParameterizedTest
   @ValueSource(booleans = Array(true, false))
   def testMetadataSaveRddAllowAssetPerBand(separateAssetPerBand: Boolean, @TempDir tempDir: Path): Unit = {
-    def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, extent: Extent = LatLng.worldExtent, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
+    def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
       val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 1)
       val spatialLayer = layer.toSpatial()
       val outputFile = tempDir.resolve("tiffStat.tif")
@@ -1232,7 +1232,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       formatOptions.addBandTag(0, "DESCRIPTION", "B02")
       formatOptions.addBandTag(1, "DESCRIPTION", "B03")
       formatOptions.addBandTag(2, "DESCRIPTION", "B04")
-
+      val extent = LatLng.worldExtent
       val items = saveRDDAllowAssetPerBand(spatialLayer,3, outputFile.toString, 6, Some(extent), formatOptions)
 
       val (assetCount, bandCount, assetName) = if (separateAssetPerBand) (3,1,"B03") else (1,3,"openEO")
@@ -1271,7 +1271,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   @ParameterizedTest
   @ValueSource(booleans = Array(true, false))
   def testMetadataSaveRddTemporalAllowAssetPerBand(separateAssetPerBand: Boolean, @TempDir tempDir: Path): Unit = {
-    def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, extent: Extent = LatLng.worldExtent, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
+    def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true): Unit = {
       val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 1)
 
       val outputFile = tempDir.resolve("tiffStat.tif")
@@ -1293,6 +1293,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
         val metadata = assets.get(assetName).metadata
         assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
         assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
+        val extent = layer.metadata.extent
         val bbox = Array[Double](extent.xmin, extent.ymin, extent.xmax, extent.ymax)
         assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.01)
         val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
@@ -1318,7 +1319,77 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     testStatistics(arrayTile = arrayTile0, addStatistics = false)
 
   }
-  
+
+  @Test
+  def testMetadataSaveSamples(@TempDir tempDir: Path): Unit = {
+    val polygon0 = MultiPolygon(
+      Polygon(
+        (-180.0, -90.0),
+        (-180.0, 90.0),
+        (180.0 , 90.0),
+        (180.0 , -90.0),
+        (-180.0, -90.0),
+      ),
+    )
+    def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true, polygon: MultiPolygon = polygon0): Unit = {
+      val rdd = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 1, extentOpt= Some(polygon0.extent))
+      val outputFile = "/testMetadataSaveSamples.tiff"
+      val formatOptions = new GTiffOptions
+      formatOptions.setAddBandStatistics(addStatistics)
+      formatOptions.setSeparateAssetPerBand(true)
+      formatOptions.addBandTag(0, "DESCRIPTION", "B02")
+      formatOptions.addBandTag(1, "DESCRIPTION", "B03")
+      formatOptions.addBandTag(2, "DESCRIPTION", "B04")
+
+      val polygons = ProjectedPolygons(polygon, CRS.fromEpsgCode(4326))
+      val sampleNames = polygons.polygons.indices.map(_.toString).asJava
+
+      val items = saveSamples(rdd, tempDir + "/", polygons, sampleNames, DeflateCompression(BEST_COMPRESSION),formatOptions)
+
+      assertEquals(1, items.size())
+      items.forEach(item => {
+        val assets = item.assets
+        assertEquals(1, assets.size())
+        val metadata = assets.get("openEO").metadata
+        assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
+        assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
+        val resultExtent = polygon.extent
+        val bbox = Array[Double](resultExtent.xmin, resultExtent.ymin, resultExtent.xmax, resultExtent.ymax)
+        assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.01)
+        val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
+        assertEquals(3, bands.size())
+        bands.forEach(band => {
+          assertTrue(band.containsKey("name"))
+          assertEquals(addStatistics, band.containsKey("statistics"))
+          val statistics = band.getOrDefault("statistics", null).asInstanceOf[util.HashMap[String, Number]]
+          assertEquals(expectedStatistics, statistics)
+        })
+
+      })
+    }
+    val polygon1 = MultiPolygon(
+      Polygon(
+        (-18.0, 30.0),
+        (-18.0, 60.0),
+        (18.0, 60.0),
+        (18.0, 30.0),
+        (-18.0, 30.0),
+      ),
+    )
+
+    val arrayDim = 512
+    val arrayTile0 = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
+    testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0, "stddev", 14.142135623730951)))
+    val arrayTile1 = IntArrayTile(Array.fill(arrayDim * arrayDim)(256), arrayDim, arrayDim, noDataValue = 256)
+    val imageTile1 = arrayTile1.convert(DoubleUserDefinedNoDataCellType(256)).mutable
+    testStatistics(arrayTile = imageTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)))
+    val arrayTile2 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
+    testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0 , "stddev", 10)))
+    testStatistics(arrayTile = arrayTile0, addStatistics = false)
+    testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 0.0, "maximum", 30.0, "mean", 15.0, "stddev", 15.0)), polygon = polygon1, expectedShape = Array(86, 52))
+    testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)), polygon = polygon1, expectedShape = Array(86, 52))
+  }
+
   @ParameterizedTest
   @MethodSource(Array("tiffTypeParams"))
   def tiffType(isBigTiff: Boolean, expectedTiffType: TiffType, @TempDir tempDir: Path): Unit = {
