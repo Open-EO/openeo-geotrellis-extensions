@@ -3,13 +3,12 @@ package org.openeo.sar
 import cats.data.NonEmptyList
 import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.CellSize
+import geotrellis.raster.{CellSize, UShortConstantNoDataCellType}
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api._
-import org.junit.jupiter.api.condition.EnabledIf
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
 import org.openeo.geotrellis.geotiff.saveRDDTemporal
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
@@ -97,8 +96,8 @@ class FileLayerProviderS1GrdTest {
       URI.create(s"$safeRoot/measurement/s1a-iw-grd-$pol-$tag-001-cog.tiff")
 
     val links = Array(
-      Link(href = measurementHref("vv"), title = Some("vv"), bandNames = Some(Seq("vv"))),
-      Link(href = measurementHref("vh"), title = Some("vh"), bandNames = Some(Seq("vh")))
+      Link(href = measurementHref("vv"), title = Some("vv"), bandNames = Some(Seq("vv")), datatype = Some(UShortConstantNoDataCellType)),
+      Link(href = measurementHref("vh"), title = Some("vh"), bandNames = Some(Seq("vh")), datatype = Some(UShortConstantNoDataCellType))
     )
 
     Feature(
@@ -117,7 +116,7 @@ class FileLayerProviderS1GrdTest {
   // ---- Test -----------------------------------------------------------------
 
   @Test
-  @Disabled("Manual test, requires CDSE S3 credentials and outbound HTTPS to stac.dataspace.copernicus.eu")
+ // @Disabled("Manual test, requires CDSE S3 credentials and outbound HTTPS to stac.dataspace.copernicus.eu")
 //  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasS3Credentials")
   def fileLayerProviderReturnsS1GrdTileLayer(): Unit = {
     //org.junit.jupiter.api.Assumptions.assumeTrue(runOnline, "online test disabled")
