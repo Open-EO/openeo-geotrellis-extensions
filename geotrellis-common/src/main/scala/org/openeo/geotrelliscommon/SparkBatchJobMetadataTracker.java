@@ -73,10 +73,6 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
         //needs to go under 'derived-from links
         result.put("links", inputProducts);
         result.put(AUXILIARY_FILES, auxiliaryFiles);
-        scala.collection.immutable.Map<String, Object> map = ExecutionMetrics.asMap();
-        map.foreach(entry -> result.put(entry._1, entry._2));
-        // TODO remove this debug log once we are confident that the metrics are being tracked correctly
-        logger.debug("SparkBatchJobMetadataTracker.asDict() result: {}", result);
         return result;
     }
 }
