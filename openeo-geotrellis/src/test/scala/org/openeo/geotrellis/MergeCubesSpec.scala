@@ -9,7 +9,8 @@ import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.util.withGetComponentMethods
 import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
-import org.apache.spark.{NarrowDependency, OneToOneDependency, ShuffleDependency, SparkConf, SparkContext}
+import org.apache.spark.scheduler.{SparkListener, SparkListenerStageCompleted, SparkListenerStageSubmitted, SparkListenerTaskEnd}
+import org.apache.spark.{NarrowDependency, OneToOneDependency, ShuffleDependency, SparkConf, SparkContext, SparkTestHelper}
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
@@ -23,6 +24,7 @@ import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
+import java.util.concurrent.ConcurrentLinkedQueue
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
@@ -35,7 +37,7 @@ object MergeCubesSpec {
   @BeforeAll
   def setupSpark(): Unit = {
     sc = {
-      val conf = new SparkConf().setMaster("local[2]").setAppName(getClass.getSimpleName)
+      val conf = new SparkConf().setMaster("local[2,2]").setAppName(getClass.getSimpleName)
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryo.registrator", classOf[geotrellis.spark.store.kryo.KryoRegistrator].getName)
       SparkContext.getOrCreate(conf)
@@ -773,6 +775,57 @@ class MergeCubesSpec {
     }
   }
 
+
+  @Test def testMergeCubeSpaceTimeSpatialPartialOverlapNoOp(): Unit = {
+    val leftBand1: ByteArrayTile = ByteArrayTile.fill(10.toByte, 256, 256)
+    val leftBand2: ByteArrayTile = ByteArrayTile.fill(20.toByte, 256, 256)
+    val dates = Seq("2020-01-01T00:00:00Z", "2020-02-01T00:00:00Z")
+    val leftCubeBase: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] =
+      buildSpatioTemporalDataCube(util.Arrays.asList(leftBand1, leftBand2), dates, tilingFactor = 4)
+
+    val allLeftSpatialKeys = leftCubeBase.map(_._1.spatialKey).distinct().collect().toSet
+    assertEquals(16, allLeftSpatialKeys.size) // sanity check: dense/continuous 4x4 grid
+
+    val rightBand1: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)
+    val rightBand2: ByteArrayTile = ByteArrayTile.fill(4.toByte, 256, 256)
+    val fullRight: MultibandTileLayerRDD[SpatialKey] =
+      TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(rightBand1, rightBand2), leftCubeBase.metadata.tileLayout)
+
+    // Sparse, non-adjacent subset of the left grid: the right cube does NOT fully overlap the left cube.
+    val desiredRightKeys = Set(SpatialKey(0, 0), SpatialKey(1, 1), SpatialKey(2, 3), SpatialKey(3, 0))
+    assertTrue(desiredRightKeys.subsetOf(allLeftSpatialKeys))
+    val sparseRight: MultibandTileLayerRDD[SpatialKey] = fullRight.withContext(_.filter { case (k, _) => desiredRightKeys.contains(k) })
+
+
+
+    val processes = new OpenEOProcesses()
+    val merged = processes.mergeCubes_SpaceTime_Spatial(leftCubeBase, sparseRight, null, swapOperands = false)
+
+
+    val collected = merged.collect()
+
+    // All left spacetime keys must be preserved in the result, regardless of right-side overlap.
+    assertEquals(allLeftSpatialKeys.size * dates.size, collected.length)
+    assertEquals(allLeftSpatialKeys, collected.map(_._1.spatialKey).toSet)
+
+    for ((key, tile) <- collected) {
+      assertEquals(4, tile.bandCount)
+      if (desiredRightKeys.contains(key.spatialKey)) {
+        // Overlapping keys: the overlap resolver ("subtract") is applied.
+        assertEquals(10 , tile.band(0).get(0, 0))
+        assertEquals(20, tile.band(1).get(0, 0))
+        assertEquals(3, tile.band(2).get(0, 0))
+        assertEquals(4, tile.band(3).get(0, 0))
+      } else {
+        // Non-overlapping keys: the left-hand values are preserved unchanged.
+        assertEquals(10, tile.band(0).get(0, 0))
+        assertEquals(20, tile.band(1).get(0, 0))
+        assertTrue( tile.band(2).getDouble(0, 0).isNaN)
+        assertTrue( tile.band(3).getDouble(0, 0).isNaN)
+      }
+    }
+  }
+
   @Test def testMergeCubeFullOverlapNoOp(): Unit = {
     val band1: ByteArrayTile = ByteArrayTile.fill(1.toByte, 256, 256)
     val band2: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
@@ -1049,4 +1102,87 @@ class MergeCubesSpec {
     assertEquals(1,c2Tiles.length)
     assertEquals(localTiles(0)._2, MultibandTile(c1Tiles(0)._2.bands ++ c2Tiles(0)._2.bands))
   }
+
+  @Test def testMergeCompositesWithFailOnce(): Unit = {
+    val band1 = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2 = ByteArrayTile.fill(3.toByte, 256, 256)
+    val band3 = ByteArrayTile.fill(5.toByte, 256, 256)
+    val band4 = ByteArrayTile.fill(8.toByte, 256, 256)
+    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-03T00:00:00Z", "2020-02-02T00:00:00Z"), tilingFactor = 2)
+    val cube2: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band3, band4), Seq("2020-01-02T00:00:00Z", "2020-02-02T00:00:00Z"), tilingFactor = 2)
+
+    val startDate = ZonedDateTime.parse("2020-01-01T00:00:00Z")
+    val intervals = Range(0, 3).flatMap { r => Seq(startDate.plusDays(10L * r), startDate.plusDays(10L * (r + 1))) }.map(DateTimeFormatter.ISO_INSTANT.format(_))
+    val labels = Range(0, 3).map { r => DateTimeFormatter.ISO_INSTANT.format(startDate.plusDays(10L * r)) }
+
+    case class StageExecution(stageId: Int, attemptNumber: Int, name: String, rddIds: Set[Int], failureReason: Option[String])
+    case class TaskExecution(stageId: Int, stageAttemptNumber: Int, partitionId: Int, attemptNumber: Int, successful: Boolean, reason: String)
+    val submittedStages = new ConcurrentLinkedQueue[StageExecution]()
+    val completedStages = new ConcurrentLinkedQueue[StageExecution]()
+    val endedTasks = new ConcurrentLinkedQueue[TaskExecution]()
+    def toExecution(info: org.apache.spark.scheduler.StageInfo) =
+      StageExecution(info.stageId, info.attemptNumber(), info.name, info.rddInfos.map(_.id).toSet, info.failureReason)
+    val listener = new SparkListener {
+      override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit =
+        submittedStages.add(toExecution(stageSubmitted.stageInfo))
+
+      override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit =
+        completedStages.add(toExecution(stageCompleted.stageInfo))
+
+      override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
+        val info = taskEnd.taskInfo
+        endedTasks.add(TaskExecution(taskEnd.stageId, taskEnd.stageAttemptId, info.partitionId, info.attemptNumber,
+          info.successful, taskEnd.reason.toString))
+      }
+    }
+
+    sc.addSparkListener(listener)
+    try {
+      val p = new OpenEOProcesses()
+      val medianProcess = TestOpenEOProcessScriptBuilder.createMedian(true,cube1.metadata.cellType)
+      assertEquals(cube1.metadata.cellType,medianProcess.getOutputCellType())
+      val composite1 = p.aggregateTemporal(cube1,intervals.asJava,labels.asJava,medianProcess, java.util.Collections.emptyMap())
+      val composite2 = p.aggregateTemporal(cube2,intervals.asJava,labels.asJava,medianProcess, java.util.Collections.emptyMap())
+      val merged = p.mergeCubes(p.filterEmptyTile(composite1), p.filterEmptyTile(composite2), operator = null)
+      val mergeAttempt = p.failOnce(merged)
+      val expectedKey = SpaceTimeKey(0,0,1577836800000L)
+      val localTiles = mergeAttempt.filter(_._1==expectedKey).collect()
+      val c1Tiles = composite1.filter(_._1==expectedKey).collect()
+      val c2Tiles = composite2.filter(_._1==expectedKey).collect()
+
+      // Listener events are delivered asynchronously.
+      SparkTestHelper.waitUntilListenerBusEmpty(sc)
+      val submitted = submittedStages.iterator().asScala.toSeq
+      val completed = completedStages.iterator().asScala.toSeq
+      val tasks = endedTasks.iterator().asScala.toSeq
+      completed.foreach(s => println(s"Stage ${s.stageId}.${s.attemptNumber} '${s.name}' rdds=${s.rddIds.toSeq.sorted.mkString(",")} failure=${s.failureReason.getOrElse("-")}"))
+      tasks.filterNot(_.successful).foreach(t => println(s"Failed task: stage ${t.stageId}.${t.stageAttemptNumber} partition ${t.partitionId} attempt ${t.attemptNumber}: ${t.reason}"))
+
+      def stagesTouching(rddId: Int) = submitted.filter(_.rddIds.contains(rddId))
+      assertTrue(stagesTouching(composite1.id).nonEmpty, "aggregateTemporal stages of composite1 should be tracked")
+      assertTrue(stagesTouching(composite2.id).nonEmpty, "aggregateTemporal stages of composite2 should be tracked")
+
+      // A failed task is retried within the same stage attempt, so the merge stage is not resubmitted.
+      val mergeStages = stagesTouching(mergeAttempt.id)
+      assertEquals(Seq(0), mergeStages.map(_.attemptNumber))
+      val mergeStageId = mergeStages.head.stageId
+      assertTrue(completed.exists(s => s.stageId == mergeStageId && s.failureReason.isEmpty), "The merge stage should succeed")
+
+      val mergeTasks = tasks.filter(_.stageId == mergeStageId)
+      val failedMergeTasks = mergeTasks.filterNot(_.successful)
+      assertEquals(Seq((0, 0)), failedMergeTasks.map(t => (t.partitionId, t.attemptNumber)),
+        "Only the first attempt of the task for partition 0 should fail")
+      assertTrue(failedMergeTasks.head.reason.contains(classOf[OpenEOProcesses.FailOnceException].getName))
+      assertTrue(mergeTasks.exists(t => t.successful && t.partitionId == 0 && t.attemptNumber == 1),
+        "The task for partition 0 should be retried successfully")
+
+      assertEquals(1,localTiles.length)
+      assertEquals(1,c1Tiles.length)
+      assertEquals(1,c2Tiles.length)
+      assertEquals(localTiles(0)._2, MultibandTile(c1Tiles(0)._2.bands ++ c2Tiles(0)._2.bands))
+    } finally {
+      sc.removeSparkListener(listener)
+    }
+  }
+
 }
