@@ -79,8 +79,8 @@ class PyramidFactoryTest {
     val singlePath = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2023/01/03/S2B_20230103T110349_31UES_FAPAR_V220/20M/S2B_20230103T110349_31UES_FAPAR_20M_V220.tif"
     val singleDate = LocalDate.of(2023, 1, 3).atStartOfDay(UTC)
 
-    val pyramidFactory = PyramidFactory.from_disk(
-      timestamped_paths = util.Collections.singletonMap(singlePath, singleDate format ISO_OFFSET_DATE_TIME)
+    val pyramidFactory = PyramidFactory.from_uris(
+      timestamped_uris = util.Collections.singletonMap(singlePath, singleDate format ISO_OFFSET_DATE_TIME)
     )
 
     val boundingBox = ProjectedExtent(Extent(2.4049338007249337, 51.1138427546043772, 3.5035666132249341, 51.3147090015657454), LatLng)
@@ -109,8 +109,8 @@ class PyramidFactoryTest {
     val singlePath = "file:/data/projects/OpenEO/automated_test_files/load_result_openEO_2019-09-22Z.tif"
     val singleDate = LocalDate.of(2019, 9, 22).atStartOfDay(UTC)
 
-    val pyramidFactory = PyramidFactory.from_disk(
-      timestamped_paths = util.Collections.singletonMap(singlePath, singleDate format ISO_OFFSET_DATE_TIME)
+    val pyramidFactory = PyramidFactory.from_uris(
+      timestamped_uris = util.Collections.singletonMap(singlePath, singleDate format ISO_OFFSET_DATE_TIME)
     )
 
     val smallerBoundingBox = ProjectedExtent(Extent(2.6951, 51.1160, 2.7822, 51.1672), LatLng)
@@ -210,6 +210,8 @@ class PyramidFactoryTest {
       s3_uri = "s3://openeo-vito-test/cogs/",
       key_regex = raw".*_20180428T.*\.tiff",
       date_regex = raw".*_(\d{4})(\d{2})(\d{2})T\d{6}\.tiff",
+      recursive = false,
+      interpret_as_cell_type = null,
       lat_lon = false
     )
 
@@ -243,7 +245,8 @@ class PyramidFactoryTest {
       key_regex = sentinelHubBatchProcessResultsKeyRegex.regex,
       date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
       recursive = true,
-      interpret_as_cell_type = "float32ud0"
+      interpret_as_cell_type = "float32ud0",
+      lat_lon = false
     )
 
     val srs = s"EPSG:${reprojectedBoundingBox.crs.epsgCode.get}"
@@ -358,7 +361,8 @@ class PyramidFactoryTest {
       key_regex = sentinelHubBatchProcessResultsKeyRegex.regex,
       date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
       recursive = true,
-      interpret_as_cell_type = "float32ud0"
+      interpret_as_cell_type = "float32ud0",
+      lat_lon = false
     )
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"

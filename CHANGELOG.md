@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Deprecated
+
+- `org.openeo.geotrellis.geotiff.PyramidFactory` is deprecated in favor of `org.openeo.geotrellis.file.PyramidFactory` with an `OpenSearchClient` (cfr. `load_stac`); it will be removed once openeo-geopyspark-driver no longer uses it.
+
+### Removed
+
+- `org.openeo.geotrellis.geotiff.PyramidFactory`: removed `from_disk(timestamped_paths)` (use `from_uris`) and the 5-argument `from_s3` overload (use the 6-argument variant); `pyramid` and `layer` are no longer public.
+
 ### Fixed
 
 - merge_cubes: merging a cube with a temporal dimension with a cube without a temporal dimension well now correctly add nodata bands to honor the expected band count.
