@@ -192,7 +192,7 @@ object DatacubeSupport {
               val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
               new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
             } else {
-              val (indexReduction, indices) = optimalReductionForSparseKeys(keys, datacubeParams.map(_.maxPartitionSize.getOrElse(64)).getOrElse(64), metadata.tileCols, metadata.cellType.bits, bandCount)
+              val (indexReduction, indices) = optimalReductionForSparseKeys(keys, datacubeParams.map(_.maxPartitionSize.getOrElse(64)).getOrElse(64), metadata.tileCols * metadata.tileRows, metadata.cellType.bits, bandCount)
               new SparseSpaceTimePartitioner(indices, indexReduction, theKeys = Some(keys))
             }
           } else {
