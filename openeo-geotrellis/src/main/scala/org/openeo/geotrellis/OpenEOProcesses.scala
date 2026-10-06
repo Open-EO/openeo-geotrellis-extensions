@@ -1135,6 +1135,94 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
+  /**
+   * openEO process resample_cube_temporal: aligns the temporal dimension of `datacube` with the one of `target`, using
+   * the nearest neighbor method. Ties are resolved by choosing the earlier timestamp.
+   *
+   * Without `validWithinDays`, every target timestamp gets the tiles of the nearest source timestamp, regardless of their
+   * values, so a source timestamp can be assigned to multiple target timestamps.
+   * With `validWithinDays`, each pixel (per band) gets the value of the nearest source timestamp within that many days
+   * before or after the target timestamp for which it is valid (not no-data); if there is none, it is no-data.
+   *
+   * The temporal labels of a cube are taken from the keys of its sparse partitioner if it has one, otherwise they are
+   * collected from the cube's keys (which evaluates it).
+   */
+  def resampleCubeTemporal(datacube: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], validWithinDays: Option[Double] = None): MultibandTileLayerRDD[SpaceTimeKey] = {
+    validWithinDays.foreach(days =>
+      require(days >= 0 && !days.isInfinite, s"resample_cube_temporal: valid_within should be a non-negative number of days, got: $days"))
+
+    def temporalLabels(cube: MultibandTileLayerRDD[SpaceTimeKey]): Array[Long] =
+      findPartitionerKeys(cube)
+        .map(_.map(_.instant).distinct)
+        .getOrElse(cube.keys.map(_.instant).distinct().collect())
+        .sorted
+
+    val targetInstants = temporalLabels(target)
+    val sourceInstants = if (targetInstants.isEmpty) Array.emptyLongArray else temporalLabels(datacube)
+    if (targetInstants.isEmpty || sourceInstants.isEmpty || datacube.metadata.bounds.isEmpty) {
+      logger.warn(s"resample_cube_temporal: no ${if (targetInstants.isEmpty) "target" else "source"} timestamps, returning an empty cube")
+      return ContextRDD(datacube.sparkContext.emptyRDD[(SpaceTimeKey, MultibandTile)], datacube.metadata.copy(bounds = EmptyBounds: Bounds[SpaceTimeKey]))
+    }
+
+    // Candidates ordered by distance to the target timestamp, ties resolved by choosing the earlier timestamp.
+    def byDistanceTo(t: Long): Ordering[Long] = Ordering.by((s: Long) => (math.abs(s - t), s))
+
+    val targetsBySource: Map[Long, Array[Long]] = validWithinDays match {
+      case None =>
+        targetInstants
+          .map(t => (sourceInstants.min(byDistanceTo(t)), t))
+          .groupBy(_._1).map { case (s, pairs) => (s, pairs.map(_._2)) }
+      case Some(days) =>
+        val windowMillis = math.round(days * 24 * 3600 * 1000)
+        sourceInstants.map(s => (s, targetInstants.filter(t => math.abs(s - t) <= windowMillis))).filter(_._2.nonEmpty).toMap
+    }
+    logger.info(s"resample_cube_temporal: ${sourceInstants.length} source and ${targetInstants.length} target timestamps, valid_within: $validWithinDays")
+
+    val spaceTimeBounds = datacube.metadata.bounds.get
+    val newBounds = KeyBounds(
+      SpaceTimeKey(spaceTimeBounds.minKey.spatialKey, TemporalKey(targetInstants.head)),
+      SpaceTimeKey(spaceTimeBounds.maxKey.spatialKey, TemporalKey(targetInstants.last))
+    )
+    val incomingIndex = maybePartitionerIndex(datacube)
+    val index: PartitionerIndex[SpaceTimeKey] = incomingIndex match {
+      // these don't depend on time, so remain valid
+      case Some(i @ (_: SparseSpaceOnlyPartitioner | _: ByTileSpacetimePartitioner)) => i
+      case _ =>
+        findPartitionerSpatialKeys(datacube).filter(_.nonEmpty) match {
+          case Some(spatialKeys) =>
+            val newKeys = spatialKeys.distinct.flatMap(sk => targetInstants.map(t => SpaceTimeKey(sk, TemporalKey(t))))
+            new SparseSpaceTimePartitioner(newKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4, Some(newKeys))
+          case None =>
+            maybeBandCount(datacube)
+              .map(bandCount => getPartitionerIndexForMaxPartitionSize[SpaceTimeKey](bandCount, datacube.metadata.tileLayout.tileSize, datacube.metadata.cellType.bits, 100.0))
+              .getOrElse(SpaceTimeByMonthPartitioner)
+        }
+    }
+    val partitioner = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly, implicitly, index)
+
+    val candidates: RDD[(SpaceTimeKey, (Long, MultibandTile))] = datacube.flatMap { case (key, tile) =>
+      targetsBySource.getOrElse(key.instant, Array.emptyLongArray)
+        .map(t => (SpaceTimeKey(key.spatialKey, TemporalKey(t)), (key.instant, tile)))
+    }
+
+    val resampled: RDD[(SpaceTimeKey, MultibandTile)] = validWithinDays match {
+      case None =>
+        // a single source timestamp per target timestamp, so there is at most one tile per key
+        candidates.partitionBy(partitioner).mapValues(_._2)
+      case Some(_) =>
+        candidates.groupByKey(partitioner).map { case (key, sourceTiles) =>
+          val ordered = sourceTiles.toSeq.sortBy(_._1)(byDistanceTo(key.instant)).map(_._2)
+          val nonEmpty = ordered.filterNot(_.isInstanceOf[EmptyMultibandTile])
+          // merge only fills the no-data cells of the left tile, so the nearest valid value per cell and band wins
+          (key, if (nonEmpty.isEmpty) ordered.head else nonEmpty.reduceLeft(_ merge _))
+        }
+    }
+
+    val result = ContextRDD(resampled, datacube.metadata.copy(bounds = newBounds: Bounds[SpaceTimeKey]))
+    result.name = s"resample_cube_temporal of ${datacube.name}"
+    result
+  }
+
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
