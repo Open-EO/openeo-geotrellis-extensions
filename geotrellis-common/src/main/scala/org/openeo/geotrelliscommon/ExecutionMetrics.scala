@@ -17,20 +17,6 @@ object ExecutionMetrics {
 
   def get: ExecutionMetrics = current.get()
 
-  def asMap(): Map[String, Any] = {
-    val metrics = current.get()
-    if (metrics.totalStageRuntimeMillis == 0) {
-      Map.empty
-    } else {
-      Map(
-        "totalStageRuntimeMillis" -> metrics.totalStageRuntimeMillis,
-        "executorAllocationTimeMillis" -> metrics.executorAllocationTimeMillis,
-        "cpuUtilizationRatio" -> metrics.cpuUtilizationRatio,
-        "totalStageFailures" -> metrics.totalStageFailures
-      )
-    }
-  }
-
   private[openeo] def store(metrics: ExecutionMetrics): Unit = {
     current.set(metrics)
   }
