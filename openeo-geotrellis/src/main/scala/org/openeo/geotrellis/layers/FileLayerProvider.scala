@@ -561,11 +561,34 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           }
         logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
+        var retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = Some(metadata)
+        var currentSpatialKeyCount = spatialKeyCount
+        var currentClipped = clipped
+
+        do {
+          retiledMetadata = DatacubeSupport.optimizeChunkSize(retiledMetadata.get, bufferedPolygons, datacubeParams, currentSpatialKeyCount)
+          if (retiledMetadata.isDefined) {
+            metadata = retiledMetadata.get
+            currentClipped = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get)
+            // the key count is only taken into account by optimizeChunkSize for multiple polygons; avoid a Spark job otherwise
+            currentSpatialKeyCount =
+              if (bufferedPolygons.length > 1) currentClipped.map(_._1).countApproxDistinct()
+              else currentSpatialKeyCount
+          }
+        }
+        while (retiledMetadata.isDefined)
+
+        val finalSpatialBounds = metadata.bounds.get.toSpatial
+        val finalMaxSpatialKeyCount = (finalSpatialBounds.maxKey.col - finalSpatialBounds.minKey.col + 1).toLong * (finalSpatialBounds.maxKey.row - finalSpatialBounds.minKey.row + 1)
+        val finalSpatialKeyCount: Long =
+          if (bufferedPolygons.length > 1) currentSpatialKeyCount
+          else spatialKeyCount * finalMaxSpatialKeyCount / maxSpatialKeyCount
+
         val metadataCubePartitioner: Partitioner = {
-          if(spatialKeyCount.floatValue() / maxSpatialKeyCount.floatValue() < 0.5) {
+          if(finalSpatialKeyCount.floatValue() / finalMaxSpatialKeyCount.floatValue() < 0.5) {
             // here we attempt to avoid creating a partitioner with a large amount of empty partitions, in case we are
             // processing a low number of spatial keys. This can happen with sparse data loading.
-            new HashPartitioner(math.max((spatialKeyCount / 100).intValue(),1))
+            new HashPartitioner(math.max((finalSpatialKeyCount / 100).intValue(),1))
           }else{
 
             /**
@@ -580,29 +603,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             val estimatedSizePerKey = averageItemSizeInBytes * dates.length
             val maxSpatialKeysPerPartition = maxPartitionSizeBytes / estimatedSizePerKey
             val indexReduction = math.max(math.ceil(math.log(maxSpatialKeysPerPartition) / math.log(2)).toInt - 1, 1)
-            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(indexReduction))
+            SpacePartitioner(finalSpatialBounds)(implicitly,implicitly,new ConfigurableSpatialPartitioner(indexReduction))
           }
         }
 
-        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = clipped.groupByKey(metadataCubePartitioner)
-        var retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = Some(metadata)
-        var currentSpatialKeyCount = spatialKeyCount
-
-        do {
-          retiledMetadata = DatacubeSupport.optimizeChunkSize(retiledMetadata.get, bufferedPolygons, datacubeParams, currentSpatialKeyCount)
-          if (retiledMetadata.isDefined) {
-            metadata = retiledMetadata.get
-            val retiledClipped = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get)
-            // the key count is only taken into account by optimizeChunkSize for multiple polygons; avoid a Spark job otherwise
-            currentSpatialKeyCount =
-              if (bufferedPolygons.length > 1) retiledClipped.map(_._1).countApproxDistinct()
-              else currentSpatialKeyCount
-            requiredSpatialKeysLocal = retiledClipped.groupByKey(metadataCubePartitioner)
-          }
-        }
-        while (retiledMetadata.isDefined)
-
-        requiredSpatialKeysLocal
+        currentClipped.groupByKey(metadataCubePartitioner)
       }
 
     overlappingRasterSources.map(_._2).foreach(f => {
