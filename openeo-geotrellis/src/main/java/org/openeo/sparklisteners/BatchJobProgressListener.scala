@@ -190,5 +190,10 @@ class BatchJobProgressListener extends SparkListener {
       cpuUtilizationRatio = cpuUtilizationRatio,
       totalStageFailures = totalStageFailures.get()
     )
+
+    val previous = ExecutionMetrics.getAndStore(metrics)
+    if (metrics != previous) {
+      logger.debug(s"Stored $metrics")
+    }
   }
 }
