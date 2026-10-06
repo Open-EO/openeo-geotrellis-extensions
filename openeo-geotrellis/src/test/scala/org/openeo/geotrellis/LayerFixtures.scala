@@ -1826,8 +1826,11 @@ for p in l:
     ContextRDD(temporal, temporalMetadata)
   }
 
-  def aSpacetimeTileLayerRddArrayTile(arrayTile: ArrayTile, layoutCols: Int, layoutRows: Int, nbDates:Int = 2, crs:CRS=LatLng): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
-    val filtered: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(arrayTile, arrayTile, arrayTile), TileLayout(layoutCols, layoutRows, arrayTile.cols/layoutCols, arrayTile.rows/layoutRows), crs)
+  def aSpacetimeTileLayerRddArrayTile(arrayTile: ArrayTile, layoutCols: Int, layoutRows: Int, nbDates:Int = 2, crs:CRS=LatLng, extentOpt: Option[Extent] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    val extent =  extentOpt.getOrElse(crs.worldExtent)
+    val layout = TileLayout(layoutCols, layoutRows, arrayTile.cols/layoutCols, arrayTile.rows/layoutRows)
+    val tile = MultibandTile(arrayTile, arrayTile, arrayTile)
+    val filtered: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, Raster(tile, extent), layout, crs)
     val startDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
     val temporal = filtered.flatMap(tuple => {
       (1 to nbDates).map(index => (SpaceTimeKey(tuple._1, TemporalKey( startDate.plusDays(index) )), tuple._2))

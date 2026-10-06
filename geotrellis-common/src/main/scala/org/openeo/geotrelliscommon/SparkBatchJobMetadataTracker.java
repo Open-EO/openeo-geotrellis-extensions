@@ -4,6 +4,8 @@ import org.apache.spark.SparkContext;
 import org.apache.spark.util.AccumulatorV2;
 import org.apache.spark.util.DoubleAccumulator;
 import org.apache.spark.util.LongAccumulator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import scala.Function0;
 
 import java.nio.file.Path;
@@ -15,6 +17,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
+
+    private static final Logger logger = LoggerFactory.getLogger(SparkBatchJobMetadataTracker.class);
 
     private Map<String, AccumulatorV2<Long, Long>> counters = new HashMap<>();
     private Map<String, AccumulatorV2<Double, Double>> doubleCounters = new HashMap<>();
