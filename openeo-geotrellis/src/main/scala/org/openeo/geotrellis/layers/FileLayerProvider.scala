@@ -586,13 +586,18 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
         var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = clipped.groupByKey(metadataCubePartitioner)
         var retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = Some(metadata)
+        var currentSpatialKeyCount = spatialKeyCount
 
         do {
-          val round = requiredSpatialKeysLocal.countApprox(50, 0.1).getFinalValue().high.round
-          retiledMetadata = DatacubeSupport.optimizeChunkSize(retiledMetadata.get, bufferedPolygons, datacubeParams, round)
+          retiledMetadata = DatacubeSupport.optimizeChunkSize(retiledMetadata.get, bufferedPolygons, datacubeParams, currentSpatialKeyCount)
           if (retiledMetadata.isDefined) {
             metadata = retiledMetadata.get
-            requiredSpatialKeysLocal = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get).groupByKey(metadataCubePartitioner)
+            val retiledClipped = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get)
+            // the key count is only taken into account by optimizeChunkSize for multiple polygons; avoid a Spark job otherwise
+            currentSpatialKeyCount =
+              if (bufferedPolygons.length > 1) retiledClipped.map(_._1).countApproxDistinct()
+              else currentSpatialKeyCount
+            requiredSpatialKeysLocal = retiledClipped.groupByKey(metadataCubePartitioner)
           }
         }
         while (retiledMetadata.isDefined)
