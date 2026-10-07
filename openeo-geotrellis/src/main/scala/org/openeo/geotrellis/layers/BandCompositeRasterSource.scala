@@ -340,5 +340,21 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   override def toString: String = s"BandCompositeRasterSource(${sources.toList}, $crs, $gridExtent, $name)"
 
+  /*
+   * Value-based equality: instances are used as (shuffle) keys, and the default identity-based hashCode differs for
+   * every deserialized copy, so recomputed map tasks (e.g. after executor loss) would route records to different
+   * reduce partitions than the original attempt, silently dropping data.
+   */
+  protected def equalityState: Seq[Any] =
+    Seq(getClass, sources.toList, crs, attributes, predefinedExtent, parallelRead, softErrors, readFullTile)
+
+  override def equals(other: Any): Boolean = other match {
+    case that: BandCompositeRasterSource => (this eq that) || this.equalityState == that.equalityState
+    case _ => false
+  }
+
+  // Only uses values with a stable (non-identity) hashCode, consistent with equals.
+  override def hashCode(): Int = (getClass.getName, sources.toList.map(_.name), crs).hashCode()
+
 }
 

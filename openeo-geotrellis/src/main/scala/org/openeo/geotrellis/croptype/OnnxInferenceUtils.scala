@@ -18,6 +18,7 @@ object OnnxInferenceUtils {
   val NODATA: Float = 65535f
   val NOCROP_VALUE: Float = 254f
   val ubyteCellType = UByteCellType
+  val ubyteWithNodataCellType = UByteUserDefinedNoDataCellType(255.byteValue)
 
   val sessionCache =
     new java.util.concurrent.ConcurrentHashMap[String, OrtSession]()
@@ -172,7 +173,10 @@ object OnnxInferenceUtils {
     while (p < B) {
       var d = 0
       while (d < D) { absValues(d) = math.abs(embeddings(p * D + d)); d += 1 }
-      val scale = math.max(percentile99(absValues) / 127.0f, 1e-6f)
+      // D == 0 can occur if the model's embedding dimension could not be determined (e.g. a
+      // spatial tile with no valid pixels at all, so inference never ran); percentile99 requires
+      // a non-empty array, so fall back to a harmless default scale in that degenerate case.
+      val scale = if (D == 0) 1e-6f else math.max(percentile99(absValues) / 127.0f, 1e-6f)
       if (useFloat) scaleBandF(p) = scale else scaleBandS(p) = (1000.0 * scale).toShort
 
       d = 0

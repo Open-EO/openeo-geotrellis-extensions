@@ -52,7 +52,10 @@ def is_port_free(port: int) -> bool:
 
 def _setup_local_spark(classpath: str, debug: bool):
     print("Setting up local Spark")
-    master_str = "local[2]"
+    # Allow 2 attempts per task, a plain local[N] master does not retry failed tasks (e.g. for fail_once).
+    # Set SPARK_MASTER_OVERRIDE to e.g. "local-cluster[2,1,4096]" to run separate executor JVMs, so fail_once really
+    # loses an executor (and its shuffle output) instead of only failing a task.
+    master_str = os.environ.get("SPARK_MASTER_OVERRIDE", "local[2,2]")
 
     if "PYSPARK_PYTHON" not in os.environ:
         os.environ["PYSPARK_PYTHON"] = sys.executable
@@ -67,7 +70,6 @@ def _setup_local_spark(classpath: str, debug: bool):
     )
 
     spark_jars = conf.get("spark.jars").split(",")
-    logging.error(f"SPARK JARS {spark_jars}")
     # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
     spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
     conf.set(key="spark.jars", value=",".join(spark_jars))
@@ -155,10 +157,10 @@ def main():
     for f in classpath.split(':'):
         if f.endswith(".jar"):
             if not os.path.exists(f):
-                logging.error(f"Jar is missing: {f}")
+                logging.debug(f"Jar is missing: {f}")
         else:
             if not os.path.isdir(f):
-                logging.error(f"Classpath folder is missing: {f}")
+                logging.debug(f"Classpath folder is missing: {f}")
     run_graph_locally(process_graph_path, output_dir, classpath, debug)
 
 

@@ -24,14 +24,14 @@ import geotrellis.vector._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
-import org.apache.spark.{Partitioner, SparkContext}
+import org.apache.spark.{Partitioner, SparkContext, SparkEnv, TaskContext}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, LegacySCLConvolutionFilter, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SCLMaskFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -52,6 +52,11 @@ object OpenEOProcesses{
   private val DEFAULT_MAX_PARTITION_SIZE_IN_MB = 500.0
   private val DEFAULT_BAND_COUNT = 6
   private val DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT = 10
+  /** Exit code used by [[OpenEOProcesses#failOnce]] to kill an executor. */
+  val FailOnceExitCode = 42
+
+  /** Thrown by [[OpenEOProcesses#failOnce]] when the task runs in the driver JVM (local mode). */
+  class FailOnceException(message: String) extends RuntimeException(message)
 
   /**
     * Convolve a single tile with the given kernel, choosing between a direct spatial
@@ -679,6 +684,43 @@ class OpenEOProcesses extends Serializable {
     }),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
   }
 
+  /**
+   * Fails the first attempt of the Spark stage that evaluates this datacube, to test recovery from failures.
+   *
+   * Only the first attempt of the task for the given partition in stage attempt 0
+   * (see [[org.apache.spark.scheduler.StageInfo#attemptNumber]]) fails: it calls System.exit, which kills a single
+   * executor. Spark then reschedules the lost tasks and recomputes the shuffle output that was stored on that
+   * executor; retried attempts pass the data through unchanged.
+   * Each Spark stage that evaluates the datacube starts again at attempt 0, so it fails once per such stage.
+   *
+   * In local mode the executor runs inside the driver JVM, so exiting would stop the whole application. There, the
+   * task throws a [[FailOnceException]] instead, which makes Spark retry the task. This requires task retries to be
+   * enabled, e.g. with a `local[N,maxFailures]` master; a plain `local[N]` master does not retry failed tasks.
+   *
+   * @param partition index of the partition whose task fails, between 0 and the number of partitions - 1
+   */
+  def failOnce[K: ClassTag](datacube: MultibandTileLayerRDD[K], partition: Int = 0): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    val numPartitions = datacube.getNumPartitions
+    require(partition >= 0 && partition < numPartitions,
+      s"failOnce: partition $partition is out of range, the datacube has $numPartitions partition(s)")
+
+    datacube.withContext(_.mapPartitionsWithIndex({ (partitionIndex, tiles) =>
+      val taskContext = TaskContext.get()
+      // Only a single task fails, so only one executor is lost; its retry has a higher (stage or task) attempt number.
+      if (partitionIndex == partition && taskContext.stageAttemptNumber() == 0 && taskContext.attemptNumber() == 0) {
+        val executorId = SparkEnv.get.executorId
+        if (executorId == "driver") {
+          logger.warn(s"failOnce: failing attempt 0 of stage ${taskContext.stageId()} (partition $partitionIndex) with an exception, because this executor runs in the driver")
+          throw new FailOnceException(s"failOnce: failing the first attempt of stage ${taskContext.stageId()} (partition $partitionIndex)")
+        } else {
+          logger.warn(s"failOnce: exiting executor $executorId during attempt 0 of stage ${taskContext.stageId()} (partition $partitionIndex)")
+          System.exit(FailOnceExitCode)
+        }
+      }
+      tiles
+    }, preservesPartitioning = true))
+  }
+
   def filterEmptyTile[K:ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
     datacube.withContext(_.filter(t => {
       val emptyTile = t._2.isInstanceOf[EmptyMultibandTile]
@@ -1104,6 +1146,9 @@ class OpenEOProcesses extends Serializable {
     if(operator == null) {
       val outputCellType = cellTypeUnionWithNoData(leftCube.metadata.cellType,resampled.metadata.cellType)
       //TODO: what if extent of joined cube is larger than left cube?
+      leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${rightCube.name}")
+      val rightBandCount = RDDBandCount(rightCube)
+      leftCube.sparkContext.clearJobGroup()
       val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
       return new ContextRDD(rdd.mapValues({case (l,rOpt) =>
         rOpt match {
@@ -1115,7 +1160,11 @@ class OpenEOProcesses extends Serializable {
             }
           case None =>
             // No matching right-hand tile for this spacetime key: keep the left bands as-is.
-            MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
+            if(swapOperands) {
+              MultibandTile(Vector.fill(rightBandCount)(ArrayTile.empty(updatedMetadata.cellType, l.cols, l.rows)) ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
+            }else{
+              MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ Vector.fill(rightBandCount)(ArrayTile.empty(updatedMetadata.cellType, l.cols, l.rows)))
+            }
         }
       }), updatedMetadata)
     }else{
@@ -1695,15 +1744,26 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(resultRDD, newMetadata)
   }
 
-  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val filter = new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+  // Real overload, not a default parameter: Py4J callers must supply every argument, so a default
+  // value alone wouldn't keep them on the legacy path.
+  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] =
+    toSclDilationMask(datacube, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size, useSeparableConvolution = true)
+
+  /**
+   * @param useSeparableConvolution use the faster separable convolution instead of the original
+   *                                 FFT-based dilation. Not bit-identical on real data (rare
+   *                                 boundary-pixel flips near the mask thresholds).
+   */
+  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int, useSeparableConvolution: Boolean): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val filter: SCLMaskFilter =
+      if (useSeparableConvolution) new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+      else new LegacySCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
     // Buffer each input tile so that the dilation is consistent across tile boundaries.
     val bufferInPixels: Int = filter.bufferInPixels
     val bufferedRDD: RDD[(SpaceTimeKey, BufferedTile[MultibandTile])] = datacube.bufferTiles(bufferInPixels)
     // Create mask.
     val mask: RDD[(SpaceTimeKey, MultibandTile)] = bufferedRDD.mapValues((tile: BufferedTile[MultibandTile]) => {
-      val originalBounds = tile.targetArea
-      MultibandTile(filter.createMask(tile.tile).crop(originalBounds))
+      MultibandTile(filter.createMask(tile.tile, tile.targetArea))
     })
     val updatedMetadata = datacube.metadata.copy(cellType = BitCellType)
     ContextRDD(new ShuffledRDD[SpaceTimeKey, MultibandTile,MultibandTile](mask,mask.partitioner.get), updatedMetadata)

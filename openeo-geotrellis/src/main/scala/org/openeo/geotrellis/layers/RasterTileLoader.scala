@@ -9,9 +9,9 @@ import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTi
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withGeometryClipToGridMethods}
 import geotrellis.vector.{MultiPolygon, Polygon, ReprojectMutliPolygon}
-import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
+import org.apache.spark.{SparkContext, TaskContext}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelMeter, megapixelPerSecondMeter}
 import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
@@ -52,7 +52,8 @@ case class RasterTileLoader() {
                                 datacubeParams: Option[DataCubeParameters],
                                 sources: Seq[(RasterSource, Feature)],
                                 openSearchLinkTitlesWithBandId: Seq[(String, Int)],
-                                softErrors: Boolean
+                                softErrors: Boolean,
+                                collectionRef: String
                               ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
     val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
@@ -62,11 +63,11 @@ case class RasterTileLoader() {
     tracker.registerCounter(SOFT_ERROR_MEGAPIXEL_COUNTER)
     logger.debug(s"Size: $size")
     if (!datacubeParams.exists(_.loadPerProduct) || theMaskStrategy != NoCloudFilterStrategy) {
-      logger.debug("Load per product: false")
+      logger.debug(s"Load per product: false - $collectionRef")
       rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
     } else {
-      logger.debug("Load per product: true")
-      rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size, sources, softErrors)
+      logger.debug(s"Load per product: true - $collectionRef")
+      rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size, sources, softErrors, collectionRef)
     }
   }
 
@@ -189,15 +190,16 @@ case class RasterTileLoader() {
                                                          expectedBandCount: Int = -1,
                                                          sources: Seq[(RasterSource, Feature)],
                                                          softErrors: Boolean,
+                                                         collectionRef: String
                                                         ): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
 
     if (cloudFilterStrategy != NoCloudFilterStrategy) {
-      throw new IllegalArgumentException("load_collection: mask_l1c or mask_scl_dilation are not supported by the 'load per product' strategy. Consider using 'to_scl_dilation_mask'.")
+      throw new IllegalArgumentException(s"load_collection - $collectionRef: mask_l1c or mask_scl_dilation are not supported by the 'load per product' strategy. Consider using 'to_scl_dilation_mask'.")
     }
 
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
 
-    logger.info(s"Cube partitioner index: ${partitioner.index}")
+    logger.info(s"Cube $collectionRef partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val tracker = BatchJobMetadataTracker.tracker("")
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
@@ -218,7 +220,7 @@ case class RasterTileLoader() {
       }
     }).distinct.toArray
 
-    rasterRegionRDD.sparkContext.setCallSite("load_collection: group by input product")
+    rasterRegionRDD.sparkContext.setCallSite(s"load_collection $collectionRef: group by input product")
     val byBandSource: RDD[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] = rasterRegionRDD.flatMap(key_region_sourcename => {
       val key: SpaceTimeKey = key_region_sourcename._1
       val region_sourcename: (RasterRegion, SourceName) = key_region_sourcename._2
@@ -249,7 +251,7 @@ case class RasterTileLoader() {
 
 
     val theCellType = metadata.cellType
-    rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
+    rasterRegionRDD.sparkContext.setCallSite(s"load_collection $collectionRef: read by input product")
     val partitionedBySource = byBandSource.groupByKey(new ByKeyPartitioner(allSources))
     val jobId: String = System.getenv("OPENEO_BATCH_JOB_ID")
 
@@ -286,7 +288,8 @@ case class RasterTileLoader() {
       }.toMap
       for (x <- 0 until expectedBandCount) {
         if (!mergedBands.contains(x)) {
-          logger.warn("Band " + x + " is missing in the input data. Filling with empty tile.")
+          val allSources = bandsByGroup.flatMap { case (indices, multiband) => multiband.map(_ => indices) }.toList.sortBy(_.headOption).distinct
+          logger.warn(s"load_collection/load_stac - $collectionRef: Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", ") + s" stage ${TaskContext.get().stageId()} - attempt ${TaskContext.get().stageAttemptNumber()}")
           val someTile = mergedBands.head._2
           mergedBands = mergedBands + (x -> someTile.prototype(someTile.cols, someTile.rows))
         }
@@ -302,7 +305,7 @@ case class RasterTileLoader() {
     }
     tiledRDD = withEmptyTiles.filter { case (_, tile) => retainNoDataTiles || !tile.bands.forall(_.isNoDataTile) }
 
-    rasterRegionRDD.sparkContext.setCallSite("load_collection: apply mask pixel wise")
+    rasterRegionRDD.sparkContext.setCallSite(s"load_collection - $collectionRef: apply mask pixel wise")
     tiledRDD = DatacubeSupport.applyDataMask(datacubeParams, tiledRDD, metadata, pixelwiseMasking = true)
     rasterRegionRDD.sparkContext.clearCallSite()
     val cRDD = ContextRDD(tiledRDD, metadata)
@@ -443,20 +446,22 @@ case class RasterTileLoader() {
         }
 
       val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
+      val keySeq = keys.iterator().asScala.toSeq
       val paddedRasters = allRasters.zipWithIndex.flatMap { case (raster, index) => {
         val intersection = intersections(index)
         val theBounds = bounds(index)
+        val theKey = keySeq(index)
         //apply padding, as done in GridBoundsRasterRegion
         if (intersection.isEmpty) {
           None
         }
         else if (raster.tile.cols == theBounds.width && raster.tile.rows == theBounds.height)
-          Some(raster)
+          Some((theKey, raster))
         else {
           val colOffset = math.abs(theBounds.colMin - intersection.get.colMin)
           val rowOffset = math.abs(theBounds.rowMin - intersection.get.rowMin)
           require(colOffset <= Int.MaxValue && rowOffset <= Int.MaxValue, "Computed offsets are outside of RasterBounds")
-          Some(raster.mapTile {
+          Some((theKey, raster.mapTile {
             //GridBounds(16,0,79,58)
             //coloffset = 16 , rowOffset = 0
             // band = 64 x 59
@@ -464,7 +469,7 @@ case class RasterTileLoader() {
             //require((chunk.cols (64) + colOffset (16)  <= cols (64)) && (chunk.rows + rowOffset <= rows),
             // chunk at GridBounds(16,0,79,58) exceeds tile boundary at (64, 64)
             _.mapBands { (_, band) => PaddedTile(band, colOffset.toInt, rowOffset.toInt, theBounds.width.toInt, theBounds.height.toInt) }
-          })
+          }))
         }
       }
       }
@@ -472,7 +477,8 @@ case class RasterTileLoader() {
       totalPixelsPartition += totalPixels
       totalChunksAcc.add(totalPixels / (256 * 256))
       tracker.add(PIXEL_COUNTER, totalPixels)
-      keys.iterator().asScala.zip(paddedRasters.map(b => (theIndices, b.tile, tuple._1)).iterator)
+      // Keep keys aligned with their rasters (rasters with empty intersection are dropped above)
+      paddedRasters.map { case (key, b) => (key, (theIndices, b.tile, tuple._1)) }.iterator
 
     })
     (tiles.toVector.iterator, totalPixelsPartition) // materialize to actually read partition elements and take time
