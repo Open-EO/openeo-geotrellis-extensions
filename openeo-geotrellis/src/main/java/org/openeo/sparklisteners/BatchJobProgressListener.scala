@@ -4,20 +4,18 @@ import org.apache.spark.scheduler._
 import org.openeo.geotrelliscommon.ExecutionMetrics
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.lang.management.ManagementFactory
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import scala.collection.mutable;
 
 object BatchJobProgressListener {
-
   val logger: Logger = LoggerFactory.getLogger(BatchJobProgressListener.getClass)
 }
 
 class BatchJobProgressListener extends SparkListener {
 
-  import BatchJobProgressListener.logger
+  import BatchJobProgressListener._
 
   private val stagesInformation = new mutable.LinkedHashMap[String, mutable.Map[String, Any]]()
   // start time of currently allocated executors
@@ -41,6 +39,7 @@ class BatchJobProgressListener extends SparkListener {
   }
 
   override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {
+    logger.debug(s"Ending stage: ${stageCompleted.stageInfo.stageId} - ${stageCompleted.stageInfo.name}.")
     val taskMetrics = stageCompleted.stageInfo.taskMetrics
     val stageInformation = new mutable.LinkedHashMap[String, Any]()
     var logs = List[(String, String)]()
@@ -77,7 +76,6 @@ class BatchJobProgressListener extends SparkListener {
     }
     stageInformation += ("logs" -> logs)
     stagesInformation += (stageCompleted.stageInfo.stageId.toString -> stageInformation)
-    logger.debug(s"BatchJobProgressListener.onStageCompleted() called in JVM process ${ManagementFactory.getRuntimeMXBean.getName}")
 
     val runtimeMillis = taskMetrics.executorRunTime
     val previousRuntime = stageRuntimes.put((stageCompleted.stageInfo.stageId, stageCompleted.stageInfo.attemptNumber()), runtimeMillis)
@@ -87,18 +85,21 @@ class BatchJobProgressListener extends SparkListener {
 
 
   override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = synchronized {
+    logger.debug(s"Added executor: ${executorAdded.executorId}.")
     if (!runningExecutors.contains(executorAdded.executorId)) {
       runningExecutors += (executorAdded.executorId -> executorAdded.time)
     }
   }
 
   override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = synchronized {
+    logger.debug(s"Removed executor: ${executorRemoved.executorId}.")
     val addedTime = runningExecutors.remove(executorRemoved.executorId).getOrElse(trackingStartTime)
     completedExecutorTimeMillis += math.max(0L, executorRemoved.time - addedTime)
     storeExecutionMetricsIfChanged(executorRemoved.time)
   }
 
   override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit = {
+    logger.info(s"Application ended: ${applicationEnd.time}.")
     val (totalStages, totalDuration) = stagesInformation.foldLeft((0, Duration.ZERO)) { (x, y) =>
       val duration = y._2.getOrElse("duration", 0) match {
         case n: Duration => n
