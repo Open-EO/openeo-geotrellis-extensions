@@ -116,7 +116,7 @@ class FileLayerProviderS1GrdTest {
   // ---- Test -----------------------------------------------------------------
 
   @Test
- // @Disabled("Manual test, requires CDSE S3 credentials and outbound HTTPS to stac.dataspace.copernicus.eu")
+  @Disabled("Manual test, requires CDSE S3 credentials and outbound HTTPS to stac.dataspace.copernicus.eu")
 //  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasS3Credentials")
   def fileLayerProviderReturnsS1GrdTileLayer(): Unit = {
     //org.junit.jupiter.api.Assumptions.assumeTrue(runOnline, "online test disabled")
