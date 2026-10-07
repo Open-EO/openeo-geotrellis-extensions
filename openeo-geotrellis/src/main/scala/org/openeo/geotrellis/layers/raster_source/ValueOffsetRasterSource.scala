@@ -25,7 +25,6 @@ object ValueOffsetRasterSource {
                        targetCellType: Option[TargetCellType] = None
                       ): RasterSource = {
     if (pixelValueScale == 1.0 && pixelValueOffset == 0 && targetCellType.isEmpty) rasterSource
-    else if (pixelValueScale == 1.0 && pixelValueOffset == 0 && targetCellType.isDefined) rasterSource.convert(targetCellType.get)
     else new ValueOffsetRasterSource(rasterSource, pixelValueScale, pixelValueOffset, targetCellType)
   }
 }
