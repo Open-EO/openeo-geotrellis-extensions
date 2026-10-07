@@ -80,6 +80,12 @@
             <version>${spark.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-raster-testkit_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
+            <scope>test</scope>
+        </dependency>
 
     </dependencies>
 

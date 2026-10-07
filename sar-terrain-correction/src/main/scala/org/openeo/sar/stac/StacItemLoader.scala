@@ -41,7 +41,13 @@ object StacItemLoader {
     require(assets != null, "STAC item has no assets")
 
     val hrefs: Map[String, URI] = assets.fields().asScala.flatMap { e =>
-      Option(e.getValue.get("href")).map(h => e.getKey -> URI.create(h.asText()))
+      Option(e.getValue.get("href")).map { h =>
+        val href = URI.create(h.asText())
+        // Relative asset hrefs are resolved against the STAC item location,
+        // per the STAC spec, so that locally-staged test items can use paths
+        // relative to the item JSON itself.
+        e.getKey -> (if (href.isAbsolute) href else itemUri.resolve(href))
+      }
     }.toMap
 
     // Group by polarisation by looking at SAFE-relative path conventions:

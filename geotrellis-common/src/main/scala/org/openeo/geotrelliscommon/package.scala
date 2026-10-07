@@ -8,9 +8,12 @@ import org.locationtech.sfcurve.IndexRange
 import org.locationtech.sfcurve.zorder.{Z2, ZRange}
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
+import java.net.URI
+import java.nio.file.{Files, StandardCopyOption}
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.time.{Duration, Instant, LocalTime, OffsetTime, ZonedDateTime}
+import java.time.{Instant, LocalTime, OffsetTime, ZonedDateTime}
+import java.util.concurrent.ConcurrentHashMap
 
 package object geotrelliscommon {
 
@@ -344,4 +347,34 @@ package object geotrelliscommon {
     type UdfLanguage = Value
     val Python, Scala = Value
   }
+
+  private val extractedResources = new ConcurrentHashMap[String, URI]()
+
+  /** Resolve a classpath resource to a URI usable by GeoTiffRasterSource.
+   *  If it's a plain file (dev/test classpath) the file: URI is returned as-is;
+   *  if it's packaged inside a JAR, it's extracted once to a cached temp file,
+   *  since GDAL/NIO-based readers need random file access. */
+  def resolveClasspathResource(resourcePath: String,
+                               classLoader: ClassLoader = Thread.currentThread().getContextClassLoader): URI =
+    extractedResources.computeIfAbsent(resourcePath, _ => {
+      val url = Option(classLoader.getResource(resourcePath))
+        .getOrElse(throw new IllegalArgumentException(s"classpath resource not found: $resourcePath"))
+      url.getProtocol match {
+        case "file" => url.toURI
+        case _ =>
+          val in = url.openStream()
+          try {
+            val baseName = resourcePath.split('/').last
+            val dotIdx = baseName.lastIndexOf('.')
+            val (prefix, suffix) =
+              if (dotIdx > 0) (baseName.substring(0, dotIdx) + "-", baseName.substring(dotIdx))
+              else (baseName + "-", "")
+            val tmp = Files.createTempFile(prefix, suffix)
+            tmp.toFile.deleteOnExit()
+            Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING)
+            tmp.toUri
+          } finally in.close()
+      }
+    })
+
 }
