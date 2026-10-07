@@ -1,5 +1,6 @@
 package org.openeo.sparklisteners;
 
+import org.apache.spark.{Resubmitted, TaskCommitDenied, TaskEndReason, TaskFailedReason, TaskKilled}
 import org.apache.spark.scheduler._
 import org.openeo.geotrelliscommon.ExecutionMetrics
 import org.slf4j.{Logger, LoggerFactory}
@@ -11,6 +12,27 @@ import scala.collection.mutable;
 
 object BatchJobProgressListener {
   val logger: Logger = LoggerFactory.getLogger(BatchJobProgressListener.getClass)
+
+  /**
+   * A failed task attempt, e.g. an exception, an executor loss or a fetch failure. Excludes attempts that were killed
+   * (speculation, cancellation), denied to commit (duplicate attempt) or resubmitted (earlier successful attempt whose
+   * output was lost).
+   */
+  private[sparklisteners] def isTaskFailure(reason: TaskEndReason): Boolean = reason match {
+    case _: TaskKilled | _: TaskCommitDenied | Resubmitted => false
+    case _: TaskFailedReason => true
+    case _ => false
+  }
+
+  /**
+   * Spark only exposes the removal reason as a string (see org.apache.spark.scheduler.ExecutorLossReason). Removals
+   * requested by the driver (e.g. dynamic allocation) and graceful decommissioning are expected; anything else (OOM
+   * kill, non-zero exit code, heartbeat timeout, ...) is an unexpected loss.
+   */
+  private[sparklisteners] def isUnexpectedExecutorLoss(reason: String): Boolean = {
+    val r = Option(reason).getOrElse("")
+    !(r == "Executor killed by driver." || r.startsWith("Executor decommission:") || r.contains("Finished decommissioning"))
+  }
 }
 
 class BatchJobProgressListener extends SparkListener {
@@ -23,7 +45,10 @@ class BatchJobProgressListener extends SparkListener {
   private var completedExecutorTimeMillis = 0L
   // Executors may have been added before this listener was registered; use this as their start time.
   private var trackingStartTime = System.currentTimeMillis()
+  // Only counts stage attempts that failed as a whole (e.g. FetchFailed, aborted stage); task-level retries do not
+  // fail a stage.
   private val totalStageFailures = new AtomicInteger(0)
+  private val totalTaskFailures = new AtomicInteger(0)
 
   // (stage ID, attempt number) -> executor run time of that stage attempt; used to compute ExecutionMetrics
   // incrementally and thread-safely, independently of stagesInformation above.
@@ -84,6 +109,13 @@ class BatchJobProgressListener extends SparkListener {
   }
 
 
+  override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
+    if (isTaskFailure(taskEnd.reason)) {
+      totalTaskFailures.incrementAndGet()
+      storeExecutionMetricsIfChanged(Option(taskEnd.taskInfo).map(_.finishTime).filter(_ > 0).getOrElse(System.currentTimeMillis()))
+    }
+  }
+
   override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = synchronized {
     logger.debug(s"Added executor: ${executorAdded.executorId}.")
     if (!runningExecutors.contains(executorAdded.executorId)) {
@@ -92,7 +124,11 @@ class BatchJobProgressListener extends SparkListener {
   }
 
   override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = synchronized {
-    logger.debug(s"Removed executor: ${executorRemoved.executorId}.")
+    if (isUnexpectedExecutorLoss(executorRemoved.reason)) {
+      logger.warn(s"Lost executor ${executorRemoved.executorId}: ${executorRemoved.reason}")
+    } else {
+      logger.debug(s"Removed executor: ${executorRemoved.executorId}: ${executorRemoved.reason}")
+    }
     val addedTime = runningExecutors.remove(executorRemoved.executorId).getOrElse(trackingStartTime)
     completedExecutorTimeMillis += math.max(0L, executorRemoved.time - addedTime)
     storeExecutionMetricsIfChanged(executorRemoved.time)
@@ -186,7 +222,8 @@ class BatchJobProgressListener extends SparkListener {
       totalStageRuntimeMillis = stageRuntimeMillis,
       executorAllocationTimeMillis = executorTimeMillis,
       cpuUtilizationRatio = cpuUtilizationRatio,
-      totalStageFailures = totalStageFailures.get()
+      totalStageFailures = totalStageFailures.get(),
+      totalTaskFailures = totalTaskFailures.get()
     )
 
     val previous = ExecutionMetrics.getAndStore(metrics)
