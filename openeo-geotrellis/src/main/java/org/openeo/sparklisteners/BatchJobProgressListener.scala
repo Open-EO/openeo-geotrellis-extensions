@@ -49,6 +49,8 @@ class BatchJobProgressListener extends SparkListener {
   // fail a stage.
   private val totalStageFailures = new AtomicInteger(0)
   private val totalTaskFailures = new AtomicInteger(0)
+  // max over all tasks of TaskMetrics.peakExecutionMemory
+  private val peakExecutionMemoryBytes = new AtomicLong(0L)
 
   // (stage ID, attempt number) -> executor run time of that stage attempt; used to compute ExecutionMetrics
   // incrementally and thread-safely, independently of stagesInformation above.
@@ -70,13 +72,12 @@ class BatchJobProgressListener extends SparkListener {
     var logs = List[(String, String)]()
     stageInformation += ("duration" -> Duration.ofMillis(taskMetrics.executorRunTime))
     if (stageCompleted.stageInfo.failureReason.isDefined) {
+      totalStageFailures.incrementAndGet()
       val message =
         f"""A part of the process graph failed, and will be retried, the reason was: "${stageCompleted.stageInfo.failureReason.get}"
            |Your job may still complete if the failure was caused by a transient error, but will take more time. A common cause of transient errors is too little executor memory (overhead). Too low executor-memory can be seen by a high 'garbage collection' time, which was: ${Duration.ofMillis(taskMetrics.jvmGCTime).toSeconds / 1000.0} seconds.
            |""".stripMargin
-      logs = ("warn", message) :: logs
-      totalStageFailures.incrementAndGet()
-
+      logger.warn(message)
     } else {
       val duration = Duration.ofMillis(taskMetrics.executorRunTime)
       val timeString = if (duration.toSeconds > 60) {
@@ -110,8 +111,17 @@ class BatchJobProgressListener extends SparkListener {
 
 
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
-    if (isTaskFailure(taskEnd.reason)) {
+    val taskFailed = isTaskFailure(taskEnd.reason)
+    if (taskFailed) {
       totalTaskFailures.incrementAndGet()
+    }
+
+    val peakMemoryIncreased = Option(taskEnd.taskMetrics).exists { taskMetrics =>
+      val previousPeak = peakExecutionMemoryBytes.getAndAccumulate(taskMetrics.peakExecutionMemory, (a: Long, b: Long) => math.max(a, b))
+      taskMetrics.peakExecutionMemory > previousPeak
+    }
+
+    if (taskFailed || peakMemoryIncreased) {
       storeExecutionMetricsIfChanged(Option(taskEnd.taskInfo).map(_.finishTime).filter(_ > 0).getOrElse(System.currentTimeMillis()))
     }
   }
@@ -136,6 +146,7 @@ class BatchJobProgressListener extends SparkListener {
 
   override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit = {
     logger.info(s"Application ended: ${applicationEnd.time}.")
+    storeExecutionMetricsIfChanged(applicationEnd.time)
     val (totalStages, totalDuration) = stagesInformation.foldLeft((0, Duration.ZERO)) { (x, y) =>
       val duration = y._2.getOrElse("duration", 0) match {
         case n: Duration => n
@@ -150,6 +161,27 @@ class BatchJobProgressListener extends SparkListener {
     } else {
       f"${executorTime / 1000} seconds"
     }
+    val timeString = if (totalDuration.toMinutes > 5) {
+      totalDuration.toMinutes + " minutes"
+    } else if (totalDuration.toSeconds > 60) {
+      totalDuration.toMinutes + " minutes and " + (totalDuration.toSeconds - 60 * totalDuration.toMinutes) + " seconds"
+    } else {
+      totalDuration.toMillis.toFloat / 1000.0 + " seconds"
+    }
+    logger.info(f"Total number of stages: $totalStages")
+    logger.info(f"Total stage runtime: $timeString")
+    logTopStagesByDuration(totalDuration)
+    logger.info(f"Total executor allocation time: $executorString")
+
+    val cpuUtilizationRatio: Double = if (executorTime > 0) {
+      totalDuration.toMillis.toDouble / executorTime.toDouble
+    } else {
+      0d
+    }
+    logger.info(f"CPU utilization ratio: $cpuUtilizationRatio")
+  }
+
+  private def logTopStagesByDuration(totalDuration: Duration): Unit = {
     val ordered = stagesInformation.toSeq.sortWith((a, b) => {
       val DurationA = a._2.getOrElse("duration", 0) match {
         case n: Duration => n
@@ -159,29 +191,8 @@ class BatchJobProgressListener extends SparkListener {
       }
       DurationA.toMillis > DurationB.toMillis
     })
-    val timeString = if (totalDuration.toMinutes > 5) {
-      totalDuration.toMinutes + " minutes"
-    } else if (totalDuration.toSeconds > 60) {
-      totalDuration.toMinutes + " minutes and " + (totalDuration.toSeconds - 60 * totalDuration.toMinutes) + " seconds"
-    } else {
-      totalDuration.toMillis.toFloat / 1000.0 + " seconds"
-    }
-    logger.info(f"Summary of the executed stages with the Logs of the longest stages:")
-    logger.info(f"Total number of stages: $totalStages")
-    logger.info(f"Total stage runtime: $timeString")
-    logger.info(f"Total executor allocation time: $executorString")
-
-    val cpuUtilizationRatio: Double = if (executorTime > 0) {
-      totalDuration.toMillis.toDouble / executorTime.toDouble
-    } else {
-      0d
-    }
-    logger.info(f"CPU utilization ratio: $cpuUtilizationRatio")
-
-
-    storeExecutionMetricsIfChanged(applicationEnd.time)
-
-    if (totalStages > 0) {
+    if (ordered.nonEmpty) {
+      logger.info("The following stages are responsible for 80% of the total stage runtime:")
       var tempDuration = 0.0
       var i = 0
       var maxDurationToLog = ordered.head._2.getOrElse("duration", 0) match {
@@ -208,6 +219,7 @@ class BatchJobProgressListener extends SparkListener {
     }
   }
 
+
   /** Recomputes ExecutionMetrics and stores them if they changed since the last store. */
   private def storeExecutionMetricsIfChanged(now: Long): Unit = {
     val stageRuntimeMillis = totalStageRuntimeMillis.get()
@@ -223,7 +235,8 @@ class BatchJobProgressListener extends SparkListener {
       executorAllocationTimeMillis = executorTimeMillis,
       cpuUtilizationRatio = cpuUtilizationRatio,
       totalStageFailures = totalStageFailures.get(),
-      totalTaskFailures = totalTaskFailures.get()
+      totalTaskFailures = totalTaskFailures.get(),
+      peakExecutionMemoryBytes = peakExecutionMemoryBytes.get()
     )
 
     val previous = ExecutionMetrics.getAndStore(metrics)

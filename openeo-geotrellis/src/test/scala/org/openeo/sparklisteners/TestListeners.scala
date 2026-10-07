@@ -46,7 +46,7 @@ class TestListeners extends LocalSparkContext {
     listener.onExecutorRemoved(SparkListenerExecutorRemoved(startedAt + 2500L, "executor-1", "test"))
     listener.onApplicationEnd(SparkListenerApplicationEnd(startedAt + 5000L))
 
-    assertEquals(ExecutionMetrics(2500L, 2500L, 1.0, 0, 0), ExecutionMetrics.get)
+    assertEquals(ExecutionMetrics(2500L, 2500L, 1.0, 0, 0, 0L), ExecutionMetrics.get)
   }
 
   @Test
@@ -62,19 +62,19 @@ class TestListeners extends LocalSparkContext {
     val stageInfo = buildStageInfo(startedAt, 2000L)
     callStageCallback(listener, "onStageSubmitted", "org.apache.spark.scheduler.SparkListenerStageSubmitted", stageInfo, new java.util.Properties())
     callStageCallback(listener, "onStageCompleted", "org.apache.spark.scheduler.SparkListenerStageCompleted", stageInfo)
-    assertEquals(ExecutionMetrics(2000L, 2000L, 1.0, 0, 0), ExecutionMetrics.get)
+    assertEquals(ExecutionMetrics(2000L, 2000L, 1.0, 0, 0, 0L), ExecutionMetrics.get)
 
     listener.onExecutorRemoved(SparkListenerExecutorRemoved(startedAt + 4000L, "executor-1", "test"))
-    assertEquals(ExecutionMetrics(2000L, 4000L, 0.5, 0, 0), ExecutionMetrics.get)
+    assertEquals(ExecutionMetrics(2000L, 4000L, 0.5, 0, 0, 0L), ExecutionMetrics.get)
 
     listener.onApplicationEnd(SparkListenerApplicationEnd(startedAt + 5000L))
-    assertEquals(ExecutionMetrics(2000L, 4000L, 0.5, 0, 0), ExecutionMetrics.get)
+    assertEquals(ExecutionMetrics(2000L, 4000L, 0.5, 0, 0, 0L), ExecutionMetrics.get)
   }
 
   @Test
   def testTaskFailuresAreCounted(): Unit = {
     val listener = new BatchJobProgressListener()
-    ExecutionMetrics.store(ExecutionMetrics(0L, 0L, 0d, 0, 0))
+    ExecutionMetrics.store(ExecutionMetrics(0L, 0L, 0d, 0, 0, 0L))
 
     def taskEnd(reason: TaskEndReason): SparkListenerTaskEnd =
       SparkListenerTaskEnd(1, 0, "ResultTask", reason, null, null, null)
@@ -93,7 +93,7 @@ class TestListeners extends LocalSparkContext {
 
   @Test
   def testFailuresOfSparkJobAreCounted(): Unit = {
-    ExecutionMetrics.store(ExecutionMetrics(0L, 0L, 0d, 0, 0))
+    ExecutionMetrics.store(ExecutionMetrics(0L, 0L, 0d, 0, 0, 0L))
     sc.addSparkListener(new BatchJobProgressListener())
 
     try {
@@ -109,6 +109,27 @@ class TestListeners extends LocalSparkContext {
 
     assertEquals(1, ExecutionMetrics.get.totalTaskFailures)
     assertEquals(1, ExecutionMetrics.get.totalStageFailures)
+  }
+
+  @Test
+  def testPeakExecutionMemoryIsTracked(): Unit = {
+    val listener = new BatchJobProgressListener()
+    ExecutionMetrics.store(ExecutionMetrics(0L, 0L, 0d, 0, 0, 0L))
+
+    def taskEnd(peak: Long): SparkListenerTaskEnd = {
+      val taskMetricsClass = Class.forName("org.apache.spark.executor.TaskMetrics")
+      val taskMetrics = taskMetricsClass.getDeclaredConstructor().newInstance()
+      taskMetricsClass.getMethod("setPeakExecutionMemory", classOf[Long]).invoke(taskMetrics, Long.box(peak))
+      SparkListenerTaskEnd(1, 0, "ResultTask", Success, null, null,
+        taskMetrics.asInstanceOf[org.apache.spark.executor.TaskMetrics])
+    }
+
+    listener.onTaskEnd(taskEnd(peak = 100L))
+    listener.onTaskEnd(taskEnd(peak = 300L))
+    listener.onTaskEnd(taskEnd(peak = 200L))
+    listener.onTaskEnd(SparkListenerTaskEnd(1, 0, "ResultTask", Success, null, null, null))
+
+    assertEquals(300L, ExecutionMetrics.get.peakExecutionMemoryBytes)
   }
 
   @Test
