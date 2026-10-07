@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.layers.raster_source
 
-import breeze.numerics.log
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile}
@@ -26,6 +25,7 @@ object ValueOffsetRasterSource {
                        targetCellType: Option[TargetCellType] = None
                       ): RasterSource = {
     if (pixelValueScale == 1.0 && pixelValueOffset == 0 && targetCellType.isEmpty) rasterSource
+    else if (pixelValueScale == 1.0 && pixelValueOffset == 0 && targetCellType.isDefined) rasterSource.convert(targetCellType.get)
     else new ValueOffsetRasterSource(rasterSource, pixelValueScale, pixelValueOffset, targetCellType)
   }
 }
