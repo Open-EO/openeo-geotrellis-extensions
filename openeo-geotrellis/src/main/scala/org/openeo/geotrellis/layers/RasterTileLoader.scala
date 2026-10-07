@@ -4,19 +4,17 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{LayoutDefinition, LayoutTileSource, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
-import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterRegion, RasterSource, SourceName}
+import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, MultibandTile, NoNoData, PaddedTile, Raster, RasterRegion, RasterSource, SourceName}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withGeometryClipToGridMethods}
-import geotrellis.vector.{MultiPolygon, Polygon, ReprojectMutliPolygon}
+import geotrellis.vector.{MultiPolygon, ReprojectMutliPolygon}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.apache.spark.{SparkContext, TaskContext}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelMeter, megapixelPerSecondMeter}
-import org.openeo.geotrellis.layers.raster_source.{GDALCloudRasterSource, IndexedRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, time}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, time}
 import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -333,35 +331,7 @@ case class RasterTileLoader() {
         .toSeq
         .flatMap { case (rasterRegion, sourceName: SourceName) =>
           val result: Option[(MultibandTile, SourceName)] = cloudFilterStrategy match {
-            case l1cFilterStrategy: L1CCloudFilterStrategy =>
-              if (L1CFunctions.isRegionFullyClouded(rasterRegion, crs, layout, l1cFilterStrategy.bufferInMeters)) {
-                // Do not read the tile data at all.
-                Option.empty
-              } else {
-                // Simply mask out the clouds.
-                cloudFilterStrategy.loadMasked(maskTileLoader = new MaskTileLoader {
-                  override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = Option.empty
 
-                  override def loadData: Option[MultibandTile] = {
-                    val tile: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
-                    if (tile.isDefined) {
-                      val compositeRasterSource = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource]
-                      val cloudRasterSource = (compositeRasterSource.sources.head match {
-                        case rsOffset: ValueOffsetRasterSource => rsOffset.rasterSource
-                        case indexedRasterSource: IndexedRasterSource => indexedRasterSource.rasterSource
-                        case rs => rs
-                      }).asInstanceOf[GDALCloudRasterSource]
-
-                      val cloudPolygons: Seq[Polygon] = cloudRasterSource.getMergedPolygons(l1cFilterStrategy.bufferInMeters)
-                      val cloudPolygon = MultiPolygon(cloudPolygons) reproject(cloudRasterSource.crs, crs)
-                      val cloudTile = Rasterizer.rasterizeWithValue(cloudPolygon, RasterExtent(rasterRegion.extent, tile.get.cols, tile.get.rows), 1)
-                      val cloudMultibandTile = MultibandTile(List.fill(tile.get.bandCount)(cloudTile))
-                      val maskedTile = tile.get.localMask(cloudMultibandTile, 1, 0).convert(tile.get.cellType)
-                      Some(maskedTile)
-                    } else Option.empty
-                  }
-                }).map((_, sourceName))
-              }
             case _ =>
               cloudFilterStrategy.loadMasked(new MaskTileLoader {
                 override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {

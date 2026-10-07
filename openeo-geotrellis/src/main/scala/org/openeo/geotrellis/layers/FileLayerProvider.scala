@@ -26,7 +26,7 @@ import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSear
 import org.openeo.geotrellis.layers.provider._
 import org.openeo.geotrellis.layers.raster_source.{IndexedRasterSource, NoDataRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.{Logger, LoggerFactory}
@@ -531,10 +531,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case (linkTitle, _) => linkTitle.contains("SCENECLASSIFICATION") || linkTitle.contains("SCL")
           }
         } yield new SCLConvolutionFilterStrategy(sclBandIndex, datacubeParams.get.maskingStrategyParameters)
-      }
-      else if (maskMethod == "mask_l1c") {
-        overlappingRasterSources = L1CFunctions.filterRasterSources(overlappingRasterSources, maskParams)
-        maskStrategy = Some(new L1CCloudFilterStrategy(L1CFunctions.getDilationDistance(maskParams.asScala.toMap)))
       }
     }
 
