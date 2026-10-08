@@ -36,6 +36,17 @@ object CreoS3Utils {
   private val proxyS3ClientCache = new ConcurrentHashMap[String, S3Client]()
 
   private val cloudFerroRegion: Region = Region.of("RegionOne")
+  private val eodataRegion: Region = Region.of("eodata")
+
+  // AWS_S3_ENDPOINT may be given without scheme (GDAL convention); AWS_HTTPS then decides the scheme.
+  private def eodataEndpoint: URI = {
+    val endpoint = sys.env.getOrElse("AWS_S3_ENDPOINT", "https://eodata.dataspace.copernicus.eu")
+    if (endpoint.contains("://")) URI.create(endpoint)
+    else {
+      val https = sys.env.getOrElse("AWS_HTTPS", "YES").equalsIgnoreCase("YES")
+      URI.create((if (https) "https://" else "http://") + endpoint)
+    }
+  }
 
   lazy val getAsyncClient: S3AsyncClient = {
     // Might log this warning:
@@ -123,13 +134,20 @@ object CreoS3Utils {
 
   def getS3Client(uri: AmazonS3URI): S3Client = {
     val proxy = getProxyS3Client(uri.getBucket)
-    if (proxy != null) proxy else getCreoS3Client()
+    if (proxy != null) proxy
+    else getCreoS3Client(if (uri.getBucket == "eodata") eodataRegion else cloudFerroRegion)
   }
 
   //Prefer using getS3Client with an S3 URI
   def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
-    val endpointURI = if (region != cloudFerroRegion) this.getCFEndpoin(region) else URI.create(sys.env("SWIFT_URL"))
-    val credProvider = if (region.toString.contains("waw")) credentialsProviderWAW else credentialsProvider
+    val endpointURI =
+      if (region == eodataRegion) eodataEndpoint
+      else if (region != cloudFerroRegion) this.getCFEndpoin(region)
+      else URI.create(sys.env("SWIFT_URL"))
+    val credProvider =
+      if (region == eodataRegion) credentialsProviderEodata
+      else if (region.toString.contains("waw")) credentialsProviderWAW
+      else credentialsProvider
     S3Client.builder()
       .credentialsProvider(credProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
@@ -158,6 +176,12 @@ object CreoS3Utils {
     val s3SecretKey = sys.env.getOrElse("CF_SECRET_ACCESS_KEY", "")
     val credentialsProvider = StaticCredentialsProvider.create(AwsBasicCredentials.create(s3AccessKeyId, s3SecretKey))
     credentialsProvider
+  }
+
+  private def credentialsProviderEodata = {
+    val accessKeyId = sys.env.getOrElse("AWS_ACCESS_KEY_ID", "")
+    val secretKey = sys.env.getOrElse("AWS_SECRET_ACCESS_KEY", "")
+    StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKeyId, secretKey))
   }
 
   private def overrideConfig = {
