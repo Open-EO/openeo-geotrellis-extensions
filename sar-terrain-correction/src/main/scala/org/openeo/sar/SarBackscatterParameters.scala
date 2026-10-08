@@ -4,7 +4,7 @@ import org.openeo.geotrelliscommon.ExtraProcessingParameters
 
 import java.util
 import java.util.Collections
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 /**
  * Extra processing parameters for the openEO `sar_backscatter` process, as implemented by
