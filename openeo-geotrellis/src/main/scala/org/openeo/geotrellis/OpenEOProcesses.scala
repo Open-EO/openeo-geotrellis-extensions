@@ -1142,7 +1142,9 @@ class OpenEOProcesses extends Serializable {
    * Without `validWithinDays`, every target timestamp gets the tiles of the nearest source timestamp, regardless of their
    * values, so a source timestamp can be assigned to multiple target timestamps.
    * With `validWithinDays`, each pixel (per band) gets the value of the nearest source timestamp within that many days
-   * before or after the target timestamp for which it is valid (not no-data); if there is none, it is no-data.
+   * before or after the target timestamp for which it is valid (not no-data); if there is none, it is no-data. All target
+   * timestamps are present in the result, also those without any source timestamp within `validWithinDays`; if the
+   * cell type has no no-data value, it is then changed to one that has.
    *
    * The temporal labels of a cube are taken from the keys of its sparse partitioner if it has one, otherwise they are
    * collected from the cube's keys (which evaluates it).
@@ -1200,17 +1202,40 @@ class OpenEOProcesses extends Serializable {
     }
     val partitioner = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly, implicitly, index)
 
-    val candidates: RDD[(SpaceTimeKey, (Long, MultibandTile))] = datacube.flatMap { case (key, tile) =>
+    // target timestamps without a source timestamp within valid_within are kept, as no-data tiles
+    val coveredTargets = targetsBySource.valuesIterator.flatten.toSet
+    val uncoveredTargets = targetInstants.filterNot(coveredTargets.contains)
+    // no-data tiles require a cell type with no-data: switch to one that can represent all values of the original
+    val cellType = datacube.metadata.cellType match {
+      case ct: NoNoData if uncoveredTargets.nonEmpty => if (ct.isFloatingPoint) ct.withDefaultNoData() else GeneralUtils.upgradeCellTypes(ct)
+      case ct => ct
+    }
+    val source =
+      if (cellType == datacube.metadata.cellType) datacube
+      else datacube.mapValues(tile => if (tile.cellType == cellType) tile else tile.convert(cellType))
+
+    val candidates: RDD[(SpaceTimeKey, (Long, MultibandTile))] = source.flatMap { case (key, tile) =>
       targetsBySource.getOrElse(key.instant, Array.emptyLongArray)
         .map(t => (SpaceTimeKey(key.spatialKey, TemporalKey(t)), (key.instant, tile)))
     }
+    val candidatesWithNoData: RDD[(SpaceTimeKey, (Long, MultibandTile))] =
+      if (uncoveredTargets.isEmpty) candidates
+      else {
+        val noDataTiles = source
+          .map { case (key, tile) => (key.spatialKey, (tile.cols, tile.rows, tile.bandCount)) }
+          .reduceByKey((a, b) => if (b._3 > a._3) b else a)
+          .flatMap { case (spatialKey, (cols, rows, bandCount)) =>
+            uncoveredTargets.map(t => (SpaceTimeKey(spatialKey, TemporalKey(t)), (t, ArrayMultibandTile.empty(cellType, bandCount, cols, rows): MultibandTile)))
+          }
+        candidates.union(noDataTiles)
+      }
 
     val resampled: RDD[(SpaceTimeKey, MultibandTile)] = validWithinDays match {
       case None =>
         // a single source timestamp per target timestamp, so there is at most one tile per key
         candidates.partitionBy(partitioner).mapValues(_._2)
       case Some(_) =>
-        candidates.groupByKey(partitioner).map { case (key, sourceTiles) =>
+        candidatesWithNoData.groupByKey(partitioner).map { case (key, sourceTiles) =>
           val ordered = sourceTiles.toSeq.sortBy(_._1)(byDistanceTo(key.instant)).map(_._2)
           val nonEmpty = ordered.filterNot(_.isInstanceOf[EmptyMultibandTile])
           // merge only fills the no-data cells of the left tile, so the nearest valid value per cell and band wins
@@ -1218,7 +1243,7 @@ class OpenEOProcesses extends Serializable {
         }
     }
 
-    val result = ContextRDD(resampled, datacube.metadata.copy(bounds = newBounds: Bounds[SpaceTimeKey]))
+    val result = ContextRDD(resampled, datacube.metadata.copy(cellType = cellType, bounds = newBounds: Bounds[SpaceTimeKey]))
     result.name = s"resample_cube_temporal of ${datacube.name}"
     result
   }

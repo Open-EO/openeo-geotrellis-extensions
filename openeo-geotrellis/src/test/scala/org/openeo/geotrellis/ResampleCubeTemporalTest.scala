@@ -1,7 +1,7 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TemporalKey}
-import geotrellis.raster.{DoubleArrayTile, DoubleConstantNoDataCellType, MultibandTile, Tile, isNoData}
+import geotrellis.raster.{DoubleArrayTile, DoubleCellType, DoubleConstantNoDataCellType, MultibandTile, Tile, isNoData}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions._
@@ -86,8 +86,11 @@ class ResampleCubeTemporalTest {
     val processes = new OpenEOProcesses()
 
     val within5Days = byDay(processes.resampleCubeTemporal(data, targetCube(5, 15), Some(5)))
+    assertEquals(Set(5, 15), within5Days.keySet)
     // nothing within 5 days of day 15
-    assertEquals(Set(5), within5Days.keySet)
+    val day15 = within5Days(15)
+    assertEquals(1, day15.bandCount)
+    assertTrue(day15.band(0).isNoDataTile)
     val tile = within5Days(5).band(0)
     assertEquals(4.0, tile.getDouble(0, 0))
     assertEquals(1.0, tile.getDouble(size - 1, 0))
@@ -95,6 +98,18 @@ class ResampleCubeTemporalTest {
     val within2Days = byDay(processes.resampleCubeTemporal(data, targetCube(5), Some(2)))(5).band(0)
     assertEquals(4.0, within2Days.getDouble(0, 0))
     assertTrue(isNoData(within2Days.getDouble(size - 1, 0)))
+  }
+
+  @Test
+  def validWithinSwitchesToNoDataCellTypeForMissingTargets(): Unit = {
+    val raw = cube(date(1) -> constant(1).convert(DoubleCellType), date(30) -> constant(0).convert(DoubleCellType))
+    val result = new OpenEOProcesses().resampleCubeTemporal(raw, targetCube(1, 15), Some(5))
+
+    assertEquals(DoubleConstantNoDataCellType, result.metadata.cellType)
+    val tiles = byDay(result)
+    assertEquals(Set(1, 15), tiles.keySet)
+    assertEquals(1.0, tiles(1).band(0).getDouble(0, 0))
+    assertTrue(tiles(15).band(0).isNoDataTile)
   }
 
   @Test
