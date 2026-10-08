@@ -4,7 +4,6 @@ import cats.data.NonEmptyList
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{GridExtent, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
-import org.openeo.geotrellis.layers.raster_source.NoDataRasterSource
 import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
@@ -51,14 +50,16 @@ class CompositeRasterSource(override val sources: NonEmptyList[RasterSource],
   // logging (rather than failing the job) if it's ever violated, so a future regression is diagnosable
   // instead of silently producing misaligned pixels.
   private lazy val alignmentWarningLogged: Boolean = {
-    val ge = super.gridExtent
+    //TODO this check is disabled because retrieving grid extent from each raster source is costly.
+    //The alignment should rather be enforced when the raster sources are created.
+    /*val ge = super.gridExtent
     val misaligned = sources.toList.filterNot(s => s.isInstanceOf[NoDataRasterSource] || s.gridExtent == ge)
     if (misaligned.nonEmpty) {
       CompositeRasterSource.logger.warn(
         s"CompositeRasterSource: expected all bands to share grid extent $ge, but found misaligned source(s): " +
           misaligned.map(s => s"${s.name} -> ${s.gridExtent}").mkString(", ")
       )
-    }
+    }*/
     true
   }
 
