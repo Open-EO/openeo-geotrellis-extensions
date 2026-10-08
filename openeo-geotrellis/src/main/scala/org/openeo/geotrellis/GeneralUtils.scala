@@ -248,25 +248,11 @@ object GeneralUtils {
   }
 
   private def layoutDefinitionMergeWithEqualCellSize(layoutLeft:LayoutDefinition, extentRight:Extent): LayoutDefinition = {
-    val combinedExtent = extentRight.extent.combine(layoutLeft.extent)
-    
-    val ratioWidth = combinedExtent.width / layoutLeft.extent.width
-    val ratioTileWidth = ratioWidth*layoutLeft.layoutCols
-    val newLayoutCols = Math.ceil(ratioTileWidth)
-    val xMax = if (math.abs(ratioTileWidth - math.round(ratioTileWidth)) > 1e-6){
-      combinedExtent.xmin + newLayoutCols/layoutLeft.layoutCols * layoutLeft.extent.width
-    } else combinedExtent.xmax
-
-    val ratioHeight = combinedExtent.height / layoutLeft.extent.height
-    val ratioTileHeight = ratioHeight*layoutLeft.layoutRows
-    val newLayoutRows = Math.ceil(ratioTileHeight)
-    val yMax = if (math.abs(ratioTileHeight - math.round(ratioTileHeight)) > 1e-6){
-      combinedExtent.ymin + newLayoutRows/layoutLeft.layoutRows * layoutLeft.extent.height
-    } else combinedExtent.ymax
-
-
-    val tileLayout = TileLayout(newLayoutCols.toInt, newLayoutRows.toInt, layoutLeft.tileCols, layoutLeft.tileRows)
-    LayoutDefinition(Extent(combinedExtent.xmin,combinedExtent.ymin,xMax, yMax), tileLayout)
+    val combinedExtent = extentRight.combine(layoutLeft.extent)
+    val gridCombined = layoutLeft.mapTransform(combinedExtent)
+    val extentFinal = layoutLeft.mapTransform(gridCombined)
+    val tileLayout = TileLayout(gridCombined.width, gridCombined.height, layoutLeft.tileCols, layoutLeft.tileRows)
+    LayoutDefinition(extentFinal, tileLayout)
   }
 
   private def crossesAntimeridian(bbox: Extent): Boolean = {
