@@ -71,8 +71,9 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <modules>
-                <module>geotrellis-s3-extensions</module>
                 <module>geotrellis-common</module>
+                <module>geotrellis-s3-extensions</module>
+                <module>geotrellis-sentinelhub</module>
                 <module>snap-integration</module>
                 <module>geotrellis-extensions</module>
                 <module>openeo-geotrellis</module>
