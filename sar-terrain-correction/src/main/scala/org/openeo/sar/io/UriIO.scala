@@ -5,15 +5,14 @@ import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.withRetryAfterRetries
 import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.Http
-import software.amazon.awssdk.services.s3.model.GetObjectRequest
 
-import java.io.{BufferedInputStream, ByteArrayInputStream, InputStream}
+import java.io.{BufferedInputStream, ByteArrayInputStream, FileNotFoundException, InputStream}
 import java.net.URI
 import scala.xml.{Elem, XML}
 
 /** Uniform reader for SAR auxiliary files. Dispatches on the URI scheme:
  *
- *  - `s3://bucket/key`            -> [[CreoS3Utils.getS3Client]] (proxy-aware, CDSE-aware)
+ *  - `s3://bucket/key`            -> [[CreoS3Utils.readFromS3]] (proxy-aware, CDSE-aware)
  *  - `http://` / `https://`       -> `scalaj-http`, retried via [[withRetryAfterRetries]]
  *  - `file://` / no scheme        -> local file
  *
@@ -30,10 +29,9 @@ object UriIO {
     uri.getScheme match {
 
       case "s3" =>
-        val s3Uri = new AmazonS3URI(uri)
-        val key   = stripLeading('/', s3Uri.getKey)
-        val req   = GetObjectRequest.builder().bucket(s3Uri.getBucket).key(key).build()
-        new BufferedInputStream(CreoS3Utils.getS3Client(s3Uri).getObject(req))
+        val in = CreoS3Utils.readFromS3(new AmazonS3URI(uri))
+        if (in == null) throw new FileNotFoundException(s"S3 object not found: $uri")
+        new BufferedInputStream(in)
 
       case "http" | "https" =>
         // withRetryAfterRetries retries 5xx, socket errors and rate limiting
@@ -59,7 +57,4 @@ object UriIO {
     val in = openInputStream(uri)
     try XML.load(in) finally in.close()
   }
-
-  private def stripLeading(c: Char, s: String): String =
-    if (s != null && s.nonEmpty && s.charAt(0) == c) s.substring(1) else s
 }

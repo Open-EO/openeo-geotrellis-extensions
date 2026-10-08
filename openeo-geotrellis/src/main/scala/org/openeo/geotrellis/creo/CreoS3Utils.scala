@@ -21,6 +21,7 @@ import software.amazon.awssdk.services.sts.auth.StsWebIdentityTokenFileCredentia
 import software.amazon.awssdk.transfer.s3.S3TransferManager
 import software.amazon.awssdk.transfer.s3.model.UploadFileRequest
 
+import java.io.InputStream
 import java.net.URI
 import java.nio.file.{Files, Path}
 import java.time.Duration
@@ -136,6 +137,22 @@ object CreoS3Utils {
     val proxy = getProxyS3Client(uri.getBucket)
     if (proxy != null) proxy
     else getCreoS3Client(if (uri.getBucket == "eodata") eodataRegion else cloudFerroRegion)
+  }
+
+  /** Opens the S3 object. Returns null if the key does not exist. Caller must close the stream. */
+  def readFromS3(s3Uri: AmazonS3URI): InputStream = {
+    val bucket = s3Uri.getBucket
+    val key = Option(s3Uri.getKey).map(_.stripPrefix("/")).orNull
+    try {
+      getS3Client(s3Uri).getObject(GetObjectRequest.builder().bucket(bucket).key(key).build())
+    } catch {
+      case _: NoSuchKeyException =>
+        logger.error(s"Error reading from S3: bucket: $bucket, NoSuchKeyException, key: $key")
+        null
+      case e: Throwable =>
+        logger.error(s"Error reading from S3: bucket: $bucket, key: $key", e)
+        throw e
+    }
   }
 
   //Prefer using getS3Client with an S3 URI
