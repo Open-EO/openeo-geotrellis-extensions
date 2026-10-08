@@ -8,12 +8,14 @@ final case class ExecutionMetrics(
   totalStageRuntimeMillis: Long,
   executorAllocationTimeMillis: Long,
   cpuUtilizationRatio: Double,
-  totalStageFailures: Int
+  totalStageFailures: Int,
+  totalTaskFailures: Int,
+  peakExecutionMemoryBytes: Long
 )
 
 object ExecutionMetrics {
   private val logger = LoggerFactory.getLogger(getClass)
-  private val current = new AtomicReference(ExecutionMetrics(0L, 0L, 0d, 0))
+  private val current = new AtomicReference(ExecutionMetrics(0L, 0L, 0d, 0, 0, 0L))
 
   def get: ExecutionMetrics = current.get()
 
