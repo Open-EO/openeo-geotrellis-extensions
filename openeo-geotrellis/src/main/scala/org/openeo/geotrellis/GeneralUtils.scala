@@ -2,9 +2,10 @@ package org.openeo.geotrellis
 
 import geotrellis.layer.LayoutDefinition
 import geotrellis.proj4.CRS
-import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, isData, isNoData, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.vector.Extent
 import org.slf4j.LoggerFactory
+import java.util
 
 object GeneralUtils {
 
@@ -82,32 +83,6 @@ object GeneralUtils {
   }
 
   def cellTypeUnionWithNoData(leftCellType:CellType, rightCellType:CellType):CellType = {
-    def getNodataMaxMin(cellType:CellType):(Option[Double],Double,Double) = {
-      cellType match {
-        case BitCellType => (None, 1,0)
-        case ByteCellType => (None, Byte.MaxValue, Byte.MinValue)
-        case UByteCellType => (None, 255, 0)
-        case ShortCellType => (None, Short.MaxValue, Short.MinValue)
-        case UShortCellType => (None, 65535, 0)
-        case IntCellType => (None, Int.MaxValue, Int.MinValue)
-        case FloatCellType => (None, Float.MaxValue, Float.MinValue)
-        case DoubleCellType => (None, Double.MaxValue, Double.MinValue)
-        case ByteConstantNoDataCellType => (Some(byteNODATA), Byte.MaxValue, Byte.MinValue)
-        case UByteConstantNoDataCellType => (Some(ubyteNODATA), 255, 0)
-        case ShortConstantNoDataCellType => (Some(shortNODATA), Short.MaxValue, Short.MinValue)
-        case UShortConstantNoDataCellType => (Some(ushortNODATA), 65535, 0)
-        case IntConstantNoDataCellType => (Some(NODATA), Int.MaxValue, Int.MinValue)
-        case FloatConstantNoDataCellType => (Some(floatNODATA), Float.MaxValue, Float.MinValue)
-        case DoubleConstantNoDataCellType => (Some(doubleNODATA), Double.MaxValue, Double.MinValue)
-        case ct: ByteUserDefinedNoDataCellType => (Some(ct.noDataValue), Byte.MaxValue, Byte.MinValue)
-        case ct: UByteUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 255, 0)
-        case ct: ShortUserDefinedNoDataCellType => (Some(ct.noDataValue), Short.MaxValue, Short.MinValue)
-        case ct: UShortUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 65535, 0)
-        case ct: IntUserDefinedNoDataCellType => (Some(ct.noDataValue), Int.MaxValue, Int.MinValue)
-        case ct: FloatUserDefinedNoDataCellType => (Some(ct.noDataValue), Float.MaxValue, Float.MinValue)
-        case ct: DoubleUserDefinedNoDataCellType => (Some(ct.noDataValue), Double.MaxValue, Double.MinValue)
-      }
-    }
 
 
     val dataType = cellTypeUnion(leftCellType,rightCellType)
@@ -222,6 +197,33 @@ object GeneralUtils {
   }
 
 
+  def getNodataMaxMin(cellType:CellType):(Option[Double],Double,Double) = {
+    cellType match {
+      case BitCellType => (None, 1,0)
+      case ByteCellType => (None, Byte.MaxValue, Byte.MinValue)
+      case UByteCellType => (None, 255, 0)
+      case ShortCellType => (None, Short.MaxValue, Short.MinValue)
+      case UShortCellType => (None, 65535, 0)
+      case IntCellType => (None, Int.MaxValue, Int.MinValue)
+      case FloatCellType => (None, Float.MaxValue, Float.MinValue)
+      case DoubleCellType => (None, Double.MaxValue, Double.MinValue)
+      case ByteConstantNoDataCellType => (Some(byteNODATA), Byte.MaxValue, Byte.MinValue)
+      case UByteConstantNoDataCellType => (Some(ubyteNODATA), 255, 0)
+      case ShortConstantNoDataCellType => (Some(shortNODATA), Short.MaxValue, Short.MinValue)
+      case UShortConstantNoDataCellType => (Some(ushortNODATA), 65535, 0)
+      case IntConstantNoDataCellType => (Some(NODATA), Int.MaxValue, Int.MinValue)
+      case FloatConstantNoDataCellType => (Some(floatNODATA), Float.MaxValue, Float.MinValue)
+      case DoubleConstantNoDataCellType => (Some(doubleNODATA), Double.MaxValue, Double.MinValue)
+      case ct: ByteUserDefinedNoDataCellType => (Some(ct.noDataValue), Byte.MaxValue, Byte.MinValue)
+      case ct: UByteUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 255, 0)
+      case ct: ShortUserDefinedNoDataCellType => (Some(ct.noDataValue), Short.MaxValue, Short.MinValue)
+      case ct: UShortUserDefinedNoDataCellType => (Some(ct.widenedNoData.asInt), 65535, 0)
+      case ct: IntUserDefinedNoDataCellType => (Some(ct.noDataValue), Int.MaxValue, Int.MinValue)
+      case ct: FloatUserDefinedNoDataCellType => (Some(ct.noDataValue), Float.MaxValue, Float.MinValue)
+      case ct: DoubleUserDefinedNoDataCellType => (Some(ct.noDataValue), Double.MaxValue, Double.MinValue)
+    }
+  }
+
   /**
    * Works around geotrellis issue.
    * https://github.com/locationtech/geotrellis/issues/3525
@@ -293,4 +295,88 @@ object GeneralUtils {
     )
   }
 
+  type Stats = (Double, Double, Double, Double, Int, Int) // min, max, sum, powerSum, validCount, totalCount
+
+  def computeStatsTile(tile:Tile): Stats = {
+    val (tempMin, tempMax, tempSum, tempPowerSum, tempValidCount, totalCount) = tile.cellType match {
+      case _: FloatCells => statsDouble(tile)
+      case _: DoubleCells => statsDouble(tile)
+      case _: ByteCells => statsInt(tile)
+      case _: UByteCells => statsInt(tile)
+      case _: ShortCells => statsInt(tile)
+      case _: UShortCells => statsInt(tile)
+      case _: IntCells => statsInt(tile)
+    }
+    (tempMin, tempMax, tempSum, tempPowerSum, tempValidCount, totalCount)
+  }
+
+  def statsDouble(tile: Tile): Stats = {
+    var zmin = Double.NaN
+    var zmax = Double.NaN
+    var sum = 0.0
+    var powerSum = 0.0
+    var validCount = 0
+    var totalCount = 0
+    val nodata = getNodataMaxMin(cellType = tile.cellType)._1
+    tile.foreachDouble { z =>
+      totalCount += 1
+      if (isData(z) && (nodata.isEmpty || z != nodata.get)) {
+        validCount+=1
+        sum += z
+        powerSum += Math.pow(z,2)
+        if(isNoData(zmin)) {
+          zmin = z
+          zmax = z
+        } else {
+          zmin = math.min(zmin, z)
+          zmax = math.max(zmax, z)
+        }
+      }
+    }
+    (zmin,zmax,sum,powerSum,validCount,totalCount)
+  }
+  
+  def statsInt(tile:Tile): Stats = {
+    var zmin = Int.MaxValue
+    var zmax = Int.MinValue
+    var sum = 0
+    var powerSum = 0.0
+    var validCount = 0
+    var totalCount = 0
+    val nodata = getNodataMaxMin(cellType = tile.cellType)._1
+
+    tile.foreach { z =>
+      totalCount+= 1
+      if (isData(z) && (nodata.isEmpty || z != nodata.get)) {
+        validCount +=1
+        zmin = math.min(zmin, z)
+        zmax = math.max(zmax, z)
+        sum += z
+        powerSum += Math.pow(z,2)
+      }
+    }
+    (zmin,zmax,sum.toDouble,powerSum,validCount,totalCount)
+  }
+
+  def combineStats(existingStats: Stats, curStats: Stats): Stats = {
+    val (existingMin, existingMax, existingSum, existingPowerSum, existingValidCount, existingTotalCount) = existingStats
+    val (tempMin, tempMax, tempSum, tempPowerSum, tempValidCount, totalCount) = curStats
+    val newMin = math.min(existingMin, tempMin)
+    val newMax = math.max(existingMax, tempMax)
+    val newSum = existingSum + tempSum
+    val newPowerSum = existingPowerSum + tempPowerSum
+    val newValidCount = existingValidCount + tempValidCount
+    val newTotalCount = existingTotalCount + totalCount
+    (newMin, newMax, newSum, newPowerSum, newValidCount, newTotalCount)
+  }
+
+  def convertStatsToMap(stats: Stats): util.HashMap[String,Any] = {
+    val (min, max, sum, powerSum, validCount, totalCount) = stats
+    if (validCount == 0) {
+      new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))
+    } else {
+      val stddev = Math.sqrt(powerSum / validCount - Math.pow(sum / validCount, 2))
+      new util.HashMap[String, Any](util.Map.of("maximum", max, "minimum", min, "mean", sum / validCount, "stddev", stddev, "valid_percent", validCount.toDouble / totalCount * 100))
+    }
+  }
 }
