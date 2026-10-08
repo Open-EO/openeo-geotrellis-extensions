@@ -687,7 +687,6 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     //because debug logging is enabled during tests, it actually runs more jobs and stages than done in production
     assertEquals(5, listener.getJobsCompleted, "unexpected number of jobs")
     assertEquals(18, listener.getStagesCompleted, "unexpected number of stages")
-
   }
 
 
