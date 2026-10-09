@@ -1788,7 +1788,9 @@ class FileLayerProviderTest extends RasterMatchers {
   }
 
   @Test
-  def testDEMRegression(): Unit = {
+  def testDEMRegression(@TempDir outDir: Path): Unit = {
+    /* detect regressions in the context of https://github.com/Open-EO/openeo-geotrellis-extensions/issues/805 */
+
     val openSearchClient = new FixedFeaturesOpenSearchClient
 
     val in = Source.fromInputStream(
@@ -1818,20 +1820,14 @@ class FileLayerProviderTest extends RasterMatchers {
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
 
-    val Seq((_, cube)) = pyramidFactory.datacube_seq(
+    writeToNetCDFAndCompare(
       projectedPolygons,
-      from_date = "2000-01-01T00:00:00Z",
-      to_date = "2030-12-31T00:00:00Z",
-      metadata_properties = util.Collections.emptyMap(),
-      correlationId = "",
-      dataCubeParameters = dataCubeParameters,
+      dataCubeParameters,
+      bands = bandNames,
+      pyramidFactory,
+      outLocation = f"$outDir/testDEMRegression.nc",
+      referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testDEMRegression_ref.nc",
     )
-
-    val netCDFOptions = new NetCDFOptions
-    netCDFOptions.setBandNames(bandNames)
-    NetCDFRDDWriter.saveSingleNetCDFGeneric(cube, "/tmp/testDEMRegression.nc", netCDFOptions)
-
-    // TODO: verify output
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasEodataData")
