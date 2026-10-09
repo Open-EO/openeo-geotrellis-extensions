@@ -23,8 +23,6 @@ import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
-import software.amazon.awssdk.transfer.s3.S3TransferManager
-import software.amazon.awssdk.transfer.s3.model.UploadFileRequest
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType, InvalidRangeException}
 import ucar.nc2.write.Nc4ChunkingDefault
 import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
@@ -299,7 +297,7 @@ object NetCDFRDDWriter {
       if (path.startsWith("s3:/")) {
         // TODO: Change spark-jobs-staging-disabled back to spark-jobs-staging
         if(rdd.context.getConf.get("spark.kubernetes.namespace","nothing").equals("spark-jobs-staging-disabled")) {
-          uploadToS3LargeFile(path, intermediatePath)
+          CreoS3Utils.uploadToS3LargeFile(Paths.get(intermediatePath), path.replaceFirst("s3:/(?!/)", "s3://"))
         }else{
           uploadToS3(path, intermediatePath)
         }
@@ -559,8 +557,8 @@ object NetCDFRDDWriter {
     val crs = rdd.metadata.crs
     val sampleNames = featuresBC.value.map { case (sampleName, _) => sampleName }
     logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
-    val filtered = 
-      if (retainNoDataTiles) rdd 
+    val filtered =
+      if (retainNoDataTiles) rdd
       else new OpenEOProcesses().filterEmptyTile(rdd)
     //the logging below is rather expensive
     //logger.info(s"Filtered out ${rdd.count() - filtered.count()} empty tiles. ${rdd.count()} -> ${filtered.count()}")
@@ -718,23 +716,6 @@ object NetCDFRDDWriter {
     }else{
       path
     }
-
-  }
-
-  private def uploadToS3LargeFile(objectStoragePath: String, localPath: String) = {
-    val correctS3Path = objectStoragePath.replaceFirst("s3:/(?!/)", "s3://")
-    val s3Uri = new AmazonS3URI(correctS3Path)
-
-    val putRequest = PutObjectRequest.builder().bucket(s3Uri.getBucket).key(s3Uri.getKey).build()
-    val uploadFileRequest = UploadFileRequest.builder().putObjectRequest(putRequest).source(Paths.get(localPath)).build
-
-    val transferManager = S3TransferManager.builder()
-      .s3Client(CreoS3Utils.getAsyncClient)
-      .build();
-    val fileUpload = transferManager.uploadFile(uploadFileRequest)
-
-    val uploadResult = fileUpload.completionFuture.join
-    correctS3Path
 
   }
 

@@ -6,7 +6,7 @@ import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 import org.openeo.geotrelliss3.S3Utils
 import org.slf4j.LoggerFactory
-import software.amazon.awssdk.auth.credentials.{AnonymousCredentialsProvider, AwsBasicCredentials, StaticCredentialsProvider}
+import software.amazon.awssdk.auth.credentials.{AnonymousCredentialsProvider, AwsBasicCredentials, AwsCredentialsProvider, StaticCredentialsProvider}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
@@ -35,6 +35,8 @@ object CreoS3Utils {
   private val logger = LoggerFactory.getLogger(getClass)
   private val objectMapper = new ObjectMapper()
   private val proxyS3ClientCache = new ConcurrentHashMap[String, S3Client]()
+  private val proxyS3AsyncClientCache = new ConcurrentHashMap[String, S3AsyncClient]()
+  private val proxySettingsCache = new ConcurrentHashMap[String, ProxySettings]()
 
   private val cloudFerroRegion: Region = Region.of("RegionOne")
   private val eodataRegion: Region = Region.of("eodata")
@@ -49,7 +51,20 @@ object CreoS3Utils {
     }
   }
 
-  lazy val getAsyncClient: S3AsyncClient = {
+  // Async client for large (multipart) uploads. Chooses the proxy client or a region-specific client like getS3Client.
+  def getAsyncClient(uri: AmazonS3URI): S3AsyncClient = {
+    val proxy = getProxyS3AsyncClient(uri.getBucket)
+    if (proxy != null) proxy
+    else getCreoS3AsyncClient(if (uri.getBucket == "eodata") eodataRegion else cloudFerroRegion)
+  }
+
+  private val creoS3AsyncClientCache = new ConcurrentHashMap[Region, S3AsyncClient]()
+
+  private def getCreoS3AsyncClient(region: Region): S3AsyncClient =
+    creoS3AsyncClientCache.computeIfAbsent(region, (buildCreoS3AsyncClient _).asJava)
+
+  private def buildCreoS3AsyncClient(region: Region): S3AsyncClient = {
+    val (endpointURI, credProvider) = creoEndpointAndCredentials(region)
     // Might log this warning:
     // "
     // The provided DefaultS3AsyncClient is not an instance of S3CrtAsyncClient,
@@ -57,13 +72,13 @@ object CreoS3Utils {
     // To benefit from maximum throughput, consider using S3AsyncClient.crtBuilder().build() instead.
     // "
     S3AsyncClient.builder() // used to be crtBuilder, but then gave error
-      .credentialsProvider(credentialsProvider)
+      .credentialsProvider(credProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
       .overrideConfiguration(overrideConfig)
       .forcePathStyle(true)
-      .region(cloudFerroRegion)
-      .endpointOverride(URI.create(sys.env("SWIFT_URL")))
-      .build();
+      .region(region)
+      .endpointOverride(endpointURI)
+      .build()
   }
 
   // Return a Client that goes through the S3 proxy if S3 proxy is available for the execution environment and
@@ -74,7 +89,58 @@ object CreoS3Utils {
     proxyS3ClientCache.computeIfAbsent(bucketName, (buildProxyS3Client _).asJava)
   }
 
+  // Async variant of getProxyS3Client, same caching behavior.
+  def getProxyS3AsyncClient(bucketName: String): S3AsyncClient = {
+    if (bucketName == null || bucketName.isEmpty) return null
+    proxyS3AsyncClientCache.computeIfAbsent(bucketName, (buildProxyS3AsyncClient _).asJava)
+  }
+
   private def buildProxyS3Client(bucketName: String): S3Client = {
+    val settings = getProxySettings(bucketName)
+    if (settings == null) return null
+    try {
+      S3Client.builder()
+        .credentialsProvider(settings.credentials)
+        .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
+        .overrideConfiguration(overrideConfig)
+        .forcePathStyle(true)
+        .region(settings.region)
+        .endpointOverride(settings.s3Endpoint)
+        .build()
+    } catch {
+      case e: Exception =>
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: ${e.getMessage}", e)
+        null
+    }
+  }
+
+  private def buildProxyS3AsyncClient(bucketName: String): S3AsyncClient = {
+    val settings = getProxySettings(bucketName)
+    if (settings == null) return null
+    try {
+      S3AsyncClient.builder()
+        .credentialsProvider(settings.credentials)
+        .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
+        .overrideConfiguration(overrideConfig)
+        .forcePathStyle(true)
+        .region(settings.region)
+        .endpointOverride(settings.s3Endpoint)
+        .build()
+    } catch {
+      case e: Exception =>
+        logger.warn(s"Cannot build proxy S3 async client for bucket $bucketName: ${e.getMessage}", e)
+        null
+    }
+  }
+
+  private case class ProxySettings(region: Region, s3Endpoint: URI, credentials: AwsCredentialsProvider)
+
+  // Shared by the sync and async proxy clients, so both use the same STS credentials provider per bucket.
+  // Failures (null) are not cached.
+  private def getProxySettings(bucketName: String): ProxySettings =
+    proxySettingsCache.computeIfAbsent(bucketName, (resolveProxySettings _).asJava)
+
+  private def resolveProxySettings(bucketName: String): ProxySettings = {
     val tokenFile = Path.of(sys.env.getOrElse("OPENEO_WEB_IDENTITY_TOKEN_FILE", "/opt/job_config/token"))
     if (!Files.isRegularFile(tokenFile) || !Files.isReadable(tokenFile)) {
       logger.info(s"Skip proxy S3 client for bucket $bucketName: web identity token file is not readable: $tokenFile")
@@ -118,14 +184,7 @@ object CreoS3Utils {
         .webIdentityTokenFile(tokenFile)
         .build()
 
-      S3Client.builder()
-        .credentialsProvider(credentialsProvider)
-        .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
-        .overrideConfiguration(overrideConfig)
-        .forcePathStyle(true)
-        .region(region)
-        .endpointOverride(s3Endpoint)
-        .build()
+      ProxySettings(region, s3Endpoint, credentialsProvider)
     } catch {
       case e: Exception =>
         logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: ${e.getMessage}", e)
@@ -155,8 +214,7 @@ object CreoS3Utils {
     }
   }
 
-  //Prefer using getS3Client with an S3 URI
-  def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
+  private def creoEndpointAndCredentials(region: Region): (URI, AwsCredentialsProvider) = {
     val endpointURI =
       if (region == eodataRegion) eodataEndpoint
       else if (region != cloudFerroRegion) this.getCFEndpoin(region)
@@ -165,6 +223,12 @@ object CreoS3Utils {
       if (region == eodataRegion) credentialsProviderEodata
       else if (region.toString.contains("waw")) credentialsProviderWAW
       else credentialsProvider
+    (endpointURI, credProvider)
+  }
+
+  //Prefer using getS3Client with an S3 URI
+  def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
+    val (endpointURI, credProvider) = creoEndpointAndCredentials(region)
     S3Client.builder()
       .credentialsProvider(credProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
@@ -485,7 +549,7 @@ object CreoS3Utils {
       .build
 
     val transferManager = S3TransferManager.builder
-      .s3Client(CreoS3Utils.getAsyncClient)
+      .s3Client(CreoS3Utils.getAsyncClient(s3Uri))
       .build
     val fileUpload = transferManager.uploadFile(uploadFileRequest)
 
