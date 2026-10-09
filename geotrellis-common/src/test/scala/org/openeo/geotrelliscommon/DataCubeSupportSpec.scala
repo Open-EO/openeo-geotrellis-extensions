@@ -90,6 +90,18 @@ class DataCubeSupportSpec {
     assertTrue(DatacubeSupport.optimizeChunkSize(metadata16, Array(MultiPolygon()), Some(parameters), 256).isEmpty)
   }
 
+  @Test
+  def optimizeChunkSizeKeepsTilesLargerThanPixelBuffer():Unit ={
+    val metadata256 = TileLayerMetadata(UByteConstantNoDataCellType,LayoutDefinition(Extent(646660.0, 5678790.0, 649220.0, 5681350.0),TileLayout(1,1,256,256)),Extent(646668.7622376741, 5681108.99671377, 646917.3273239338, 5681335.60711388),CRS.fromEpsgCode(32631),KeyBounds(SpaceTimeKey(0,0,1588809600000L),SpaceTimeKey(0,0,1588809600000L)))
+    val parameters = new DataCubeParameters
+    parameters.setLayoutScheme("FloatingLayoutScheme")
+    // e.g. apply_kernel with a 201x201 kernel
+    parameters.setPixelBuffer(100.5, 100.5)
+    val metadata128 = DatacubeSupport.optimizeChunkSize(metadata256, Array(MultiPolygon()), Some(parameters), 1).get
+    assertEquals(128,metadata128.tileCols)
+    assertTrue(DatacubeSupport.optimizeChunkSize(metadata128, Array(MultiPolygon()), Some(parameters), 4).isEmpty)
+  }
+
 
   @Test
   def optimizeReduction(): Unit = {
