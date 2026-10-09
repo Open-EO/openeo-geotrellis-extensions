@@ -14,7 +14,9 @@ import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.s3.model._
+import software.amazon.awssdk.services.s3.multipart.MultipartConfiguration
 import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Client, S3Configuration}
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.auth.StsWebIdentityTokenFileCredentialsProvider
@@ -114,14 +116,40 @@ object CreoS3Utils {
     }
   }
 
+  // Reads an integer from an environment variable; warns and returns the default if missing/invalid/below min.
+  private[creo] def envInt(name: String, default: Int, min: Int): Int = {
+    sys.env.get(name).map(_.trim).filter(_.nonEmpty) match {
+      case None => default
+      case Some(value) =>
+        value.toIntOption match {
+          case Some(i) if i >= min => i
+          case _ =>
+            logger.warn(s"Ignoring invalid value '$value' for $name (expected integer >= $min), using $default")
+            default
+        }
+    }
+  }
+
+  // Same as envInt, but the value is in MiB and the result is in bytes.
+  private[creo] def envMiB(name: String, defaultMiB: Int, minMiB: Int): Long =
+    envInt(name, defaultMiB, minMiB) * 1024L * 1024L
+
   private def buildProxyS3AsyncClient(bucketName: String): S3AsyncClient = {
     val settings = getProxySettings(bucketName)
     if (settings == null) return null
     try {
+      val multipartConfig = MultipartConfiguration.builder()
+        .thresholdInBytes(envMiB("S3PROXY_MULTIPART_THRESHOLD_MB", 100, 1))
+        .minimumPartSizeInBytes(envMiB("S3PROXY_MULTIPART_PART_SIZE_MB", 32, 5)) // S3 minimum part size is 5 MiB
+        .build()
+      val maxConnections = envInt("S3PROXY_MAX_CONNECTIONS", 10, 1)
       S3AsyncClient.builder()
         .credentialsProvider(settings.credentials)
         .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
         .overrideConfiguration(overrideConfig)
+        .httpClientBuilder(NettyNioAsyncHttpClient.builder().maxConcurrency(maxConnections))
+        .multipartEnabled(true)
+        .multipartConfiguration(multipartConfig)
         .forcePathStyle(true)
         .region(settings.region)
         .endpointOverride(settings.s3Endpoint)
@@ -548,12 +576,16 @@ object CreoS3Utils {
       .source(localPath)
       .build
 
+    // Closing the transfer manager releases its internal thread pool; the (cached) async client stays open
+    // because the SDK only closes clients it created itself.
     val transferManager = S3TransferManager.builder
       .s3Client(CreoS3Utils.getAsyncClient(s3Uri))
       .build
-    val fileUpload = transferManager.uploadFile(uploadFileRequest)
-
-    fileUpload.completionFuture.join
+    try {
+      transferManager.uploadFile(uploadFileRequest).completionFuture.join
+    } finally {
+      transferManager.close()
+    }
     s3Path
   }
 
