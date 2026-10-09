@@ -867,11 +867,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     requiredSpacetimeKeys.sparkContext.setCallSite(s"load_collection: determine raster regions to read resample: ${resample}")
 
-    // Shuffle on the source name: it has a stable hashCode, so recomputed map tasks (e.g. after executor loss) route
-    // records to the same reduce partitions as the original attempt.
+    // Partition on the SpaceTimeKey and group within partitions: a shuffle on the raster source (identity hashCode)
+    // routes records differently when map tasks are recomputed (e.g. after executor loss), while a shuffle on the source
+    // name sends all keys of a product to a single task. Grouping on the name first keeps hash collisions cheap.
     requiredSpacetimeKeys
-      .groupBy { case (_, vector.Feature(_, (rasterSource, _))) => rasterSource.name }
-      .flatMap { case (_, keyedFeaturesWithSameName) => keyedFeaturesWithSameName.groupBy(_._2.data._1) }
+      .partitionBy(Partitioner.defaultPartitioner(requiredSpacetimeKeys))
+      .mapPartitions(_.toSeq
+        .groupBy { case (_, vector.Feature(_, (rasterSource, _))) => rasterSource.name }
+        .valuesIterator
+        .flatMap(_.groupBy(_._2.data._1)))
       .flatMap { case (rasterSource, keyedFeatures) =>
         val source = if (resample) {
           //slow path
