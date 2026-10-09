@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - merge_cubes: merging a cube with a temporal dimension with a cube without a temporal dimension well now correctly add nodata bands to honor the expected band count.
+- load_collection/load_stac: raw integral rasters without a NODATA value no longer treat 0 as NODATA; instead, their cell type is widened (e.g. uint16 to int32) to make room for a NODATA value outside of their original range.
 
 ## Before 2026-09-30
 
