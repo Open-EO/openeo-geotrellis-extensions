@@ -49,6 +49,26 @@ class CreoS3UtilsTest {
   }
 
   @Test
+  @SetEnvironmentVariable(key = "CREOS3_TEST_MIB_OK", value = "7")
+  @SetEnvironmentVariable(key = "CREOS3_TEST_MIB_NAN", value = "abc")
+  @SetEnvironmentVariable(key = "CREOS3_TEST_MIB_LOW", value = "2")
+  def envMiBParsing(): Unit = {
+    assertEquals(100L * 1024 * 1024, CreoS3Utils.envMiB("CREOS3_TEST_MIB_MISSING", 100, 1))
+    assertEquals(7L * 1024 * 1024, CreoS3Utils.envMiB("CREOS3_TEST_MIB_OK", 100, 5))
+    assertEquals(100L * 1024 * 1024, CreoS3Utils.envMiB("CREOS3_TEST_MIB_NAN", 100, 5))
+    assertEquals(100L * 1024 * 1024, CreoS3Utils.envMiB("CREOS3_TEST_MIB_LOW", 100, 5))
+  }
+
+  @Test
+  @SetEnvironmentVariable(key = "CREOS3_TEST_INT_OK", value = "3")
+  @SetEnvironmentVariable(key = "CREOS3_TEST_INT_ZERO", value = "0")
+  def envIntParsing(): Unit = {
+    assertEquals(10, CreoS3Utils.envInt("CREOS3_TEST_INT_MISSING", 10, 1))
+    assertEquals(3, CreoS3Utils.envInt("CREOS3_TEST_INT_OK", 10, 1))
+    assertEquals(10, CreoS3Utils.envInt("CREOS3_TEST_INT_ZERO", 10, 1))
+  }
+
+  @Test
   def getAsyncClientDoesNotUseProxyForOtherBucket(): Unit = {
     val client = CreoS3Utils.getAsyncClient(new AmazonS3URI("s3://other-bucket/some/key.tif"))
     assertNotEquals(proxyEndpoint, client.serviceClientConfiguration().endpointOverride().get().toString)
