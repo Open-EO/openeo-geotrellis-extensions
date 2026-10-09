@@ -1763,7 +1763,7 @@ class FileLayerProviderTest extends RasterMatchers {
   }
 
   @ParameterizedTest
-  @ValueSource(booleans = Array(false))
+  @ValueSource(booleans = Array(false, true))
   def testMultibandNoNoDataCOGViaSTAC(loadPerProduct: Boolean, @TempDir outDir: Path): Unit = {
     // 2 adjacent Int16 GeoTiffs without NODATA value (34TFR_000 and 34TFR_001, seam at x=610240); actual values >= 13
     val pyramidFactory = LayerFixtures.stacCogNoNoDataCollection
