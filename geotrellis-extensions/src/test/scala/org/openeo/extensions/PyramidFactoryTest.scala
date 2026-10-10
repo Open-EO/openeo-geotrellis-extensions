@@ -9,7 +9,6 @@ import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrelliscommon.{DataCubeParameters, ScopedMetadataTracker}
-import org.openeo.geotrellissentinelhub.{PyramidFactory, SampleType}
 
 import java.util.Collections
 import scala.jdk.CollectionConverters._
@@ -19,7 +18,9 @@ class PyramidFactoryTest {
   @Disabled("TODO re-enable")
   @Test
   def sentinelHubSmallAreaToTiff(): Unit = {
+    /*
     implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+    import org.openeo.geotrellissentinelhub.{PyramidFactory, SampleType}
     try {
       val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(
         endpoint = "https://services.sentinel-hub.com",
@@ -75,5 +76,6 @@ class PyramidFactoryTest {
         assert(arr.exists(_ != -2147483648))
       } finally println(s"$testScopeMetadataTracker consumed a total of ${testScopeMetadataTracker.sentinelHubProcessingUnits} PUs")
     } finally sc.stop()
+     */
   }
 }
