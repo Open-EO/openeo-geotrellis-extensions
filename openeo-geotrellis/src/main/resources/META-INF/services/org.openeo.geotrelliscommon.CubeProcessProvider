@@ -1,2 +1,3 @@
 org.openeo.geotrellis.croptype.CroptypeInferenceProvider
 org.openeo.geotrellis.FaultInjectionProcessesProvider
+org.openeo.geotrellis.ResampleProcessesProvider
