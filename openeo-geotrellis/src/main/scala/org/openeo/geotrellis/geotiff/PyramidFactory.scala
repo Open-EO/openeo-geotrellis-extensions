@@ -3,8 +3,8 @@ package org.openeo.geotrellis.geotiff
 import cats.data.NonEmptyList
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
-import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
-import geotrellis.raster.{CellType, InterpretAsTargetCellType, MultibandTile, RasterSource}
+import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.{CellType, InterpretAsTargetCellType, MultibandTile, RasterMetadata, RasterSource}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.hadoop.util.HdfsUtils
@@ -28,6 +28,15 @@ import scala.collection.parallel.CollectionConverters._
 import scala.jdk.CollectionConverters._
 import scala.util.matching.Regex
 
+/**
+ * Loads a data cube from a set of (timestamped) GeoTIFFs.
+ *
+ * Deprecated: superseded by [[org.openeo.geotrellis.file.PyramidFactory]] in combination with an
+ * [[org.openeo.opensearch.OpenSearchClient]] (e.g. [[org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient]], as
+ * used by load_stac in openeo-geopyspark-driver). This class will be removed once openeo-geopyspark-driver no longer
+ * references it.
+ */
+@deprecated("use org.openeo.geotrellis.file.PyramidFactory with an OpenSearchClient (cfr. load_stac) instead")
 object PyramidFactory {
 
   private val logger = LoggerFactory.getLogger(classOf[PyramidFactory])
@@ -51,33 +60,17 @@ object PyramidFactory {
       HdfsUtils.listFiles(path, new Configuration)
         .map(path => (GeoTiffRasterSource(path.toString, parseTargetCellType(interpret_as_cell_type)),
           deriveDate(date_regex.r)(path.toString)))
-    }, deriveDate(date_regex.r), lat_lon)
+    }, lat_lon)
 
-  def from_disk(timestamped_paths: util.Map[String, String]): PyramidFactory = // file path -> timestamp
-    from_uris(timestamped_uris = timestamped_paths)
-
-  def from_uris(timestamped_uris: util.Map[String, String]): PyramidFactory = { // uri -> timestamp
-    val sc = SparkContext.getOrCreate()
-
-    val timestampedUris = timestamped_uris.asScala
-      .mapValues { timestamp => ZonedDateTime.parse(timestamp) }
-      .toMap
-
-    val broadcastedTimestampedPaths = sc.broadcast(timestampedUris)
-
+  def from_uris(timestamped_uris: util.Map[String, String]): PyramidFactory = // uri -> timestamp
     new PyramidFactory(
-      rasterSources = timestampedUris
-        .map { case (path, timestamp) => GeoTiffRasterSource(path) -> timestamp }
+      rasterSources = timestamped_uris.asScala
+        .map { case (uri, timestamp) => GeoTiffRasterSource(uri) -> ZonedDateTime.parse(timestamp) }
         .toSeq,
-      extractDateFromPath = broadcastedTimestampedPaths.value, latLng = false)
-  }
+      latLng = false)
 
   def from_s3(s3_uri: String, key_regex: String, date_regex: String, recursive: Boolean,
-              interpret_as_cell_type: String): PyramidFactory =
-    from_s3(s3_uri, key_regex, date_regex, recursive, interpret_as_cell_type, lat_lon = false)
-
-  def from_s3(s3_uri: String, key_regex: String = ".*", date_regex: String, recursive: Boolean = false,
-              interpret_as_cell_type: String = null, lat_lon: Boolean): PyramidFactory =
+              interpret_as_cell_type: String, lat_lon: Boolean): PyramidFactory =
     new PyramidFactory({
       val s3Uri = new AmazonS3URI(s3_uri)
       val keyPattern = key_regex.r
@@ -103,7 +96,7 @@ object PyramidFactory {
           (GeoTiffRasterSource(uri.toString, parseTargetCellType(interpret_as_cell_type)),
             deriveDate(date_regex.r)(uri.getKey))
         ).toSeq
-    }, deriveDate(date_regex.r), lat_lon)
+    }, lat_lon)
 
   private def deriveDate(date: Regex)(path: String): ZonedDateTime = {
     try{
@@ -117,14 +110,19 @@ object PyramidFactory {
 
   }
 
+  // dates are carried by the "date" attribute of the MultibandCompositeRasterSources
+  private val keyExtractor: TemporalKeyExtractor = new TemporalKeyExtractor {
+    def getMetadata(rs: RasterMetadata): ZonedDateTime = ZonedDateTime.parse(rs.attributes("date"))
+  }
+
   private def parseTargetCellType(targetCellType: String): Option[InterpretAsTargetCellType] =
     Option(targetCellType)
       .map(CellType.fromName)
       .map(InterpretAsTargetCellType.apply)
 }
 
-class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime)],
-                              extractDateFromPath: String => ZonedDateTime, latLng: Boolean) {
+@deprecated("use org.openeo.geotrellis.file.PyramidFactory with an OpenSearchClient (cfr. load_stac) instead")
+class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime)], latLng: Boolean) {
   import PyramidFactory._
   private val targetCrs = if (latLng) LatLng else WebMercator
 
@@ -148,12 +146,12 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
       .reverse
   }
 
-  def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime)(implicit sc: SparkContext): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  private def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime)(implicit sc: SparkContext): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val layers = for (zoom <- maxZoom to 0 by -1) yield zoom -> layer(boundingBox, from, to, zoom)
     Pyramid(layers.toMap)
   }
 
-  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, parameters: DataCubeParameters = new DataCubeParameters)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+  private[geotiff] def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, parameters: DataCubeParameters = new DataCubeParameters)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(targetCrs), targetCrs)
     layer(reprojectedRasterSources, reprojectedBoundingBox, from, to, parameters, zoom = zoom)
   }
@@ -194,9 +192,6 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     params: DataCubeParameters,
     zoom:Int = -1
   )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val extractDateFromPath = this.extractDateFromPath
-    val keyExtractor = TemporalKeyExtractor.fromPath { case GeoTiffPath(value) => extractDateFromPath(value) }
-
     val sources = sc.parallelize(rasterSources).cache()
     val summary = RasterSummary.fromRDD(sources, keyExtractor.getMetadata)
     
