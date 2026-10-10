@@ -149,18 +149,18 @@ class TestGeneralUtils {
 
   @Test
   def testLayoutMergedNeedsBiggerExtent(): Unit = {
-    val extent1 = Extent(663810.0, 5610650.0, 665090.0, 5611930.0)
-    val tileLayout1 = TileLayout(2, 1, 128, 128)
+    val extent1 = Extent(5, 10, 10, 20)
+    val tileLayout1 = TileLayout(2, 4, 128, 128)
     val layoutDefinition1= LayoutDefinition(extent1, tileLayout1)
-    val extent2 = Extent(663800.0, 5606820.0, 668900.0, 5611940.0)
-    val tileLayout2 = TileLayout(1, 2, 256, 256)
+    val extent2 = Extent(0, 0, 10, 10)
+    val tileLayout2 = TileLayout(1, 1, 256, 256)
     val layoutDefinition2= LayoutDefinition(extent2, tileLayout2)
 
     val crs = CRS.fromEpsgCode(32631)
     val merged = GeneralUtils.layoutMerged(layoutDefinition1, layoutDefinition2, crs, crs)
     assertEquals(layoutDefinition1.cellSize, merged.cellSize)
-    assertEquals(TileLayout(8, 4, 128, 128), merged.tileLayout)
-    assertEquals(Extent(663800.0, 5606820.0, 668920.0, 5611940.0), merged.extent)
+    assertEquals(TileLayout(4, 8, 128, 128), merged.tileLayout)
+    assertEquals(Extent(0, 0, 10, 20), merged.extent)
   }
 
 
