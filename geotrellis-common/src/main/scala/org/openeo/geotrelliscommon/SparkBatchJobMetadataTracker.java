@@ -43,11 +43,17 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
 
     @Override
     public void add(String name, long value) {
+        if (!counters.containsKey(name)) {
+            throw new IllegalArgumentException("Counter " + name + " is not registered.");
+        }
         counters.get(name).add(value);
     }
 
     @Override
     public void add(String name, double value) {
+        if (!doubleCounters.containsKey(name)) {
+            throw new IllegalArgumentException("Double counter " + name + " is not registered.");
+        }
         doubleCounters.get(name).add(value);
     }
 

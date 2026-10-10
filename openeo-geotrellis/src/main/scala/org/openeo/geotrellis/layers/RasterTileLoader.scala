@@ -5,6 +5,8 @@ import geotrellis.layer.{LayoutDefinition, LayoutTileSource, Metadata, SpaceTime
 import geotrellis.proj4.CRS
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, MultibandTile, NoNoData, PaddedTile, Raster, RasterRegion, RasterSource, SourceName}
+import geotrellis.raster.rasterize.Rasterizer
+import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterRegion, RasterSource, SourceName, Tile}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withGeometryClipToGridMethods}
 import geotrellis.vector.{MultiPolygon, ReprojectMutliPolygon}
@@ -56,6 +58,9 @@ case class RasterTileLoader() {
     val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
     val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
     val size = openSearchLinkTitlesWithBandId.size * metadata.layout.size
+    val tracker = BatchJobMetadataTracker.tracker("")
+    tracker.registerCounter(PIXEL_COUNTER)
+    tracker.registerCounter(SOFT_ERROR_MEGAPIXEL_COUNTER)
     logger.debug(s"Size: $size")
     if (!datacubeParams.exists(_.loadPerProduct) || theMaskStrategy != NoCloudFilterStrategy) {
       logger.debug(s"Load per product: false - $collectionRef")
@@ -129,8 +134,6 @@ case class RasterTileLoader() {
     logger.info(s"Cube partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val tracker = BatchJobMetadataTracker.tracker("")
-    tracker.registerCounter(PIXEL_COUNTER)
-    tracker.registerCounter(SOFT_ERROR_MEGAPIXEL_COUNTER)
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val crs = metadata.crs
     val layout = metadata.layout
@@ -199,7 +202,6 @@ case class RasterTileLoader() {
     logger.info(s"Cube $collectionRef partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val tracker = BatchJobMetadataTracker.tracker("")
-    tracker.registerCounter(PIXEL_COUNTER)
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val crs = metadata.crs
     val layout = metadata.layout
@@ -210,21 +212,15 @@ case class RasterTileLoader() {
      */
     val allSources: Array[SourceName] = sources.flatMap(t => {
       t._1 match {
-        case multibandCompositeRasterSource: MultibandCompositeRasterSource =>
-          //decompose into individual bands
-          //TODO do something like line below, but make sure that band order is maintained! For now we just return the composite source.
-          //source1.sourcesListWithBandIds.map(s => (s._1.name, (s._2,key_region_sourcename._1,GridBoundsRasterRegion(s._1, bounds))))
-          Seq(t._1.name)
-        case bandCompositeRasterSource: BandCompositeRasterSource =>
-          //decompose into individual bands
-          bandCompositeRasterSource.sources.map(s => s.name).toList
+        case compositeRasterSource: CompositeRasterSource =>
+          //decompose into individual bands, preserving true output band order
+          compositeRasterSource.groupedBySource.map(_._1)
         case rasterSource =>
           Seq(rasterSource.name)
       }
     }).distinct.toArray
 
     rasterRegionRDD.sparkContext.setCallSite(s"load_collection $collectionRef: group by input product")
-    val parallelRead = datacubeParams.forall(!_.loadPerProduct)
     val byBandSource: RDD[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] = rasterRegionRDD.flatMap(key_region_sourcename => {
       val key: SpaceTimeKey = key_region_sourcename._1
       val region_sourcename: (RasterRegion, SourceName) = key_region_sourcename._2
@@ -233,20 +229,19 @@ case class RasterTileLoader() {
       val bounds = gridBoundsRasterRegion.bounds
       val result: Seq[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] =
         source match {
-          case multibandCompositeRasterSource: MultibandCompositeRasterSource =>
-            Seq((multibandCompositeRasterSource.name, (Seq(0), key, gridBoundsRasterRegion)))
-          case bandCompositeRasterSource: BandCompositeRasterSource =>
-            // Group the band sources by source name, keeping track of the actual band positions
-            // (in the final multiband tile) of the sources in each group.
-            // Note: multiple (non-contiguous) bands can share the same source name (e.g. multi-band asset),
-            // while missing bands get their own (NoData) source, so positions can not be derived from group order.
-            val byName: Map[SourceName, List[(RasterSource, Int)]] = bandCompositeRasterSource.sources.toList.zipWithIndex
-              .groupBy(_._1.name)
-            val seq = byName.toList.sortBy { case (name, _) => allSources.indexOf(name) }.map { case (name, sourcesWithIndex) =>
-              val region = GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.fromListUnsafe(sourcesWithIndex.map(_._1)), bandCompositeRasterSource.crs, bandCompositeRasterSource.attributes, bandCompositeRasterSource.predefinedExtent, parallelRead = parallelRead, softErrors = softErrors, readFullTile = true), bounds)
-              (name, (sourcesWithIndex.map(_._2), key, region))
+          case compositeRasterSource: CompositeRasterSource =>
+            //decompose into individual physical datasources, one GridBoundsRasterRegion per source, so that
+            //reads for the same underlying file/dataset get grouped onto the same partition. The output band
+            //index for every band is known upfront from groupedBySource, instead of being re-derived later.
+            compositeRasterSource.groupedBySource.map { case (sourceName, entries) =>
+              val outputBandIndices = entries.map(_._1)
+              val groupSources = NonEmptyList.fromListUnsafe(entries.map(_._2).toList)
+              val subRegion = GridBoundsRasterRegion(
+                new CompositeRasterSource(groupSources, compositeRasterSource.crs, compositeRasterSource.attributes,
+                  compositeRasterSource.predefinedExtent, readFullTile = true, softErrors = softErrors),
+                bounds)
+              (sourceName, (outputBandIndices, key, subRegion))
             }
-            seq
 
           case otherSource =>
             Seq((otherSource.name, (Seq(0), key, gridBoundsRasterRegion)))
@@ -281,30 +276,25 @@ case class RasterTileLoader() {
     )
     val value = value1.groupByKey(partitioner)
     var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = value.mapValues((tiles: Iterable[(Seq[Int], MultibandTile, SourceName)]) => {
-      // Spread each (multiband) tile over its actual band positions in the final multiband tile.
-      val bandsByPosition: Iterable[(Int, (MultibandTile, SourceName))] = tiles.flatMap { case (positions, multiband, sourceName) =>
-        val bands = multiband.bands
-        val bandPositions: Seq[Int] =
-          if (positions.size == bands.size) positions
-          else if (positions.size == 1) bands.indices.map(_ + positions.head)
-          else throw new IllegalStateException(s"load_collection/load_stac - $collectionRef: Band count mismatch for $sourceName: expected band positions $positions but got ${bands.size} bands")
-        bandPositions.zip(bands).map { case (position, band) => (position, (MultibandTile(band), sourceName)) }
-      }
-      var mergedBands: Map[Int, MultibandTile] = bandsByPosition
-        .groupBy(_._1)
-        .map { case (position, tilesForPosition) =>
-          (position, tilesForPosition.map(_._2).toList.sortBy(x => sortableSourceName(x._2)).map(_._1).reduce(_ merge _))
+      // Group by the true, absolute output-band indices for this source group, merging overlapping
+      // contributions (e.g. from multiple products at the same SpaceTimeKey) deterministically by source name.
+      val bandsByGroup: Iterable[(Seq[Int], Option[MultibandTile])] = tiles.groupBy(_._1)
+        .map { case (indices, entries) =>
+          (indices, entries.toList.sortBy(x => sortableSourceName(x._3)).map(_._2).reduceOption(_ merge _))
         }
-      val bandCount = math.max(expectedBandCount, if (mergedBands.isEmpty) 0 else mergedBands.keys.max + 1)
-      for (x <- 0 until bandCount) {
+
+      var mergedBands: Map[Int, Tile] = bandsByGroup.flatMap { case (indices, multiband) =>
+        multiband.toSeq.flatMap(mb => indices.zip(mb.bands))
+      }.toMap
+      for (x <- 0 until expectedBandCount) {
         if (!mergedBands.contains(x)) {
-          val allSources = bandsByPosition.map(t=>(t._1,t._2._2)).toList.sortBy(_._1).distinct
+          val allSources = bandsByGroup.flatMap { case (indices, multiband) => multiband.map(_ => indices) }.toList.sortBy(_.headOption).distinct
           logger.warn(s"load_collection/load_stac - $collectionRef: Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", ") + s" stage ${TaskContext.get().stageId()} - attempt ${TaskContext.get().stageAttemptNumber()}")
           val someTile = mergedBands.head._2
           mergedBands = mergedBands + (x -> someTile.prototype(someTile.cols, someTile.rows))
         }
       }
-      val mergedTile = MultibandTile(mergedBands.toSeq.sortBy(_._1).flatMap(_._2.bands))
+      val mergedTile = MultibandTile(mergedBands.toSeq.sortBy(_._1).map(_._2))
       mergedTile
     })
     val withEmptyTiles = tiledRDD.mapValues {
@@ -414,8 +404,9 @@ case class RasterTileLoader() {
       val source = tuple._2.head._3.asInstanceOf[GridBoundsRasterRegion].source
       val bounds = tuple._2.map(_._3.asInstanceOf[GridBoundsRasterRegion].bounds).toSeq
       val intersections: Seq[Option[GridBounds[Long]]] = bounds.map(_.intersection(source.dimensions)).toSeq
-      // Band positions of this source's bands in the eventual multiband tile (not the index to read from the source)
-      val theIndex: Seq[Int] = tuple._2.head._1
+      // The true, absolute output-band indices for this source group, as computed by CompositeRasterSource.groupedBySource.
+      // Assumed consistent across all features sharing this SourceName within the collection.
+      val theIndices: Seq[Int] = tuple._2.head._1
 
       val allRasters =
         try {
@@ -423,7 +414,7 @@ case class RasterTileLoader() {
             _ convert cellType
           }).toSeq
         } catch {
-          case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
+          case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}", e)
         }
 
       val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
@@ -459,7 +450,7 @@ case class RasterTileLoader() {
       totalChunksAcc.add(totalPixels / (256 * 256))
       tracker.add(PIXEL_COUNTER, totalPixels)
       // Keep keys aligned with their rasters (rasters with empty intersection are dropped above)
-      paddedRasters.map { case (key, b) => (key, (theIndex, b.tile, tuple._1)) }.iterator
+      paddedRasters.map { case (key, b) => (key, (theIndices, b.tile, tuple._1)) }.iterator
 
     })
     (tiles.toVector.iterator, totalPixelsPartition) // materialize to actually read partition elements and take time

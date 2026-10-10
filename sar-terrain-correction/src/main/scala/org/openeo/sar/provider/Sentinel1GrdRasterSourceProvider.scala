@@ -1,5 +1,6 @@
 package org.openeo.sar.provider
 
+import cats.data.NonEmptyList
 import com.github.benmanes.caffeine.cache.Caffeine
 import geotrellis.proj4.CRS
 import geotrellis.raster.geotiff.GeoTiffRasterSource
@@ -52,6 +53,42 @@ class Sentinel1GrdRasterSourceProvider(
   }
 
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
+    val (scene, safeRoot, crs, cellSize) = openScene(definition)
+    val ge = GridExtent[Long](definition.targetExtent.extent, cellSize)
+
+    new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString))
+  }
+
+
+
+  /** Serves all requested polarisation bands of one feature from a single [[S1GrdRasterSource]]: the
+   *  scene (orbit/LUTs/RasterSources) is opened once and shared, and terrain correction for all
+   *  polarisations is computed together in one pass, instead of once per band as `rasterSource` would. */
+  override def multibandRasterSource(definitions: NonEmptyList[RasterSourceDefinition]): Option[(RasterSource, Seq[Int])] = {
+    // All definitions belong to the same feature/target extent (see FileLayerProvider), so scene state
+    // (and hence the polarisation ordering used to open it) can be derived from any single one of them.
+    val (scene, safeRoot, crs, cellSize) = openScene(definitions.head)
+    val ge = GridExtent[Long](definitions.head.targetExtent.extent, cellSize)
+    val source: RasterSource = new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString))
+
+    val bandIndices = definitions.toList.map { definition =>
+      PolPattern.findFirstMatchIn(definition.dataPath).map(m => Polarisation.parse(m.group(1).toUpperCase)) match {
+        case Some(pol) if scene.polarisations.contains(pol) =>
+          scene.polarisations.indexOf(pol)
+        case _ =>
+          logger.warn(s"Could not determine polarisation band index for ${definition.dataPath} in scene $safeRoot (pols=${scene.polarisations.map(_.code).mkString(",")}); defaulting to band 0")
+          0
+      }
+    }
+
+    Some((source, bandIndices))
+  }
+
+  /** Opens (or retrieves from cache) the [[SceneContext]] backing `definition`, alongside the SAFE
+   *  root/CRS/cellSize used to key it. Shared by `rasterSource` and `multibandRasterSource` so that a
+   *  scene opened for one band is reused for the others (both via the cache, and, in the latter case,
+   *  by construction - one open serves every requested polarisation). */
+  private def openScene(definition: RasterSourceDefinition): (SceneContext, URI, CRS, CellSize) = {
     val crs      = definition.targetExtent.crs
     val cellSize = definition.theResolution
 
@@ -81,9 +118,7 @@ class Sentinel1GrdRasterSourceProvider(
       }
     })
 
-    val ge = GridExtent[Long](definition.targetExtent.extent, cellSize)
-
-    new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString))
+    (scene, safeRoot, crs, cellSize)
   }
 
   // ---- helpers ---------------------------------------------------------------

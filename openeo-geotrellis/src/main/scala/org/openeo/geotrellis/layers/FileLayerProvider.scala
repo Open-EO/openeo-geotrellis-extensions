@@ -141,6 +141,11 @@ object FileLayerProvider {
     ProjectedExtent(collection.bbox.reproject(LatLng, WebMercator), WebMercator)
   }
 
+
+  /**
+   * DEPRECATED
+   * This method is to be removed asap, replacing everything with STAC item based code paths.
+   */
   def rasterSourceRDD(rasterSources: Seq[RasterSource], metadata: TileLayerMetadata[SpaceTimeKey], maxSpatialResolution: CellSize, collection: String)(implicit sc: SparkContext): RDD[LayoutTileSource[SpaceTimeKey]] = {
 
     val keyExtractor = new TemporalKeyExtractor {
@@ -963,62 +968,106 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
-    val rasterSources: Seq[Option[(RasterSource, Int)]] =
-      resolver.getBandAssets(feature).map {
-        case Some((link, bandIndex, bandName)) =>
-          val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
-          val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
+    // Per-band metadata (scale/offset/cellType overrides) plus the RasterSourceDefinition, computed once
+    // per requested band, independently of whether the default per-band strategy or a provider's
+    // whole-feature `multibandRasterSource` strategy (see below) ends up being used to open the source(s).
+    case class BandContext(definition: RasterSourceDefinition, pixelValueScale: Double, pixelValueOffset: Double, targetTargetCellType: Option[TargetCellType])
 
-          val dataType = link.datatype
-          val nodata =
-            if(link.nodata.isEmpty && (link.title.contains("SCENECLASSIFICATION") || link.title.contains("SCL"))) Some(0.0)
-            else link.nodata
+    def buildBandContext(link: Link, bandIndex: Int, bandName: String): BandContext = {
+      val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
+      val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
-          val cellTypeSTAC = if (dataType.isDefined){
-            Some(ConvertTargetCellType(dataType.get.withNoData(nodata)))
-          }
-          else None
+      val dataType = link.datatype
+      val nodata =
+        if(link.nodata.isEmpty && (link.title.contains("SCENECLASSIFICATION") || link.title.contains("SCL"))) Some(0.0)
+        else link.nodata
 
-          //special case handling for data that does not declare nodata properly
-          val targetCellType = link.title match {
-            // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
-            case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
-            case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
-            case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(UShortConstantNoDataCellType)) // TODO: get info from Link object
-            case Some(title) if fromLoadStac && Seq("SCL_20m", "SCL_60m").contains(title) => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) // TODO: get info from Link object
-            case _ => cellTypeSTAC
-          }
-
-          val targetTargetCellType: Option[TargetCellType] = link.title match {
-            // Sentinel 2 bands can have negative values now.
-            case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
-            case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
-            case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
-            case _ => cellTypeSTAC
-          }
-          val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental, bandName, softErrors)
-          val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
-              _.canProcess(definition)
-            ).flatMap(
-              p => {
-                if (p.usePredefinedExtent(definition)) {
-                  predefinedExtent = featureExtentInLayout
-                }
-                Option(p.rasterSource(definition))
-              }
-            )
-            .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
-          if (maybeSource.isDefined) {
-            if (bandIndex > 0) {
-              Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
-            } else {
-              Some(maybeSource.get, 0)
-            }
-          } else {
-            None
-          }
-        case _ => None
+      val cellTypeSTAC = if (dataType.isDefined){
+        Some(ConvertTargetCellType(dataType.get.withNoData(nodata)))
       }
+      else None
+
+      //special case handling for data that does not declare nodata properly
+      val targetCellType = link.title match {
+        // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
+        case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
+        case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
+        case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(UShortConstantNoDataCellType)) // TODO: get info from Link object
+        case Some(title) if fromLoadStac && Seq("SCL_20m", "SCL_60m").contains(title) => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) // TODO: get info from Link object
+        case _ => cellTypeSTAC
+      }
+
+      val targetTargetCellType: Option[TargetCellType] = link.title match {
+        // Sentinel 2 bands can have negative values now.
+        case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
+        case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
+        case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
+        case _ => cellTypeSTAC
+      }
+      val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental, bandName, softErrors)
+      BandContext(definition, pixelValueScale, pixelValueOffset, targetTargetCellType)
+    }
+
+    val bandContexts: Seq[Option[BandContext]] = resolver.getBandAssets(feature).map {
+      case Some((link, bandIndex, bandName)) => Some(buildBandContext(link, bandIndex, bandName))
+      case _ => None
+    }
+
+    // Whole-feature strategy: if a single provider in the chain claims *all* present bands, give it a
+    // chance to serve them together from one physical source (e.g. all SAR polarisations produced by one
+    // terrain-correction pass), instead of opening/processing per band. Falls back to the default
+    // per-band strategy below when no provider implements `multibandRasterSource` for this feature.
+    val multibandResult: Option[(RasterSourceProvider, RasterSource, Seq[Int])] = {
+      val presentDefinitions = bandContexts.flatten.map(_.definition)
+      NonEmptyList.fromList(presentDefinitions.toList).flatMap { defs =>
+        rasterSourceProviderChain.find(p => defs.toList.forall(p.canProcess)).flatMap { p =>
+          p.multibandRasterSource(defs).map { case (source, bandIndicesInSource) => (p, source, bandIndicesInSource) }
+        }
+      }
+    }
+
+    val rasterSources: Seq[Option[(RasterSource, Int)]] = multibandResult match {
+      case Some((provider, source, bandIndicesInSource)) =>
+        if (provider.usePredefinedExtent(bandContexts.flatten.head.definition)) {
+          predefinedExtent = featureExtentInLayout
+        }
+        var presentIndex = 0
+        bandContexts.map {
+          case Some(_) =>
+            val sourceBandIndex = bandIndicesInSource(presentIndex)
+            presentIndex += 1
+            // Normalized to output band 0, same convention as the IndexedRasterSource wrapping below:
+            // CompositeRasterSource.groupedBySource regroups these by their (shared, delegated) source name.
+            Some((IndexedRasterSource(source, sourceBandIndex): RasterSource, 0))
+          case None => None
+        }
+      case None =>
+        bandContexts.map {
+          case Some(BandContext(definition, pixelValueScale, pixelValueOffset, targetTargetCellType)) =>
+            val bandIndex = definition.bandIndex
+            val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
+                _.canProcess(definition)
+              ).flatMap(
+                p => {
+                  if (p.usePredefinedExtent(definition)) {
+                    predefinedExtent = featureExtentInLayout
+                  }
+                  Option(p.rasterSource(definition))
+                }
+              )
+              .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
+            if (maybeSource.isDefined) {
+              if (bandIndex > 0) {
+                Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
+              } else {
+                Some(maybeSource.get, 0)
+              }
+            } else {
+              None
+            }
+          case None => None
+        }
+    }
 
     if (rasterSources.isEmpty) {
       logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
@@ -1047,12 +1096,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           return None
         }
 
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
-      } else if (sources.forall { case(_, idx) => idx == 0}) {
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
+        Some((new CompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
       } else {
-        logger.warn("Unexpected use of MultibandCompositeRasterSource")
-        Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
+        // Note: bandIndex is always normalized to 0 here: non-zero band indices (multiple output bands
+        // sourced from the same physical multi-band file, e.g. PROBA-V) are already represented via an
+        // IndexedRasterSource wrapper per band (see above), which always exposes itself as a single-band
+        // (band 0) source. CompositeRasterSource.groupedBySource still regroups such wrapped bands by their
+        // (delegated) physical source name for the "load per product" read optimization.
+        assert(sources.forall { case (_, idx) => idx == 0 }, "expected all band indices to be normalized to 0")
+        Some((new CompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
       }
     }
   }
