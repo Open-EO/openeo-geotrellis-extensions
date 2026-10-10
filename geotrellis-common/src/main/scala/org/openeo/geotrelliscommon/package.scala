@@ -99,23 +99,19 @@ package object geotrelliscommon {
 
     def canEqual(other: Any): Boolean = other.isInstanceOf[SparseSpaceTimePartitioner]
 
-    /**
-     * This equals method does not compare the indices, so makes the decision of equality only depend on the region indices it generates.
-     * The merge operation and use of geotrellis.spark.partition.ReorderedSpaceRDD depends on this
-     * @param other
-     * @return
-     */
+    def hasSameIndexReduction(other: SparseSpaceTimePartitioner): Boolean =
+      indexReduction == other.indexReduction
+
     override def equals(other: Any): Boolean = other match {
       case that: SparseSpaceTimePartitioner =>
         (that canEqual this) &&
-          indexReduction == that.indexReduction
+          hasSameIndexReduction(that) &&
+          indices.sameElements(that.indices)
       case _ => false
     }
 
-    override def hashCode(): Int = {
-      val state = Seq(indexReduction)
-      state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
-    }
+    override def hashCode(): Int =
+      31 * indexReduction + indices.foldLeft(1)((hash, index) => 31 * hash + index.hashCode())
 
     override def spatialKeys: Option[Array[SpatialKey]] = {
       theKeys.map(_.map(_.spatialKey).distinct)

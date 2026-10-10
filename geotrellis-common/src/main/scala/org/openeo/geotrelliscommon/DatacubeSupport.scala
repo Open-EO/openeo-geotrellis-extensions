@@ -333,7 +333,7 @@ object DatacubeSupport {
     }
   }
 
-  def optimalReductionForSparseKeys(sparseKeys: Seq[SpaceTimeKey], maxPartitionSizeInMb: Int, tileSize: Int, cellTypeBits: Int, bandCount: Int) = {
+  def optimalReductionForSparseKeys(sparseKeys: Seq[SpaceTimeKey], maxPartitionSizeInMb: Int, tileSize: Int, cellTypeBits: Int, bandCount: Int): (Int, Array[BigInt]) = {
     val temporalWeight = sparseKeys.map(_.time).distinct.length
     val tileSizeInMb: Double = (bandCount * tileSize * cellTypeBits * temporalWeight).toDouble / (8 * 1024 * 1024)
     val maxRecordsPerPartition: Double = math.min(math.min(maxPartitionSizeInMb / tileSizeInMb, 1024), sparseKeys.length)

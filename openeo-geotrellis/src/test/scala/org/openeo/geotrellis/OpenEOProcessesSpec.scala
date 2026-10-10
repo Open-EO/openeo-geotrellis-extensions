@@ -37,7 +37,7 @@ import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTemporal}
 import org.openeo.geotrellis.layers.FileLayerProviderTest
 import org.openeo.geotrellis.testutil.stac._
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.io.File
@@ -193,6 +193,66 @@ object Constant1Partitioner extends PartitionerIndex[SpaceTimeKey] {
 }
 
 class OpenEOProcessesSpec extends RasterMatchers {
+
+  @Test
+  def sparseSpaceTimePartitionerEqualityIncludesIndicesForOldAndNewPartitionTargets(): Unit = {
+    val candidateKeys = for {
+      day <- 0 until 5
+      col <- 0 until 32
+      row <- 0 until 32
+    } yield SpaceTimeKey(col, row, day.toLong * 24 * 60 * 60 * 1000)
+
+    val bounds = KeyBounds(SpaceTimeKey(0, 0, 0L), SpaceTimeKey(31, 31, 4L * 24 * 60 * 60 * 1000))
+    val spark = OpenEOProcessesSpec.sc
+    val reductionsByLimit = Seq(64, 500).map { maxPartitionSizeMb =>
+      maxPartitionSizeMb -> DatacubeSupport.optimalReductionForSparseKeys(
+        candidateKeys, maxPartitionSizeMb, 128 * 128, 32, 2
+      )._1
+    }.toMap
+    assertNotEquals(reductionsByLimit(64), reductionsByLimit(500),
+      "The 64 MB and former 500 MB limits should exercise different sparse partition layouts")
+
+    Seq(64, 500).foreach { maxPartitionSizeMb =>
+      val reduction = reductionsByLimit(maxPartitionSizeMb)
+      val indexedKeys = candidateKeys.map(key => (SparseSpaceTimePartitioner.toIndex(key, reduction), key))
+      val distinctIndices = indexedKeys.map(_._1).distinct.sorted
+      assertTrue(distinctIndices.length >= 3)
+
+      val sourceIndex = new SparseSpaceTimePartitioner(distinctIndices.take(2).toArray, reduction)
+      val targetIndex = new SparseSpaceTimePartitioner(distinctIndices.slice(1, 3).toArray, reduction)
+      assertTrue(!sourceIndex.equals(targetIndex), s"Different sparse indices must not compare equal at $maxPartitionSizeMb MB")
+      assertEquals(sourceIndex.hashCode(), new SparseSpaceTimePartitioner(distinctIndices.take(2).toArray, reduction).hashCode())
+
+      val sharedIndex = distinctIndices(1)
+      val sharedKey = indexedKeys.find(_._1 == sharedIndex).get._2
+      val sourcePartitioner = SpacePartitioner[SpaceTimeKey](bounds)(implicitly, implicitly, sourceIndex)
+      val targetPartitioner = SpacePartitioner[SpaceTimeKey](bounds)(implicitly, implicitly, targetIndex)
+      assertTrue(sourcePartitioner.getPartition(sharedKey) != targetPartitioner.getPartition(sharedKey))
+
+      val extent = Extent(0, 0, 32, 32)
+      val metadata = TileLayerMetadata(
+        DoubleConstantNoDataCellType,
+        LayoutDefinition(extent, TileLayout(32, 32, 1, 1)),
+        extent,
+        LatLng,
+        bounds
+      )
+      val keysInSharedRegion = indexedKeys.filter(_._1 == sharedIndex).map(_._2).distinct
+      val input = ContextRDD(spark.parallelize(keysInSharedRegion.map(_ -> 1), 1).partitionBy(sourcePartitioner), metadata)
+      val transformed = ContextRDD(input.mapPartitions(
+        _.map { case (key, value) => (key, value) },
+        preservesPartitioning = true
+      ), metadata)
+      val repartitioned = targetPartitioner(transformed)
+      val placements = repartitioned.mapPartitionsWithIndex { (partition, records) =>
+        records.map { case (key, _) => (partition, targetPartitioner.getPartition(key)) }
+      }.collect()
+
+      assertEquals(keysInSharedRegion.size, placements.length, s"No keys may be lost at $maxPartitionSizeMb MB")
+      assertTrue(placements.forall { case (actual, expected) => actual == expected },
+        s"Shared keys must be routed by the target sparse index at $maxPartitionSizeMb MB")
+    }
+  }
 
   def time[R](block: => R): R = {
     val t0 = System.nanoTime()
