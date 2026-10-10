@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.openeo.sar.io.UriIO
 
 import java.net.URI
+import java.nio.file.{Files, Paths}
 import scala.jdk.CollectionConverters._
 
 /** Pointer to the resources that make up one S1 GRD scene, resolved
@@ -41,7 +42,13 @@ object StacItemLoader {
     require(assets != null, "STAC item has no assets")
 
     val hrefs: Map[String, URI] = assets.fields().asScala.flatMap { e =>
-      Option(e.getValue.get("href")).map(h => e.getKey -> URI.create(h.asText()))
+      val href: Option[URI] = Option(e.getValue.get("href")).map(h => URI.create(h.asText()))
+      href.map(h => if (h.getScheme == "s3" && h.getHost == "eodata") {
+        val bucket = h.getHost
+        val key = Option(h.getPath).getOrElse("")
+        val localPath = Paths.get("/" + bucket + key)
+        if (Files.exists(localPath)) localPath.toUri else h
+      } else {h}).map(h => e.getKey -> h)
     }.toMap
 
     // Group by polarisation by looking at SAFE-relative path conventions:

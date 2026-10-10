@@ -73,16 +73,14 @@ object S1AnnotationParser {
     val root = UriIO.loadXml(uri)
     val vectors = root \ "calibrationVectorList" \ "calibrationVector"
     val lines = vectors.map(v => (v \ "line").text.toInt).toArray
-    val pixels = vectors.head \ "pixel" match {
-      case n => n.text.trim.split("\\s+").map(_.toInt)
-    }
+    val pixelGrids = vectors.map(v => (v \ "pixel").text.trim.split("\\s+").map(_.toInt)).toArray
     val values: Array[Array[Float]] = vectors.map { v =>
       (v \ field).text.trim.split("\\s+").map(_.toFloat)
     }.toArray
-    new Lut2D(lines, pixels, values)
+    buildLut(lines, pixelGrids, values)
   }
 
-  private def parseNoiseLut(uri: URI): Lut2D = {
+  private[metadata] def parseNoiseLut(uri: URI): Lut2D = {
     val root = UriIO.loadXml(uri)
     // S1 IPF >= 2.9 uses noiseRangeVectorList; older products used noiseVectorList.
     val vectors = (root \ "noiseRangeVectorList" \ "noiseRangeVector") match {
@@ -90,14 +88,38 @@ object S1AnnotationParser {
       case _               => root \ "noiseVectorList" \ "noiseVector"
     }
     val lines = vectors.map(v => (v \ "line").text.toInt).toArray
-    val pixels = vectors.head \ "pixel" match {
-      case n => n.text.trim.split("\\s+").map(_.toInt)
-    }
+    val pixelGrids = vectors.map(v => (v \ "pixel").text.trim.split("\\s+").map(_.toInt)).toArray
     val values: Array[Array[Float]] = vectors.map { v =>
       val tag = if ((v \ "noiseRangeLut").nonEmpty) "noiseRangeLut" else "noiseLut"
       (v \ tag).text.trim.split("\\s+").map(_.toFloat)
     }.toArray
-    new Lut2D(lines, pixels, values)
+    buildLut(lines, pixelGrids, values)
+  }
+
+  /** Builds a [[Lut2D]] from vectors that each carry their own pixel grid. Real products do not
+   *  always share one grid across vectors (sample counts and positions can differ by a few pixels),
+   *  so rows are linearly resampled onto the densest grid. */
+  private def buildLut(lines: Array[Int], pixelGrids: Array[Array[Int]],
+                       values: Array[Array[Float]]): Lut2D = {
+    require(pixelGrids.nonEmpty, "no annotation vectors found")
+    require(pixelGrids.length == values.length, "vector count mismatch")
+    pixelGrids.zip(values).foreach { case (grid, row) =>
+      require(grid.length == row.length, "pixel/value count mismatch within a vector")
+    }
+
+    val commonPixels = pixelGrids.maxBy(_.length)
+
+    if (pixelGrids.forall(_.sameElements(commonPixels))) new Lut2D(lines, commonPixels, values)
+    else {
+      val resampled = pixelGrids.zip(values).map { case (grid, row) =>
+        if (grid.sameElements(commonPixels)) row
+        else {
+          val rowLut = new Lut2D(Array(0), grid, Array(row))
+          commonPixels.map(p => rowLut(0.0, p.toDouble).toFloat)
+        }
+      }
+      new Lut2D(lines, commonPixels, resampled)
+    }
   }
 
   /** Merge per-polarisation parses into the unified scene metadata. */
