@@ -13,7 +13,7 @@ import org.apache.spark.util.LongAccumulator
 import org.apache.spark.{SparkContext, TaskContext}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.layers.FileLayerProvider.{applySpatialMask, createPartitioner, megapixelMeter, megapixelPerSecondMeter}
-import org.openeo.geotrellis.{EmptyMultibandTile, sortableSourceName}
+import org.openeo.geotrellis.{EmptyMultibandTile, GeneralUtils, sortableSourceName}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, time}
 import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.{Logger, LoggerFactory}
@@ -369,10 +369,7 @@ case class RasterTileLoader() {
                   } yield {
                     tile.cellType match {
                       case originalCellType: NoNoData =>
-                        val noDataCellType =
-                          if (originalCellType.isFloatingPoint) originalCellType.withDefaultNoData()
-                          else originalCellType withNoData Some(0)
-
+                        val noDataCellType = GeneralUtils.cellTypeWithNoDataPreservingRange(originalCellType)
                         logger.debug(s"converting tile cell type from $originalCellType to $noDataCellType with NODATA")
                         tile convert noDataCellType
                       case _ => tile

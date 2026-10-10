@@ -1,12 +1,12 @@
 package org.openeo.geotrellis.layers.provider
 
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
-import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
+import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, RasterExtent, RasterSource, TargetRegion}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.layers.FileLayerProvider.vsis3ToS3
-import org.openeo.geotrellis.layers.raster_source.ResampledRasterSource
+import org.openeo.geotrellis.layers.raster_source.{NoDataPreservingGeoTiffReprojectRasterSource, NoDataPreservingGeoTiffResampleRasterSource, ResampledRasterSource}
 import org.slf4j.{Logger, LoggerFactory}
 
 object DefaultRasterSourceProvider extends DefaultRasterSourceProvider
@@ -42,7 +42,7 @@ class DefaultRasterSourceProvider extends RasterSourceProvider {
           val geotiffRasterSource = GeoTiffRasterSource(geotiffPath, definition.targetCellType)
           new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, definition.theResolution)
         } else {
-          GeoTiffResampleRasterSource(geotiffPath, definition.alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, definition.targetCellType, None)
+          new NoDataPreservingGeoTiffResampleRasterSource(geotiffPath, definition.alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, definition.targetCellType)
         }
       }
     } else {
@@ -53,10 +53,10 @@ class DefaultRasterSourceProvider extends RasterSourceProvider {
         val geotiffPath = GeoTiffPath(vsis3ToS3(definition.dataPath))
         if (definition.noResampleOnRead) {
           val tiffAlignment = alignmentFromDataPath(definition.dataPath, definition.targetExtent)
-          val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, tiffAlignment, definition.resampleMethod, OverviewStrategy.DEFAULT, targetCellType = definition.targetCellType, errorThreshold = 0)
+          val geotiffRasterSource = new NoDataPreservingGeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, tiffAlignment, definition.resampleMethod, OverviewStrategy.DEFAULT, maybeTargetCellType = definition.targetCellType, errorThreshold = 0)
           new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, definition.theResolution)
         } else {
-          GeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, definition.alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, targetCellType = definition.targetCellType, errorThreshold = 0)
+          new NoDataPreservingGeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, definition.alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, maybeTargetCellType = definition.targetCellType, errorThreshold = 0)
         }
       }
     }

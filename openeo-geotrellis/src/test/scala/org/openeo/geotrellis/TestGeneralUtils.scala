@@ -5,10 +5,11 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import geotrellis.layer.LayoutDefinition
 import geotrellis.proj4.CRS
 import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, ShortCellType, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, TileLayout, UByteCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortUserDefinedNoDataCellType}
+import geotrellis.raster.{BitArrayTile, MultibandTile}
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrowsExactly, assertTrue}
 import org.junit.jupiter.api.Test
-import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, cellTypeUnionWithNoData, toSigned}
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, cellTypeUnionWithNoData, cellTypeWithNoDataPreservingRange, convertPreservingRange, toSigned}
 
 class TestGeneralUtils {
 
@@ -312,4 +313,44 @@ class TestGeneralUtils {
   }
 
 
+
+  @Test
+  def testCellTypeWithNoDataPreservingRange(): Unit = {
+    assertEquals(ByteConstantNoDataCellType, cellTypeWithNoDataPreservingRange(BitCellType))
+    assertEquals(ShortConstantNoDataCellType, cellTypeWithNoDataPreservingRange(ByteCellType))
+    assertEquals(ShortConstantNoDataCellType, cellTypeWithNoDataPreservingRange(UByteCellType))
+    assertEquals(IntConstantNoDataCellType, cellTypeWithNoDataPreservingRange(ShortCellType))
+    assertEquals(IntConstantNoDataCellType, cellTypeWithNoDataPreservingRange(UShortCellType))
+    assertEquals(DoubleConstantNoDataCellType, cellTypeWithNoDataPreservingRange(IntCellType))
+    assertEquals(FloatConstantNoDataCellType, cellTypeWithNoDataPreservingRange(FloatCellType))
+    assertEquals(DoubleConstantNoDataCellType, cellTypeWithNoDataPreservingRange(DoubleCellType))
+
+    assertEquals(UByteConstantNoDataCellType, cellTypeWithNoDataPreservingRange(UByteConstantNoDataCellType))
+    assertEquals(UShortUserDefinedNoDataCellType(42), cellTypeWithNoDataPreservingRange(UShortUserDefinedNoDataCellType(42)))
+    assertEquals(IntConstantNoDataCellType, cellTypeWithNoDataPreservingRange(IntConstantNoDataCellType))
+  }
+
+  @Test
+  def testConvertPreservingRange(): Unit = {
+    def assertPreserved(tile: Tile): Unit = {
+      val converted = convertPreservingRange(MultibandTile(tile)).band(0)
+
+      assertEquals(cellTypeWithNoDataPreservingRange(tile.cellType), converted.cellType)
+      assertTrue(converted.cellType.isInstanceOf[geotrellis.raster.HasNoData[_]])
+      assertEquals(tile.toArrayDouble().toSeq, converted.toArrayDouble().toSeq)
+      assertTrue(converted.toArrayDouble().forall(d => geotrellis.raster.isData(d)))
+    }
+
+    assertPreserved(BitArrayTile(Array[Byte](0x02), 2, 1))
+    assertPreserved(ByteArrayTile(Array[Byte](Byte.MinValue, 0, Byte.MaxValue), 3, 1, ByteCellType))
+    assertPreserved(UByteArrayTile(Array[Byte](0, 1, -1), 3, 1, UByteCellType))
+    assertPreserved(ShortArrayTile(Array[Short](Short.MinValue, 0, Short.MaxValue), 3, 1, ShortCellType))
+    assertPreserved(UShortArrayTile(Array[Short](0, 1, -1), 3, 1, UShortCellType))
+    assertPreserved(IntArrayTile(Array(Int.MinValue, 0, Int.MaxValue), 3, 1, IntCellType))
+    assertPreserved(UShortConstantTile(0, 2, 2, UShortCellType))
+    assertPreserved(UByteConstantTile(0, 2, 2, UByteCellType))
+
+    val alreadyNoData = MultibandTile(UShortArrayTile(Array[Short](0, 1), 2, 1, UShortConstantNoDataCellType))
+    assertTrue(convertPreservingRange(alreadyNoData) eq alreadyNoData)
+  }
 }
