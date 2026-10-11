@@ -1618,7 +1618,7 @@ class FileLayerProviderTest extends RasterMatchers {
 
     assertTrue(index.isInstanceOf[SparseSpaceTimePartitioner])
     assertTrue(index.asInstanceOf[SparseSpaceTimePartitioner].theKeys.isDefined)
-    assertEquals(64, result._2.tileLayout.tileCols)
+    assertEquals(128, result._2.tileLayout.tileCols)
     //overlap filter has removed the other potential sources
     assertEquals(229, ids.size)
 

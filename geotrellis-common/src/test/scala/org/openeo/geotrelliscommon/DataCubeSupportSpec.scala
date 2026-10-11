@@ -59,47 +59,32 @@ class DataCubeSupportSpec {
   }
 
   @Test
-  def optimizeChunkSizeUntil16():Unit ={
-    val metadata256 = TileLayerMetadata(UByteConstantNoDataCellType,LayoutDefinition(Extent(646660.0, 5678790.0, 649220.0, 5681350.0),TileLayout(1,1,256,256)),Extent(646668.7622376741, 5681108.99671377, 646917.3273239338, 5681335.60711388),CRS.fromEpsgCode(32631),KeyBounds(SpaceTimeKey(0,0,1588809600000L),SpaceTimeKey(0,0,1588809600000L)))
+  def optimizeChunkSizeNotBelow128():Unit ={
+    val metadata512 = TileLayerMetadata(UByteConstantNoDataCellType,LayoutDefinition(Extent(646660.0, 5676230.0, 651780.0, 5681350.0),TileLayout(1,1,512,512)),Extent(646668.7622376741, 5681108.99671377, 646917.3273239338, 5681335.60711388),CRS.fromEpsgCode(32631),KeyBounds(SpaceTimeKey(0,0,1588809600000L),SpaceTimeKey(0,0,1588809600000L)))
     val parameters = new DataCubeParameters
     parameters.setLayoutScheme("FloatingLayoutScheme")
+    val metadata256 = DatacubeSupport.optimizeChunkSize(metadata512, Array(MultiPolygon()), Some(parameters), 1).get
+    assertEquals(256,metadata256.tileCols)
     val metadata128 = DatacubeSupport.optimizeChunkSize(metadata256, Array(MultiPolygon()), Some(parameters), 1).get
     assertEquals(128,metadata128.tileCols)
     assertEquals(0,metadata128.bounds.get.maxKey.col)
     assertEquals(0,metadata128.bounds.get.maxKey.row)
     assertEquals(0,metadata128.bounds.get.minKey.row)
     assertEquals(0,metadata128.bounds.get.minKey.col)
-    val metadata64 = DatacubeSupport.optimizeChunkSize(metadata128, Array(MultiPolygon()), Some(parameters), 4).get
-    assertEquals(64,metadata64.tileCols)
-    assertEquals(0,metadata64.bounds.get.maxKey.col)
-    assertEquals(0,metadata64.bounds.get.maxKey.row)
-    assertEquals(0,metadata64.bounds.get.minKey.row)
-    assertEquals(0,metadata64.bounds.get.minKey.col)
-    val metadata32 = DatacubeSupport.optimizeChunkSize(metadata64, Array(MultiPolygon()), Some(parameters), 16).get
-    assertEquals(32,metadata32.tileCols)
-    assertEquals(0,metadata32.bounds.get.maxKey.col)
-    assertEquals(0,metadata32.bounds.get.maxKey.row)
-    assertEquals(0,metadata32.bounds.get.minKey.row)
-    assertEquals(0,metadata32.bounds.get.minKey.col)
-    val metadata16 = DatacubeSupport.optimizeChunkSize(metadata32, Array(MultiPolygon()), Some(parameters), 64).get
-    assertEquals(16,metadata16.tileCols)
-    assertEquals(1,metadata16.bounds.get.maxKey.col)
-    assertEquals(1,metadata16.bounds.get.maxKey.row)
-    assertEquals(0,metadata16.bounds.get.minKey.row)
-    assertEquals(0,metadata16.bounds.get.minKey.col)
-    assertTrue(DatacubeSupport.optimizeChunkSize(metadata16, Array(MultiPolygon()), Some(parameters), 256).isEmpty)
+    // smaller tiles change the content of the result (pixels outside the geometry, fully masked dates)
+    assertTrue(DatacubeSupport.optimizeChunkSize(metadata128, Array(MultiPolygon()), Some(parameters), 1).isEmpty)
   }
 
   @Test
   def optimizeChunkSizeKeepsTilesLargerThanPixelBuffer():Unit ={
-    val metadata256 = TileLayerMetadata(UByteConstantNoDataCellType,LayoutDefinition(Extent(646660.0, 5678790.0, 649220.0, 5681350.0),TileLayout(1,1,256,256)),Extent(646668.7622376741, 5681108.99671377, 646917.3273239338, 5681335.60711388),CRS.fromEpsgCode(32631),KeyBounds(SpaceTimeKey(0,0,1588809600000L),SpaceTimeKey(0,0,1588809600000L)))
+    val metadata512 = TileLayerMetadata(UByteConstantNoDataCellType,LayoutDefinition(Extent(646660.0, 5676230.0, 651780.0, 5681350.0),TileLayout(1,1,512,512)),Extent(646668.7622376741, 5681108.99671377, 646917.3273239338, 5681335.60711388),CRS.fromEpsgCode(32631),KeyBounds(SpaceTimeKey(0,0,1588809600000L),SpaceTimeKey(0,0,1588809600000L)))
     val parameters = new DataCubeParameters
     parameters.setLayoutScheme("FloatingLayoutScheme")
-    // e.g. apply_kernel with a 201x201 kernel
-    parameters.setPixelBuffer(100.5, 100.5)
-    val metadata128 = DatacubeSupport.optimizeChunkSize(metadata256, Array(MultiPolygon()), Some(parameters), 1).get
-    assertEquals(128,metadata128.tileCols)
-    assertTrue(DatacubeSupport.optimizeChunkSize(metadata128, Array(MultiPolygon()), Some(parameters), 4).isEmpty)
+    // e.g. apply_kernel with a 301x301 kernel
+    parameters.setPixelBuffer(150.5, 150.5)
+    val metadata256 = DatacubeSupport.optimizeChunkSize(metadata512, Array(MultiPolygon()), Some(parameters), 1).get
+    assertEquals(256,metadata256.tileCols)
+    assertTrue(DatacubeSupport.optimizeChunkSize(metadata256, Array(MultiPolygon()), Some(parameters), 1).isEmpty)
   }
 
 

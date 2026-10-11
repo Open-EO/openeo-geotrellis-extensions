@@ -21,6 +21,8 @@ object DatacubeSupport {
 
   private val logger = LoggerFactory.getLogger(classOf[OpenEORasterCubeMetadata])
 
+  val MIN_OPTIMIZED_TILE_SIZE = 128
+
   /**
    * Find best CRS, can be location dependent (UTM)
    *
@@ -138,7 +140,8 @@ object DatacubeSupport {
     val newTileSize = metadata.tileRows / 2
     // focal operations (e.g. apply_kernel) only buffer a tile with its direct neighbours, so tiles should not get smaller than the pixel buffer
     val pixelBuffer = datacubeParams.map(p => math.max(p.pixelBufferX, p.pixelBufferY)).getOrElse(0.0)
-    if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && criterium && newTileSize >= 16 && newTileSize >= pixelBuffer) {
+    // smaller tiles change which pixels outside the requested geometry and which fully masked dates end up in the result
+    if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && criterium && newTileSize >= DatacubeSupport.MIN_OPTIMIZED_TILE_SIZE && newTileSize >= pixelBuffer) {
       //it seems that polygons fit entirely within chunks, so chunks are too large
       logger.info(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to $newTileSize.")
       val newLayout = LayoutDefinition(metadata, newTileSize)
