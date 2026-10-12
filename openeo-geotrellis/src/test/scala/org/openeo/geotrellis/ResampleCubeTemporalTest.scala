@@ -101,6 +101,25 @@ class ResampleCubeTemporalTest {
   }
 
   @Test
+  def nearestNeighborEdgeCases(): Unit = {
+    val data = cube(date(5) -> constant(5), date(9) -> constant(9), date(20) -> constant(20))
+    // before the first source, exact match, tie (day 7: the earlier one wins), between sources and after the last source
+    val result = byDay(new OpenEOProcesses().resampleCubeTemporal(data, targetCube(1, 5, 7, 8, 14, 15, 31)))
+
+    assertEquals(Map(1 -> 5.0, 5 -> 5.0, 7 -> 5.0, 8 -> 9.0, 14 -> 9.0, 15 -> 20.0, 31 -> 20.0), result.map { case (d, t) => (d, t.band(0).getDouble(0, 0)) })
+  }
+
+  @Test
+  def validWithinIncludesWindowBoundaries(): Unit = {
+    val data = cube(date(10) -> constant(10))
+    val result = byDay(new OpenEOProcesses().resampleCubeTemporal(data, targetCube(6, 7, 10, 13, 14), Some(3)))
+
+    assertEquals(Set(6, 7, 10, 13, 14), result.keySet)
+    for (day <- Seq(7, 10, 13)) assertEquals(10.0, result(day).band(0).getDouble(0, 0))
+    for (day <- Seq(6, 14)) assertTrue(result(day).band(0).isNoDataTile)
+  }
+
+  @Test
   def validWithinSwitchesToNoDataCellTypeForMissingTargets(): Unit = {
     val raw = cube(date(1) -> constant(1).convert(DoubleCellType), date(30) -> constant(0).convert(DoubleCellType))
     val result = new OpenEOProcesses().resampleCubeTemporal(raw, targetCube(1, 15), Some(5))

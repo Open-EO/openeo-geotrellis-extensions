@@ -1171,14 +1171,38 @@ class OpenEOProcesses extends Serializable {
     // Candidates ordered by distance to the target timestamp, ties resolved by choosing the earlier timestamp.
     def byDistanceTo(t: Long): Ordering[Long] = Ordering.by((s: Long) => (math.abs(s - t), s))
 
+    // both arrays are sorted and distinct: index of the first element >= x (lower) or > x (upper)
+    def lowerBound(instants: Array[Long], x: Long): Int = {
+      val i = java.util.Arrays.binarySearch(instants, x)
+      if (i >= 0) i else -i - 1
+    }
+    def upperBound(instants: Array[Long], x: Long): Int = {
+      val i = java.util.Arrays.binarySearch(instants, x)
+      if (i >= 0) i + 1 else -i - 1
+    }
+
     val targetsBySource: Map[Long, Array[Long]] = validWithinDays match {
       case None =>
         targetInstants
-          .map(t => (sourceInstants.min(byDistanceTo(t)), t))
+          .map { t =>
+            val i = lowerBound(sourceInstants, t)
+            val nearest =
+              if (i == 0) sourceInstants(0)
+              else if (i == sourceInstants.length) sourceInstants(i - 1)
+              else byDistanceTo(t).min(sourceInstants(i - 1), sourceInstants(i))
+            (nearest, t)
+          }
           .groupBy(_._1).map { case (s, pairs) => (s, pairs.map(_._2)) }
       case Some(days) =>
         val windowMillis = math.round(days * 24 * 3600 * 1000)
-        sourceInstants.map(s => (s, targetInstants.filter(t => math.abs(s - t) <= windowMillis))).filter(_._2.nonEmpty).toMap
+        def saturatingAdd(a: Long, b: Long): Long = {
+          val sum = a + b
+          if (((a ^ sum) & (b ^ sum)) < 0) (if (a < 0) Long.MinValue else Long.MaxValue) else sum
+        }
+        sourceInstants
+          .map(s => (s, targetInstants.slice(lowerBound(targetInstants, saturatingAdd(s, -windowMillis)), upperBound(targetInstants, saturatingAdd(s, windowMillis)))))
+          .filter(_._2.nonEmpty)
+          .toMap
     }
     logger.info(s"resample_cube_temporal: ${sourceInstants.length} source and ${targetInstants.length} target timestamps, valid_within: $validWithinDays")
 
