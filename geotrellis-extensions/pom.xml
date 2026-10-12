@@ -64,6 +64,21 @@
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
+            <artifactId>snap-integration</artifactId>
+            <version>${project.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.locationtech.geotrellis</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openeo</groupId>
             <artifactId>openeo-geotrellis-healpix</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -191,6 +206,9 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <artifactSet>
                                 <includes>
+                                    <include>org.esa.snap:*</include>
+                                    <include>org.geotools:*</include>
+                                    <include>Jama:*</include>
                                     <include>org.openeo:*</include>
                                 </includes>
                             </artifactSet>

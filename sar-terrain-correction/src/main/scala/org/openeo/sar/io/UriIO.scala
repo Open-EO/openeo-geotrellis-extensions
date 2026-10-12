@@ -2,20 +2,17 @@ package org.openeo.sar.io
 
 import geotrellis.store.s3.AmazonS3URI
 import org.openeo.geotrellis.creo.CreoS3Utils
-import org.openeo.geotrellis.{s3Client, withRetryAfterRetries}
+import org.openeo.geotrellis.withRetryAfterRetries
 import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.Http
-import software.amazon.awssdk.core.ResponseInputStream
-import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.s3.model.{GetObjectRequest, GetObjectResponse}
 
-import java.io.{BufferedInputStream, ByteArrayInputStream, InputStream}
+import java.io.{BufferedInputStream, ByteArrayInputStream, FileNotFoundException, InputStream}
 import java.net.URI
 import scala.xml.{Elem, XML}
 
 /** Uniform reader for SAR auxiliary files. Dispatches on the URI scheme:
  *
- *  - `s3://bucket/key`            -> [[CreoS3Utils.getS3Client]] (proxy-aware, CDSE-aware)
+ *  - `s3://bucket/key`            -> [[CreoS3Utils.readFromS3]] (proxy-aware, CDSE-aware)
  *  - `http://` / `https://`       -> `scalaj-http`, retried via [[withRetryAfterRetries]]
  *  - `file://` / no scheme        -> local file
  *
@@ -25,8 +22,6 @@ import scala.xml.{Elem, XML}
 object UriIO {
 
   private implicit val logger: Logger = LoggerFactory.getLogger(UriIO.getClass)
-  @transient lazy val s3Endpoint = sys.env.getOrElse("AWS_S3_ENDPOINT", "https://eodata.dataspace.copernicus.eu")
-  @transient lazy val s3Https = sys.env.getOrElse("AWS_HTTPS","NO").toUpperCase.equals("YES")
 
   /** Open an `InputStream` for the given URI. Caller is responsible for closing. */
   def openInputStream(uri: URI): InputStream = {
@@ -34,22 +29,9 @@ object UriIO {
     uri.getScheme match {
 
       case "s3" =>
-        val s3Uri  = new AmazonS3URI(uri)
-        val endpoint =
-        if(new URI(s3Endpoint).getScheme == null) {
-          if(s3Https) {
-            URI.create("https://" + s3Endpoint)
-          }else{
-            URI.create("http://" + s3Endpoint)
-          }
-        }else{
-          URI.create(s3Endpoint)
-        }
-        val client = s3Client(Region.of("RegionOne"), endpoint)
-        val key    = stripLeading('/', s3Uri.getKey)
-        val req    = GetObjectRequest.builder().bucket(s3Uri.getBucket).key(key).build()
-        val resp: ResponseInputStream[GetObjectResponse] = client.getObject(req)
-        new BufferedInputStream(resp)
+        val in = CreoS3Utils.readFromS3(new AmazonS3URI(uri))
+        if (in == null) throw new FileNotFoundException(s"S3 object not found: $uri")
+        new BufferedInputStream(in)
 
       case "http" | "https" =>
         // withRetryAfterRetries retries 5xx, socket errors and rate limiting
@@ -75,7 +57,4 @@ object UriIO {
     val in = openInputStream(uri)
     try XML.load(in) finally in.close()
   }
-
-  private def stripLeading(c: Char, s: String): String =
-    if (s != null && s.nonEmpty && s.charAt(0) == c) s.substring(1) else s
 }

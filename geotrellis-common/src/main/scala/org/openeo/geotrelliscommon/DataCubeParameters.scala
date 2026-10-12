@@ -9,6 +9,18 @@ import org.openeo.geotrelliscommon.UdfLanguage.UdfLanguage
 import java.util
 import java.util.Collections
 
+/**
+ * Base type for extra, process-specific processing parameters that can be attached to
+ * [[DataCubeParameters]] (e.g. to pass openEO process arguments down to a
+ * `RasterSourceProvider` that implements that process).
+ *
+ * There can be multiple concrete variants - one per openEO process that needs extra
+ * parameters beyond what [[DataCubeParameters]] already covers - so consumers should
+ * pattern-match on (or otherwise check the type of) the concrete implementation they
+ * expect, e.g. `SarBackscatterParameters` for the `sar_backscatter` process.
+ */
+trait ExtraProcessingParameters extends Serializable
+
 //noinspection ScalaUnusedSymbol
 class DataCubeParameters extends Serializable {
   var tileSize: Int = 256
@@ -53,6 +65,13 @@ class DataCubeParameters extends Serializable {
    * Configuration to override asset loading with synthetic data
    */
   var syntheticDataOverride: Option[SyntheticDataOverride] = None
+
+  /**
+   * Extra, process-specific processing parameters (e.g. `sar_backscatter` arguments),
+   * to be interpreted by whichever `RasterSourceProvider` implements that process.
+   * See [[ExtraProcessingParameters]] for the available concrete variants.
+   */
+  var extraProcessingParameters: Option[ExtraProcessingParameters] = None
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY, $noResampleOnRead, $useNewFeatureExtentIntersection, $useNewFeatureExtentIntersection2)"
 
@@ -128,6 +147,10 @@ class DataCubeParameters extends Serializable {
 
   def setSyntheticDataOverride(syntheticData: SyntheticDataOverride): Unit = {
     syntheticDataOverride = Some(syntheticData)
+  }
+
+  def setExtraProcessingParameters(params: ExtraProcessingParameters): Unit = {
+    extraProcessingParameters = Some(params)
   }
 }
 

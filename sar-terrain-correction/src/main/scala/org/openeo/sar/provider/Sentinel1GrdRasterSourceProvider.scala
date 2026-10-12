@@ -9,7 +9,7 @@ import org.openeo.geotrellis.layers.provider.{RasterSourceDefinition, RasterSour
 import org.openeo.sar.backend.nativ.NativeBackend
 import org.openeo.sar.metadata.Polarisation
 import org.openeo.sar.raster.S1GrdRasterSource
-import org.openeo.sar.{BackscatterNormalization, SarProcessingConfig, SceneContext, TerrainCorrectionProcessor}
+import org.openeo.sar._
 import org.slf4j.LoggerFactory
 
 import java.net.URI
@@ -58,7 +58,16 @@ class Sentinel1GrdRasterSourceProvider(
     val safeRoot: URI = deriveSafeRoot(definition)
     val stacItemUrl: Option[URI] = definition.feature.selfUrl
 
-    val cacheKey = SceneCacheKey(safeRoot, crs, cellSize, processingConfig)
+    // Per-request `sar_backscatter` arguments (openEO process graph), if any, override the
+    // provider-level default processing config.
+    val effectiveProcessingConfig: SarProcessingConfig =
+      definition.datacubeParams
+        .flatMap(_.extraProcessingParameters)
+        .collect { case sarArgs: SarBackscatterParameters => sarArgs }
+        .map(_.toSarProcessingConfig(processingConfig))
+        .getOrElse(processingConfig)
+
+    val cacheKey = SceneCacheKey(safeRoot, crs, cellSize, effectiveProcessingConfig)
 
     val scene = sceneCache.get(cacheKey, (_: SceneCacheKey) => {
       val pols = derivePolarisations(definition)
@@ -66,7 +75,7 @@ class Sentinel1GrdRasterSourceProvider(
 
       stacItemUrl match {
         case Some(url) =>
-          processor.openScene(url, cellSize, crs, pols, processingConfig)
+          processor.openScene(url, cellSize, crs, pols, effectiveProcessingConfig)
         case None =>
           openSceneFromSafeRoot(safeRoot, pols, cellSize, crs)
       }
