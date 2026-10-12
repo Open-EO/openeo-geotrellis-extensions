@@ -53,9 +53,13 @@
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
-            <artifactId>geotrellis-sentinelhub</artifactId>
+            <artifactId>snap-integration</artifactId>
             <version>${project.version}</version>
             <exclusions>
+                <exclusion>
+                    <groupId>org.locationtech.geotrellis</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
                 <exclusion>
                     <groupId>org.scala-lang</groupId>
                     <artifactId>*</artifactId>
@@ -191,6 +195,9 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <artifactSet>
                                 <includes>
+                                    <include>org.esa.snap:*</include>
+                                    <include>org.geotools:*</include>
+                                    <include>Jama:*</include>
                                     <include>org.openeo:*</include>
                                 </includes>
                             </artifactSet>

@@ -837,7 +837,9 @@ class OpenEOProcesses extends Serializable {
       val leftPart = leftCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
       val rightPart = rightCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
       logger.info(s"Merging cubes with spatial indices: ${leftPart.index} - ${rightPart.index}")
-      if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[SparseSpaceTimePartitioner]) {
+      if(leftPart.index.isInstanceOf[SparseSpaceTimePartitioner] &&
+        rightPart.index.isInstanceOf[SparseSpaceTimePartitioner] &&
+        leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].hasSameIndexReduction(rightPart.index.asInstanceOf[SparseSpaceTimePartitioner])) {
         val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices).distinct.sorted
         implicit val newIndex: PartitionerIndex[K] = new SparseSpaceTimePartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
         SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
