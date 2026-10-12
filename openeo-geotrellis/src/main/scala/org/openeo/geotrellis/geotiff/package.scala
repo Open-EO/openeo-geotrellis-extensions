@@ -626,10 +626,6 @@ package object geotiff {
     }
   }
 
-  def saveRDDTileGrid(rdd: MultibandTileLayerRDD[SpatialKey], bandCount: Int, path: String, tileGrid: String, zLevel: Int = 6, cropBounds: Option[Extent] = Option.empty[Extent]) = {
-    saveRDDGenericTileGrid(rdd, path, tileGrid, cropBounds = cropBounds)
-  }
-
   private def gridBoundsFor(re: RasterExtent, subExtent: Extent, clamp: Boolean = true): GridBounds[Int] = {
     // West and North boundaries are a simple mapToGrid call.
     val colMin: Int = re.mapXToGrid(subExtent.xmin)
@@ -968,91 +964,6 @@ package object geotiff {
     crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
     assetMetadata.put("proj:shape", shape)
     assetMetadata
-  }
-
-  // This implementation does not properly work, output tiffs are not properly aligned and colors are also incorrect
-  private def saveRDDGenericTileGrid[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path: String, tileGrid: String, cropBounds: Option[Extent] = Option.empty[Extent], options: GTiffOptions = new GTiffOptions): List[String] = {
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds, options.retainNoDataTiles)
-    val croppedExtent: Extent = preProcessResult._2
-    val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3
-
-    val tileLayout = preprocessedRdd.metadata.tileLayout
-
-    val compression = determineCompression(options)
-
-    val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(preprocessedRdd.metadata.extent, preprocessedRdd.metadata.crs))
-
-    def newFilePath(path: String, tileId: String) = {
-      val index = path.lastIndexOf(".")
-      s"${path.substring(0, index)}-$tileId${path.substring(index)}"
-    }
-
-    preprocessedRdd
-      .flatMap {
-        case (key, tile) => features.map { case (name, extent) =>
-          val tileBounds = preprocessedRdd.metadata.layout.mapTransform(extent)
-
-          (name, extent, tileBounds)
-        }.filter { case (_, _, tileBounds) =>
-          KeyBounds(tileBounds).includes(key.getComponent[SpatialKey])
-        }.map { case (name, extent, tileBounds) =>
-          val re = preprocessedRdd.metadata.toRasterExtent()
-          val gridBounds = re.gridBoundsFor(extent, clamp = true)
-          val croppedExtent = re.extentFor(gridBounds, clamp = true)
-          ((name, croppedExtent, tileBounds, gridBounds), (key, tile))
-        }
-      }.groupByKey()
-      .map { case ((name, extent, tileBounds, gridBounds), tiles) =>
-        //The part below is probably wrong: each tile in a fixed tilegrid, will have it's own 'tilelayout', while here
-        //we use the global tilelayout of the RDD.
-        val keyBounds = KeyBounds(tileBounds)
-        val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
-
-        val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
-        val totalRows = math.ceil(gridBounds.height.toDouble / tileLayout.tileRows).toInt
-
-        val bandSegmentCount = totalCols * totalRows
-        val someTile = tiles.head._2
-        val detectedBandCount = someTile.bandCount
-        val cellType = safeBitCellType(someTile.cellType)
-
-        val tiffs = tiles.flatMap { case (key: K, multibandTile: MultibandTile) => {
-          var bandIndex = -1
-
-          //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
-          //Not sure how this works out for other types of compression!!!
-
-          val theCompressor = compression.createCompressor(multibandTile.bandCount)
-          multibandTile.bands.map {
-            tile => {
-              bandIndex += 1
-              val layoutCol = key.getComponent[SpatialKey]._1 - minKey._1
-              val layoutRow = key.getComponent[SpatialKey]._2 - minKey._2
-              val bandSegmentOffset = bandSegmentCount * bandIndex
-              val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
-              val tileToWrite = if (tile.cellType == BitCellType) safeConvert(tile, safeBitCellType(tile.cellType)) else tile
-              //tiff format seems to require that we provide 'full' tiles
-              val bytes = raster.CroppedTile(tileToWrite, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
-              val compressedBytes = theCompressor.compress(bytes, 0)
-              (index, compressedBytes)
-            }
-          }
-        }
-        }.toMap
-
-        println("Saving geotiff with Celltype: " + cellType)
-
-        val segmentCount = bandSegmentCount * detectedBandCount
-        val newPath = newFilePath(path, name)
-        val geoTiffResultObject = writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount, formatOptions = options)
-        geoTiffResultObject.gdalInfoPath match {
-          case Some(gdalInfoPath) =>
-            updateGdalInfoJsonFile(gdalInfoPath, geoTiffResultObject.correctPath)
-          case None => // do nothing
-        }
-        geoTiffResultObject.correctPath
-      }.collect()
-      .toList
   }
 
   private def writeTiff(path: String, tiffs: collection.Map[Int, Array[Byte]],
