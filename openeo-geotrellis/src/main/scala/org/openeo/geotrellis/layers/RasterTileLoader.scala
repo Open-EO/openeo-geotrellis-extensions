@@ -4,9 +4,7 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{LayoutDefinition, LayoutTileSource, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
-import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, MultibandTile, NoNoData, PaddedTile, Raster, RasterRegion, RasterSource, SourceName}
-import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterRegion, RasterSource, SourceName, Tile}
+import geotrellis.raster.{CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, MultibandTile, NoNoData, PaddedTile, Raster, RasterRegion, RasterSource, SourceName, Tile}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withGeometryClipToGridMethods}
 import geotrellis.vector.{MultiPolygon, ReprojectMutliPolygon}
@@ -212,7 +210,7 @@ case class RasterTileLoader() {
      */
     val allSources: Array[SourceName] = sources.flatMap(t => {
       t._1 match {
-        case compositeRasterSource: CompositeRasterSource =>
+        case compositeRasterSource: BandCompositeRasterSource =>
           //decompose into individual bands, preserving true output band order
           compositeRasterSource.groupedBySource.map(_._1)
         case rasterSource =>
@@ -229,7 +227,7 @@ case class RasterTileLoader() {
       val bounds = gridBoundsRasterRegion.bounds
       val result: Seq[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] =
         source match {
-          case compositeRasterSource: CompositeRasterSource =>
+          case compositeRasterSource: BandCompositeRasterSource =>
             //decompose into individual physical datasources, one GridBoundsRasterRegion per source, so that
             //reads for the same underlying file/dataset get grouped onto the same partition. The output band
             //index for every band is known upfront from groupedBySource, instead of being re-derived later.
@@ -237,7 +235,7 @@ case class RasterTileLoader() {
               val outputBandIndices = entries.map(_._1)
               val groupSources = NonEmptyList.fromListUnsafe(entries.map(_._2).toList)
               val subRegion = GridBoundsRasterRegion(
-                new CompositeRasterSource(groupSources, compositeRasterSource.crs, compositeRasterSource.attributes,
+                new BandCompositeRasterSource(groupSources, compositeRasterSource.crs, compositeRasterSource.attributes,
                   compositeRasterSource.predefinedExtent, readFullTile = true, softErrors = softErrors),
                 bounds)
               (sourceName, (outputBandIndices, key, subRegion))
@@ -404,7 +402,7 @@ case class RasterTileLoader() {
       val source = tuple._2.head._3.asInstanceOf[GridBoundsRasterRegion].source
       val bounds = tuple._2.map(_._3.asInstanceOf[GridBoundsRasterRegion].bounds).toSeq
       val intersections: Seq[Option[GridBounds[Long]]] = bounds.map(_.intersection(source.dimensions)).toSeq
-      // The true, absolute output-band indices for this source group, as computed by CompositeRasterSource.groupedBySource.
+      // The true, absolute output-band indices for this source group, as computed by BandCompositeRasterSource.groupedBySource.
       // Assumed consistent across all features sharing this SourceName within the collection.
       val theIndices: Seq[Int] = tuple._2.head._1
 

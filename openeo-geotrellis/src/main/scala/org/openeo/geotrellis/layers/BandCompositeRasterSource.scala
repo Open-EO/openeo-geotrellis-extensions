@@ -18,6 +18,7 @@ import software.amazon.awssdk.core.exception.AbortedException
 import java.io.IOException
 import java.time.temporal.ChronoUnit.SECONDS
 import java.util.Collections
+import scala.collection.mutable
 import scala.collection.parallel.CollectionConverters._
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
@@ -65,13 +66,27 @@ object BandCompositeRasterSource {
   }
 }
 
+/**
+ * A multi-band [[RasterSource]] composed of one [[RasterSource]] per output band: `sources(i)` supplies the pixel
+ * data for output band `i`. FileLayerProvider builds one of these per feature/date, in exactly the band order
+ * requested by the user, with missing bands filled in as `NoDataRasterSource` placeholders. When several output
+ * bands come from the same physical multi-band dataset, that source appears once per band, wrapped as an
+ * [[IndexedRasterSource]].
+ *
+ * `groupedBySource` lets RasterTileLoader regroup the bands by physical dataset, to avoid re-opening/re-reading the
+ * same dataset once per band.
+ *
+ * All bands are expected to share the same pixel grid: FileLayerProvider constructs every band of a feature against
+ * the same target extent/resolution/CRS (see RasterSourceDefinition), so a single GridBounds/RasterRegion can be
+ * shared across all underlying sources.
+ */
 class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource],
                                 override val crs: CRS,
                                 override val attributes: Map[String, String] = Map.empty,
                                 val predefinedExtent: Option[GridExtent[Long]] = None,
-                                parallelRead: Boolean = true,
-                                softErrors: Boolean = false,
-                                readFullTile: Boolean = false
+                                val parallelRead: Boolean = true,
+                                val softErrors: Boolean = false,
+                                val readFullTile: Boolean = false
                                ) extends MosaicRasterSource { // TODO: don't inherit?
 
   import BandCompositeRasterSource._
@@ -89,7 +104,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
    * polarisations served by one terrain-correction pass), that physical source can serve all requested
    * bands in a single read call instead of one call per band. Returns the (un-reprojected) physical
    * source of the first wrapper plus, per requested output band, the corresponding band index within it.
-   * Grouping is by [[SourceName]], consistent with `CompositeRasterSource.groupedBySource` (wrappers may
+   * Grouping is by [[SourceName]], consistent with `groupedBySource` (wrappers may
    * hold distinct - but equivalent - instances after per-band resample/convert/reproject mapping).
    */
   private def sharedPhysicalSource(bands: Seq[Int]): Option[(RasterSource, Seq[Int])] = {
@@ -316,27 +331,42 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
   }
 
+  /**
+   * Groups the output bands by their underlying physical datasource name, preserving the order in which
+   * datasources are first encountered. Each group carries the true output band index (position in `sources`,
+   * i.e. the final position in the resulting MultibandTile) alongside the RasterSource for that band.
+   */
+  def groupedBySource: Seq[(SourceName, Seq[(Int, RasterSource)])] = {
+    val order = mutable.LinkedHashMap[SourceName, mutable.ArrayBuffer[(Int, RasterSource)]]()
+    sources.toList.zipWithIndex.foreach { case (source, outputBandIndex) =>
+      order.getOrElseUpdate(source.name, mutable.ArrayBuffer()) += ((outputBandIndex, source))
+    }
+    order.toSeq.map { case (name, buf) => (name, buf.toSeq) }
+  }
+
+  // These preserve all settings (attributes, predefinedExtent, readFullTile, ...): e.g. RasterSource.tileToLayout
+  // goes through them, and RasterTileLoader relies on the result still being a fully configured composite.
+  private def withSources(newSources: NonEmptyList[RasterSource]): BandCompositeRasterSource =
+    new BandCompositeRasterSource(newSources, crs, attributes, predefinedExtent,
+      parallelRead = parallelRead, softErrors = softErrors, readFullTile = readFullTile)
+
   override def resample(
                          resampleTarget: ResampleTarget,
                          method: ResampleMethod,
                          strategy: OverviewStrategy
-                       ): RasterSource = new BandCompositeRasterSource(
-    reprojectedSources map {
-      _.resample(resampleTarget, method, strategy)
-    }, crs, parallelRead = parallelRead,
-    softErrors = softErrors)
+                       ): RasterSource = withSources(sources map {
+    _.resample(resampleTarget, method, strategy)
+  })
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map {
+    withSources(sources map {
       _.convert(targetCellType)
-    }, crs,
-      parallelRead = parallelRead, softErrors = softErrors)
+    })
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map {
+    withSources(sources map {
       _.reproject(targetCRS, resampleTarget, method, strategy)
-    },
-      crs, parallelRead = parallelRead, softErrors = softErrors)
+    })
 
   override def toString: String = s"BandCompositeRasterSource(${sources.toList}, $crs, $gridExtent, $name)"
 

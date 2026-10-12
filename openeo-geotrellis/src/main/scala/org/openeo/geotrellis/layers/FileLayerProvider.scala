@@ -1033,7 +1033,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             val sourceBandIndex = bandIndicesInSource(presentIndex)
             presentIndex += 1
             // Normalized to output band 0, same convention as the IndexedRasterSource wrapping below:
-            // CompositeRasterSource.groupedBySource regroups these by their (shared, delegated) source name.
+            // BandCompositeRasterSource.groupedBySource regroups these by their (shared, delegated) source name.
             Some((IndexedRasterSource(source, sourceBandIndex): RasterSource, 0))
           case None => None
         }
@@ -1092,15 +1092,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           return None
         }
 
-        Some((new CompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
       } else {
         // Note: bandIndex is always normalized to 0 here: non-zero band indices (multiple output bands
         // sourced from the same physical multi-band file, e.g. PROBA-V) are already represented via an
         // IndexedRasterSource wrapper per band (see above), which always exposes itself as a single-band
-        // (band 0) source. CompositeRasterSource.groupedBySource still regroups such wrapped bands by their
+        // (band 0) source. BandCompositeRasterSource.groupedBySource still regroups such wrapped bands by their
         // (delegated) physical source name for the "load per product" read optimization.
         assert(sources.forall { case (_, idx) => idx == 0 }, "expected all band indices to be normalized to 0")
-        Some((new CompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
       }
     }
   }

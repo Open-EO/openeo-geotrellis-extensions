@@ -33,7 +33,7 @@ import java.util.UUID
  * Note on mocking: a mocking library (mockito-scala, already a test dependency of this module) is the
  * natural first choice for call counting, and was tried here (`Mockito.spy`/`mock(..., withSettings()
  * .serializable())`). It does not work in this pipeline: raster sources end up embedded inside Spark
- * task closures (via `CompositeRasterSource`/`Feature`) that get Kryo-serialized even in local mode, and
+ * task closures (via `BandCompositeRasterSource`/`Feature`) that get Kryo-serialized even in local mode, and
  * Mockito's dynamic proxies carry non-serializable invocation-history state that breaks Kryo regardless
  * of the `serializable()` mock setting. [[ConstantMultibandRasterSource]] therefore records its own
  * `read(...)` calls into a plain, Kryo-friendly, JVM-static registry instead - which works for local

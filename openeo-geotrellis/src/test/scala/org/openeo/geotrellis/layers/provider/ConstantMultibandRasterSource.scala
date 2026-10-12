@@ -11,7 +11,7 @@ import scala.jdk.CollectionConverters._
 /**
  * Records physical `read(..., bands)` calls made to [[ConstantMultibandRasterSource]] instances, keyed
  * by scene id. A plain Mockito spy/mock cannot be used for this purpose here: raster sources end up
- * inside Spark task closures (via `CompositeRasterSource`/`Feature`) that get Kryo-serialized even in
+ * inside Spark task closures (via `BandCompositeRasterSource`/`Feature`) that get Kryo-serialized even in
  * local mode, and Mockito's dynamic proxies carry non-serializable invocation-history state (regardless
  * of `withSettings().serializable()`) that breaks Kryo. Recording calls directly in the source's own
  * (plain, Kryo-friendly) code, into a JVM-static companion-object registry, sidesteps that entirely -
