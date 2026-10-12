@@ -1170,7 +1170,11 @@ public class TestOpenEOProcessScriptBuilder {
     @DisplayName("Test is_valid with finite numbers, NoData and infinities")
     @Test
     public void testIsValid() {
-        OpenEOProcessScriptBuilder builder = buildUnaryProcess("is_valid", "x");
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("is_valid", dummyMap("x"));
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.expressionEnd("is_valid", dummyMap("x"));
         assertEquals(BitCellType$.MODULE$, builder.getOutputCellType());
 
         List<Tile> tiles = Arrays.asList(
