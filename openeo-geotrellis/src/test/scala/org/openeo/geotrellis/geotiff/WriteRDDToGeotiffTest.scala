@@ -267,8 +267,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     saveRDD(tileLayerRDD.withContext { _.repartition(layoutCols * layoutRows) }, 1, filename)
 
     val tiff = GeoTiff.readSingleband(filename)
-    // BitCellType should have been converted to UByteCellType
-    assertEquals(UByteCellType, tiff.cellType, s"Expected UByteCellType but got ${tiff.cellType}")
+    assertEquals(geotrellis.raster.UByteUserDefinedNoDataCellType(255.toByte), tiff.cellType)
     // Values should be preserved: 1s and 0s
     val output = tiff.raster.tile
     assertArrayEquals(bitTile.toArray(), output.toArray())
