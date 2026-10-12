@@ -64,7 +64,8 @@ package object geotiff {
   private final val BigTiffSizeThresholdBytes = math.pow(2, 32).toLong
 
   private def safeBitCellType(cellType: CellType): CellType = cellType match {
-    // BitCellType is not reliably supported in GeoTIFF; reserve 255 for NoData.
+    // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
+
     case BitCellType => UByteUserDefinedNoDataCellType(255.toByte)
     case _ => cellType
   }
@@ -350,7 +351,6 @@ package object geotiff {
           val layoutRow = key.getComponent[SpatialKey]._2
           val bandSegmentOffset = bandSegmentCount * (if (formatOptions.separateAssetPerBand) 0 else bandIndex)
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
-          // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
           val tileToWrite = if (tile.cellType == BitCellType) safeConvert(tile, safeBitCellType(tile.cellType)) else tile
           
           val bandStatistics =
@@ -895,7 +895,6 @@ package object geotiff {
           val bandSegmentOffset = bandSegmentCount * bandIndex
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
 
-          // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
           val tileToWrite = if (tile.cellType == BitCellType) safeConvert(tile, safeBitCellType(tile.cellType)) else tile
 
           val bytes =
@@ -941,7 +940,7 @@ package object geotiff {
       } else {
         typeAccumulator.value.head
       }
-      // BitCellType is not reliably supported in GeoTIFF; use UByte instead
+
       safeBitCellType(rawCellType)
     }
     println("Saving geotiff with Celltype: " + cellType)
@@ -1015,7 +1014,6 @@ package object geotiff {
         val bandSegmentCount = totalCols * totalRows
         val someTile = tiles.head._2
         val detectedBandCount = someTile.bandCount
-        // BitCellType is not reliably supported in GeoTIFF; use UByte instead
         val cellType = safeBitCellType(someTile.cellType)
 
         val tiffs = tiles.flatMap { case (key: K, multibandTile: MultibandTile) => {
@@ -1032,7 +1030,6 @@ package object geotiff {
               val layoutRow = key.getComponent[SpatialKey]._2 - minKey._2
               val bandSegmentOffset = bandSegmentCount * bandIndex
               val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
-              // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
               val tileToWrite = if (tile.cellType == BitCellType) safeConvert(tile, safeBitCellType(tile.cellType)) else tile
               //tiff format seems to require that we provide 'full' tiles
               val bytes = raster.CroppedTile(tileToWrite, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
@@ -1157,7 +1154,6 @@ package object geotiff {
     }
     fo.assertNoConflicts()
 
-    // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
     val adjustedToWrite = if (adjusted.tile.cellType == BitCellType) adjusted.mapTile(_.convert(safeBitCellType(adjusted.tile.cellType))) else adjusted
     val geoTiff = MultibandGeoTiff(adjustedToWrite, contextRDD.metadata.crs, GeoTiffOptions(compression))
       .withOverviews(getOverviewResampleMethod(fo), blockSize = fo.tileSize)
@@ -1298,7 +1294,7 @@ package object geotiff {
         fo
     }
     fo.assertNoConflicts()
-    // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
+
     val tileToWrite = if (adjusted.tile.cellType == BitCellType) adjusted.tile.convert(safeBitCellType(adjusted.tile.cellType)) else adjusted.tile
 
     val bandNames = fo.getBandNames
