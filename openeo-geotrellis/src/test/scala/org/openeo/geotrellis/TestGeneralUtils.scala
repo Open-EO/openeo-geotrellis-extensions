@@ -314,6 +314,11 @@ class TestGeneralUtils {
 
 
 
+  /**
+   * Raw (NoNoData) integral cell types are widened to the next larger cell type with a NODATA value outside of their
+   * original range of values (int32 has no larger integral cell type so it becomes float64). Raw floating point cell
+   * types keep their size and get NaN as NODATA. Cell types that already have a NODATA value are returned as is.
+   */
   @Test
   def testWidenedCellTypeWithNoData(): Unit = {
     assertEquals(ByteConstantNoDataCellType, widenedCellTypeWithNoData(BitCellType))
@@ -330,6 +335,17 @@ class TestGeneralUtils {
     assertEquals(IntConstantNoDataCellType, widenedCellTypeWithNoData(IntConstantNoDataCellType))
   }
 
+  /**
+   * Widening a raw tile should yield the cell type of [[widenedCellTypeWithNoData]] with all of its original values
+   * remaining valid data.
+   *
+   * Each tile contains the extremes of its cell type's range, which are the values most likely to be mistaken for
+   * NODATA or to be mangled by the conversion: e.g. 0 (formerly treated as NODATA), unsigned maxima (stored as -1) and
+   * Int.MinValue (GeoTrellis' NODATA value for int32, which is why int32 is special-cased). Constant tiles are included
+   * because they implement convert separately from array tiles.
+   *
+   * A tile that already has a NODATA value should be returned as is.
+   */
   @Test
   def testWidenWithNoData(): Unit = {
     def assertPreserved(tile: Tile): Unit = {
