@@ -7,6 +7,12 @@ trait RasterSourceProvider {
 
   def canProcess(rasterSourceDefinition: RasterSourceDefinition): Boolean
 
+  /**
+   * Returns the source for the asset of `rasterSourceDefinition`; `FileLayerProvider` then selects band
+   * `rasterSourceDefinition.bandIndex` from it. A provider that already selected the band itself (e.g. because
+   * the asset's band order does not match the source's) returns an
+   * [[org.openeo.geotrellis.layers.raster_source.IndexedRasterSource]], which is used as is.
+   */
   def rasterSource(rasterSourceDefinition: RasterSourceDefinition): RasterSource
 
   def usePredefinedExtent(rasterSourceDefinition: RasterSourceDefinition): Boolean = false

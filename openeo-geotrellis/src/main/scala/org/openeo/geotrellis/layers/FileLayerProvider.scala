@@ -1041,7 +1041,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         bandContexts.map {
           case Some(BandContext(definition, pixelValueScale, pixelValueOffset, targetTargetCellType)) =>
             val bandIndex = definition.bandIndex
-            val maybeSource: Option[RasterSource] = rasterSourceProviderChain.find(
+            val providedSource: Option[RasterSource] = rasterSourceProviderChain.find(
                 _.canProcess(definition)
               ).flatMap(
                 p => {
@@ -1051,9 +1051,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
                   Option(p.rasterSource(definition))
                 }
               )
+            // a provider returning an IndexedRasterSource has already selected the band for this definition
+            val bandAlreadySelected = providedSource.exists(_.isInstanceOf[IndexedRasterSource])
+            val maybeSource: Option[RasterSource] = providedSource
               .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
             if (maybeSource.isDefined) {
-              if (bandIndex > 0) {
+              if (bandIndex > 0 && !bandAlreadySelected) {
                 Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
               } else {
                 Some(maybeSource.get, 0)
