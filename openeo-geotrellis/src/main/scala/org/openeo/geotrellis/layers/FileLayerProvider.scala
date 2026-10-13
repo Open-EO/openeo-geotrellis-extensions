@@ -406,6 +406,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
            maxSoftErrorsRatio, disambiguateConstructors = null)
 
   assert(bandIndices.isEmpty || bandIndices.size == openSearchLinkTitles.size)
+  require(
+    Seq(maxSpatialResolution.width, maxSpatialResolution.height).forall(r => r > 0 && r < Double.PositiveInfinity),
+    s"Invalid maxSpatialResolution $maxSpatialResolution for $openSearchCollectionId: cell size must be finite and positive"
+  )
 
   if(experimental) {
     logger.warn("Experimental features enabled for: " + openSearchCollectionId)
