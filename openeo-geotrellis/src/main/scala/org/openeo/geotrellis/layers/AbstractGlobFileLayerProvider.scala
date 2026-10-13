@@ -170,7 +170,7 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
       filteredRdd
         .groupByKey(thePartitioner)
         .mapValues { iter =>
-          MultibandTile( // TODO: use our version? (see org.openeo.geotrellis.geotiff.PyramidFactory.tiledLayerRDD)
+          MultibandTile(
             iter.flatMap { _.raster.toSeq.flatMap { _.tile.bands } }
           )
         }
