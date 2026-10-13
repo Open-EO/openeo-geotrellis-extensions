@@ -346,17 +346,22 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   // These preserve all settings (attributes, predefinedExtent, readFullTile, ...): e.g. RasterSource.tileToLayout
   // goes through them, and RasterTileLoader relies on the result still being a fully configured composite.
-  private def withSources(newSources: NonEmptyList[RasterSource]): BandCompositeRasterSource =
-    new BandCompositeRasterSource(newSources, crs, attributes, predefinedExtent,
+  private def withSources(newSources: NonEmptyList[RasterSource],
+                          newCrs: CRS = crs,
+                          newPredefinedExtent: Option[GridExtent[Long]] = predefinedExtent): BandCompositeRasterSource =
+    new BandCompositeRasterSource(newSources, newCrs, attributes, newPredefinedExtent,
       parallelRead = parallelRead, softErrors = softErrors, readFullTile = readFullTile)
 
   override def resample(
                          resampleTarget: ResampleTarget,
                          method: ResampleMethod,
                          strategy: OverviewStrategy
-                       ): RasterSource = withSources(sources map {
-    _.resample(resampleTarget, method, strategy)
-  })
+                       ): RasterSource = withSources(
+    reprojectedSources map {
+      _.resample(resampleTarget, method, strategy)
+    },
+    newPredefinedExtent = predefinedExtent.map(resampleTarget(_))
+  )
 
   override def convert(targetCellType: TargetCellType): RasterSource =
     withSources(sources map {
@@ -364,9 +369,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     })
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
-    withSources(sources map {
-      _.reproject(targetCRS, resampleTarget, method, strategy)
-    })
+    withSources(
+      reprojectedSources map {
+        _.reproject(targetCRS, resampleTarget, method, strategy)
+      },
+      newCrs = targetCRS,
+      newPredefinedExtent = predefinedExtent.map(extent => resampleTarget(extent.reproject(crs, targetCRS)))
+    )
 
   override def toString: String = s"BandCompositeRasterSource(${sources.toList}, $crs, $gridExtent, $name)"
 

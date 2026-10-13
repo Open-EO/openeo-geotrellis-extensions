@@ -1,8 +1,8 @@
 package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
-import geotrellis.proj4.LatLng
-import geotrellis.raster.{FloatConstantNoDataCellType, GridBounds}
+import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, GridBounds, TargetCellSize}
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.testkit.RasterMatchers
@@ -162,5 +162,32 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
     assertTrue(converted.softErrors)
     assertTrue(converted.readFullTile)
     assertEquals(groups, converted.groupedBySource.map { case (name, entries) => name -> entries.map(_._1) })
+  }
+
+  @Test
+  def reprojectionUpdatesCrsAndPredefinedExtent(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val composite = new BandCompositeRasterSource(
+      NonEmptyList.of(IndexedRasterSource(physical, 0), physical),
+      crs = physical.crs, predefinedExtent = Some(physical.gridExtent))
+
+    val reprojected = composite.reproject(WebMercator).asInstanceOf[BandCompositeRasterSource]
+    assertEquals(WebMercator, reprojected.crs)
+    assertTrue(reprojected.sources.forall(_.crs == WebMercator))
+    assertEquals(reprojected.sources.head.gridExtent, reprojected.gridExtent)
+  }
+
+  @Test
+  def resampleUpdatesPredefinedExtent(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val composite = new BandCompositeRasterSource(
+      NonEmptyList.of(IndexedRasterSource(physical, 0), physical),
+      crs = physical.crs, predefinedExtent = Some(physical.gridExtent))
+
+    val target = TargetCellSize(CellSize(physical.cellSize.width * 2, physical.cellSize.height * 2))
+    val resampled = composite.resample(target, geotrellis.raster.resample.NearestNeighbor, geotrellis.raster.io.geotiff.Auto(0)).asInstanceOf[BandCompositeRasterSource]
+    assertEquals(physical.crs, resampled.crs)
+    assertEquals(target.cellSize, resampled.gridExtent.cellSize)
+    assertEquals(resampled.sources.head.gridExtent, resampled.gridExtent)
   }
 }
