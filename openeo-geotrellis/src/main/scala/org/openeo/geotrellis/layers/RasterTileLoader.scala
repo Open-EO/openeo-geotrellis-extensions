@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import cats.data.NonEmptyList
 import geotrellis.layer.{LayoutDefinition, LayoutTileSource, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
@@ -247,9 +246,7 @@ case class RasterTileLoader() {
             //decompose into individual physical datasources, one GridBoundsRasterRegion per source, so that
             //reads for the same underlying file/dataset get grouped onto the same partition. The output band
             //index for every band is known upfront from groupedBySource, instead of being re-derived later.
-            compositeRasterSource.groupedBySource.map { case (sourceName, entries) =>
-              val outputBandIndices = entries.map(_._1)
-              val groupSources = NonEmptyList.fromListUnsafe(entries.map(_._2).toList)
+            compositeRasterSource.groupedBySource.map { case (sourceName, outputBandIndices, groupSources) =>
               val subRegion = GridBoundsRasterRegion(
                 new BandCompositeRasterSource(groupSources, compositeRasterSource.crs, compositeRasterSource.attributes,
                   compositeRasterSource.predefinedExtent, readFullTile = true, softErrors = softErrors),

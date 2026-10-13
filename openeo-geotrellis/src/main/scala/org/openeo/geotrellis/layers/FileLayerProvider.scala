@@ -24,7 +24,7 @@ import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis.layers.provider._
-import org.openeo.geotrellis.layers.raster_source.{IndexedRasterSource, NoDataRasterSource, ValueOffsetRasterSource}
+import org.openeo.geotrellis.layers.raster_source.{BandSelectionRasterSource, IndexedRasterSource, NoDataRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
@@ -36,6 +36,7 @@ import java.net.URI
 import java.nio.file.{Files, Path, Paths}
 import java.time._
 import java.util.concurrent.TimeUnit
+import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
@@ -992,16 +993,18 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         if (provider.usePredefinedExtent(bandContexts.flatten.head.definition)) {
           predefinedExtent = featureExtentInLayout
         }
-        var presentIndex = 0
-        bandContexts.map {
-          case Some(_) =>
-            val sourceBandIndex = bandIndicesInSource(presentIndex)
-            presentIndex += 1
-            // Normalized to output band 0, same convention as the IndexedRasterSource wrapping below:
-            // BandCompositeRasterSource.groupedBySource regroups these by their (shared, delegated) source name.
-            Some((IndexedRasterSource(source, sourceBandIndex): RasterSource, 0))
-          case None => None
+        // Each run of consecutive present bands becomes a single selection of the shared source, so that
+        // BandCompositeRasterSource reads (and transforms) those bands together; missing bands break a run.
+        val sourceBandIndices = bandIndicesInSource.iterator
+        val runs = mutable.ArrayBuffer[Option[mutable.ArrayBuffer[Int]]]()
+        bandContexts.foreach {
+          case Some(_) => runs.lastOption match {
+            case Some(Some(run)) => run += sourceBandIndices.next()
+            case _ => runs += Some(mutable.ArrayBuffer(sourceBandIndices.next()))
+          }
+          case None => runs += None
         }
+        runs.toSeq.map(_.map(run => (BandSelectionRasterSource(source, run.toSeq): RasterSource, 0)))
       case None =>
         bandContexts.map {
           case Some(BandContext(definition, pixelValueScale, pixelValueOffset, targetTargetCellType)) =>
@@ -1053,7 +1056,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
       if (byLinkTitle && bandIndices.isEmpty) {
-        val actualNumberOfBands = rasterSources.size
+        val actualNumberOfBands = bandContexts.size
 
         if (actualNumberOfBands != expectedNumberOfBands) {
           logger.warn(s"Did not find expected number of bands $expectedNumberOfBands (actual: $actualNumberOfBands) for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
@@ -1062,11 +1065,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
         Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
       } else {
-        // Note: bandIndex is always normalized to 0 here: non-zero band indices (multiple output bands
-        // sourced from the same physical multi-band file, e.g. PROBA-V) are already represented via an
-        // IndexedRasterSource wrapper per band (see above), which always exposes itself as a single-band
-        // (band 0) source. BandCompositeRasterSource.groupedBySource still regroups such wrapped bands by their
-        // (delegated) physical source name for the "load per product" read optimization.
+        // Note: bandIndex is always normalized to 0 here: non-zero band indices (output bands sourced from a
+        // physical multi-band file, e.g. PROBA-V) are already represented via an IndexedRasterSource or
+        // BandSelectionRasterSource wrapper (see above). BandCompositeRasterSource.groupedBySource still regroups
+        // such wrapped bands by their (delegated) physical source name for the "load per product" read optimization.
         assert(sources.forall { case (_, idx) => idx == 0 }, "expected all band indices to be normalized to 0")
         Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
       }

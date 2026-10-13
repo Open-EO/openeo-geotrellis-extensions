@@ -10,7 +10,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIf
-import org.openeo.geotrellis.layers.raster_source.{IndexedRasterSource, NoDataRasterSource, OpenEoSourcePath, SentinelXMLMetadataRasterSource, ValueOffsetRasterSource}
+import org.openeo.geotrellis.layers.raster_source.{BandSelectionRasterSource, IndexedRasterSource, NoDataRasterSource, OpenEoSourcePath, SentinelXMLMetadataRasterSource, ValueOffsetRasterSource}
 
 class BandCompositeRasterSourceTest extends RasterMatchers {
 
@@ -153,7 +153,7 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
       crs = physical.crs, attributes = Map("date" -> "2020-01-01"), predefinedExtent = predefinedExtent,
       softErrors = true, readFullTile = true)
 
-    val groups = composite.groupedBySource.map { case (name, entries) => name -> entries.map(_._1) }
+    val groups = composite.groupedBySource.map { case (name, outputBands, _) => name -> outputBands }
     assertEquals(Seq(physical.name -> Seq(0, 2), other.name -> Seq(1)), groups)
 
     val converted = composite.convert(FloatConstantNoDataCellType).asInstanceOf[BandCompositeRasterSource]
@@ -161,7 +161,7 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
     assertEquals(predefinedExtent, converted.predefinedExtent)
     assertTrue(converted.softErrors)
     assertTrue(converted.readFullTile)
-    assertEquals(groups, converted.groupedBySource.map { case (name, entries) => name -> entries.map(_._1) })
+    assertEquals(groups, converted.groupedBySource.map { case (name, outputBands, _) => name -> outputBands })
   }
 
   @Test
@@ -211,18 +211,28 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
   }
 
   @Test
-  def equivalentReadConfigurationComparesPixelAffectingSettings(): Unit = {
-    import BandCompositeRasterSource.equivalentReadConfiguration
+  def bandSelectionServesConsecutiveBandsInOneRead(): Unit = {
     val physical = GeoTiffRasterSource(singleBandGeotiffPath)
-    val otherInstance = GeoTiffRasterSource(singleBandGeotiffPath)
+    var reads = 0
+    val counting = new ValueOffsetRasterSource(physical, 1.0, 0.0) {
+      override def read(bounds: GridBounds[Long], bands: Seq[Int]) = { reads += 1; super.read(bounds, bands) }
+    }
+    val placeholder = NoDataRasterSource.instance(physical.gridExtent, physical.crs)
+    val composite = new BandCompositeRasterSource(
+      NonEmptyList.of(BandSelectionRasterSource(counting, Seq(0, 0)), placeholder),
+      crs = physical.crs, parallelRead = false)
+    assertEquals(3, composite.bandCount)
 
-    assertTrue(equivalentReadConfiguration(physical, otherInstance))
-    assertTrue(equivalentReadConfiguration(
-      new ValueOffsetRasterSource(physical, 2.0, 1.0), new ValueOffsetRasterSource(otherInstance, 2.0, 1.0)))
-    assertFalse(equivalentReadConfiguration(
-      new ValueOffsetRasterSource(physical, 2.0, 1.0), new ValueOffsetRasterSource(physical, 2.0, 0.0)))
-    assertFalse(equivalentReadConfiguration(physical, new ValueOffsetRasterSource(physical, 1.0, 1.0)))
-    assertFalse(equivalentReadConfiguration(physical, physical.convert(FloatConstantNoDataCellType)))
-    assertFalse(equivalentReadConfiguration(physical, physical.reproject(geotrellis.proj4.WebMercator)))
+    val bounds = GridBounds(100L, 100L, 131L, 131L)
+    val result = composite.read(bounds, Seq(2, 1, 0)).get.tile
+    assertEquals(1, reads)
+    assertEquals(3, result.bandCount)
+    val expected = physical.read(bounds, Seq(0)).get.tile.band(0).toArrayDouble().toSeq
+    assertTrue(result.band(0).isNoDataTile)
+    assertEquals(expected, result.band(1).toArrayDouble().toSeq)
+    assertEquals(expected, result.band(2).toArrayDouble().toSeq)
+
+    val groups = composite.groupedBySource.map { case (name, outputBands, groupSources) => (name, outputBands, groupSources.size) }
+    assertEquals(Seq((physical.name, Seq(0, 1), 1), (placeholder.name, Seq(2), 1)), groups)
   }
 }
