@@ -23,6 +23,19 @@ import scala.collection.parallel.CollectionsHaveToParArray
 import scala.jdk.CollectionConverters.{IterableHasAsJava, IteratorHasAsScala}
 
 object RasterTileLoader extends RasterTileLoader {
+
+  /**
+   * Merges per-source contributions for one SpaceTimeKey into one tile per absolute output-band position.
+   * Products at the same key may group their bands differently (e.g. [0, 1] from one source, [0] from another),
+   * so overlapping contributions are merged pixel-wise per band rather than per index group; earlier sources
+   * (by sortable source name) take precedence where both have data.
+   */
+  private[layers] def mergeByOutputBand(contributions: Iterable[(Seq[Int], MultibandTile, SourceName)]): Map[Int, Tile] =
+    contributions.toList
+      .sortBy(x => sortableSourceName(x._3))
+      .flatMap { case (indices, multiband, _) => indices.zip(multiband.bands) }
+      .groupBy(_._1)
+      .map { case (bandIndex, bandTiles) => bandIndex -> bandTiles.map(_._2).reduce(_ merge _) }
 }
 
 
@@ -277,19 +290,10 @@ case class RasterTileLoader() {
     )
     val value = value1.groupByKey(partitioner)
     var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = value.mapValues((tiles: Iterable[(Seq[Int], MultibandTile, SourceName)]) => {
-      // Group by the true, absolute output-band indices for this source group, merging overlapping
-      // contributions (e.g. from multiple products at the same SpaceTimeKey) deterministically by source name.
-      val bandsByGroup: Iterable[(Seq[Int], Option[MultibandTile])] = tiles.groupBy(_._1)
-        .map { case (indices, entries) =>
-          (indices, entries.toList.sortBy(x => sortableSourceName(x._3)).map(_._2).reduceOption(_ merge _))
-        }
-
-      var mergedBands: Map[Int, Tile] = bandsByGroup.flatMap { case (indices, multiband) =>
-        multiband.toSeq.flatMap(mb => indices.zip(mb.bands))
-      }.toMap
+      var mergedBands: Map[Int, Tile] = RasterTileLoader.mergeByOutputBand(tiles)
       for (x <- 0 until expectedBandCount) {
         if (!mergedBands.contains(x)) {
-          val allSources = bandsByGroup.flatMap { case (indices, multiband) => multiband.map(_ => indices) }.toList.sortBy(_.headOption).distinct
+          val allSources = tiles.map(_._1).toList.distinct.sortBy(_.headOption)
           logger.warn(s"load_collection/load_stac - $collectionRef: Band " + x + " is missing in the input data. Filling with empty tile. Sources: " + allSources.mkString(", ") + s" stage ${TaskContext.get().stageId()} - attempt ${TaskContext.get().stageAttemptNumber()}")
           val someTile = mergedBands.head._2
           mergedBands = mergedBands + (x -> someTile.prototype(someTile.cols, someTile.rows))

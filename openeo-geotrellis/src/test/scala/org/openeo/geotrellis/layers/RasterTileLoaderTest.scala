@@ -355,4 +355,28 @@ class RasterTileLoaderTest extends RasterMatchers {
       BatchJobMetadataTracker.clearGlobalTracker()
     }
   }
+
+  @Test
+  def mergeByOutputBandMergesOverlappingBandGroupsPerBand(): Unit = {
+    import geotrellis.raster.{IntArrayTile, IntConstantTile, NODATA, StringName}
+
+    // "a" sorts first, so takes precedence where both have data
+    val aBand0 = IntArrayTile(Array(1, NODATA, NODATA, 4), 2, 2)
+    val aBand1 = IntArrayTile(Array(10, 11, 12, 13), 2, 2)
+    val bBand0 = IntArrayTile(Array(100, 101, NODATA, 103), 2, 2)
+    val noDataPlaceholder = IntConstantTile(NODATA, 2, 2)
+    val cBand2 = IntArrayTile(Array(20, 21, 22, 23), 2, 2)
+
+    val merged = RasterTileLoader.mergeByOutputBand(Seq(
+      (Seq(0), MultibandTile(bBand0), StringName("b")),
+      (Seq(0, 1), MultibandTile(aBand0, aBand1), StringName("a")),
+      (Seq(2), MultibandTile(noDataPlaceholder), StringName("0-placeholder")),
+      (Seq(2), MultibandTile(cBand2), StringName("c")),
+    ))
+
+    assertEquals(Set(0, 1, 2), merged.keySet)
+    assertEquals(Seq(1, 101, NODATA, 4), merged(0).toArray().toSeq)
+    assertEquals(aBand1.toArray().toSeq, merged(1).toArray().toSeq)
+    assertEquals(cBand2.toArray().toSeq, merged(2).toArray().toSeq)
+  }
 }
