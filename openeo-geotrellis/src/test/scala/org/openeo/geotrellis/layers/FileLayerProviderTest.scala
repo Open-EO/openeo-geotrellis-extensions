@@ -18,7 +18,7 @@ import geotrellis.vector._
 import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
 import org.apache.commons.io.FileUtils
 import org.apache.spark.rdd.RDD
-import org.apache.spark.{HashPartitioner, SparkConf, SparkContext}
+import org.apache.spark.{HashPartitioner, SparkConf, SparkContext, SparkTestHelper}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api._
 import org.junit.jupiter.api.condition.EnabledIf
@@ -1595,6 +1595,8 @@ class FileLayerProviderTest extends RasterMatchers {
     val (datacubeParams, result) = keysForLargeArea()
 
     val allTiles = result._1.collect()
+    // listener events are delivered asynchronously: make sure the last job end has been counted
+    SparkTestHelper.waitUntilListenerBusEmpty(sc)
     sc.removeSparkListener(listener)
     print(allTiles)
     val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
@@ -1632,6 +1634,8 @@ class FileLayerProviderTest extends RasterMatchers {
 
     val allTiles = result._1.collect()
 
+    // listener events are delivered asynchronously: make sure the last job end has been counted
+    SparkTestHelper.waitUntilListenerBusEmpty(sc)
     sc.removeSparkListener(listener)
     print(allTiles)
     val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
