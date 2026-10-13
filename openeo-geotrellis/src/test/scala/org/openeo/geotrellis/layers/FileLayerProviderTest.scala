@@ -19,7 +19,7 @@ import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInp
 import org.apache.commons.io.FileUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{HashPartitioner, SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertNotSame, assertSame, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertNotSame, assertSame, assertThrows, assertTrue}
 import org.junit.jupiter.api._
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
@@ -162,6 +162,18 @@ class FileLayerProviderTest extends RasterMatchers {
       new Sentinel5PPathDateExtractor(maxDepth = 3),
       layoutScheme = sentinel5PLayoutScheme
     )
+  }
+
+  @Test
+  def nonFiniteMaxSpatialResolutionIsRejected(): Unit = {
+    assertThrows(classOf[IllegalArgumentException], () => FileLayerProvider(
+      openSearch = new FixedFeaturesOpenSearchClient,
+      openSearchCollectionId = "collection",
+      NonEmptyList.one("B01"),
+      rootPath = "/data",
+      maxSpatialResolution = CellSize(Double.NaN, Double.NaN),
+      SplitYearMonthDayPathDateExtractor,
+    ))
   }
 
   @Disabled("Can't test against Terrascope OscarsOpenSearchClient")

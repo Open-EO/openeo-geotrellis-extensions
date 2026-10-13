@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - merge_cubes: merging a cube with a temporal dimension with a cube without a temporal dimension well now correctly add nodata bands to honor the expected band count.
+- `FileLayerProvider`: fail early with a clear error on non-finite or non-positive `maxSpatialResolution` (instead of "invalid cols: 0")
 
 ## Before 2026-09-30
 
