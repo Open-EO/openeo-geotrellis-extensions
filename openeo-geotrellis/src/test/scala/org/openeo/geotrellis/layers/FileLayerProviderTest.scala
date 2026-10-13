@@ -1765,7 +1765,7 @@ class FileLayerProviderTest extends RasterMatchers {
   @ParameterizedTest
   @ValueSource(booleans = Array(false, true))
   def testMultibandNoNoDataCOGViaSTAC(loadPerProduct: Boolean, @TempDir outDir: Path): Unit = {
-    // 2 adjacent Int16 GeoTiffs without NODATA value (34TFR_000 and 34TFR_001, seam at x=610240); actual values >= 13
+    // 2 adjacent Short GeoTiffs without NODATA value (34TFR_000 and 34TFR_001, seam at x=610240); actual values >= 13
     val pyramidFactory = LayerFixtures.stacCogNoNoDataCollection
 
     val projectedPolygons = ProjectedPolygons.fromExtent(
@@ -1783,13 +1783,7 @@ class FileLayerProviderTest extends RasterMatchers {
 
     cube.cache()
 
-    val opts = new NetCDFOptions()
-    opts.setBandNames(new util.ArrayList(util.Collections.singletonList("L2A-B02-P10")))
-    val outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC_$loadPerProduct.nc"
-    NetCDFRDDWriter.saveSingleNetCDFGeneric(cube, outLocation, opts)
-    // TODO: generate a new reference file to compare with
-
-    // raw Int16 is widened rather than given a NODATA value of 0
+    // raw Short is widened to Int with NODATA rather than given a NODATA value of 0
     assertEquals(IntConstantNoDataCellType, cube.metadata.cellType)
     assertTrue(cube.values.collect().forall(_.cellType == IntConstantNoDataCellType))
 
@@ -1810,6 +1804,15 @@ class FileLayerProviderTest extends RasterMatchers {
       col <- seamCol - 1 to seamCol
       row <- 0 until band.rows
     } assertTrue(isData(band.get(col, row)), s"expected data at seam ($col, $row)")
+
+    writeToNetCDFAndCompare(
+      projectedPolygons,
+      dataCubeParameters,
+      bands = new util.ArrayList(util.Collections.singletonList("L2A-B02-P10")),
+      pyramidFactory,
+      outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC_$loadPerProduct.nc",
+      referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testMultibandNoNoDataCOGViaSTAC.nc",
+    )
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasEodataData")
