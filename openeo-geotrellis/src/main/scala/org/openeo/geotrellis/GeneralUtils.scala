@@ -236,6 +236,17 @@ object GeneralUtils {
     }
   }
 
+  def extentMerged(extentLeft:Extent, extentRight:Extent, crsLeft: CRS, crsRight: CRS): Extent = {
+    if (extentLeft == extentRight && crsLeft == crsRight) extentLeft
+    else {
+      val reprojectedExtentRight =
+        if (crsLeft != crsRight) {
+          extentRight.reproject(crsRight, crsLeft)
+        } else extentRight
+      extentLeft.combine(reprojectedExtentRight)
+    }
+
+  }
 
   def layoutMerged(layoutLeft:LayoutDefinition, layoutRight:LayoutDefinition, crsLeft: CRS, crsRight: CRS): LayoutDefinition = {
     if (layoutLeft == layoutRight & crsLeft == crsRight) layoutLeft
