@@ -10,7 +10,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIf
-import org.openeo.geotrellis.layers.raster_source.{IndexedRasterSource, NoDataRasterSource, OpenEoSourcePath, SentinelXMLMetadataRasterSource}
+import org.openeo.geotrellis.layers.raster_source.{IndexedRasterSource, NoDataRasterSource, OpenEoSourcePath, SentinelXMLMetadataRasterSource, ValueOffsetRasterSource}
 
 class BandCompositeRasterSourceTest extends RasterMatchers {
 
@@ -189,5 +189,40 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
     assertEquals(physical.crs, resampled.crs)
     assertEquals(target.cellSize, resampled.gridExtent.cellSize)
     assertEquals(resampled.sources.head.gridExtent, resampled.gridExtent)
+  }
+
+  @Test
+  def sameNamedBandsWithDifferentValueTransformationsAreReadSeparately(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val scaled = new ValueOffsetRasterSource(physical, 2.0, 0.0)
+    val offset = new ValueOffsetRasterSource(physical, 1.0, 5.0)
+    assertEquals(scaled.name, offset.name)
+
+    val composite = new BandCompositeRasterSource(
+      NonEmptyList.of(IndexedRasterSource(scaled, 0), IndexedRasterSource(offset, 0)), crs = physical.crs)
+    val bounds = GridBounds(100L, 100L, 131L, 131L)
+    val result = composite.read(bounds, Seq(0, 1)).get.tile
+
+    val expectedScaled = scaled.read(bounds, Seq(0)).get.tile.band(0)
+    val expectedOffset = offset.read(bounds, Seq(0)).get.tile.band(0)
+    assertTrue(expectedScaled.toArrayDouble().toSeq != expectedOffset.toArrayDouble().toSeq)
+    assertEquals(expectedScaled.toArrayDouble().toSeq, result.band(0).toArrayDouble().toSeq)
+    assertEquals(expectedOffset.toArrayDouble().toSeq, result.band(1).toArrayDouble().toSeq)
+  }
+
+  @Test
+  def equivalentReadConfigurationComparesPixelAffectingSettings(): Unit = {
+    import BandCompositeRasterSource.equivalentReadConfiguration
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val otherInstance = GeoTiffRasterSource(singleBandGeotiffPath)
+
+    assertTrue(equivalentReadConfiguration(physical, otherInstance))
+    assertTrue(equivalentReadConfiguration(
+      new ValueOffsetRasterSource(physical, 2.0, 1.0), new ValueOffsetRasterSource(otherInstance, 2.0, 1.0)))
+    assertFalse(equivalentReadConfiguration(
+      new ValueOffsetRasterSource(physical, 2.0, 1.0), new ValueOffsetRasterSource(physical, 2.0, 0.0)))
+    assertFalse(equivalentReadConfiguration(physical, new ValueOffsetRasterSource(physical, 1.0, 1.0)))
+    assertFalse(equivalentReadConfiguration(physical, physical.convert(FloatConstantNoDataCellType)))
+    assertFalse(equivalentReadConfiguration(physical, physical.reproject(geotrellis.proj4.WebMercator)))
   }
 }

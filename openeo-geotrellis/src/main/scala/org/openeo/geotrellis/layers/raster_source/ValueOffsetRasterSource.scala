@@ -30,8 +30,8 @@ object ValueOffsetRasterSource {
 }
 
 class ValueOffsetRasterSource(val rasterSource: RasterSource,
-                              pixelValueScale: Double,
-                              pixelValueOffset: Double,
+                              val pixelValueScale: Double,
+                              val pixelValueOffset: Double,
                               val targetCellType: Option[TargetCellType] = None, //
                              ) extends RasterSource {
 

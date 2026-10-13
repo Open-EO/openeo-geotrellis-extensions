@@ -10,7 +10,7 @@ import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.RequestContext
 import org.openeo.geotrellis.layers.RasterTileLoader.SOFT_ERROR_MEGAPIXEL_COUNTER
-import org.openeo.geotrellis.layers.raster_source.IndexedRasterSource
+import org.openeo.geotrellis.layers.raster_source.{IndexedRasterSource, ValueOffsetRasterSource}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ResampledTile}
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
@@ -26,6 +26,23 @@ import scala.collection.parallel.CollectionConverters._
 object BandCompositeRasterSource {
   private val logger = LoggerFactory.getLogger(classOf[BandCompositeRasterSource])
 
+  /**
+   * Whether reading bands through `a` yields the same pixels as reading them through `b`, so that one can
+   * serve the bands of both. Name-preserving wrappers that transform pixel values are compared by their
+   * settings; other sources must match in class, name, CRS, grid and cell type.
+   */
+  private[layers] def equivalentReadConfiguration(a: RasterSource, b: RasterSource): Boolean = (a, b) match {
+    case _ if a eq b => true
+    case (x: ValueOffsetRasterSource, y: ValueOffsetRasterSource) =>
+      x.pixelValueScale == y.pixelValueScale && x.pixelValueOffset == y.pixelValueOffset &&
+        x.targetCellType == y.targetCellType && equivalentReadConfiguration(x.rasterSource, y.rasterSource)
+    case (x: IndexedRasterSource, y: IndexedRasterSource) =>
+      x.bandIndex == y.bandIndex && equivalentReadConfiguration(x.rasterSource, y.rasterSource)
+    case (_: ValueOffsetRasterSource | _: IndexedRasterSource, _) | (_, _: ValueOffsetRasterSource | _: IndexedRasterSource) => false
+    case _ =>
+      a == b || (a.getClass == b.getClass && a.name == b.name && a.crs == b.crs && a.gridExtent == b.gridExtent &&
+        a.cellType == b.cellType)
+  }
 
 
   private def retryWithBackoff[R](maxAttempts: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
@@ -104,13 +121,16 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
    * polarisations served by one terrain-correction pass), that physical source can serve all requested
    * bands in a single read call instead of one call per band. Returns the (un-reprojected) physical
    * source of the first wrapper plus, per requested output band, the corresponding band index within it.
-   * Grouping is by [[SourceName]], consistent with `groupedBySource` (wrappers may
-   * hold distinct - but equivalent - instances after per-band resample/convert/reproject mapping).
+   * Wrappers may hold distinct - but equivalent - instances after per-band resample/convert/reproject
+   * mapping, so a shared [[SourceName]] is required but not sufficient: the wrapped sources must also be
+   * configured equivalently (see `equivalentReadConfiguration`), otherwise e.g. per-band value
+   * scale/offset overrides of one band would be applied to all of them.
    */
   private def sharedPhysicalSource(bands: Seq[Int]): Option[(RasterSource, Seq[Int])] = {
     val selected = bands.map(sources.toList)
     val indexed = selected.collect { case i: IndexedRasterSource => i }
-    if (indexed.size == selected.size && indexed.nonEmpty && indexed.map(_.rasterSource.name).distinct.size == 1)
+    if (indexed.size == selected.size && indexed.nonEmpty &&
+      indexed.tail.forall(i => equivalentReadConfiguration(indexed.head.rasterSource, i.rasterSource)))
       Some((indexed.head.rasterSource, indexed.map(_.bandIndex)))
     else None
   }
