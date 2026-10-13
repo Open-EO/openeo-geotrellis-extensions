@@ -1826,7 +1826,7 @@ class FileLayerProviderTest extends RasterMatchers {
       bands = bandNames,
       pyramidFactory,
       outLocation = f"$outDir/testDEMRegression.nc",
-      referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testDEMRegression_ref.nc",
+      referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testDEMRegression.nc",
     )
   }
 
