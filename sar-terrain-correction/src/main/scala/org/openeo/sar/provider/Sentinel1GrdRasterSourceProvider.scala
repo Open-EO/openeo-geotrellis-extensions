@@ -7,10 +7,12 @@ import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.{CellSize, GridExtent, RasterSource, StringName}
 import geotrellis.vector.Extent
 import org.openeo.geotrellis.layers.provider.{RasterSourceDefinition, RasterSourceProvider}
+import org.openeo.geotrellis.layers.raster_source.IndexedRasterSource
 import org.openeo.sar.backend.nativ.NativeBackend
 import org.openeo.sar.metadata.Polarisation
 import org.openeo.sar.raster.S1GrdRasterSource
 import org.openeo.sar._
+import org.openeo.sar.provider.Sentinel1GrdRasterSourceProvider.{PolPattern, polarisationBandIndex}
 import org.slf4j.LoggerFactory
 
 import java.net.URI
@@ -55,8 +57,10 @@ class Sentinel1GrdRasterSourceProvider(
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
     val (scene, safeRoot, crs, cellSize) = openScene(definition)
     val ge = GridExtent[Long](definition.targetExtent.extent, cellSize)
+    // The scene source carries all polarisations: select the one this definition refers to.
+    val bandIndex = polarisationBandIndex(definition.dataPath, scene.polarisations, safeRoot)
 
-    new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString))
+    IndexedRasterSource(new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString)), bandIndex)
   }
 
 
@@ -72,13 +76,7 @@ class Sentinel1GrdRasterSourceProvider(
     val source: RasterSource = new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString))
 
     val bandIndices = definitions.toList.map { definition =>
-      PolPattern.findFirstMatchIn(definition.dataPath).map(m => Polarisation.parse(m.group(1).toUpperCase)) match {
-        case Some(pol) if scene.polarisations.contains(pol) =>
-          scene.polarisations.indexOf(pol)
-        case _ =>
-          logger.warn(s"Could not determine polarisation band index for ${definition.dataPath} in scene $safeRoot (pols=${scene.polarisations.map(_.code).mkString(",")}); defaulting to band 0")
-          0
-      }
+      polarisationBandIndex(definition.dataPath, scene.polarisations, safeRoot)
     }
 
     Some((source, bandIndices))
@@ -158,8 +156,6 @@ class Sentinel1GrdRasterSourceProvider(
     }
   }
 
-  private val PolPattern = """(?i)-grd-(vv|vh|hh|hv)-""".r
-
   /** Collect all polarisations present in the feature links. */
   private def derivePolarisations(definition: RasterSourceDefinition): Seq[Polarisation] = {
     val pols = definition.feature.links
@@ -190,6 +186,23 @@ class Sentinel1GrdRasterSourceProvider(
 }
 
 object Sentinel1GrdRasterSourceProvider {
+  private[provider] val PolPattern = """(?i)-grd-(vv|vh|hh|hv)-""".r
+
+  /** Index of the band within a scene source (one band per polarisation, in `scenePolarisations` order)
+   *  that holds the polarisation `dataPath` refers to. Fails rather than guessing, so that a request
+   *  for one polarisation can never silently be served another polarisation's data. */
+  private[provider] def polarisationBandIndex(dataPath: String, scenePolarisations: Seq[Polarisation], safeRoot: URI): Int = {
+    val pol = PolPattern.findFirstMatchIn(dataPath)
+      .map(m => Polarisation.parse(m.group(1).toUpperCase))
+      .getOrElse(throw new IllegalArgumentException(
+        s"Cannot determine the polarisation of $dataPath (scene $safeRoot): path does not match $PolPattern"))
+    val index = scenePolarisations.indexOf(pol)
+    if (index < 0) throw new IllegalStateException(
+      s"Polarisation ${pol.code} of $dataPath is not available in scene $safeRoot " +
+        s"(pols=${scenePolarisations.map(_.code).mkString(",")})")
+    index
+  }
+
   /** Convenience factory: NativeBackend + Copernicus DEM (COG via HTTPS). */
   def withCopernicusDem(
     geoidTiffUri: Option[URI] = None,
