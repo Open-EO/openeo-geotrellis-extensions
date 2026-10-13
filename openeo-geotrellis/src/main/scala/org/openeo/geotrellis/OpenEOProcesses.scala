@@ -1276,7 +1276,8 @@ class OpenEOProcesses extends Serializable {
 
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val mergedLayout = GeneralUtils.layoutMerged(leftCube.metadata.layout, rightCube.metadata.layout, leftCube.metadata.crs, rightCube.metadata.crs)
-    val targetMetadata = leftCube.metadata.copy(layout = mergedLayout, extent = extentMerged(leftCube.metadata.extent, rightCube.metadata.extent, leftCube.metadata.crs, rightCube.metadata.crs))
+    val mergedExtent = GeneralUtils.extentMerged(leftCube.metadata.extent, rightCube.metadata.extent, leftCube.metadata.crs, rightCube.metadata.crs)
+    val targetMetadata = leftCube.metadata.copy(layout = mergedLayout, extent = mergedExtent)
     val resampledLeft = resampleCubeSpatial(leftCube,targetMetadata, leftCube.partitioner,NearestNeighbor)._2
     val resampledRight = resampleCubeSpatial_spatial(rightCube,resampledLeft.metadata.crs,mergedLayout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
     checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
@@ -1324,7 +1325,7 @@ class OpenEOProcesses extends Serializable {
             // TODO: wrong interpretation, left should not be kept as-is, but rather the operator should be applied to left and a nodata tile
             l
         }
-      }), leftCube.metadata)
+      }), targetMetadata)
     }
   }
 
@@ -1350,7 +1351,8 @@ class OpenEOProcesses extends Serializable {
 
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val mergedLayout = GeneralUtils.layoutMerged(leftCube.metadata.layout, rightCube.metadata.layout, leftCube.metadata.crs, rightCube.metadata.crs)
-    val targetMetadata = leftCube.metadata.copy(layout = mergedLayout, extent = extentMerged(leftCube.metadata.extent, rightCube.metadata.extent, leftCube.metadata.crs, rightCube.metadata.crs))
+    val mergedExtent = extentMerged(leftCube.metadata.extent, rightCube.metadata.extent, leftCube.metadata.crs, rightCube.metadata.crs)
+    val targetMetadata = leftCube.metadata.copy(layout = mergedLayout, extent = mergedExtent)
     val resampledRight = resampleCubeSpatial(rightCube,targetMetadata, leftCube.partitioner,NearestNeighbor)._2
     val resampledLeft = resampleCubeSpatial(leftCube,targetMetadata, leftCube.partitioner,NearestNeighbor)._2
     checkMetadataCompatible(resampledLeft.metadata, resampledRight.metadata)

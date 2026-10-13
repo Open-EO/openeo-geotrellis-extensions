@@ -427,7 +427,6 @@ class MergeCubesSpec {
     val merged: MultibandTileLayerRDD[SpatialKey] = processes.mergeSpatialCubes(cube1, cube2, "mean")
 
     assertEquals(LayoutDefinition(extent1.combine(extent2),TileLayout(3,3,tilesSize/2,tilesSize/2)), merged.metadata.layout)
-    val collected = merged.collect()
 
     for (item: (SpatialKey, MultibandTile) <- merged.collect) {
       assertEquals(2, item._2.bandCount)
