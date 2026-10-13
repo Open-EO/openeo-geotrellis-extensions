@@ -4,7 +4,7 @@ import cats.data.NonEmptyList
 import geotrellis.layer._
 import geotrellis.proj4.LatLng
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, MultibandTile, RasterSource}
+import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
@@ -17,13 +17,13 @@ import org.junit.jupiter.api.condition.EnabledIf
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
-import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, NoCloudFilterStrategy, SyntheticDataOverride, UdfLanguage}
 import org.openeo.opensearch.OpenSearchResponses.FeatureCollection
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.LocalTime.MIDNIGHT
+import java.time.temporal.ChronoUnit.DAYS
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import scala.io.{BufferedSource, Source}
@@ -110,11 +110,15 @@ class RasterTileLoaderTest extends RasterMatchers {
   private def _getSentinel5PRasterSources(bbox: ProjectedExtent, date: ZonedDateTime, zoom: Int, featuresJsonString: Option[String] = None): (RDD[LayoutTileSource[SpaceTimeKey]], TileLayerMetadata[SpaceTimeKey]) = {
     val fileLayerProvider = if (featuresJsonString.isDefined) sentinel5PJsonStringFileLayerProvider(featuresJsonString.get) else sentinel5PFileLayerProvider
 
-    val overlappingRasterSources: Seq[RasterSource] = fileLayerProvider.loadRasterSourceRDD(bbox, date, date, zoom).map(_._1)
-    val commonCellType = overlappingRasterSources.head.cellType
+    val overlappingRasterSources = fileLayerProvider.loadRasterSourceRDD(bbox, date, date, zoom)
+    val commonCellType = overlappingRasterSources.head._1.cellType
     val metadata = layerMetadata(bbox, date, date, zoom min zoom, commonCellType, sentinel5PLayoutScheme, sentinel5PMaxSpatialResolution)
 
-    val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, sentinel5PMaxSpatialResolution, sentinel5PCollectionId)(sc)
+    val layout = metadata.layout
+    val rasterSources = sc.parallelize(overlappingRasterSources, overlappingRasterSources.size).map { case (rs, feature) =>
+      val day = feature.nominalDate.truncatedTo(DAYS)
+      rs.tileToLayout(layout, (sk: SpatialKey) => SpaceTimeKey(sk, day))
+    }
     (rasterSources, metadata)
   }
 

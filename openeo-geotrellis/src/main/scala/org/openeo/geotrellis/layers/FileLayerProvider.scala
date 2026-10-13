@@ -7,7 +7,7 @@ import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridExtent, NoNoData, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridExtent, NoNoData, RasterExtent, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -35,7 +35,6 @@ import java.io.{IOException, Serializable}
 import java.net.URI
 import java.nio.file.{Files, Path, Paths}
 import java.time._
-import java.time.temporal.ChronoUnit.DAYS
 import java.util.concurrent.TimeUnit
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
@@ -141,40 +140,6 @@ object FileLayerProvider {
     ProjectedExtent(collection.bbox.reproject(LatLng, WebMercator), WebMercator)
   }
 
-
-  /**
-   * DEPRECATED
-   * This method is to be removed asap, replacing everything with STAC item based code paths.
-   */
-  def rasterSourceRDD(rasterSources: Seq[RasterSource], metadata: TileLayerMetadata[SpaceTimeKey], maxSpatialResolution: CellSize, collection: String)(implicit sc: SparkContext): RDD[LayoutTileSource[SpaceTimeKey]] = {
-
-    val keyExtractor = new TemporalKeyExtractor {
-      def getMetadata(rs: RasterMetadata): ZonedDateTime = ZonedDateTime.parse(rs.attributes("date")).truncatedTo(DAYS)
-    }
-    val sources = sc.parallelize(rasterSources, rasterSources.size)
-
-    val noResampling = metadata.crs.proj4jCrs.getProjection.getName == "utm" && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
-    sc.setJobDescription("Load tiles: " + collection + ", rs: " + noResampling)
-    val tiledLayoutSourceRDD =
-      sources.map { rs =>
-        val m = keyExtractor.getMetadata(rs)
-        val tileKeyTransform: SpatialKey => SpaceTimeKey = { sk => keyExtractor.getKey(m, sk) }
-        //The first form 'rs.tileToLayout' will check if rastersources are aligned, requiring reading of metadata, which has a serious performance impact!
-        try {
-          if (noResampling)
-            LayoutTileSource(rs, metadata.layout, tileKeyTransform)
-          else
-            rs.tileToLayout(metadata.layout, tileKeyTransform)
-        } catch {
-          case e: IllegalArgumentException => {
-            logger.error(s"Error tiling rastersource ${rs.name} to layout: ${metadata.layout}, ${rs.gridExtent}, ${rs.cellSize}")
-            throw e
-          }
-        }
-      }
-
-    tiledLayoutSourceRDD
-  }
 
   private def checkLatLon(extent: Extent): Boolean = {
     if (extent.xmin < -360 || extent.xmax > 360 || extent.ymin < -92 || extent.ymax > 92) {
