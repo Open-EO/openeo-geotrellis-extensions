@@ -84,10 +84,11 @@ object GeneralUtils {
 
   /**
    * Returns a cell type with a NODATA value that lies outside the range of values of the given raw (NoNoData) cell
-   * type, widening it if necessary, so that all its original values remain valid data.
+   * type, widening it if necessary, so that all its original values remain valid data. Raw floating point cell types
+   * are not widened because NaN is available as NODATA.
    * Cell types that already have a NODATA value are returned as is.
    */
-  def cellTypeWithNoDataPreservingRange(cellType: CellType): CellType = cellType match {
+  def widenedCellTypeWithNoData(cellType: CellType): CellType = cellType match {
     case BitCellType => ByteConstantNoDataCellType
     case ByteCellType | UByteCellType => ShortConstantNoDataCellType
     case ShortCellType | UShortCellType => IntConstantNoDataCellType
@@ -96,8 +97,11 @@ object GeneralUtils {
     case _ => cellType
   }
 
-  def convertPreservingRange(tile: MultibandTile): MultibandTile = {
-    val targetCellType = cellTypeWithNoDataPreservingRange(tile.cellType)
+  /**
+   * Converts the tile to [[widenedCellTypeWithNoData]], keeping all its original values as valid data.
+   */
+  def widenWithNoData(tile: MultibandTile): MultibandTile = {
+    val targetCellType = widenedCellTypeWithNoData(tile.cellType)
     if (targetCellType == tile.cellType) tile
     else if (tile.cellType == IntCellType) {
       // Tile.convert would interpret Int.MinValue as NODATA

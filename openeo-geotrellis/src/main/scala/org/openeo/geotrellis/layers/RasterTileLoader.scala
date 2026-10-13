@@ -369,7 +369,7 @@ case class RasterTileLoader() {
                   } yield {
                     tile.cellType match {
                       case originalCellType: NoNoData =>
-                        val noDataCellType = GeneralUtils.cellTypeWithNoDataPreservingRange(originalCellType)
+                        val noDataCellType = GeneralUtils.widenedCellTypeWithNoData(originalCellType)
                         logger.debug(s"converting tile cell type from $originalCellType to $noDataCellType with NODATA")
                         tile convert noDataCellType
                       case _ => tile

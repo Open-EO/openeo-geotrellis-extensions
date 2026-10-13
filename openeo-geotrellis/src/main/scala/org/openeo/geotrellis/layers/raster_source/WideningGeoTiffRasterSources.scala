@@ -6,7 +6,7 @@ import geotrellis.raster.io.geotiff.{GeoTiff, GeoTiffMultibandTile, MultibandGeo
 import geotrellis.raster.reproject.{RasterRegionReproject, ReprojectRasterExtent}
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.{CellType, DefaultTarget, GridBounds, MultibandTile, NoNoData, Raster, RasterExtent, RasterSource, ResampleTarget, TargetCellType}
-import org.openeo.geotrellis.GeneralUtils.{cellTypeWithNoDataPreservingRange, convertPreservingRange}
+import org.openeo.geotrellis.GeneralUtils.{widenWithNoData, widenedCellTypeWithNoData}
 
 /**
  * GeoTiff raster sources for integral rasters without a NODATA value (or that are converted to such a cell type).
@@ -18,28 +18,28 @@ import org.openeo.geotrellis.GeneralUtils.{cellTypeWithNoDataPreservingRange, co
  *
  * Sources that do not involve a raw integral cell type behave exactly like their GeoTrellis counterparts.
  */
-object NoDataPreservingGeoTiff {
+object WideningGeoTiff {
   def isRawIntegral(cellType: CellType): Boolean = cellType match {
     case _: NoNoData => !cellType.isFloatingPoint
     case _ => false
   }
 
-  private[raster_source] def preservesNoData(tiffCellType: CellType, dstCellType: Option[CellType]): Boolean =
+  private[raster_source] def needsWidening(tiffCellType: CellType, dstCellType: Option[CellType]): Boolean =
     isRawIntegral(tiffCellType) || dstCellType.exists(isRawIntegral)
 
   private[raster_source] def cellType(tiffCellType: CellType, dstCellType: Option[CellType]): CellType = {
     val effectiveCellType = dstCellType.getOrElse(tiffCellType)
-    if (isRawIntegral(effectiveCellType)) cellTypeWithNoDataPreservingRange(effectiveCellType) else effectiveCellType
+    if (isRawIntegral(effectiveCellType)) widenedCellTypeWithNoData(effectiveCellType) else effectiveCellType
   }
 
   private[raster_source] def widen(tile: MultibandTile): MultibandTile =
-    if (isRawIntegral(tile.cellType)) convertPreservingRange(tile) else tile
+    if (isRawIntegral(tile.cellType)) widenWithNoData(tile) else tile
 
   private[raster_source] def convert(raster: Raster[MultibandTile], cellType: CellType): Raster[MultibandTile] =
     if (raster.tile.cellType == cellType) raster else raster.mapTile(_.convert(cellType))
 }
 
-class NoDataPreservingGeoTiffResampleRasterSource(
+class WideningGeoTiffResampleRasterSource(
   dataPath: GeoTiffPath,
   resampleTarget: ResampleTarget,
   method: ResampleMethod = ResampleMethod.DEFAULT,
@@ -48,13 +48,13 @@ class NoDataPreservingGeoTiffResampleRasterSource(
   @transient baseTiff: Option[MultibandGeoTiff] = None
 ) extends GeoTiffResampleRasterSource(dataPath, resampleTarget, method, strategy, maybeTargetCellType, baseTiff) {
 
-  override def cellType: CellType = NoDataPreservingGeoTiff.cellType(tiff.cellType, dstCellType)
+  override def cellType: CellType = WideningGeoTiff.cellType(tiff.cellType, dstCellType)
 
   @transient private lazy val closestOverview: GeoTiff[MultibandTile] =
     tiff.getClosestOverview(gridExtent.cellSize, strategy)
 
   override def readBounds(bounds: Iterable[GridBounds[Long]], bands: Seq[Int]): Iterator[Raster[MultibandTile]] = {
-    if (!NoDataPreservingGeoTiff.preservesNoData(tiff.cellType, dstCellType)) super.readBounds(bounds, bands)
+    if (!WideningGeoTiff.needsWidening(tiff.cellType, dstCellType)) super.readBounds(bounds, bands)
     else {
       val geoTiffTile = closestOverview.tile.asInstanceOf[GeoTiffMultibandTile]
 
@@ -72,25 +72,25 @@ class NoDataPreservingGeoTiffResampleRasterSource(
       geoTiffTile.crop(windows.keys.toSeq, bands.toArray).map { case (gb, tile) =>
         val targetRasterExtent = windows(gb)
         val sourceExtent = closestOverview.rasterExtent.extentFor(gb, clamp = false)
-        val resampled = Raster(NoDataPreservingGeoTiff.widen(tile), sourceExtent).resample(targetRasterExtent, method)
-        NoDataPreservingGeoTiff.convert(resampled, cellType)
+        val resampled = Raster(WideningGeoTiff.widen(tile), sourceExtent).resample(targetRasterExtent, method)
+        WideningGeoTiff.convert(resampled, cellType)
       }
     }
   }
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget = DefaultTarget, method: ResampleMethod = ResampleMethod.DEFAULT, strategy: OverviewStrategy = OverviewStrategy.DEFAULT): GeoTiffReprojectRasterSource =
-    new NoDataPreservingGeoTiffReprojectRasterSource(dataPath, targetCRS, resampleTarget, method, strategy, maybeTargetCellType = maybeTargetCellType, baseTiff = Some(tiff))
+    new WideningGeoTiffReprojectRasterSource(dataPath, targetCRS, resampleTarget, method, strategy, maybeTargetCellType = maybeTargetCellType, baseTiff = Some(tiff))
 
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
-    new NoDataPreservingGeoTiffResampleRasterSource(dataPath, resampleTarget, method, strategy, maybeTargetCellType, Some(tiff))
+    new WideningGeoTiffResampleRasterSource(dataPath, resampleTarget, method, strategy, maybeTargetCellType, Some(tiff))
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new NoDataPreservingGeoTiffResampleRasterSource(dataPath, resampleTarget, method, strategy, Some(targetCellType), Some(tiff))
+    new WideningGeoTiffResampleRasterSource(dataPath, resampleTarget, method, strategy, Some(targetCellType), Some(tiff))
 
-  override def toString: String = s"NoDataPreservingGeoTiffResampleRasterSource(${dataPath.value}, $resampleTarget, $method)"
+  override def toString: String = s"WideningGeoTiffResampleRasterSource(${dataPath.value}, $resampleTarget, $method)"
 }
 
-class NoDataPreservingGeoTiffReprojectRasterSource(
+class WideningGeoTiffReprojectRasterSource(
   dataPath: GeoTiffPath,
   crs: CRS,
   resampleTarget: ResampleTarget = DefaultTarget,
@@ -101,7 +101,7 @@ class NoDataPreservingGeoTiffReprojectRasterSource(
   @transient baseTiff: Option[MultibandGeoTiff] = None
 ) extends GeoTiffReprojectRasterSource(dataPath, crs, resampleTarget, resampleMethod, strategy, errorThreshold, maybeTargetCellType, baseTiff) {
 
-  override def cellType: CellType = NoDataPreservingGeoTiff.cellType(tiff.cellType, dstCellType)
+  override def cellType: CellType = WideningGeoTiff.cellType(tiff.cellType, dstCellType)
 
   @transient private lazy val closestOverview: GeoTiff[MultibandTile] = resampleTarget match {
     case DefaultTarget => tiff.getClosestOverview(baseGridExtent.cellSize, strategy)
@@ -111,7 +111,7 @@ class NoDataPreservingGeoTiffReprojectRasterSource(
   }
 
   override def readBounds(bounds: Iterable[GridBounds[Long]], bands: Seq[Int]): Iterator[Raster[MultibandTile]] = {
-    if (!NoDataPreservingGeoTiff.preservesNoData(tiff.cellType, dstCellType)) super.readBounds(bounds, bands)
+    if (!WideningGeoTiff.needsWidening(tiff.cellType, dstCellType)) super.readBounds(bounds, bands)
     else {
       val geoTiffTile = closestOverview.tile.asInstanceOf[GeoTiffMultibandTile]
 
@@ -135,7 +135,7 @@ class NoDataPreservingGeoTiffReprojectRasterSource(
 
       geoTiffTile.crop(intersectingWindows.keys.toSeq, bands.toArray).map { case (sourcePixelBounds, tile) =>
         val targetRasterExtent = intersectingWindows(sourcePixelBounds)
-        val sourceRaster = Raster(NoDataPreservingGeoTiff.widen(tile), closestOverview.rasterExtent.extentFor(sourcePixelBounds))
+        val sourceRaster = Raster(WideningGeoTiff.widen(tile), closestOverview.rasterExtent.extentFor(sourcePixelBounds))
         val reprojected = implicitly[RasterRegionReproject[MultibandTile]].regionReproject(
           sourceRaster,
           baseCRS,
@@ -145,19 +145,19 @@ class NoDataPreservingGeoTiffReprojectRasterSource(
           resampleMethod,
           errorThreshold
         )
-        NoDataPreservingGeoTiff.convert(reprojected, cellType)
+        WideningGeoTiff.convert(reprojected, cellType)
       }
     }
   }
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget = DefaultTarget, method: ResampleMethod = ResampleMethod.DEFAULT, strategy: OverviewStrategy = OverviewStrategy.DEFAULT): RasterSource =
-    new NoDataPreservingGeoTiffReprojectRasterSource(dataPath, targetCRS, resampleTarget, method, strategy, maybeTargetCellType = maybeTargetCellType, baseTiff = Some(tiff))
+    new WideningGeoTiffReprojectRasterSource(dataPath, targetCRS, resampleTarget, method, strategy, maybeTargetCellType = maybeTargetCellType, baseTiff = Some(tiff))
 
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
-    new NoDataPreservingGeoTiffReprojectRasterSource(dataPath, crs, resampleTarget, method, strategy, maybeTargetCellType = maybeTargetCellType, baseTiff = Some(tiff))
+    new WideningGeoTiffReprojectRasterSource(dataPath, crs, resampleTarget, method, strategy, maybeTargetCellType = maybeTargetCellType, baseTiff = Some(tiff))
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new NoDataPreservingGeoTiffReprojectRasterSource(dataPath, crs, resampleTarget, resampleMethod, strategy, errorThreshold, Some(targetCellType), Some(tiff))
+    new WideningGeoTiffReprojectRasterSource(dataPath, crs, resampleTarget, resampleMethod, strategy, errorThreshold, Some(targetCellType), Some(tiff))
 
-  override def toString: String = s"NoDataPreservingGeoTiffReprojectRasterSource(${dataPath.value}, $crs, $resampleTarget, $resampleMethod)"
+  override def toString: String = s"WideningGeoTiffReprojectRasterSource(${dataPath.value}, $crs, $resampleTarget, $resampleMethod)"
 }

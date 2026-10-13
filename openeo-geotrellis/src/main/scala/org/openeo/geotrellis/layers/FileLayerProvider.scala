@@ -453,7 +453,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       logger.debug(s"Determined common cell type of rasterSources is $commonCellType.")
       // overlapping tiles can only be merged if they have a NODATA value
-      GeneralUtils.cellTypeWithNoDataPreservingRange(commonCellType)
+      GeneralUtils.widenedCellTypeWithNoData(commonCellType)
     } catch {
       case e: Exception => {
         // Geotrellis GDALException errors are not descriptive enough. Attempt to add some more useful information.

@@ -8,11 +8,11 @@ import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import org.openeo.geotrellis.layers.raster_source.{NoDataPreservingGeoTiffReprojectRasterSource, NoDataPreservingGeoTiffResampleRasterSource}
+import org.openeo.geotrellis.layers.raster_source.{WideningGeoTiffReprojectRasterSource, WideningGeoTiffResampleRasterSource}
 
 import java.nio.file.Path
 
-class NoDataPreservingGeoTiffRasterSourcesTest {
+class WideningGeoTiffRasterSourcesTest {
   private val crs = CRS.fromEpsgCode(32631)
   private val extent = Extent(700000, 5600000, 701000, 5601000)
   private val (cols, rows) = (100, 100)
@@ -29,7 +29,7 @@ class NoDataPreservingGeoTiffRasterSourcesTest {
   @Test
   def resampleWidensRawCellTypeAndPreservesValues(@TempDir dir: Path): Unit = {
     val values = Array.tabulate[Short](cols * rows)(i => if (i % 2 == 0) 0 else -1) // 0 and 65535
-    val rasterSource = new NoDataPreservingGeoTiffResampleRasterSource(writeGeoTiff(dir, values), TargetRegion(RasterExtent(extent, cols, rows)))
+    val rasterSource = new WideningGeoTiffResampleRasterSource(writeGeoTiff(dir, values), TargetRegion(RasterExtent(extent, cols, rows)))
 
     assertEquals(IntConstantNoDataCellType, rasterSource.cellType)
 
@@ -42,7 +42,7 @@ class NoDataPreservingGeoTiffRasterSourcesTest {
   def resampleFillOutsideOfGeoTiffIsNoData(@TempDir dir: Path): Unit = {
     // target grid is shifted by half a pixel so border cells sample outside of the GeoTiff
     val shiftedExtent = Extent(extent.xmin - 5, extent.ymin - 5, extent.xmax + 5, extent.ymax + 5)
-    val rasterSource = new NoDataPreservingGeoTiffResampleRasterSource(allZeros(dir), TargetRegion(RasterExtent(shiftedExtent, cols + 1, rows + 1)))
+    val rasterSource = new WideningGeoTiffResampleRasterSource(allZeros(dir), TargetRegion(RasterExtent(shiftedExtent, cols + 1, rows + 1)))
 
     val Some(raster) = rasterSource.read()
     val band = raster.tile.band(0)
@@ -55,7 +55,7 @@ class NoDataPreservingGeoTiffRasterSourcesTest {
   def reprojectFillOutsideOfFootprintIsNoData(@TempDir dir: Path): Unit = {
     val geoTiffPath = allZeros(dir)
 
-    val rasterSource = new NoDataPreservingGeoTiffReprojectRasterSource(geoTiffPath, LatLng)
+    val rasterSource = new WideningGeoTiffReprojectRasterSource(geoTiffPath, LatLng)
     assertEquals(IntConstantNoDataCellType, rasterSource.cellType)
 
     val Some(raster) = rasterSource.read()
@@ -73,7 +73,7 @@ class NoDataPreservingGeoTiffRasterSourcesTest {
 
   @Test
   def reprojectWithRawTargetCellTypeIsWidened(@TempDir dir: Path): Unit = {
-    val rasterSource = new NoDataPreservingGeoTiffReprojectRasterSource(allZeros(dir), LatLng)
+    val rasterSource = new WideningGeoTiffReprojectRasterSource(allZeros(dir), LatLng)
       .convert(ConvertTargetCellType(UShortCellType))
 
     assertEquals(IntConstantNoDataCellType, rasterSource.cellType)
@@ -88,12 +88,12 @@ class NoDataPreservingGeoTiffRasterSourcesTest {
     val values = Array.tabulate[Short](cols * rows)(i => (i % 3).toShort)
     val geoTiffPath = writeGeoTiff(dir, values, UShortConstantNoDataCellType)
 
-    val resampleRasterSource = new NoDataPreservingGeoTiffResampleRasterSource(geoTiffPath, TargetRegion(RasterExtent(extent, cols, rows)))
+    val resampleRasterSource = new WideningGeoTiffResampleRasterSource(geoTiffPath, TargetRegion(RasterExtent(extent, cols, rows)))
     assertEquals(UShortConstantNoDataCellType, resampleRasterSource.cellType)
     val Some(resampled) = resampleRasterSource.read()
     assertEquals(UShortConstantNoDataCellType, resampled.cellType)
 
-    val reprojectRasterSource = new NoDataPreservingGeoTiffReprojectRasterSource(geoTiffPath, LatLng)
+    val reprojectRasterSource = new WideningGeoTiffReprojectRasterSource(geoTiffPath, LatLng)
     assertEquals(UShortConstantNoDataCellType, reprojectRasterSource.cellType)
     val Some(reprojected) = reprojectRasterSource.read()
     assertEquals(UShortConstantNoDataCellType, reprojected.cellType)
