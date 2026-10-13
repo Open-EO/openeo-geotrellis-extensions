@@ -132,6 +132,9 @@ case class RasterTileLoader() {
     logger.info(s"Cube partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val tracker = BatchJobMetadataTracker.tracker("")
+    // also reached via readMultibandTileLayer, which bypasses loadRasterRegionsToTiles
+    tracker.registerCounter(PIXEL_COUNTER)
+    tracker.registerCounter(SOFT_ERROR_MEGAPIXEL_COUNTER)
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val crs = metadata.crs
     val layout = metadata.layout

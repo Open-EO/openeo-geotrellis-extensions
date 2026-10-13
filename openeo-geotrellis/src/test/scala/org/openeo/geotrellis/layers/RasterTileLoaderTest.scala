@@ -1,10 +1,11 @@
 package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
-import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
+import geotrellis.layer._
 import geotrellis.proj4.LatLng
 import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{CellSize, MultibandTile, RasterSource}
+import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
@@ -18,7 +19,7 @@ import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrelliscommon.DatacubeSupport._
-import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SyntheticDataOverride, UdfLanguage}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, NoCloudFilterStrategy, SyntheticDataOverride, UdfLanguage}
 import org.openeo.opensearch.OpenSearchResponses.FeatureCollection
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -326,5 +327,32 @@ class RasterTileLoaderTest extends RasterMatchers {
       .toSpatial(date)
       .cache()
     spatialLayer.writeGeoTiff("/tmp/multipleMultibandAssetsPerFeature.tif", bbox)
+  }
+
+  @Test
+  def readMultibandTileLayerRegistersTrackerCounters(): Unit = {
+    // readMultibandTileLayer (used by e.g. the GeoTIFF PyramidFactory) bypasses loadRasterRegionsToTiles
+    BatchJobMetadataTracker.setGlobalTracking(true)
+    BatchJobMetadataTracker.clearGlobalTracker()
+    try {
+      val path = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/cgls_ndvi300.tif").getPath
+      val source = GeoTiffRasterSource(path)
+      val time = ZonedDateTime.of(LocalDate.of(2020, 1, 1), MIDNIGHT, UTC)
+      val layout = FloatingLayoutScheme(256).levelFor(source.extent, source.cellSize).layout
+      val tileSource = source.tileToLayout(layout, (sk: SpatialKey) => SpaceTimeKey(sk, time))
+      val keys = layout.mapTransform.keysForGeometry(source.extent.toPolygon())
+      val bounds = KeyBounds(SpaceTimeKey(keys.minBy(k => (k.col, k.row)), time), SpaceTimeKey(keys.maxBy(k => (k.col, k.row)), time))
+      val metadata = TileLayerMetadata(source.cellType, layout, source.extent, source.crs, bounds)
+
+      val cube = RasterTileLoader.readMultibandTileLayer(sc.parallelize(Seq(tileSource)), metadata,
+        Array(MultiPolygon(source.extent.toPolygon())), source.crs, sc)
+      assertTrue(cube.count() > 0)
+
+      val pixels = BatchJobMetadataTracker.tracker("").asDict().get("InputPixels").asInstanceOf[Long]
+      assertTrue(pixels > 0)
+    } finally {
+      BatchJobMetadataTracker.setGlobalTracking(false)
+      BatchJobMetadataTracker.clearGlobalTracker()
+    }
   }
 }
