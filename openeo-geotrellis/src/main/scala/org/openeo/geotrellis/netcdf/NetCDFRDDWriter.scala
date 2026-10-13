@@ -313,7 +313,7 @@ object NetCDFRDDWriter {
       if (rdd.metadata.crs == LatLng) fixBboxLargerThanWorld(cropBounds.getOrElse(extent))
       else cropBounds.getOrElse(extent)
     val item = Item(id = UUID.randomUUID().toString, bbox = croppedBbox, datetime = null,
-      assets = Collections.singletonMap("openEO", Asset(finalPath, cellType = ???, metadata = assetsMetadata)))
+      assets = Collections.singletonMap("openEO", Asset(finalPath,metadata = assetsMetadata)))
 
     Collections.singletonList(item)
   }
@@ -547,7 +547,7 @@ object NetCDFRDDWriter {
           if (crs == LatLng) fixBboxLargerThanWorld(tiles.head._3)
           else tiles.head._3
         Item(id = UUID.randomUUID().toString, datetime = null , bbox = croppedBbox,
-          assets = Collections.singletonMap("openEO", Asset(path = assetPath, cellType = ???, metadata = assetsMetadata)))
+          assets = Collections.singletonMap("openEO", Asset(path = assetPath,metadata = assetsMetadata)))
       }.collect()
       .toList.asJava
   }
@@ -639,7 +639,7 @@ object NetCDFRDDWriter {
           if (crs == LatLng) fixBboxLargerThanWorld(extent.extent)
           else extent.extent
         Item(id = UUID.randomUUID().toString, datetime = null, bbox = bbox,
-          assets = Collections.singletonMap("openEO", Asset(assetPath, cellType = ???, metadata = assetMetadata)))
+          assets = Collections.singletonMap("openEO", Asset(assetPath, metadata = assetMetadata)))
       }.collect()
       .toList.asJava
   }
