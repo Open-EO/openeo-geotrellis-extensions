@@ -21,6 +21,8 @@ object DatacubeSupport {
 
   private val logger = LoggerFactory.getLogger(classOf[OpenEORasterCubeMetadata])
 
+  val MIN_OPTIMIZED_TILE_SIZE = 128
+
   /**
    * Find best CRS, can be location dependent (UTM)
    *
@@ -135,9 +137,12 @@ object DatacubeSupport {
         metadata.extent.width < metadata.layout.extent.width / 2.0 || metadata.extent.height < metadata.layout.extent.height / 2.0
       }
     }
-    if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && criterium && metadata.tileRows >= 32) {
+    val newTileSize = metadata.tileRows / 2
+    // focal operations (e.g. apply_kernel) only buffer a tile with its direct neighbours, so tiles should not get smaller than the pixel buffer
+    val pixelBuffer = datacubeParams.map(p => math.max(p.pixelBufferX, p.pixelBufferY)).getOrElse(0.0)
+    // smaller tiles change which pixels outside the requested geometry and which fully masked dates end up in the result
+    if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && criterium && newTileSize >= DatacubeSupport.MIN_OPTIMIZED_TILE_SIZE && newTileSize >= pixelBuffer) {
       //it seems that polygons fit entirely within chunks, so chunks are too large
-      val newTileSize = metadata.tileRows / 2
       logger.info(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to $newTileSize.")
       val newLayout = LayoutDefinition(metadata, newTileSize)
 
@@ -331,7 +336,7 @@ object DatacubeSupport {
     }
   }
 
-  def optimalReductionForSparseKeys(sparseKeys: Seq[SpaceTimeKey], maxPartitionSizeInMb: Int, tileSize: Int, cellTypeBits: Int, bandCount: Int) = {
+  def optimalReductionForSparseKeys(sparseKeys: Seq[SpaceTimeKey], maxPartitionSizeInMb: Int, tileSize: Int, cellTypeBits: Int, bandCount: Int): (Int, Array[BigInt]) = {
     val temporalWeight = sparseKeys.map(_.time).distinct.length
     val tileSizeInMb: Double = (bandCount * tileSize * cellTypeBits * temporalWeight).toDouble / (8 * 1024 * 1024)
     val maxRecordsPerPartition: Double = math.min(math.min(maxPartitionSizeInMb / tileSizeInMb, 1024), sparseKeys.length)
