@@ -405,19 +405,20 @@ class MergeCubesSpec {
   }
 
   @Test def testMergeCubeDifferenceExtent_SpatialSpatial(): Unit = {
-    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
-    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+    val tilesSize = 16
+    val band1 = ByteArrayTile.fill(5.toByte, tilesSize, tilesSize).withNoData(Some(0.toByte))
+    val band2 = ByteArrayTile.fill(3.toByte, tilesSize, tilesSize).withNoData(Some(0.toByte))
 
-    val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
-    val band4 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band3 = ByteArrayTile.fill(9.toByte, tilesSize, tilesSize).withNoData(Some(0.toByte))
+    val band4 = ByteArrayTile.fill(3.toByte, tilesSize, tilesSize).withNoData(Some(0.toByte))
 
-    val tileLayout1 = TileLayout(2,2,16,16)
-    val tileLayout2 = TileLayout(1,1,32,32)
+    val tileLayout1 = TileLayout(2,2,tilesSize/2,tilesSize/2)
+    val tileLayout2 = TileLayout(1,1,tilesSize,tilesSize)
     val tile1 = MultibandTile(band1,band2)
     val tile2 = MultibandTile(band3,band4)
 
-    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
-    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
+    val extent1 = Extent(3.0, 51.0, 4.0, 52.0)
+    val extent2 = Extent(3.5, 51.5, 4.5, 52.5)
 
     val cube1: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile1, extent1), tileLayout1, LatLng)
     val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile2, extent2), tileLayout2, LatLng)
@@ -425,7 +426,7 @@ class MergeCubesSpec {
     val processes = new OpenEOProcesses()
     val merged: MultibandTileLayerRDD[SpatialKey] = processes.mergeSpatialCubes(cube1, cube2, "mean")
 
-    assertEquals(merged.metadata.layout, LayoutDefinition(extent1.combine(extent2),TileLayout(3,3,16,16)))
+    assertEquals(LayoutDefinition(extent1.combine(extent2),TileLayout(3,3,tilesSize/2,tilesSize/2)), merged.metadata.layout)
     val collected = merged.collect()
 
     for (item: (SpatialKey, MultibandTile) <- merged.collect) {
