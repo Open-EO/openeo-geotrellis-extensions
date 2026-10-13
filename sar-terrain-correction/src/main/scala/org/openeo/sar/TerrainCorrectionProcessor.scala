@@ -7,6 +7,7 @@ import geotrellis.vector.Extent
 import org.openeo.sar.backend.TerrainCorrectionBackend
 import org.openeo.sar.metadata.{Polarisation, S1AnnotationParser, S1GrdMetadata}
 import org.openeo.sar.stac.{StacAssets, StacItemLoader}
+import org.slf4j.LoggerFactory
 
 import java.net.URI
 
@@ -109,6 +110,9 @@ final class TerrainCorrectionProcessor(
 }
 
 object TerrainCorrectionProcessor {
+
+  private val logger = LoggerFactory.getLogger(getClass)
+
   def defaultRasterSourceFactory: URI => RasterSource = { uri =>
     // GeoTrellis RasterSource auto-dispatches on scheme: file:// http(s):// s3://
     geotrellis.raster.geotiff.GeoTiffRasterSource(uri.toString)
@@ -137,13 +141,19 @@ object TerrainCorrectionProcessor {
     val req = ctx.request
     val targetRe = RasterExtent(req.extent, req.cellSize.width, req.cellSize.height, req.cols, req.rows)
     val defaultTile = new Raster( MultibandTile(FloatConstantTile(10.0f, req.cols, req.rows)), req.extent)
-    val dem = ctx.demSource
-      .reproject(req.crs, method = Bilinear)
-      .resampleToGrid(targetRe.toGridType[Long], Bilinear)
-      .read(req.extent).getOrElse(
-        defaultTile)
+    val dem = try{
+      ctx.demSource
+        .reproject(req.crs, method = Bilinear)
+        .resampleToGrid(targetRe.toGridType[Long], Bilinear)
+        .read(req.extent).getOrElse(
+          defaultTile)
         //throw new IllegalStateException(s"DEM read returned no raster for AOI ${ctx.demSource.name}"))
-      .tile.band(0)
+        .tile.band(0)
+    } catch {
+      case e: Exception =>
+        logger.warn(s"DEM read failed for AOI ${ctx.demSource.name}: ${e.getMessage}")
+        defaultTile.tile.band(0)
+    }
 
     val geoid: Option[Tile] = ctx.geoidSource.map { gs =>
       gs.reproject(req.crs, TargetRegion(targetRe.toGridType[Long]), method = Bilinear)

@@ -17,50 +17,91 @@ final class OrbitInterpolator(private val svs: IndexedSeq[StateVector]) {
 
   require(svs.length >= 8, s"need at least 8 state vectors, got ${svs.length}")
 
+  private val WindowSize = 8
+
+  // Flattened, contiguous storage of the OSV series: stateAt/accelerationAt
+  // are called several times per output pixel (multiple Newton iterations,
+  // each needing position, velocity, and formerly acceleration), so avoiding
+  // the per-call slicing + six `.map`s of the naive IndexedSeq[StateVector]
+  // window matters a lot in the hot path.
+  private val numStates = svs.length
+  private val ts = Array.tabulate(numStates)(i => svs(i).t)
+  private val px = Array.tabulate(numStates)(i => svs(i).pos.x)
+  private val py = Array.tabulate(numStates)(i => svs(i).pos.y)
+  private val pz = Array.tabulate(numStates)(i => svs(i).pos.z)
+  private val vx = Array.tabulate(numStates)(i => svs(i).vel.x)
+  private val vy = Array.tabulate(numStates)(i => svs(i).vel.y)
+  private val vz = Array.tabulate(numStates)(i => svs(i).vel.z)
+
   /** Pick the 8 OSVs nearest in time and Lagrange-interpolate position & velocity. */
   def stateAt(t: Double): (Vec3, Vec3) = {
-    val window = pickWindow(t, n = 8)
-    val xs = window.map(_.t)
-    val (px, py, pz) = (window.map(_.pos.x), window.map(_.pos.y), window.map(_.pos.z))
-    val (vx, vy, vz) = (window.map(_.vel.x), window.map(_.vel.y), window.map(_.vel.z))
-    val p = Vec3(lagrange(xs, px, t), lagrange(xs, py, t), lagrange(xs, pz, t))
-    val v = Vec3(lagrange(xs, vx, t), lagrange(xs, vy, t), lagrange(xs, vz, t))
+    val lo = windowStart(t)
+    val p = Vec3(lagrange(lo, px, t), lagrange(lo, py, t), lagrange(lo, pz, t))
+    val v = Vec3(lagrange(lo, vx, t), lagrange(lo, vy, t), lagrange(lo, vz, t))
     (p, v)
   }
 
   def positionAt(t: Double): Vec3 = stateAt(t)._1
   def velocityAt(t: Double): Vec3 = stateAt(t)._2
 
-  /** Numerically differentiate to get acceleration (only used for Newton f'(t)). */
-  def accelerationAt(t: Double, dt: Double = 0.5): Vec3 = {
-    val vp = velocityAt(t + dt); val vm = velocityAt(t - dt)
-    (vp - vm) * (1.0 / (2.0 * dt))
+  /** Acceleration as the analytic derivative of the Lagrange-interpolated
+   *  velocity polynomial, evaluated at t. Equivalent to central-differencing
+   *  velocityAt(t +/- dt) (the previous implementation), but ~3x cheaper:
+   *  that approach needed two extra stateAt calls, each itself an
+   *  O(WindowSize^2) Lagrange evaluation, only to discard the position half
+   *  of the result. Only used to feed Newton's method in
+   *  [[org.openeo.sar.geom.RangeDoppler.zeroDopplerTime]], so approximating
+   *  the derivative analytically (rather than numerically) only affects
+   *  convergence speed, not the converged result. */
+  def accelerationAt(t: Double): Vec3 = {
+    val lo = windowStart(t)
+    Vec3(lagrangeDerivative(lo, vx, t), lagrangeDerivative(lo, vy, t), lagrangeDerivative(lo, vz, t))
   }
 
-  private def pickWindow(t: Double, n: Int): IndexedSeq[StateVector] = {
-    val idx = svs.indexWhere(_.t >= t) match {
-      case -1 => svs.length - 1
-      case i  => i
-    }
-    val half = n / 2
-    val lo = math.max(0, math.min(svs.length - n, idx - half))
-    svs.slice(lo, lo + n)
-  }
-
-  private def lagrange(xs: IndexedSeq[Double], ys: IndexedSeq[Double], x: Double): Double = {
-    var sum = 0.0
-    val n = xs.length
+  private def windowStart(t: Double): Int = {
     var i = 0
-    while (i < n) {
+    while (i < numStates && ts(i) < t) i += 1
+    val idx = if (i >= numStates) numStates - 1 else i
+    val half = WindowSize / 2
+    math.max(0, math.min(numStates - WindowSize, idx - half))
+  }
+
+  /** Lagrange interpolation at x, over the node window [lo, lo+WindowSize). */
+  private def lagrange(lo: Int, ys: Array[Double], x: Double): Double = {
+    var sum = 0.0
+    var i = 0
+    while (i < WindowSize) {
       var num = 1.0; var den = 1.0; var j = 0
-      while (j < n) {
+      while (j < WindowSize) {
         if (j != i) {
-          num *= (x  - xs(j))
-          den *= (xs(i) - xs(j))
+          num *= x - ts(lo + j)
+          den *= ts(lo + i) - ts(lo + j)
         }
         j += 1
       }
-      sum += ys(i) * (num / den)
+      sum += ys(lo + i) * (num / den)
+      i += 1
+    }
+    sum
+  }
+
+  /** Derivative dL/dx of the Lagrange interpolant at x, over the node window
+   *  [lo, lo+WindowSize), using l_i'(x) = l_i(x) * sum_{j != i} 1/(x - x_j). */
+  private def lagrangeDerivative(lo: Int, ys: Array[Double], x: Double): Double = {
+    var sum = 0.0
+    var i = 0
+    while (i < WindowSize) {
+      var num = 1.0; var den = 1.0; var invSum = 0.0; var j = 0
+      while (j < WindowSize) {
+        if (j != i) {
+          val dx = x - ts(lo + j)
+          num *= dx
+          den *= ts(lo + i) - ts(lo + j)
+          invSum += 1.0 / dx
+        }
+        j += 1
+      }
+      sum += ys(lo + i) * (num / den) * invSum
       i += 1
     }
     sum

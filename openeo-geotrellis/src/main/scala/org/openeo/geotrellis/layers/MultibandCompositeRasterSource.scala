@@ -22,6 +22,8 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
   override def bandCount: Int = sourcesListWithBandIds.map(_._2.size).toList.sum
 
+  override protected def equalityState: Seq[Any] = super.equalityState :+ sourcesListWithBandIds.map(_._2).toList
+
   private def sourcesWithBandIds = NonEmptyList.fromListUnsafe(reprojectedSources.toList.zip(sourcesListWithBandIds.map(_._2).toList))
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {

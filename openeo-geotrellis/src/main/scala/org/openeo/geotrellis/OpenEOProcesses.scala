@@ -31,7 +31,7 @@ import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, LegacySCLConvolutionFilter, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SCLMaskFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -837,7 +837,9 @@ class OpenEOProcesses extends Serializable {
       val leftPart = leftCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
       val rightPart = rightCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
       logger.info(s"Merging cubes with spatial indices: ${leftPart.index} - ${rightPart.index}")
-      if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[SparseSpaceTimePartitioner]) {
+      if(leftPart.index.isInstanceOf[SparseSpaceTimePartitioner] &&
+        rightPart.index.isInstanceOf[SparseSpaceTimePartitioner] &&
+        leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].hasSameIndexReduction(rightPart.index.asInstanceOf[SparseSpaceTimePartitioner])) {
         val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices).distinct.sorted
         implicit val newIndex: PartitionerIndex[K] = new SparseSpaceTimePartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
         SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
@@ -1133,6 +1135,143 @@ class OpenEOProcesses extends Serializable {
       case e:GeoAttrsError => throw new IllegalStateException(s"Unexpected error during resample_cube_spatial or merge_cubes of a spatial cube (${data.name}) , resampling from: ${data.metadata.crs} / ${data.metadata.layout} to ${layout} / ${crs}")
       case e:Any => throw e
     }
+  }
+
+  /**
+   * openEO process resample_cube_temporal: aligns the temporal dimension of `datacube` with the one of `target`, using
+   * the nearest neighbor method. Ties are resolved by choosing the earlier timestamp.
+   *
+   * Without `validWithinDays`, every target timestamp gets the tiles of the nearest source timestamp, regardless of their
+   * values, so a source timestamp can be assigned to multiple target timestamps.
+   * With `validWithinDays`, each pixel (per band) gets the value of the nearest source timestamp within that many days
+   * before or after the target timestamp for which it is valid (not no-data); if there is none, it is no-data. All target
+   * timestamps are present in the result, also those without any source timestamp within `validWithinDays`; if the
+   * cell type has no no-data value, it is then changed to one that has.
+   *
+   * The temporal labels of a cube are taken from the keys of its sparse partitioner if it has one, otherwise they are
+   * collected from the cube's keys (which evaluates it).
+   */
+  def resampleCubeTemporal(datacube: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], validWithinDays: Option[Double] = None): MultibandTileLayerRDD[SpaceTimeKey] = {
+    validWithinDays.foreach(days =>
+      require(days >= 0 && !days.isInfinite, s"resample_cube_temporal: valid_within should be a non-negative number of days, got: $days"))
+
+    def temporalLabels(cube: MultibandTileLayerRDD[SpaceTimeKey]): Array[Long] =
+      findPartitionerKeys(cube)
+        .map(_.map(_.instant).distinct)
+        .getOrElse(cube.keys.map(_.instant).distinct().collect())
+        .sorted
+
+    val targetInstants = temporalLabels(target)
+    val sourceInstants = if (targetInstants.isEmpty) Array.emptyLongArray else temporalLabels(datacube)
+    if (targetInstants.isEmpty || sourceInstants.isEmpty || datacube.metadata.bounds.isEmpty) {
+      logger.warn(s"resample_cube_temporal: no ${if (targetInstants.isEmpty) "target" else "source"} timestamps, returning an empty cube")
+      return ContextRDD(datacube.sparkContext.emptyRDD[(SpaceTimeKey, MultibandTile)], datacube.metadata.copy(bounds = EmptyBounds: Bounds[SpaceTimeKey]))
+    }
+
+    // Candidates ordered by distance to the target timestamp, ties resolved by choosing the earlier timestamp.
+    def byDistanceTo(t: Long): Ordering[Long] = Ordering.by((s: Long) => (math.abs(s - t), s))
+
+    // both arrays are sorted and distinct: index of the first element >= x (lower) or > x (upper)
+    def lowerBound(instants: Array[Long], x: Long): Int = {
+      val i = java.util.Arrays.binarySearch(instants, x)
+      if (i >= 0) i else -i - 1
+    }
+    def upperBound(instants: Array[Long], x: Long): Int = {
+      val i = java.util.Arrays.binarySearch(instants, x)
+      if (i >= 0) i + 1 else -i - 1
+    }
+
+    val targetsBySource: Map[Long, Array[Long]] = validWithinDays match {
+      case None =>
+        targetInstants
+          .map { t =>
+            val i = lowerBound(sourceInstants, t)
+            val nearest =
+              if (i == 0) sourceInstants(0)
+              else if (i == sourceInstants.length) sourceInstants(i - 1)
+              else byDistanceTo(t).min(sourceInstants(i - 1), sourceInstants(i))
+            (nearest, t)
+          }
+          .groupBy(_._1).map { case (s, pairs) => (s, pairs.map(_._2)) }
+      case Some(days) =>
+        val windowMillis = math.round(days * 24 * 3600 * 1000)
+        def saturatingAdd(a: Long, b: Long): Long = {
+          val sum = a + b
+          if (((a ^ sum) & (b ^ sum)) < 0) (if (a < 0) Long.MinValue else Long.MaxValue) else sum
+        }
+        sourceInstants
+          .map(s => (s, targetInstants.slice(lowerBound(targetInstants, saturatingAdd(s, -windowMillis)), upperBound(targetInstants, saturatingAdd(s, windowMillis)))))
+          .filter(_._2.nonEmpty)
+          .toMap
+    }
+    logger.info(s"resample_cube_temporal: ${sourceInstants.length} source and ${targetInstants.length} target timestamps, valid_within: $validWithinDays")
+
+    val spaceTimeBounds = datacube.metadata.bounds.get
+    val newBounds = KeyBounds(
+      SpaceTimeKey(spaceTimeBounds.minKey.spatialKey, TemporalKey(targetInstants.head)),
+      SpaceTimeKey(spaceTimeBounds.maxKey.spatialKey, TemporalKey(targetInstants.last))
+    )
+    val incomingIndex = maybePartitionerIndex(datacube)
+    val index: PartitionerIndex[SpaceTimeKey] = incomingIndex match {
+      // these don't depend on time, so remain valid
+      case Some(i @ (_: SparseSpaceOnlyPartitioner | _: ByTileSpacetimePartitioner)) => i
+      case _ =>
+        findPartitionerSpatialKeys(datacube).filter(_.nonEmpty) match {
+          case Some(spatialKeys) =>
+            val newKeys = spatialKeys.distinct.flatMap(sk => targetInstants.map(t => SpaceTimeKey(sk, TemporalKey(t))))
+            new SparseSpaceTimePartitioner(newKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4, Some(newKeys))
+          case None =>
+            maybeBandCount(datacube)
+              .map(bandCount => getPartitionerIndexForMaxPartitionSize[SpaceTimeKey](bandCount, datacube.metadata.tileLayout.tileSize, datacube.metadata.cellType.bits, 100.0))
+              .getOrElse(SpaceTimeByMonthPartitioner)
+        }
+    }
+    val partitioner = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly, implicitly, index)
+
+    // target timestamps without a source timestamp within valid_within are kept, as no-data tiles
+    val coveredTargets = targetsBySource.valuesIterator.flatten.toSet
+    val uncoveredTargets = targetInstants.filterNot(coveredTargets.contains)
+    // no-data tiles require a cell type with no-data: switch to one that can represent all values of the original
+    val cellType = datacube.metadata.cellType match {
+      case ct: NoNoData if uncoveredTargets.nonEmpty => if (ct.isFloatingPoint) ct.withDefaultNoData() else GeneralUtils.upgradeCellTypes(ct)
+      case ct => ct
+    }
+    val source =
+      if (cellType == datacube.metadata.cellType) datacube
+      else datacube.mapValues(tile => if (tile.cellType == cellType) tile else tile.convert(cellType))
+
+    val candidates: RDD[(SpaceTimeKey, (Long, MultibandTile))] = source.flatMap { case (key, tile) =>
+      targetsBySource.getOrElse(key.instant, Array.emptyLongArray)
+        .map(t => (SpaceTimeKey(key.spatialKey, TemporalKey(t)), (key.instant, tile)))
+    }
+    val candidatesWithNoData: RDD[(SpaceTimeKey, (Long, MultibandTile))] =
+      if (uncoveredTargets.isEmpty) candidates
+      else {
+        val noDataTiles = source
+          .map { case (key, tile) => (key.spatialKey, (tile.cols, tile.rows, tile.bandCount)) }
+          .reduceByKey((a, b) => if (b._3 > a._3) b else a)
+          .flatMap { case (spatialKey, (cols, rows, bandCount)) =>
+            uncoveredTargets.map(t => (SpaceTimeKey(spatialKey, TemporalKey(t)), (t, ArrayMultibandTile.empty(cellType, bandCount, cols, rows): MultibandTile)))
+          }
+        candidates.union(noDataTiles)
+      }
+
+    val resampled: RDD[(SpaceTimeKey, MultibandTile)] = validWithinDays match {
+      case None =>
+        // a single source timestamp per target timestamp, so there is at most one tile per key
+        candidates.partitionBy(partitioner).mapValues(_._2)
+      case Some(_) =>
+        candidatesWithNoData.groupByKey(partitioner).map { case (key, sourceTiles) =>
+          val ordered = sourceTiles.toSeq.sortBy(_._1)(byDistanceTo(key.instant)).map(_._2)
+          val nonEmpty = ordered.filterNot(_.isInstanceOf[EmptyMultibandTile])
+          // merge only fills the no-data cells of the left tile, so the nearest valid value per cell and band wins
+          (key, if (nonEmpty.isEmpty) ordered.head else nonEmpty.reduceLeft(_ merge _))
+        }
+    }
+
+    val result = ContextRDD(resampled, datacube.metadata.copy(cellType = cellType, bounds = newBounds: Bounds[SpaceTimeKey]))
+    result.name = s"resample_cube_temporal of ${datacube.name}"
+    result
   }
 
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
@@ -1751,15 +1890,26 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(resultRDD, newMetadata)
   }
 
-  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val filter = new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+  // Real overload, not a default parameter: Py4J callers must supply every argument, so a default
+  // value alone wouldn't keep them on the legacy path.
+  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] =
+    toSclDilationMask(datacube, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size, useSeparableConvolution = true)
+
+  /**
+   * @param useSeparableConvolution use the faster separable convolution instead of the original
+   *                                 FFT-based dilation. Not bit-identical on real data (rare
+   *                                 boundary-pixel flips near the mask thresholds).
+   */
+  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int, useSeparableConvolution: Boolean): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val filter: SCLMaskFilter =
+      if (useSeparableConvolution) new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+      else new LegacySCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
     // Buffer each input tile so that the dilation is consistent across tile boundaries.
     val bufferInPixels: Int = filter.bufferInPixels
     val bufferedRDD: RDD[(SpaceTimeKey, BufferedTile[MultibandTile])] = datacube.bufferTiles(bufferInPixels)
     // Create mask.
     val mask: RDD[(SpaceTimeKey, MultibandTile)] = bufferedRDD.mapValues((tile: BufferedTile[MultibandTile]) => {
-      val originalBounds = tile.targetArea
-      MultibandTile(filter.createMask(tile.tile).crop(originalBounds))
+      MultibandTile(filter.createMask(tile.tile, tile.targetArea))
     })
     val updatedMetadata = datacube.metadata.copy(cellType = BitCellType)
     ContextRDD(new ShuffledRDD[SpaceTimeKey, MultibandTile,MultibandTile](mask,mask.partitioner.get), updatedMetadata)

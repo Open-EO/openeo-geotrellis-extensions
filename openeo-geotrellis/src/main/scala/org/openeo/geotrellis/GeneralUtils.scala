@@ -287,6 +287,7 @@ object GeneralUtils {
     val (tempMin, tempMax, tempSum, tempPowerSum, tempValidCount, totalCount) = tile.cellType match {
       case _: FloatCells => statsDouble(tile)
       case _: DoubleCells => statsDouble(tile)
+      case _: BitCells => statsInt(tile)
       case _: ByteCells => statsInt(tile)
       case _: UByteCells => statsInt(tile)
       case _: ShortCells => statsInt(tile)
@@ -325,7 +326,7 @@ object GeneralUtils {
   def statsInt(tile:Tile): Stats = {
     var zmin = Int.MaxValue
     var zmax = Int.MinValue
-    var sum = 0
+    var sum = 0L
     var powerSum = 0.0
     var validCount = 0
     var totalCount = 0
@@ -346,7 +347,13 @@ object GeneralUtils {
 
   def combineStats(existingStats: Stats, curStats: Stats): Stats = {
     val (existingMin, existingMax, existingSum, existingPowerSum, existingValidCount, existingTotalCount) = existingStats
+    if (existingTotalCount == 0) return curStats
+    if (existingValidCount == 0) return curStats.copy(_6 = existingStats._6 + curStats._6)
+
     val (tempMin, tempMax, tempSum, tempPowerSum, tempValidCount, totalCount) = curStats
+    if (totalCount == 0) return existingStats
+    if (tempValidCount == 0) return existingStats.copy(_6 = existingStats._6 + curStats._6)
+
     val newMin = math.min(existingMin, tempMin)
     val newMax = math.max(existingMax, tempMax)
     val newSum = existingSum + tempSum

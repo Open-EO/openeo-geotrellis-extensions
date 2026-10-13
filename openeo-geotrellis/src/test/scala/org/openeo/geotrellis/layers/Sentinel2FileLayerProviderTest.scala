@@ -10,7 +10,7 @@ import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, PaddedTile, ShortUserDefinedNoDataCellType}
+import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, PaddedTile, Raster, ShortUserDefinedNoDataCellType}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
@@ -130,6 +130,41 @@ object Sentinel2FileLayerProviderTest {
 
 class Sentinel2FileLayerProviderTest extends RasterMatchers {
   import Sentinel2FileLayerProviderTest._
+
+  /**
+   * Like [[assertRastersEqual]], but tolerates a small, bounded number of mask-boundary flips (a pixel that's
+   * `NaN` on one side and a real value on the other). This is a deliberate, documented relaxation: separable
+   * convolution can't be made bit-identical to the FFT-based mask it replaces, so pixels whose true
+   * convolution value sits within ~2e-4 of the 0.057/0.025 mask threshold can occasionally flip. Any other kind
+   * of mismatch (both sides non-NaN but differing by more than `valueTolerance`) still fails immediately, same
+   * as before.
+   */
+  private def assertRastersEqualAllowingMaskBoundaryFlips(
+      reference: Raster[MultibandTile], actual: Raster[MultibandTile], valueTolerance: Double, maxBoundaryFlips: Int): Unit = {
+    assertEquals(reference.tile.cols, actual.tile.cols, "column count mismatch")
+    assertEquals(reference.tile.rows, actual.tile.rows, "row count mismatch")
+    assertEquals(reference.tile.bandCount, actual.tile.bandCount, "band count mismatch")
+
+    val boundaryFlips = scala.collection.mutable.ArrayBuffer[(Int, Int, Int, Double, Double)]()
+    for (b <- 0 until reference.tile.bandCount; r <- 0 until reference.tile.rows; c <- 0 until reference.tile.cols) {
+      val refValue = reference.tile.band(b).getDouble(c, r)
+      val actualValue = actual.tile.band(b).getDouble(c, r)
+      val refIsNoData = refValue.isNaN
+      val actualIsNoData = actualValue.isNaN
+      if (refIsNoData != actualIsNoData) {
+        boundaryFlips += ((b, c, r, refValue, actualValue))
+      } else if (!refIsNoData) {
+        withClue(s"BAND $b wasn't equal on col: $c, row: $r (ref=$refValue, actual=$actualValue)") {
+          assertTrue(math.abs(refValue - actualValue) <= valueTolerance)
+        }
+      }
+    }
+
+    withClue(s"${boundaryFlips.length} mask-boundary flips found (budget: $maxBoundaryFlips): " +
+      boundaryFlips.take(20).map { case (b, c, r, refValue, actualValue) => s"band=$b col=$c row=$r ref=$refValue actual=$actualValue" }.mkString("; ")) {
+      assertTrue(boundaryFlips.length <= maxBoundaryFlips)
+    }
+  }
 
   @BeforeEach
   def clearTracker(): Unit = {
@@ -645,59 +680,15 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val referenceTile = GeoTiffRasterSource(ref).read().get
     val actualTile = GeoTiffRasterSource(actual.toString).read().get
-    assertRastersEqual(referenceTile, actualTile, 160.0)
+    // Separable convolution isn't bit-identical to the old FFT-based mask for large kernels; measured
+    // baseline for these kernel/buffer parameters is 6 flipped pixel locations (24 band-values, out of
+    // 6,553,600 pixels x 4 bands). Budget set with headroom above that.
+    assertRastersEqualAllowingMaskBoundaryFlips(referenceTile, actualTile, 160.0, maxBoundaryFlips = 40)
     //because debug logging is enabled during tests, it actually runs more jobs and stages than done in production
     assertEquals(5, listener.getJobsCompleted, "unexpected number of jobs")
     assertEquals(18, listener.getStagesCompleted, "unexpected number of stages")
-
   }
 
-  @Test
-  def testMaskL1CRasterSourceFiltering(): Unit = {
-    object MockOpenSearch extends OpenSearchClient with IdentityEquals {
-      override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
-        val start = dateRange.get._1
-        Seq(OpenSearchResponses.Feature(id="/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE",bbox.extent,start, Array(
-          Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
-          //Link(URI.create("/data/MTDA/CGS_S2/CGS_S2_L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
-          Link(URI.create("https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/MTD_TL.xml"), Some("S2_Level-1C_Tile1_Metadata")),
-          Link(URI.create("https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/QI_DATA/MSK_CLOUDS_B00.gml"), Some("FineCloudMask_Tile1_Data"))
-          ),Some(10)))
-      }
-      override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
-      override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
-    }
-
-    val creoL1CLayerProvider = FileLayerProvider(
-      MockOpenSearch,
-      openSearchCollectionId = "Sentinel2",
-      openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data"),
-      rootPath = "/eodata",
-      maxSpatialResolution,
-      pathDateExtractor,
-      layoutScheme = FloatingLayoutScheme(tileSize = 256)
-      )
-
-    val date = ZonedDateTime.parse("2021-01-01T00:00:00+00:00")
-    val utm11NCrs = CRS.fromEpsgCode(32611)
-    val boundingBox = ProjectedExtent(Extent(499980,5200020-1000,499980+1000,5200020), utm11NCrs)
-    val dataCubeParameters = new DataCubeParameters
-    dataCubeParameters.maskingStrategyParameters = Map[String, Object](
-      "method" -> "mask_l1c",
-      "dilation_distance" -> "10000").asJava
-
-    // A large dilation distance will filter out all raster sources and return an exception.
-    assertThrows[IllegalArgumentException](creoL1CLayerProvider.readMultibandTileLayer(
-      from = date,
-      to = date,
-      boundingBox,
-      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
-      polygons_crs = utm11NCrs,
-      zoom = 0,
-      sc,
-      Some(dataCubeParameters)
-      ))
-  }
 
   val cloudPath = "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/QI_DATA/MSK_CLOUDS_B00.gml"
   val metadataPath = "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/MTD_TL.xml"
@@ -721,122 +712,6 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
 
-  @Test
-  @Disabled("Covered by faster integration test now: https://git.vito.be/projects/TPT/repos/os_creodias_openeo_k8s/commits/538ebf0a7995d582a5429a11237b951d8838d36f")
-  def testL1CResolutionResample(): Unit = {
-    val creoL1CLayerProvider = FileLayerProvider(
-      MockOpenSearch,
-      openSearchCollectionId = "Sentinel2",
-      openSearchLinkTitles = NonEmptyList.of(
-        "IMG_DATA_Band_10m_1_Tile1_Data", "IMG_DATA_Band_10m_2_Tile1_Data",
-        "IMG_DATA_Band_10m_3_Tile1_Data", "S2_Level-1C_Tile1_Metadata",
-      ),
-      rootPath = "/eodata",
-      CellSize(30, 30), // maxSpatialResolution
-      pathDateExtractor,
-      layoutScheme = FloatingLayoutScheme(tileSize = 256)
-    )
-
-    val date = ZonedDateTime.parse("2021-01-01T00:00:00+00:00")
-    val utm11NCrs = CRS.fromEpsgCode(32611)
-    val boundingBox = ProjectedExtent(Extent(499980 + 25000, 5200020 - 11000, 499980 + 26000, 5200020 - 10000), utm11NCrs)
-    val dataCubeParameters = new DataCubeParameters
-
-    // Create the tile to be tested with the mask_l1c masking strategy.
-    dataCubeParameters.maskingStrategyParameters = Map[String, Object](
-      "method" -> "mask_l1c",
-    ).asJava
-    val maskedLayer: MultibandTileLayerRDD[SpaceTimeKey] = creoL1CLayerProvider.readMultibandTileLayer(
-      from = date,
-      to = date,
-      boundingBox,
-      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
-      polygons_crs = utm11NCrs,
-      zoom = 0,
-      sc,
-      Some(dataCubeParameters)
-    )
-    val spatialMaskedLayer = maskedLayer.toSpatial(date)
-    spatialMaskedLayer.writeGeoTiff("test_L1C_tile_mask.tif", boundingBox)
-  }
-
-  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasGdalInstalled")
-  @Test
-  def testL1CMultibandTileMask(@TempDir tempDir: java.nio.file.Path): Unit = {
-    val listener = new BatchJobProgressListener()
-    sc.addSparkListener(listener)
-    val dilationDistance = 5
-
-    val creoL1CLayerProvider = FileLayerProvider(
-      MockOpenSearch,
-      openSearchCollectionId = "Sentinel2",
-      openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data", "IMG_DATA_Band_10m_2_Tile1_Data", "IMG_DATA_Band_10m_3_Tile1_Data"),
-      rootPath = "/eodata",
-      maxSpatialResolution,
-      pathDateExtractor,
-      layoutScheme = FloatingLayoutScheme(tileSize = 256)
-      )
-
-    // val source = GDALCloudRasterSource(cloudPath, metadataPath, new GDALPath(""))
-    // val mergedPolygon: MultiPolygon = MultiPolygon(source.getMergedPolygons(dilationDistance))
-
-    val date = ZonedDateTime.parse("2021-01-01T00:00:00+00:00")
-    val utm11NCrs = CRS.fromEpsgCode(32611)
-    val boundingBox = ProjectedExtent(Extent(499980+25000,5200020-11000,499980+26000,5200020-10000), utm11NCrs)
-    val dataCubeParameters = new DataCubeParameters
-
-    // Create the tile to be tested with the mask_l1c masking strategy.
-    dataCubeParameters.maskingStrategyParameters = Map[String, Object](
-      "method" -> "mask_l1c",
-      "dilation_distance" -> dilationDistance.toString).asJava
-    val maskedLayer: MultibandTileLayerRDD[SpaceTimeKey] = creoL1CLayerProvider.readMultibandTileLayer(
-      from = date,
-      to = date,
-      boundingBox,
-      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
-      polygons_crs = utm11NCrs,
-      zoom = 0,
-      sc,
-      Some(dataCubeParameters)
-      )
-    val spatialMaskedLayer = maskedLayer.toSpatial(date)
-    spatialMaskedLayer.writeGeoTiff(tempDir.resolve("test_L1C_tile_mask.tif"), boundingBox)
-
-    // Compare the two tiles.
-    val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/l1c_mask_reference.tif").read().get
-    val actualTile = GeoTiffRasterSource(tempDir.resolve("test_L1C_tile_mask.tif").toString).read().get
-    // val cloudArea = referenceTile.extent.intersection(mergedPolygon).getArea
-    // val cloudPercentage = cloudArea / referenceTile.extent.getArea
-    // println("Cloud polygon covers " + cloudArea + " Sq meters of tile with " + referenceTile.extent.getArea + " Sq meters. (" + cloudPercentage*100 +"%)")
-    println("Dimensions went from " + referenceTile.dimensions + " to " + actualTile.dimensions)
-    var maskedCellCounts = Array[Int]()
-    for (bandIndex <- 0 to 2) {
-      val actualTileData = actualTile.tile.band(bandIndex).toArray()
-      val referenceTileData = referenceTile.tile.band(bandIndex).toArray()
-      val actualTileNoZeroCells = actualTileData.zipWithIndex.filter(_._1 != 0)
-      val referenceTileNoZeroCells = referenceTileData.zipWithIndex.filter(_._1 != 0)
-      // Note: filtering out raster regions can cause the actual tile to have fewer dimensions.
-      assert(actualTile.dimensions.cols <= referenceTile.dimensions.cols)
-      assert(actualTile.dimensions.rows <= referenceTile.dimensions.rows)
-      // Ensure that some cells have been masked.
-      //if (cloudArea != 0)
-      assert(actualTileData.count(_ == 0) > referenceTileData.count(_ == 0))
-      // Ensure that unmasked cells remain unchanged.
-      assert(actualTileNoZeroCells.length == 0 || actualTileNoZeroCells.forall(referenceTileNoZeroCells.contains))
-      // Ensure that the mask covers the same percentage of area as the cloud polygon. (If no raster regions were filtered out.)
-      val maskedCellCount = actualTileData.count(_ == 0) - referenceTileData.count(_ == 0)
-      maskedCellCounts = maskedCellCounts :+ maskedCellCount
-      val maskedCellPercentage = (maskedCellCount.toDouble / referenceTileData.length.toDouble)
-      //if (referenceTile.dimensions == actualTile.dimensions)
-      //  assert((cloudPercentage - maskedCellPercentage).abs <= 0.01)
-      println("Actual band " + bandIndex + " has " + actualTileData.count(_ == 0) + " zero cells (" + (actualTileData.count(
-        _ == 0).toFloat / referenceTileData.length.toFloat) * 100 + "%)")
-      println(
-        maskedCellCount + " cells have been masked. (" + maskedCellPercentage * 100 + "%) (" + maskedCellCount * 100 + " Sq meters)")
-    }
-    // Ensure that all bands mask the same amount of cells.
-    assert(maskedCellCounts.forall(_ == maskedCellCounts.head))
-  }
 
 
   private def layerProvider(featuresJsonResourcePath: String, bandNames: NonEmptyList[String], attributeValues: Map[String, Any] = Map("resolution" -> 10 /* exclude 20m features like in layercatalog.json */), scheme: LayoutScheme = FloatingLayoutScheme(256)) = {

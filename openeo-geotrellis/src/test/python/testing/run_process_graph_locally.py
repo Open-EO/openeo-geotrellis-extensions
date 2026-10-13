@@ -53,7 +53,9 @@ def is_port_free(port: int) -> bool:
 def _setup_local_spark(classpath: str, debug: bool):
     print("Setting up local Spark")
     # Allow 2 attempts per task, a plain local[N] master does not retry failed tasks (e.g. for fail_once).
-    master_str = "local[2,2]"
+    # Set SPARK_MASTER_OVERRIDE to e.g. "local-cluster[2,1,4096]" to run separate executor JVMs, so fail_once really
+    # loses an executor (and its shuffle output) instead of only failing a task.
+    master_str = os.environ.get("SPARK_MASTER_OVERRIDE", "local[2,2]")
 
     if "PYSPARK_PYTHON" not in os.environ:
         os.environ["PYSPARK_PYTHON"] = sys.executable

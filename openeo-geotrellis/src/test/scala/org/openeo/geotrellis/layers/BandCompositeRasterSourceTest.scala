@@ -118,4 +118,35 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
     assertEquals(compositeRasterByGridBounds.tile.band(1).get(0, 0), 42, 0.0001)
     assertTrue(compositeRasterByGridBounds.extent.equalsExact(bbox.extent, 0.01))
   }
+
+  private def roundTrip[T](o: T): T = {
+    val bytes = new java.io.ByteArrayOutputStream()
+    val out = new java.io.ObjectOutputStream(bytes)
+    out.writeObject(o)
+    out.close()
+    new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray)).readObject().asInstanceOf[T]
+  }
+
+  @Test
+  def equalityAndHashCodeSurviveSerialization(): Unit = {
+    // used as shuffle key: hashCode must not depend on object identity, see FileLayerProvider.convertToRasterRegions
+    val b02 = GDALRasterSource("/data/does_not_exist_B02.jp2")
+    val b03 = GDALRasterSource("/data/does_not_exist_B03.jp2")
+
+    val composite = new BandCompositeRasterSource(NonEmptyList.of(b02, b03), crs = LatLng)
+    val copy = roundTrip(composite)
+    assertTrue(composite ne copy)
+    assertEquals(composite, copy)
+    assertEquals(composite.hashCode(), copy.hashCode())
+
+    assertFalse(composite == new BandCompositeRasterSource(NonEmptyList.of(b02), crs = LatLng))
+    assertFalse(composite == new BandCompositeRasterSource(NonEmptyList.of(b02, b03), crs = LatLng, readFullTile = true))
+
+    val multiband = new MultibandCompositeRasterSource(NonEmptyList.of((b02, Seq(0)), (b03, Seq(0))), crs = LatLng)
+    val multibandCopy = roundTrip(multiband)
+    assertEquals(multiband, multibandCopy)
+    assertEquals(multiband.hashCode(), multibandCopy.hashCode())
+    assertFalse(multiband == composite)
+    assertFalse(multiband == new MultibandCompositeRasterSource(NonEmptyList.of((b02, Seq(0)), (b03, Seq(1))), crs = LatLng))
+  }
 }

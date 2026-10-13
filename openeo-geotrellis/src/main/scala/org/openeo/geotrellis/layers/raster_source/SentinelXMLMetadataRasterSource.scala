@@ -4,16 +4,51 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
 import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.store.s3.AmazonS3URI
+import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.layers.raster_source.SentinelXMLMetadataRasterSource.logger
-import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
+import org.openeo.opensearch.withRetries
 import org.slf4j.LoggerFactory
 
-import java.io.FileNotFoundException
+import java.io.{FileInputStream, FileNotFoundException, InputStream}
+import java.net.URI
+import java.nio.file.Paths
 import scala.language.postfixOps
 import scala.xml.XML
 
 object SentinelXMLMetadataRasterSource {
   private val logger = LoggerFactory.getLogger(SentinelXMLMetadataRasterSource.getClass)
+
+  /**
+   * Opens a metadata file given as https://, s3://bucket/key, /eodata/key (optionally /vsis3/ prefixed) or local path.
+   * Can return null if the file does not exist.
+   */
+  def loadMetadata(pathArg: String): InputStream = withRetries {
+    val path = pathArg.replace("/vsis3/", "/")
+    if (path.startsWith("https://")) {
+      val uri = new URI(path)
+      uri.resolve(uri.getPath).toURL
+        .openConnection.asInstanceOf[java.net.HttpURLConnection]
+        .getInputStream
+    } else if (path.startsWith("s3://")) {
+      CreoS3Utils.readFromS3(new AmazonS3URI(path))
+    } else if (path.startsWith("/eodata/")) {
+      if (sys.env.contains("AWS_S3_ENDPOINT")) {
+        CreoS3Utils.readFromS3(new AmazonS3URI("s3:/" + path))
+      } else {
+        val uri = new URI(path.replace("/eodata", "https://zipper.creodias.eu/get-object?path="))
+        try {
+          uri.resolve(uri.toString).toURL.openConnection.getInputStream
+        } catch {
+          case e: FileNotFoundException =>
+            logger.warn(e.toString)
+            null
+        }
+      }
+    } else {
+      new FileInputStream(Paths.get(path).toFile)
+    }
+  }
 
   def forAngleBand(xlmPath: String,
                    angleBandIndex: Int,
@@ -36,7 +71,7 @@ object SentinelXMLMetadataRasterSource {
 
     val theResolution = cellSize.getOrElse(CellSize(10, 10))
 
-    val path = CreoFeatureCollection.loadMetadata(xlmPath)
+    val path = loadMetadata(xlmPath)
     if (path == null) throw new FileNotFoundException(s"metadata file for angle bands $xlmPath does not exist")
 
     val xmlDoc = XML.load(path)

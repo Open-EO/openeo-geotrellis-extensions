@@ -69,8 +69,12 @@ final class S1GrdRasterSource(
       processor, newGridExtent, crs, name, targetCellType)
   }
 
+  /**
+   * Fake override of convert: STAC metadata sets GRD to uint16, but the sar_backscatter process always results in float.
+   *
+   */
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new S1GrdRasterSource(sceneContext, processor, gridExtent, crs, name, Some(targetCellType))
+    this
 
   // ---- reads -----------------------------------------------------------------
 

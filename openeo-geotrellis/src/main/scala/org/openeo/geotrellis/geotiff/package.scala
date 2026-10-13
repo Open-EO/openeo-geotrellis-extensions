@@ -348,7 +348,15 @@ package object geotiff {
           val tileToWrite = if (tile.cellType == BitCellType) safeConvert(tile, UByteCellType) else tile
           
           val bandStatistics =
-            if (formatOptions.addBandStatistics) computeStatsTile(tileToWrite)
+            if (formatOptions.addBandStatistics) {
+              val validCols = math.min(tileLayout.tileCols, gridBounds.colMin + gridBounds.width  - layoutCol * tileLayout.tileCols)
+              val validRows = math.min(tileLayout.tileRows, gridBounds.rowMin + gridBounds.height - layoutRow * tileLayout.tileRows)
+              if (validCols <= 0 || validRows <= 0) (0.0, 0.0, 0.0, 0.0, 0, 0)
+              else computeStatsTile(
+                if (validCols == tileLayout.tileCols && validRows == tileLayout.tileRows) tileToWrite
+                else raster.CroppedTile(tileToWrite, raster.GridBounds(0, 0, validCols - 1, validRows - 1))
+              )
+            }
             else (0.0, 0.0, 0.0, 0.0, 0, 0)
           
           //tiff format seems to require that we provide 'full' tiles
@@ -426,7 +434,8 @@ package object geotiff {
           if (statisticsPerBand.contains(bandIndex)) statisticsPerBand.update(bandIndex, combineStats(statisticsPerBand(bandIndex), curStats))
           else statisticsPerBand.update(bandIndex, curStats)
         }
-        statisticsPerBand.map({ case (bandIndex, stats) => (bandLabels(bandIndex), convertStatsToMap(stats))})
+        statisticsPerBand.map({ case (bandIndex, (min, max, sum, powSum, valid, _)) =>
+          (bandLabels(bandIndex), convertStatsToMap((min, max, sum, powSum, valid, gridBounds.width * gridBounds.height)))})
       } else {
         collection.Map[String, java.util.HashMap[String, Any]]()
       }
@@ -917,7 +926,8 @@ package object geotiff {
         if (statistics.contains(bandIndex)) statistics.update(bandIndex, combineStats(statistics(bandIndex), curStats))
         else statistics.update(bandIndex, curStats)
       }
-      statistics.map({ case (bandIndex, stats) => (bandIndex, convertStatsToMap(stats))})
+      statistics.map({ case (bandIndex, (min, max, sum, powSum, valid, _)) =>
+        (bandIndex, convertStatsToMap((min, max, sum, powSum, valid, gridBounds.width * gridBounds.height)))})
     } else {
       collection.mutable.Map[Int, java.util.HashMap[String, Any]]()
     }
