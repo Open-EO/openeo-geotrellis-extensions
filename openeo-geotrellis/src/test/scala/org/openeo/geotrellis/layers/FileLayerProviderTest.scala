@@ -30,7 +30,6 @@ import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.geotiff._
-import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
@@ -221,17 +220,6 @@ class FileLayerProviderTest extends RasterMatchers {
     assertEquals(32, physicalMean)
   }
 
-
-  private def _getSentinel5PRasterSources(bbox: ProjectedExtent, date: ZonedDateTime, zoom: Int, featuresJsonString: Option[String] = None): (RDD[LayoutTileSource[SpaceTimeKey]], TileLayerMetadata[SpaceTimeKey]) = {
-    val fileLayerProvider = if (featuresJsonString.isDefined) sentinel5PJsonStringFileLayerProvider(featuresJsonString.get) else sentinel5PFileLayerProvider
-
-    val overlappingRasterSources: Seq[RasterSource] = fileLayerProvider.loadRasterSourceRDD(bbox, date, date, zoom).map(_._1)
-    val commonCellType = overlappingRasterSources.head.cellType
-    val metadata = layerMetadata(bbox, date, date, zoom min zoom, commonCellType, sentinel5PLayoutScheme, sentinel5PMaxSpatialResolution)
-
-    val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, sentinel5PMaxSpatialResolution, sentinel5PCollectionId)(sc)
-    (rasterSources, metadata)
-  }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test

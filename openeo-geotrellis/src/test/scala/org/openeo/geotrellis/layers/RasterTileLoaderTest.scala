@@ -1,10 +1,11 @@
 package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
-import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
+import geotrellis.layer._
 import geotrellis.proj4.LatLng
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, MultibandTile, RasterSource}
+import geotrellis.raster.{CellSize, MultibandTile}
+import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
@@ -16,13 +17,13 @@ import org.junit.jupiter.api.condition.EnabledIf
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
-import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrelliscommon.DatacubeSupport._
-import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SyntheticDataOverride, UdfLanguage}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, NoCloudFilterStrategy, SyntheticDataOverride, UdfLanguage}
 import org.openeo.opensearch.OpenSearchResponses.FeatureCollection
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.LocalTime.MIDNIGHT
+import java.time.temporal.ChronoUnit.DAYS
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import scala.io.{BufferedSource, Source}
@@ -109,11 +110,15 @@ class RasterTileLoaderTest extends RasterMatchers {
   private def _getSentinel5PRasterSources(bbox: ProjectedExtent, date: ZonedDateTime, zoom: Int, featuresJsonString: Option[String] = None): (RDD[LayoutTileSource[SpaceTimeKey]], TileLayerMetadata[SpaceTimeKey]) = {
     val fileLayerProvider = if (featuresJsonString.isDefined) sentinel5PJsonStringFileLayerProvider(featuresJsonString.get) else sentinel5PFileLayerProvider
 
-    val overlappingRasterSources: Seq[RasterSource] = fileLayerProvider.loadRasterSourceRDD(bbox, date, date, zoom).map(_._1)
-    val commonCellType = overlappingRasterSources.head.cellType
+    val overlappingRasterSources = fileLayerProvider.loadRasterSourceRDD(bbox, date, date, zoom)
+    val commonCellType = overlappingRasterSources.head._1.cellType
     val metadata = layerMetadata(bbox, date, date, zoom min zoom, commonCellType, sentinel5PLayoutScheme, sentinel5PMaxSpatialResolution)
 
-    val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, sentinel5PMaxSpatialResolution, sentinel5PCollectionId)(sc)
+    val layout = metadata.layout
+    val rasterSources = sc.parallelize(overlappingRasterSources, overlappingRasterSources.size).map { case (rs, feature) =>
+      val day = feature.nominalDate.truncatedTo(DAYS)
+      rs.tileToLayout(layout, (sk: SpatialKey) => SpaceTimeKey(sk, day))
+    }
     (rasterSources, metadata)
   }
 
@@ -326,5 +331,56 @@ class RasterTileLoaderTest extends RasterMatchers {
       .toSpatial(date)
       .cache()
     spatialLayer.writeGeoTiff("/tmp/multipleMultibandAssetsPerFeature.tif", bbox)
+  }
+
+  @Test
+  def readMultibandTileLayerRegistersTrackerCounters(): Unit = {
+    // readMultibandTileLayer (used by e.g. the GeoTIFF PyramidFactory) bypasses loadRasterRegionsToTiles
+    BatchJobMetadataTracker.setGlobalTracking(true)
+    BatchJobMetadataTracker.clearGlobalTracker()
+    try {
+      val path = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/cgls_ndvi300.tif").getPath
+      val source = GeoTiffRasterSource(path)
+      val time = ZonedDateTime.of(LocalDate.of(2020, 1, 1), MIDNIGHT, UTC)
+      val layout = FloatingLayoutScheme(256).levelFor(source.extent, source.cellSize).layout
+      val tileSource = source.tileToLayout(layout, (sk: SpatialKey) => SpaceTimeKey(sk, time))
+      val keys = layout.mapTransform.keysForGeometry(source.extent.toPolygon())
+      val bounds = KeyBounds(SpaceTimeKey(keys.minBy(k => (k.col, k.row)), time), SpaceTimeKey(keys.maxBy(k => (k.col, k.row)), time))
+      val metadata = TileLayerMetadata(source.cellType, layout, source.extent, source.crs, bounds)
+
+      val cube = RasterTileLoader.readMultibandTileLayer(sc.parallelize(Seq(tileSource)), metadata,
+        Array(MultiPolygon(source.extent.toPolygon())), source.crs, sc)
+      assertTrue(cube.count() > 0)
+
+      val pixels = BatchJobMetadataTracker.tracker("").asDict().get("InputPixels").asInstanceOf[Long]
+      assertTrue(pixels > 0)
+    } finally {
+      BatchJobMetadataTracker.setGlobalTracking(false)
+      BatchJobMetadataTracker.clearGlobalTracker()
+    }
+  }
+
+  @Test
+  def mergeByOutputBandMergesOverlappingBandGroupsPerBand(): Unit = {
+    import geotrellis.raster.{IntArrayTile, IntConstantTile, NODATA, StringName}
+
+    // "a" sorts first, so takes precedence where both have data
+    val aBand0 = IntArrayTile(Array(1, NODATA, NODATA, 4), 2, 2)
+    val aBand1 = IntArrayTile(Array(10, 11, 12, 13), 2, 2)
+    val bBand0 = IntArrayTile(Array(100, 101, NODATA, 103), 2, 2)
+    val noDataPlaceholder = IntConstantTile(NODATA, 2, 2)
+    val cBand2 = IntArrayTile(Array(20, 21, 22, 23), 2, 2)
+
+    val merged = RasterTileLoader.mergeByOutputBand(Seq(
+      (Seq(0), MultibandTile(bBand0), StringName("b")),
+      (Seq(0, 1), MultibandTile(aBand0, aBand1), StringName("a")),
+      (Seq(2), MultibandTile(noDataPlaceholder), StringName("0-placeholder")),
+      (Seq(2), MultibandTile(cBand2), StringName("c")),
+    ))
+
+    assertEquals(Set(0, 1, 2), merged.keySet)
+    assertEquals(Seq(1, 101, NODATA, 4), merged(0).toArray().toSeq)
+    assertEquals(aBand1.toArray().toSeq, merged(1).toArray().toSeq)
+    assertEquals(cBand2.toArray().toSeq, merged(2).toArray().toSeq)
   }
 }
