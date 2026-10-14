@@ -5,10 +5,11 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import geotrellis.layer.LayoutDefinition
 import geotrellis.proj4.CRS
 import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, ShortCellType, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, TileLayout, UByteCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortUserDefinedNoDataCellType}
+import geotrellis.raster.{BitArrayTile, MultibandTile}
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrowsExactly, assertTrue}
 import org.junit.jupiter.api.Test
-import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, cellTypeUnionWithNoData, toSigned}
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnion, cellTypeUnionWithNoData, toSigned, widenWithNoData, widenedCellTypeWithNoData}
 
 class TestGeneralUtils {
 
@@ -312,4 +313,60 @@ class TestGeneralUtils {
   }
 
 
+
+  /**
+   * Raw (NoNoData) integral cell types are widened to the next larger cell type with a NODATA value outside of their
+   * original range of values (int32 has no larger integral cell type so it becomes float64). Raw floating point cell
+   * types keep their size and get NaN as NODATA. Cell types that already have a NODATA value are returned as is.
+   */
+  @Test
+  def testWidenedCellTypeWithNoData(): Unit = {
+    assertEquals(ByteConstantNoDataCellType, widenedCellTypeWithNoData(BitCellType))
+    assertEquals(ShortConstantNoDataCellType, widenedCellTypeWithNoData(ByteCellType))
+    assertEquals(ShortConstantNoDataCellType, widenedCellTypeWithNoData(UByteCellType))
+    assertEquals(IntConstantNoDataCellType, widenedCellTypeWithNoData(ShortCellType))
+    assertEquals(IntConstantNoDataCellType, widenedCellTypeWithNoData(UShortCellType))
+    assertEquals(DoubleConstantNoDataCellType, widenedCellTypeWithNoData(IntCellType))
+    assertEquals(FloatConstantNoDataCellType, widenedCellTypeWithNoData(FloatCellType))
+    assertEquals(DoubleConstantNoDataCellType, widenedCellTypeWithNoData(DoubleCellType))
+
+    assertEquals(UByteConstantNoDataCellType, widenedCellTypeWithNoData(UByteConstantNoDataCellType))
+    assertEquals(UShortUserDefinedNoDataCellType(42), widenedCellTypeWithNoData(UShortUserDefinedNoDataCellType(42)))
+    assertEquals(IntConstantNoDataCellType, widenedCellTypeWithNoData(IntConstantNoDataCellType))
+  }
+
+  /**
+   * Widening a raw tile should yield the cell type of [[widenedCellTypeWithNoData]] with all of its original values
+   * remaining valid data.
+   *
+   * Each tile contains the extremes of its cell type's range, which are the values most likely to be mistaken for
+   * NODATA or to be mangled by the conversion: e.g. 0 (formerly treated as NODATA), unsigned maxima (stored as -1) and
+   * Int.MinValue (GeoTrellis' NODATA value for int32, which is why int32 is special-cased). Constant tiles are included
+   * because they implement convert separately from array tiles.
+   *
+   * A tile that already has a NODATA value should be returned as is.
+   */
+  @Test
+  def testWidenWithNoData(): Unit = {
+    def assertPreserved(tile: Tile): Unit = {
+      val converted = widenWithNoData(MultibandTile(tile)).band(0)
+
+      assertEquals(widenedCellTypeWithNoData(tile.cellType), converted.cellType)
+      assertTrue(converted.cellType.isInstanceOf[geotrellis.raster.HasNoData[_]])
+      assertEquals(tile.toArrayDouble().toSeq, converted.toArrayDouble().toSeq)
+      assertTrue(converted.toArrayDouble().forall(d => geotrellis.raster.isData(d)))
+    }
+
+    assertPreserved(BitArrayTile(Array[Byte](0x02), 2, 1))
+    assertPreserved(ByteArrayTile(Array[Byte](Byte.MinValue, 0, Byte.MaxValue), 3, 1, ByteCellType))
+    assertPreserved(UByteArrayTile(Array[Byte](0, 1, -1), 3, 1, UByteCellType))
+    assertPreserved(ShortArrayTile(Array[Short](Short.MinValue, 0, Short.MaxValue), 3, 1, ShortCellType))
+    assertPreserved(UShortArrayTile(Array[Short](0, 1, -1), 3, 1, UShortCellType))
+    assertPreserved(IntArrayTile(Array(Int.MinValue, 0, Int.MaxValue), 3, 1, IntCellType))
+    assertPreserved(UShortConstantTile(0, 2, 2, UShortCellType))
+    assertPreserved(UByteConstantTile(0, 2, 2, UByteCellType))
+
+    val alreadyNoData = MultibandTile(UShortArrayTile(Array[Short](0, 1), 2, 1, UShortConstantNoDataCellType))
+    assertTrue(widenWithNoData(alreadyNoData) eq alreadyNoData)
+  }
 }
