@@ -24,7 +24,7 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
   def readManyBounds(): Unit = {
 
     val warpOptions = GDALWarpOptions(alignTargetPixels = true)
-    val rs = GDALRasterSource("/vsicurl/https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2",warpOptions)
+    val rs = GDALRasterSource("../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/T11TNM_20210101T184759_B02.jp2", warpOptions)
 
     val rasterSources = NonEmptyList.of(
       rs

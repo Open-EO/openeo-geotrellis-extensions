@@ -60,7 +60,7 @@
   "links": [],
   "assets": {
     "model": {
-      "href": "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/roadMapSegmentationModel.onnx",
+      "href": "file://../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/roadMapSegmentationModel.onnx",
       "type": "application/x-onnx",
       "title": "ONNX Model Binary",
       "roles": ["ml-model:checkpoint", "mlm:model"]

@@ -719,7 +719,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     options.setBandNames(new util.ArrayList(util.Arrays.asList("NDVI")))
     val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.writeRasters(layer, "/tmp/cgls_ndvi300.nc", options))
 
-    val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/cgls_ndvi300.tiff").read().get
+    val referenceTile = GeoTiffRasterSource("../testdata/org/openeo/geotrellis/netcdf/NetCDFRDDWriterTest/cgls_ndvi300.tiff").read().get
     val actualTile = GDALRasterSource("/tmp/cgls_ndvi300.nc").read().get
     //assertRastersEqual(referenceTile,actualTile,1.0)
 
