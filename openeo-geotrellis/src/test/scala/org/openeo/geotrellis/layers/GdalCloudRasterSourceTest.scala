@@ -12,8 +12,8 @@ class GdalCloudRasterSourceTest {
   @Test
   @Disabled
   def testReadPolygonsAndExtent(): Unit = {
-    val cloudPath = "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE/GRANULE/L1C_T35JPM_A028875_20210101T081145/QI_DATA/MSK_CLOUDS_B00.gml"
-    val metaDataPath = "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE/GRANULE/L1C_T35JPM_A028875_20210101T081145/MTD_TL.xml"
+    val cloudPath = "../testdata/org/openeo/geotrellis/layers/GdalCloudRasterSourceTest/MSK_CLOUDS_B00.gml"
+    val metaDataPath = "../testdata/org/openeo/geotrellis/layers/GdalCloudRasterSourceTest/MTD_TL.xml"
     val source = GDALCloudRasterSource(cloudPath, metaDataPath, new GDALPath(""))
     val polygons: Seq[Polygon]  = source.readCloudFile()
     //assert(polygons.length == 100)

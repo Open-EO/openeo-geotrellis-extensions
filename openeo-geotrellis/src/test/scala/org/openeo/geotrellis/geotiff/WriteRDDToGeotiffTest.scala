@@ -22,7 +22,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource, ValueSource}
-import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
+import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithLocalTestdata
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.slf4j.{Logger, LoggerFactory}
@@ -1155,7 +1155,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   def testAvoidCroppingAwayNoData(): Unit = {
 
     val layerProvider = FileLayerProvider(
-      loadFeaturesWithArtifactoryMock("/org/openeo/geotrellis/testAvoidCroppingAwayNoData.json"),
+      loadFeaturesWithLocalTestdata("/org/openeo/geotrellis/testAvoidCroppingAwayNoData.json"),
       "GLOBAL-MOSAICS",
       openSearchLinkTitles = NonEmptyList.of("VV"),
       rootPath = "/eodata/Global-Mosaics/Sentinel-1",

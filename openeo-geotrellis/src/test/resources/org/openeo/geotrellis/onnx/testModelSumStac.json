@@ -46,7 +46,7 @@
   "links": [],
   "assets": {
     "model": {
-      "href": "file://../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/test_model_sum_double.onnx",
+      "href": "../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/test_model_sum_double.onnx",
       "type": "application/x-onnx",
       "title": "ONNX test Model ",
       "roles": ["ml-model:checkpoint", "mlm:model"]

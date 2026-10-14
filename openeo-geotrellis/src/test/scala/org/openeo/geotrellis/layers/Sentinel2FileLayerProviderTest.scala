@@ -111,8 +111,8 @@ object Sentinel2FileLayerProviderTest {
   }
 
   def maskingParams: Stream[Arguments] = Arrays.stream(Array(
-    arguments(Collections.singletonMap("method", "mask_scl_dilation"),"file://../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/dilation_masked_v220.tif"),
-    arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"file://../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/masked_erosion_v220.tif")
+    arguments(Collections.singletonMap("method", "mask_scl_dilation"),"../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/dilation_masked_v220.tif"),
+    arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/masked_erosion_v220.tif")
   ))
 
   def datacubeParams: Stream[Arguments] = Arrays.stream(Array(
@@ -619,7 +619,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testToSclDilationMaskOnS2TileEdge(@TempDir tempDir: java.nio.file.Path): Unit = {
-    val ref = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/toscldilationmask_masked_ref_v220.tif"
+    val ref = "../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/toscldilationmask_masked_ref_v220.tif"
     val actual = tempDir.resolve("toscldilationmask_masked_actual.tif")
 
     // Create spatialLayer.
@@ -690,16 +690,16 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
 
-  val cloudPath = "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/QI_DATA/MSK_CLOUDS_B00.gml"
-  val metadataPath = "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/MTD_TL.xml"
+  val cloudPath = "../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/MSK_CLOUDS_B00.gml"
+  val metadataPath = "../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/MTD_TL.xml"
 
   object MockOpenSearch extends OpenSearchClient with IdentityEquals {
     override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
       val start = dateRange.get._1
       Seq(OpenSearchResponses.Feature(id = "/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE", bbox.reproject(LatLng).extent, start, Array(
-        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
-        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B03.jp2"), Some("IMG_DATA_Band_10m_2_Tile1_Data")),
-        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B04.jp2"), Some("IMG_DATA_Band_10m_3_Tile1_Data")),
+        Link(URI.create("../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
+        Link(URI.create("../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/T11TNM_20210101T184759_B03.jp2"), Some("IMG_DATA_Band_10m_2_Tile1_Data")),
+        Link(URI.create("../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/T11TNM_20210101T184759_B04.jp2"), Some("IMG_DATA_Band_10m_3_Tile1_Data")),
         //Link(URI.create("/data/MTDA/CGS_S2/CGS_S2_L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
         Link(URI.create(metadataPath), Some("S2_Level-1C_Tile1_Metadata")),
         Link(URI.create(cloudPath), Some("FineCloudMask_Tile1_Data"))

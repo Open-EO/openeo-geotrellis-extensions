@@ -652,7 +652,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // Compare to reference tile.
     saveRDD(resultCube.toSpatial(times.head),2, "groupByGeometry_2017-01-15_actual.tif", 6, Some(datacube.metadata.extent))
     val actualRaster = GeoTiffRasterSource("groupByGeometry_2017-01-15_actual.tif").read().get
-    val referenceRaster = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testGroupAndMaskByGeometry.tif").read().get
+    val referenceRaster = GeoTiffRasterSource("../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/testGroupAndMaskByGeometry.tif").read().get
     assertRastersEqual(referenceRaster, actualRaster)
 
     // Visualize RDD.
@@ -1336,7 +1336,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       Seq(resultArray(3),resultArray(1)),ShortConstantNoDataCellType, 2
     )
     // test download model
-    runONNX("https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx",
+    runONNX("../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/test_model.onnx",
       new ArrayMultibandTile(Array(tileFloat(4))),
       Seq(resultArray(0)), FloatConstantNoDataCellType
     )
@@ -1370,7 +1370,8 @@ class OpenEOProcessesSpec extends RasterMatchers {
     def runONNX(path: String, datacube:  MultibandTileLayerRDD[SpaceTimeKey], expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
       val model =
         if (path.startsWith("http")) path
-       else getClass.getResource(path).getPath
+        else if (path.startsWith("../testdata/")) new File(path).getAbsolutePath
+        else getClass.getResource(path).getPath
       val resultCube = onnx.predictONNXModel(datacube,model)
       assertEquals(expectedType, resultCube.metadata.cellType)
 
@@ -1439,7 +1440,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       Seq(resultArray(3),resultArray(1)),ShortConstantNoDataCellType, 2
     )
     // test download model
-    runONNX("https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx",
+    runONNX("../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/test_model.onnx",
       datacubeOneBand(tileFloat(4), tileSize),
       Seq(resultArray(0)), FloatConstantNoDataCellType
     )
