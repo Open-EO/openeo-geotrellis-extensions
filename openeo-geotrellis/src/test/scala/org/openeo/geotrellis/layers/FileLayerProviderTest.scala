@@ -9,7 +9,7 @@ import geotrellis.raster.resample.{Bilinear, CubicConvolution, ResampleMethod}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, Raster, RasterSource, ShortConstantNoDataCellType, isNoData}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, IntConstantNoDataCellType, Raster, RasterExtent, RasterSource, ShortConstantNoDataCellType, isData, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
@@ -17,7 +17,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.{HashPartitioner, SparkConf, SparkContext}
+import org.apache.spark.{HashPartitioner, SparkConf, SparkContext, SparkTestHelper}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api._
 import org.junit.jupiter.api.condition.EnabledIf
@@ -1589,6 +1589,8 @@ class FileLayerProviderTest extends RasterMatchers {
     val (datacubeParams, result) = keysForLargeArea()
 
     val allTiles = result._1.collect()
+    // listener events are delivered asynchronously: make sure the last job end has been counted
+    SparkTestHelper.waitUntilListenerBusEmpty(sc)
     sc.removeSparkListener(listener)
     print(allTiles)
     val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
@@ -1626,6 +1628,8 @@ class FileLayerProviderTest extends RasterMatchers {
 
     val allTiles = result._1.collect()
 
+    // listener events are delivered asynchronously: make sure the last job end has been counted
+    SparkTestHelper.waitUntilListenerBusEmpty(sc)
     sc.removeSparkListener(listener)
     print(allTiles)
     val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
@@ -1747,6 +1751,7 @@ class FileLayerProviderTest extends RasterMatchers {
   @ParameterizedTest
   @ValueSource(booleans = Array(false, true))
   def testMultibandNoNoDataCOGViaSTAC(loadPerProduct: Boolean, @TempDir outDir: Path): Unit = {
+    // 2 adjacent Short GeoTiffs without NODATA value (34TFR_000 and 34TFR_001, seam at x=610240); actual values >= 13
     val pyramidFactory = LayerFixtures.stacCogNoNoDataCollection
 
     val projectedPolygons = ProjectedPolygons.fromExtent(
@@ -1759,13 +1764,40 @@ class FileLayerProviderTest extends RasterMatchers {
     dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
     dataCubeParameters.loadPerProduct = loadPerProduct
 
+    val Seq((_, cube)) = pyramidFactory.datacube_seq(projectedPolygons, "2020-07-01T00:00:00Z",
+      "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+
+    cube.cache()
+
+    // raw Short is widened to Int with NODATA rather than given a NODATA value of 0
+    assertEquals(IntConstantNoDataCellType, cube.metadata.cellType)
+    assertTrue(cube.values.collect().forall(_.cellType == IntConstantNoDataCellType))
+
+    val Raster(multibandTile, extent) = cube
+      .toSpatial()
+      .crop(projectedPolygons.extent.extent)
+      .stitch()
+
+    val band = multibandTile.band(0)
+    val rasterExtent = RasterExtent(extent, band.cols, band.rows)
+
+    // overlapping tiles were merged: the AOI is fully covered by both GeoTiffs, including the seam
+    assertFalse(band.toArray().exists(v => isNoData(v)), "expected no NODATA in AOI")
+    assertTrue(band.toArray().forall(_ >= 13), "expected no fill values in AOI")
+
+    val (seamCol, _) = rasterExtent.mapToGrid(610240.0, extent.center.y)
+    for {
+      col <- seamCol - 1 to seamCol
+      row <- 0 until band.rows
+    } assertTrue(isData(band.get(col, row)), s"expected data at seam ($col, $row)")
+
     writeToNetCDFAndCompare(
       projectedPolygons,
       dataCubeParameters,
       bands = new util.ArrayList(util.Collections.singletonList("L2A-B02-P10")),
       pyramidFactory,
       outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC_$loadPerProduct.nc",
-      referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testMultibandNoNoDataCOGViaSTAC_reference.nc",
+      referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testMultibandNoNoDataCOGViaSTAC.nc",
     )
   }
 
