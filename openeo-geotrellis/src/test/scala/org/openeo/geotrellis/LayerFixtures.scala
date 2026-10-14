@@ -1435,7 +1435,7 @@ object LayerFixtures {
     )
   }
 
-  lazy val b04RasterSource =GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/S2_B04_timeseries.tiff")
+  lazy val b04RasterSource =GeoTiffRasterSource("file://../testdata/org/openeo/geotrellis/LayerFixtures/S2_B04_timeseries.tiff")
 
   lazy val b04Raster = {
     b04RasterSource.read().get

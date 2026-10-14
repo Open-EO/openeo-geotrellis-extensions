@@ -1,9 +1,11 @@
 package org.openeo.geotrelliscommon
 
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.{assertEquals, fail}
 import org.junit.jupiter.api.Test
 import org.slf4j.{Logger, LoggerFactory}
+
+import java.nio.file.{Files, Path}
 
 object GeoTiffRasterSourceTest {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[GeoTiffRasterSourceTest])
@@ -13,7 +15,7 @@ class GeoTiffRasterSourceTest {
 
   @Test
   def readZStdCompressedTif():Unit = {
-    val source = GeoTiffRasterSource(GeoTiffPath.toGeoTiffDataPath("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/zstd_predictor2.tif"))
+    val source = GeoTiffRasterSource(GeoTiffPath.toGeoTiffDataPath("../testdata/org/openeo/geotrelliscommon/GeoTiffRasterSourceTest/zstd_predictor2.tif"))
     val raster = source.read().get
     assertEquals(1, raster.tile.bandCount)
     assertEquals(4000, raster.tile.rows)

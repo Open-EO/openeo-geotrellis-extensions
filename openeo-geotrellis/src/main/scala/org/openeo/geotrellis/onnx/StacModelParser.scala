@@ -2,6 +2,9 @@ package org.openeo.geotrellis.onnx
 
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 
+import java.net.{URI, URL}
+import java.nio.file.Path
+
 
 /** * Descriptor for a single input or output tensor, as declared in an MLM STAC item. * * @param name      Tensor name used as ONNX session feed key. * @param dataType  Data type string, e.g. "float32", "int32". * @param shape     Tensor shape; -1 denotes a dynamic dimension. * @param axes      Optional axis semantic labels, e.g. Seq("batch","bands","height","width"). */
 case class TensorSpec(
@@ -29,13 +32,13 @@ case class MlmModelDescriptor(
 object StacModelParser {
   private val mapper = new ObjectMapper()
 
-  /**   * Parse a raw JSON string representing a STAC item with the MLM extension.   *   * @param stacJson  Full STAC item JSON as a string.   * @return          Parsed [[MlmModelDescriptor]].   * @throws IllegalArgumentException if required fields are missing or malformed.   */
+  /** * Parse a raw JSON string representing a STAC item with the MLM extension.   *   * @param stacJson  Full STAC item JSON as a string.   * @return          Parsed [[MlmModelDescriptor]].   * @throws IllegalArgumentException if required fields are missing or malformed. */
   def parse(stacJson: String): MlmModelDescriptor = {
     val root = mapper.readTree(stacJson)
     parseNode(root)
   }
 
-  /**   * Parse from a [[JsonNode]] directly (useful when already parsed elsewhere).   */
+  /** * Parse from a [[JsonNode]] directly (useful when already parsed elsewhere). */
   def parseNode(root: JsonNode): MlmModelDescriptor = {
     val props = requireField(root, "properties", "STAC item must have a 'properties' object")
 
@@ -62,7 +65,7 @@ object StacModelParser {
           val cls = arr.get(i)
           MlmClass(
             value = requireIntField(cls, "value", s"mlm:classes[$i].value is required"),
-            name  = requireTextField(cls, "name", s"mlm:classes[$i].name is required")
+            name = requireTextField(cls, "name", s"mlm:classes[$i].name is required")
           )
         }.toSeq
       }
@@ -72,12 +75,12 @@ object StacModelParser {
 
     MlmModelDescriptor(
       modelAssetHref = modelAssetHref,
-      modelName      = modelName,
-      framework      = framework,
-      tasks          = tasks,
-      inputs         = inputs,
-      outputs        = outputs,
-      classes        = classes
+      modelName = modelName,
+      framework = framework,
+      tasks = tasks,
+      inputs = inputs,
+      outputs = outputs,
+      classes = classes
     )
   }
 
@@ -95,7 +98,7 @@ object StacModelParser {
 
     (0 until node.size()).map { i =>
       val t = node.get(i)
-      val name     = requireTextField(t, "name",      s"$field[$i].name is required")
+      val name = requireTextField(t, "name", s"$field[$i].name is required")
       val dataType = requireTextField(t, "data_type", s"$field[$i].data_type is required")
 
       val shape: Seq[Long] = Option(t.get("shape"))
@@ -133,6 +136,10 @@ object StacModelParser {
       if (roles.exists(modelRoles.contains)) {
         val href = requireTextField(asset, "href", s"asset '${entry.getKey}' must have an 'href'")
         if (href.startsWith("http")) return href
+        else if (href.startsWith("file://")) {
+          val stripped = href.substring(7) // strip "file://" prefix
+          return Path.of(stripped).toAbsolutePath.toString
+        }
         else {
           val resource = getClass.getResource(href) // Only for testing purposes, in production this should be a proper URI resolution
           return resource.toString
