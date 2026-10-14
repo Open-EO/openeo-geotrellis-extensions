@@ -60,7 +60,7 @@
   "links": [],
   "assets": {
     "model": {
-      "href": "../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/roadMapSegmentationModel.onnx",
+      "href": "file://../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/roadMapSegmentationModel.onnx",
       "type": "application/x-onnx",
       "title": "ONNX Model Binary",
       "roles": ["ml-model:checkpoint", "mlm:model"]

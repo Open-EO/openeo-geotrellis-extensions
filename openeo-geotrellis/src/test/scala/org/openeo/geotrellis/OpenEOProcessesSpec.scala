@@ -1269,6 +1269,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
       val model =
         if (path.startsWith("http")) path
+        else if (path.startsWith("../")) path
         else getClass.getResource(path).getPath
       val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tile.cols/layoutCols, tile.rows/layoutRows))
       val resultCube = onnx.predictONNXModel(datacube,model)
