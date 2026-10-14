@@ -1,15 +1,18 @@
 package org.openeo.sar.provider
 
+import cats.data.NonEmptyList
 import com.github.benmanes.caffeine.cache.Caffeine
 import geotrellis.proj4.CRS
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.{CellSize, GridExtent, RasterSource, StringName}
 import geotrellis.vector.Extent
 import org.openeo.geotrellis.layers.provider.{RasterSourceDefinition, RasterSourceProvider}
+import org.openeo.geotrellis.layers.raster_source.IndexedRasterSource
 import org.openeo.sar.backend.nativ.NativeBackend
 import org.openeo.sar.metadata.Polarisation
 import org.openeo.sar.raster.S1GrdRasterSource
 import org.openeo.sar._
+import org.openeo.sar.provider.Sentinel1GrdRasterSourceProvider.{PolPattern, polarisationBandIndex, polarisationOfBandName, requestedPolarisation}
 import org.slf4j.LoggerFactory
 
 import java.net.URI
@@ -52,6 +55,39 @@ class Sentinel1GrdRasterSourceProvider(
   }
 
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
+    val (scene, safeRoot, crs, cellSize) = openScene(definition, requestedPolarisation(definition).toSeq)
+    val ge = GridExtent[Long](definition.targetExtent.extent, cellSize)
+    // The scene source carries all polarisations: select the one this definition refers to.
+    val bandIndex = polarisationBandIndex(definition, scene.polarisations, safeRoot)
+
+    IndexedRasterSource(new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString)), bandIndex)
+  }
+
+
+
+  /** Serves all requested polarisation bands of one feature from a single [[S1GrdRasterSource]]: the
+   *  scene (orbit/LUTs/RasterSources) is opened once and shared, and terrain correction for all
+   *  polarisations is computed together in one pass, instead of once per band as `rasterSource` would. */
+  override def multibandRasterSource(definitions: NonEmptyList[RasterSourceDefinition]): Option[(RasterSource, Seq[Int])] = {
+    // All definitions belong to the same feature/target extent (see FileLayerProvider), so scene state
+    // (and hence the polarisation ordering used to open it) can be derived from any single one of them.
+    val (scene, safeRoot, crs, cellSize) = openScene(definitions.head, definitions.toList.flatMap(requestedPolarisation))
+    val ge = GridExtent[Long](definitions.head.targetExtent.extent, cellSize)
+    val source: RasterSource = new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString))
+
+    val bandIndices = definitions.toList.map { definition =>
+      polarisationBandIndex(definition, scene.polarisations, safeRoot)
+    }
+
+    Some((source, bandIndices))
+  }
+
+  /** Opens (or retrieves from cache) the [[SceneContext]] backing `definition`, alongside the SAFE
+   *  root/CRS/cellSize used to key it. Shared by `rasterSource` and `multibandRasterSource` so that a
+   *  scene opened for one band is reused for the others (both via the cache, and, in the latter case,
+   *  by construction - one open serves every requested polarisation). */
+  private def openScene(definition: RasterSourceDefinition,
+                        requestedPolarisations: Seq[Polarisation]): (SceneContext, URI, CRS, CellSize) = {
     val crs      = definition.targetExtent.crs
     val cellSize = definition.theResolution
 
@@ -70,7 +106,7 @@ class Sentinel1GrdRasterSourceProvider(
     val cacheKey = SceneCacheKey(safeRoot, crs, cellSize, effectiveProcessingConfig)
 
     val scene = sceneCache.get(cacheKey, (_: SceneCacheKey) => {
-      val pols = derivePolarisations(definition)
+      val pols = derivePolarisations(definition, requestedPolarisations)
       logger.info(s"Opening SAR scene $safeRoot, pols=${pols.map(_.code).mkString(",")}, crs=$crs, cellSize=$cellSize")
 
       stacItemUrl match {
@@ -81,9 +117,7 @@ class Sentinel1GrdRasterSourceProvider(
       }
     })
 
-    val ge = GridExtent[Long](definition.targetExtent.extent, cellSize)
-
-    new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString))
+    (scene, safeRoot, crs, cellSize)
   }
 
   // ---- helpers ---------------------------------------------------------------
@@ -123,22 +157,22 @@ class Sentinel1GrdRasterSourceProvider(
     }
   }
 
-  private val PolPattern = """(?i)-grd-(vv|vh|hh|hv)-""".r
-
-  /** Collect all polarisations present in the feature links. */
-  private def derivePolarisations(definition: RasterSourceDefinition): Seq[Polarisation] = {
-    val pols = definition.feature.links
+  /** Collect all polarisations present in the feature links: from measurement hrefs, otherwise from the
+   *  links' band metadata (e.g. a SAFE-root asset), otherwise the polarisations requested by the caller. */
+  private def derivePolarisations(definition: RasterSourceDefinition,
+                                  requestedPolarisations: Seq[Polarisation]): Seq[Polarisation] = {
+    val fromHrefs = definition.feature.links
       .flatMap(l => PolPattern.findFirstMatchIn(l.href.toString).map(_.group(1).toUpperCase))
       .distinct
+    lazy val fromBandNames = definition.feature.links.toSeq
+      .flatMap(_.bandNames.getOrElse(Seq.empty))
+      .flatMap(polarisationOfBandName)
+      .distinct
 
-    if (pols.isEmpty) {
-      // Fall back to the polarisation in the current link
-      PolPattern.findFirstMatchIn(definition.dataPath)
-        .map(m => Seq(Polarisation.parse(m.group(1).toUpperCase)))
-        .getOrElse(Seq(Polarisation.VV))
-    } else {
-      pols.sorted.map(Polarisation.parse)
-    }
+    if (fromHrefs.nonEmpty) fromHrefs.sorted.map(Polarisation.parse)
+    else if (fromBandNames.nonEmpty) fromBandNames.sortBy(_.code)
+    else if (requestedPolarisations.nonEmpty) requestedPolarisations.distinct.sortBy(_.code)
+    else Seq(Polarisation.VV)
   }
 
   /** Open a scene when no STAC item URL is available.
@@ -155,6 +189,43 @@ class Sentinel1GrdRasterSourceProvider(
 }
 
 object Sentinel1GrdRasterSourceProvider {
+  private[provider] val PolPattern = """(?i)-grd-(vv|vh|hh|hv)-""".r
+
+  private val BandNamePolPattern = """(?i)(?<![a-z])(vv|vh|hh|hv)(?![a-z])""".r
+
+  private[provider] def polarisationOfBandName(bandName: String): Option[Polarisation] =
+    Option(bandName).flatMap(BandNamePolPattern.findFirstMatchIn).map(m => Polarisation.parse(m.group(1)))
+
+  /** The polarisation a definition refers to: from a measurement path (`-grd-vv-`), otherwise - e.g. for a
+   *  SAFE-root asset - from its band metadata: the requested band name, or the asset's own name for band
+   *  `bandIndex`. */
+  private[provider] def requestedPolarisation(dataPath: String, bandName: String,
+                                              assetBandNames: Option[Seq[String]], bandIndex: Int): Option[Polarisation] =
+    PolPattern.findFirstMatchIn(dataPath).map(m => Polarisation.parse(m.group(1)))
+      .orElse(polarisationOfBandName(bandName))
+      .orElse(assetBandNames.flatMap(_.lift(bandIndex)).flatMap(polarisationOfBandName))
+
+  private def requestedPolarisation(definition: RasterSourceDefinition): Option[Polarisation] =
+    requestedPolarisation(definition.dataPath, definition.bandName, definition.link.bandNames, definition.bandIndex)
+
+  /** Index of the band within a scene source (one band per polarisation, in `scenePolarisations` order)
+   *  that holds the requested polarisation. Fails rather than guessing, so that a request for one
+   *  polarisation can never silently be served another polarisation's data. */
+  private[provider] def polarisationBandIndex(requested: Option[Polarisation], description: => String,
+                                              scenePolarisations: Seq[Polarisation], safeRoot: URI): Int = {
+    val pol = requested.getOrElse(throw new IllegalArgumentException(
+      s"Cannot determine the polarisation of $description (scene $safeRoot): neither the path nor the band metadata identify one"))
+    val index = scenePolarisations.indexOf(pol)
+    if (index < 0) throw new IllegalStateException(
+      s"Polarisation ${pol.code} of $description is not available in scene $safeRoot " +
+        s"(pols=${scenePolarisations.map(_.code).mkString(",")})")
+    index
+  }
+
+  private def polarisationBandIndex(definition: RasterSourceDefinition, scenePolarisations: Seq[Polarisation], safeRoot: URI): Int =
+    polarisationBandIndex(requestedPolarisation(definition), s"${definition.dataPath} (band ${definition.bandName})",
+      scenePolarisations, safeRoot)
+
   /** Convenience factory: NativeBackend + Copernicus DEM (COG via HTTPS). */
   def withCopernicusDem(
     geoidTiffUri: Option[URI] = None,
