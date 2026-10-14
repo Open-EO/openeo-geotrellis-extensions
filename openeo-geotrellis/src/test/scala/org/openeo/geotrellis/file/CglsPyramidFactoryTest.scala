@@ -7,7 +7,7 @@ import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, GridBounds, UByteConstantNoDataCellType}
+import geotrellis.raster.{CellSize, GridBounds, ShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector._
@@ -47,7 +47,7 @@ class CglsPyramidFactoryTest extends LocalSparkContext with RasterMatchers {
     val refFile = LayerFixtures.cglsFAPARPath
     val refRasterSource = GDALRasterSource("NETCDF:" + Paths.get(refFile))
     val targetExtent = refRasterSource.gridExtent.extentFor(targetBounds)
-    val refRaster = refRasterSource.read(targetExtent).get.mapTile(_.convert(UByteConstantNoDataCellType))
+    val refRaster = refRasterSource.read(targetExtent).get.mapTile(_.convert(ShortConstantNoDataCellType))
 
 
     //val x=1.8973214

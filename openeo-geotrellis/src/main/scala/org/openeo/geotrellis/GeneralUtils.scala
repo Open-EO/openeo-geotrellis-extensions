@@ -2,7 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.layer.LayoutDefinition
 import geotrellis.proj4.CRS
-import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, isData, isNoData, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleArrayTile, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, isData, isNoData, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.vector.Extent
 import org.slf4j.LoggerFactory
 import java.util
@@ -80,6 +80,34 @@ object GeneralUtils {
       case _: FloatCells => DoubleConstantNoDataCellType
       case _: DoubleCells => DoubleConstantNoDataCellType
     }
+  }
+
+  /**
+   * Returns a cell type with a NODATA value that lies outside the range of values of the given raw (NoNoData) cell
+   * type, widening it if necessary, so that all its original values remain valid data. Raw floating point cell types
+   * are not widened because NaN is available as NODATA.
+   * Cell types that already have a NODATA value are returned as is.
+   */
+  def widenedCellTypeWithNoData(cellType: CellType): CellType = cellType match {
+    case BitCellType => ByteConstantNoDataCellType
+    case ByteCellType | UByteCellType => ShortConstantNoDataCellType
+    case ShortCellType | UShortCellType => IntConstantNoDataCellType
+    case IntCellType => DoubleConstantNoDataCellType
+    case FloatCellType | DoubleCellType => cellType.withDefaultNoData()
+    case _ => cellType
+  }
+
+  /**
+   * Converts the tile to [[widenedCellTypeWithNoData]], keeping all its original values as valid data.
+   */
+  def widenWithNoData(tile: MultibandTile): MultibandTile = {
+    val targetCellType = widenedCellTypeWithNoData(tile.cellType)
+    if (targetCellType == tile.cellType) tile
+    else if (tile.cellType == IntCellType) {
+      // Tile.convert would interpret Int.MinValue as NODATA
+      tile.mapBands((_, band) => DoubleArrayTile(band.toArrayDouble(), band.cols, band.rows, DoubleConstantNoDataCellType))
+    }
+    else tile.convert(targetCellType)
   }
 
   def cellTypeUnionWithNoData(leftCellType:CellType, rightCellType:CellType):CellType = {
