@@ -1110,16 +1110,11 @@ class PyramidFactoryTest {
   @Test
   def testLargeNumberOfInputPolygons(@TempDir tempDir: Path): Unit = {
     val geometriesFileStem = "Fields_to_extract_2021_30SVH_RAW_0"
-
-    for (extension <- Seq("cpg", "dbf", "prj", "shp", "shx")) {
-      val geometriesFilename = s"$geometriesFileStem.$extension"
-      val geometriesUrl = new URL(s"https://artifactory.vgt.vito.be/artifactory/testdata-public/parcels/$geometriesFilename")
-      FileUtils.copyURLToFile(geometriesUrl, tempDir.resolve(geometriesFilename).toFile)
-    }
+    val dataDir: Path = Path.of("../testdata/org/openeo/geotrellissentinelhub/PyramidFactoryTest")
 
     val endpoint = "https://services.sentinel-hub.com"
 
-    val geometriesFile = tempDir resolve s"$geometriesFileStem.shp"
+    val geometriesFile = dataDir resolve s"$geometriesFileStem.shp"
     val geometriesCrs = LatLng
 
     val geometries = ShapeFileReader

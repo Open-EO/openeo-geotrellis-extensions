@@ -223,7 +223,7 @@
     "process_id": "load_url",
     "arguments": {
       "format": "Parquet",
-      "url": "https://artifactory.vgt.vito.be/artifactory/auxdata-public/gfmap-temp/openeogfmap_dataframe_SENTINEL1_34UDB_964.parquet"
+      "url": "../testdata/org/openeo/geotrellis/processgraph/openeogfmap_dataframe_SENTINEL1_34UDB_964.parquet"
     }
   },
   "renamelabels1": {

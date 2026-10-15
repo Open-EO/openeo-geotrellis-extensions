@@ -8,6 +8,11 @@
     "pattern": "%level{WARN=WARNING,FATAL=CRITICAL,TRACE=DEBUG}",
     "stackTraceEnabled": false
   },
+  "audience": {
+    "$resolver": "pattern",
+    "pattern": "%replace{%equals{%marker}{USER_FACING}{user}}{^(?!user$).*$}{developer}",
+    "stackTraceEnabled": false
+  },
   "message": {
     "$resolver": "message",
     "stringified": true
