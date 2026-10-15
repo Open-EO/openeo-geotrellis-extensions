@@ -47,9 +47,22 @@ class OpenEOBatchJobJsonLogLayoutTest {
     val logEntries = Helpers.logEntries(tempLogFile)
 
     assertTrue(logEntries.exists { logEntry => logEntry("message").asString.contains("some batch job log") })
+    assertTrue(logEntries.filter { logEntry => logEntry("message").asString.contains("some batch job log") }
+      .forall(logEntry => logEntry("audience").asString.contains("developer")))
     assertTrue(logEntries.forall { logEntry =>
       logEntry("user_id").asString.contains("vdboschj") && logEntry("job_id").asString.contains("j-abc123")
     })
+  }
+
+  @Test
+  def testUserFacingMarkerSetsAudience(): Unit = {
+    logger.info(JsonLayout.USER, "user-facing batch job log")
+
+    val logEntries = Helpers.logEntries(tempLogFile)
+      .filter(logEntry => logEntry("message").asString.contains("user-facing batch job log"))
+
+    assertTrue(logEntries.nonEmpty)
+    assertTrue(logEntries.forall(logEntry => logEntry("audience").asString.contains("user")))
   }
 
   @Test
