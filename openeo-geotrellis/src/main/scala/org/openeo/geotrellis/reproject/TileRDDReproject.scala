@@ -28,12 +28,14 @@ import org.openeo.geotrellis.reproject.RasterRegionReproject
 import geotrellis.raster.stitch._
 import geotrellis.spark._
 import geotrellis.spark.buffer.BufferTilesRDD
+import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.reproject.Reproject
 import geotrellis.vector._
 import geotrellis.util._
 import org.log4s._
 import org.apache.spark.rdd._
 import org.apache.spark._
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
 
 import scala.reflect.ClassTag
 
@@ -81,8 +83,6 @@ object TileRDDReproject {
       }
     }
 
-
-    val targetPartitioner: Option[Partitioner] = partitioner.orElse(bufferedTiles.partitioner)
 
     // inspect the change in spatial extent to get the pixel counts
     val reprojectSummary = matchReprojectRasterExtent(
@@ -170,6 +170,17 @@ object TileRDDReproject {
 
     val newLayout = newMetadata.layout
     val maptrans = newLayout.mapTransform
+
+    val targetPartitioner: Option[Partitioner] = {
+      val sourceNumPartitions = bufferedTiles.getNumPartitions
+      val tileCountRatio = targetToSourceTileCountRatio(reprojectSummary, tileLayout, newLayout)
+      val remapSpatialKey: SpatialKey => Iterable[SpatialKey] = key =>
+        maptrans.keysForGeometry(ProjectedExtent(key.extent(layout), crs).reprojectAsPolygon(destCrs, 0.05))
+
+      adaptPartitionerToDownsampling(
+        partitioner.orElse(bufferedTiles.partitioner), sourceNumPartitions, tileCountRatio, newMetadata.bounds,
+        remapSpatialKey)
+    }
 
     val rrp = implicitly[org.openeo.geotrellis.reproject.RasterRegionReproject[V]]
 
@@ -328,6 +339,90 @@ object TileRDDReproject {
       apply(fakeBuffers, rdd.metadata, destCrs, targetLayout, options, partitioner)
     } else
       apply(rdd.bufferTiles(bufferSize), rdd.metadata, destCrs, targetLayout, options, partitioner)
+
+  /** Ratio of the number of target tiles to the number of source tiles covering the same area. */
+  private def targetToSourceTileCountRatio(summary: ReprojectSummary, sourceTileLayout: TileLayout,
+                                           targetLayout: LayoutDefinition): Double = {
+    val sourceTileCount = summary.sourcePixels / (sourceTileLayout.tileCols.toDouble * sourceTileLayout.tileRows)
+    val targetTileCount = summary.rescaledPixelCount(targetLayout.cellSize) /
+      (targetLayout.tileLayout.tileCols.toDouble * targetLayout.tileLayout.tileRows)
+    targetTileCount / sourceTileCount
+  }
+
+  /**
+   * When downsampling significantly (e.g. 20m to 500m), the number of output tiles is much smaller than the number of
+   * input tiles. Keeping the input partition count then results in a lot of (nearly) empty partitions for this and all
+   * subsequent stages, see https://github.com/Open-EO/openeo-geotrellis-extensions/issues/508.
+   *
+   * In that case, a partitioner with fewer partitions that fits the target layout is returned instead. A
+   * SpacePartitioner remains a SpacePartitioner with a compatible index because downstream code relies on it.
+   */
+  private[reproject] def adaptPartitionerToDownsampling[K: Boundable: ClassTag](
+    partitioner: Option[Partitioner],
+    sourceNumPartitions: Int,
+    tileCountRatio: Double,
+    targetBounds: Bounds[K],
+    remapSpatialKey: SpatialKey => Iterable[SpatialKey]
+  ): Option[Partitioner] = {
+    val significantDownsampling = !tileCountRatio.isNaN && !tileCountRatio.isInfinite && tileCountRatio < 0.5
+    if (!significantDownsampling) return partitioner
+
+    val currentNumPartitions = partitioner.map(_.numPartitions).getOrElse(sourceNumPartitions)
+    val proposedNumPartitions = math.max(1, math.ceil(sourceNumPartitions * tileCountRatio).toInt)
+    if (currentNumPartitions <= 2 * proposedNumPartitions) return partitioner
+
+    val adapted: Partitioner = partitioner match {
+      case Some(spacePartitioner: SpacePartitioner[K] @unchecked) =>
+        val targetIndex = retargetPartitionerIndex(spacePartitioner.index, remapSpatialKey)
+        SpacePartitioner(targetBounds)(implicitly, implicitly, targetIndex)
+      case _ => new HashPartitioner(proposedNumPartitions)
+    }
+
+    if (adapted.numPartitions * 2 <= currentNumPartitions) {
+      logger.info(s"Downsampling during reproject (target/source tile count ratio: $tileCountRatio): reducing " +
+        s"partitions from $currentNumPartitions to ${adapted.numPartitions} (proposed: $proposedNumPartitions)")
+      Some(adapted)
+    } else partitioner
+  }
+
+  /** Sparse indices refer to keys in the source layout; map them to the target layout. */
+  private def retargetPartitionerIndex[K](index: PartitionerIndex[K],
+                                          remapSpatialKey: SpatialKey => Iterable[SpatialKey]): PartitionerIndex[K] = {
+    def remapSpaceTimeKeys(keys: Array[SpaceTimeKey]): Array[SpaceTimeKey] = {
+      val remappedSpatialKeys = keys.map(_.spatialKey).distinct.map(k => k -> remapSpatialKey(k)).toMap
+      keys.flatMap(key => remappedSpatialKeys(key.spatialKey).map(SpaceTimeKey(_, key.time))).distinct
+    }
+
+    def remapSpatialKeys(keys: Array[SpatialKey]): Array[SpatialKey] = keys.flatMap(remapSpatialKey).distinct
+
+    val targetIndex: PartitionerIndex[_] = index match {
+      case sparse: SparseSpaceTimePartitioner => sparse.theKeys match {
+        case Some(keys) =>
+          val targetKeys = remapSpaceTimeKeys(keys)
+          val indices = targetKeys.map(SparseSpaceTimePartitioner.toIndex(_, sparse.indexReduction)).distinct.sorted
+          new SparseSpaceTimePartitioner(indices, sparse.indexReduction, Some(targetKeys))
+        case None => new ConfigurableSpaceTimePartitioner(sparse.indexReduction)
+      }
+      case sparse: SparseSpaceOnlyPartitioner => sparse.theKeys match {
+        case Some(keys) =>
+          val targetKeys = remapSpaceTimeKeys(keys)
+          val indices = targetKeys.map(SparseSpaceOnlyPartitioner.toIndex(_, sparse.indexReduction)).distinct.sorted
+          new SparseSpaceOnlyPartitioner(indices, sparse.indexReduction, Some(targetKeys))
+        case None => new ConfigurableSpaceTimePartitioner(sparse.indexReduction)
+      }
+      case sparse: SparseSpatialPartitioner => sparse.theKeys match {
+        case Some(keys) =>
+          val targetKeys = remapSpatialKeys(keys)
+          val indices = targetKeys.map(SparseSpaceOnlyPartitioner.toIndex(_, sparse.indexReduction)).distinct.sorted
+          new SparseSpatialPartitioner(indices, sparse.indexReduction, Some(targetKeys))
+        case None => new ConfigurableSpatialPartitionerReduceZ(sparse.indexReduction)
+      }
+      case byTile: ByTileSpacetimePartitioner => new ByTileSpacetimePartitioner(byTile.theKeys.map(remapSpatialKeys))
+      case boundsBased => boundsBased // derives its partitions from the (target) bounds
+    }
+
+    targetIndex.asInstanceOf[PartitionerIndex[K]]
+  }
 
 
   /** Match pixel resolution between two layouts in different projections such that
