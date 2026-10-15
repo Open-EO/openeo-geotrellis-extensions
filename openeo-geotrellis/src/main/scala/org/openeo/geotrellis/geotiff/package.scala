@@ -65,8 +65,10 @@ package object geotiff {
 
   private def safeBitCellType(cellType: CellType): CellType = cellType match {
     // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
-
-    case BitCellType => UByteUserDefinedNoDataCellType(255.toByte)
+    case BitCellType =>
+      val safeCellType = UByteUserDefinedNoDataCellType(255.toByte)
+      logger.debug(s"converting $cellType to $safeCellType")
+      safeCellType
     case _ => cellType
   }
 
