@@ -1,11 +1,13 @@
 package org.openeo.geotrellis
 
-import geotrellis.layer.LayoutDefinition
+import geotrellis.layer.{Boundable, Bounds, EmptyBounds, KeyBounds, LayoutDefinition, SpatialComponent, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
+import geotrellis.raster.GridBounds
 import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, isData, isNoData, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.vector.Extent
 import org.slf4j.LoggerFactory
 import java.util
+import scala.reflect.{ClassTag, classTag}
 
 object GeneralUtils {
 
@@ -256,6 +258,88 @@ object GeneralUtils {
       logger.info(s"layoutMerged: layoutLeft=$layoutLeft, layoutRight=$layoutRight, crsLeft=$crsLeft, crsRight=$crsRight, result layout =$result")
       result
     }
+  }
+
+  /**
+   * Translates key bounds expressed in `sourceLayout` (and `sourceCrs`) into the key numbering of `targetLayout`
+   * (and `targetCrs`). Non-spatial components of the keys (e.g. time) are preserved.
+   * The result is clamped to the target layout; EmptyBounds is returned if there is no overlap.
+   */
+  def boundsInLayout[K: SpatialComponent](bounds: Bounds[K], sourceLayout: LayoutDefinition, sourceCrs: CRS,
+                                          targetLayout: LayoutDefinition, targetCrs: CRS): Bounds[K] = {
+    bounds match {
+      case EmptyBounds => EmptyBounds
+      case kb: KeyBounds[K] =>
+        if (sourceLayout == targetLayout && sourceCrs == targetCrs) kb
+        else {
+          val sourceExtent = sourceLayout.mapTransform(kb.toGridBounds())
+          val reprojected =
+            if (sourceCrs == targetCrs) sourceExtent
+            else sourceExtent.reproject(sourceCrs, targetCrs)
+          // shrink slightly to avoid picking up neighbouring tiles due to floating point errors on tile edges
+          val dx = targetLayout.cellwidth / 4
+          val dy = targetLayout.cellheight / 4
+          val targetExtent =
+            if (reprojected.width > 2 * dx && reprojected.height > 2 * dy)
+              Extent(reprojected.xmin + dx, reprojected.ymin + dy, reprojected.xmax - dx, reprojected.ymax - dy)
+            else reprojected
+          val layoutGrid = GridBounds(0, 0, targetLayout.layoutCols - 1, targetLayout.layoutRows - 1)
+          targetLayout.mapTransform.extentToBounds(targetExtent).intersection(layoutGrid) match {
+            case Some(gb) =>
+              kb.setSpatialBounds(KeyBounds(SpatialKey(gb.colMin, gb.rowMin), SpatialKey(gb.colMax, gb.rowMax)))
+            case None => EmptyBounds
+          }
+        }
+    }
+  }
+
+  /**
+   * Retains only the spatial component of key bounds.
+   */
+  def toSpatialBounds[K: SpatialComponent](bounds: Bounds[K]): Bounds[SpatialKey] = {
+    bounds match {
+      case EmptyBounds => EmptyBounds
+      case kb: KeyBounds[K] =>
+        val spatial = implicitly[SpatialComponent[K]]
+        KeyBounds(spatial.get(kb.minKey), spatial.get(kb.maxKey))
+    }
+  }
+
+  /**
+   * Metadata of the result of merge_cubes.
+   *
+   * Mergeable fields cover the union of both cubes:
+   *  - layout and extent are combined,
+   *  - spatial bounds are combined (expressed in the key numbering of the merged layout),
+   *  - if both cubes have the same key type, the non-spatial bounds (e.g. time) are combined as well; otherwise they are
+   *    taken from `left` (e.g. a spatial cube has no temporal bounds to contribute),
+   *  - the cell type is the union of both cell types.
+   *
+   * Non-mergeable fields (crs, cell size, tile size, grid origin) are taken from the dominant cube: `left`, or `right` if
+   * `rightIsDominant` is set.
+   */
+  def mergedMetadata[K: SpatialComponent: Boundable: ClassTag, R: SpatialComponent: ClassTag](
+      left: TileLayerMetadata[K], right: TileLayerMetadata[R], rightIsDominant: Boolean = false): TileLayerMetadata[K] = {
+    val (dominant, other) = if (rightIsDominant) (right, left) else (left, right)
+    val crs = dominant.crs
+    val layout = layoutMerged(dominant.layout, other.layout, dominant.crs, other.crs)
+    val extent = extentMerged(dominant.extent, other.extent, dominant.crs, other.crs)
+
+    val leftBounds = boundsInLayout(left.bounds, left.layout, left.crs, layout, crs)
+    val rightBounds = boundsInLayout(right.bounds, right.layout, right.crs, layout, crs)
+    val sameKeyType = classTag[K] == classTag[R]
+    val bounds: Bounds[K] =
+      if (sameKeyType) leftBounds.combine(rightBounds.asInstanceOf[Bounds[K]])
+      else leftBounds match {
+        case kb: KeyBounds[K] => toSpatialBounds(kb).combine(toSpatialBounds(rightBounds)) match {
+          case spatial: KeyBounds[SpatialKey] => kb.setSpatialBounds(spatial)
+          case EmptyBounds => kb
+        }
+        // without left bounds, the non-spatial components of the keys are unknown
+        case EmptyBounds => EmptyBounds
+      }
+
+    TileLayerMetadata(cellTypeUnionWithNoData(left.cellType, right.cellType), layout, extent, crs, bounds)
   }
 
   private def layoutDefinitionMergeWithEqualCellSize(layoutLeft:LayoutDefinition, extentRight:Extent): LayoutDefinition = {

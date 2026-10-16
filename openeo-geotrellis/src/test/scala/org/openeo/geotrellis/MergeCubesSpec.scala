@@ -491,6 +491,74 @@ class MergeCubesSpec {
     }
   }
 
+  private def mergeSpaceTimeSpatialWithDifferentResolution(swapOperands: Boolean) = {
+    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+    // coarser resolution and smaller tiles than the spacetime cube
+    val band3 = ByteArrayTile.fill(9.toByte, 16, 16).withNoData(Some(0.toByte))
+    val band4 = ByteArrayTile.fill(3.toByte, 16, 16).withNoData(Some(0.toByte))
+
+    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
+    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
+
+    val cube1 = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"), Some(extent1), tilingFactor = 2)
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(MultibandTile(band3, band4), extent2), TileLayout(2, 2, 8, 8), LatLng)
+    val processes = new OpenEOProcesses()
+    val merged = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata), cube2, null, swapOperands = swapOperands)
+    (cube1, cube2, merged)
+  }
+
+  private def assertCellSizeEquals(expected: CellSize, actual: CellSize): Unit = {
+    assertEquals(expected.width, actual.width, 1e-9)
+    assertEquals(expected.height, actual.height, 1e-9)
+  }
+
+  private def assertMetadataCoversBothCubes(merged: MultibandTileLayerRDD[SpaceTimeKey], extents: Extent*): Unit = {
+    val md = merged.metadata
+    extents.foreach(e => assertTrue(md.extent.contains(e), s"merged extent ${md.extent} should contain $e"))
+    extents.foreach(e => assertTrue(md.layout.extent.contains(e), s"merged layout extent ${md.layout.extent} should contain $e"))
+    val kb = md.bounds.get
+    assertTrue(kb.minKey.col >= 0 && kb.minKey.row >= 0)
+    assertTrue(kb.maxKey.col < md.layout.layoutCols && kb.maxKey.row < md.layout.layoutRows)
+    // spatial bounds cover the union of both cubes
+    val expectedSpatial = md.layout.mapTransform.extentToBounds(extents.reduce(_ combine _).buffer(-md.cellwidth / 4))
+    assertEquals(expectedSpatial.colMin, kb.minKey.col)
+    assertEquals(expectedSpatial.rowMin, kb.minKey.row)
+    assertEquals(expectedSpatial.colMax, kb.maxKey.col)
+    assertEquals(expectedSpatial.rowMax, kb.maxKey.row)
+    // all keys of the data are within the bounds
+    merged.keys.collect().foreach(k => assertTrue(kb.includes(k), s"key $k not in bounds $kb"))
+  }
+
+  @Test def testMergeSpaceTimeSpatialMetadataIsUnion_spacetimeDominant(): Unit = {
+    val (cube1, cube2, merged) = mergeSpaceTimeSpatialWithDifferentResolution(swapOperands = false)
+    assertEquals(cube1.metadata.crs, merged.metadata.crs)
+    assertCellSizeEquals(cube1.metadata.cellSize, merged.metadata.cellSize)
+    assertEquals(cube1.metadata.tileCols, merged.metadata.tileCols)
+    assertEquals(cube1.metadata.bounds.get.minKey.instant, merged.metadata.bounds.get.minKey.instant)
+    assertEquals(cube1.metadata.bounds.get.maxKey.instant, merged.metadata.bounds.get.maxKey.instant)
+    assertMetadataCoversBothCubes(merged, cube1.metadata.extent, cube2.metadata.extent)
+    assertEquals(4, merged.first()._2.bandCount)
+  }
+
+  @Test def testMergeSpaceTimeSpatialMetadataIsUnion_spatialDominant(): Unit = {
+    val (cube1, cube2, merged) = mergeSpaceTimeSpatialWithDifferentResolution(swapOperands = true)
+    // the spatial cube was the left operand: it determines the grid
+    assertEquals(cube2.metadata.crs, merged.metadata.crs)
+    assertCellSizeEquals(cube2.metadata.cellSize, merged.metadata.cellSize)
+    assertEquals(cube2.metadata.tileCols, merged.metadata.tileCols)
+    // the temporal dimension still comes from the spacetime cube
+    assertEquals(cube1.metadata.bounds.get.minKey.instant, merged.metadata.bounds.get.minKey.instant)
+    assertEquals(cube1.metadata.bounds.get.maxKey.instant, merged.metadata.bounds.get.maxKey.instant)
+    assertMetadataCoversBothCubes(merged, cube1.metadata.extent, cube2.metadata.extent)
+    val tiles = merged.collect()
+    assertEquals(2, tiles.map(_._1.temporalKey).distinct.length)
+    tiles.foreach { case (_, tile) =>
+      assertEquals(4, tile.bandCount)
+      assertEquals(cube2.metadata.tileCols, tile.cols)
+    }
+  }
+
   @Test def testMergeCubeDifferenceExtent_SpatialSpaceTime(): Unit = {
 
     val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
@@ -544,6 +612,47 @@ class MergeCubesSpec {
           assertEquals(0, tile.band(1).get(0, 0).toByte)
         case _ => fail("Unexpected spatial key")
       }
+    }
+  }
+
+  @Test
+  def testMergeSpaceTimeSpatialKeepsRightOnlyTiles(): Unit = {
+    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band4 = ByteArrayTile.fill(4.toByte, 32, 32).withNoData(Some(0.toByte))
+    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
+    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
+    val dates = Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+
+    val cube1 = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), dates, Some(extent1), tilingFactor = 2)
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(MultibandTile(band3, band4), extent2), TileLayout(1, 1, 32, 32), LatLng)
+    val processes = new OpenEOProcesses()
+    val leftCube = ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata)
+
+    val rightOnlyKeys = Set(SpatialKey(1, 0), SpatialKey(2, 0), SpatialKey(2, 1))
+
+    // band concatenation
+    val merged = processes.mergeCubes_SpaceTime_Spatial(leftCube, cube2, null, swapOperands = false)
+    val tiles = merged.collect()
+    assertTrue(rightOnlyKeys.subsetOf(tiles.map(_._1.spatialKey).toSet))
+    assertEquals(dates.size, tiles.map(_._1.temporalKey).distinct.length)
+    assertTrue(merged.partitioner.isDefined)
+    for ((key, tile) <- tiles if rightOnlyKeys.contains(key.spatialKey)) {
+      assertEquals(4, tile.bandCount)
+      assertTrue(isNoData(tile.band(0).get(0, 0)))
+      assertTrue(isNoData(tile.band(1).get(0, 0)))
+      assertEquals(9, tile.band(2).get(0, 0))
+      assertEquals(4, tile.band(3).get(0, 0))
+    }
+    tiles.foreach { case (key, _) => assertTrue(merged.metadata.bounds.get.includes(key)) }
+
+    // overlap resolver: right-only tiles keep the right values
+    val resolved = processes.mergeCubes_SpaceTime_Spatial(leftCube, cube2, "mean", swapOperands = false).collect()
+    assertEquals(rightOnlyKeys.size * dates.size, resolved.count { case (key, _) => rightOnlyKeys.contains(key.spatialKey) })
+    for ((key, tile) <- resolved if rightOnlyKeys.contains(key.spatialKey)) {
+      assertEquals(9, tile.band(0).get(0, 0))
+      assertEquals(4, tile.band(1).get(0, 0))
     }
   }
 

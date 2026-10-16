@@ -163,6 +163,84 @@ class TestGeneralUtils {
     assertEquals(Extent(0, 0, 10, 20), merged.extent)
   }
 
+  @Test
+  def testBoundsInMergedLayout(): Unit = {
+    import geotrellis.layer.{KeyBounds, SpaceTimeKey}
+    val layoutLeft = LayoutDefinition(Extent(5, 10, 10, 20), TileLayout(2, 4, 128, 128))
+    val layoutRight = LayoutDefinition(Extent(0, 0, 10, 10), TileLayout(1, 1, 256, 256))
+    val crs = CRS.fromEpsgCode(32631)
+    val merged = GeneralUtils.layoutMerged(layoutLeft, layoutRight, crs, crs)
+
+    val leftBounds = KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(1, 3, 2000L))
+    val rightBounds = KeyBounds(SpaceTimeKey(0, 0, 1500L), SpaceTimeKey(0, 0, 3000L))
+
+    val leftInMerged = GeneralUtils.boundsInLayout(leftBounds, layoutLeft, crs, merged, crs)
+    val rightInMerged = GeneralUtils.boundsInLayout(rightBounds, layoutRight, crs, merged, crs)
+
+    // left keys are shifted by 2 columns, time is preserved
+    assertEquals(KeyBounds(SpaceTimeKey(2, 0, 1000L), SpaceTimeKey(3, 3, 2000L)), leftInMerged)
+    // the single right tile covers the bottom half of the merged layout
+    assertEquals(KeyBounds(SpaceTimeKey(0, 4, 1500L), SpaceTimeKey(3, 7, 3000L)), rightInMerged)
+    assertEquals(KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(3, 7, 3000L)), leftInMerged.combine(rightInMerged))
+
+    // unchanged layout keeps the bounds as-is
+    assertEquals(leftBounds, GeneralUtils.boundsInLayout(leftBounds, layoutLeft, crs, layoutLeft, crs))
+  }
+
+  private object MergedMetadataFixture {
+    import geotrellis.layer.{KeyBounds, SpaceTimeKey, SpatialKey, TileLayerMetadata}
+    val crs: CRS = CRS.fromEpsgCode(32631)
+    // left: fine resolution (5/256), right: coarse resolution (10/256)
+    val layoutLeft: LayoutDefinition = LayoutDefinition(Extent(5, 10, 10, 20), TileLayout(2, 4, 128, 128))
+    val layoutRight: LayoutDefinition = LayoutDefinition(Extent(0, 0, 10, 10), TileLayout(1, 1, 256, 256))
+    val left: TileLayerMetadata[SpaceTimeKey] = TileLayerMetadata(ByteConstantNoDataCellType, layoutLeft, layoutLeft.extent, crs,
+      KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(1, 3, 2000L)))
+    val rightSpaceTime: TileLayerMetadata[SpaceTimeKey] = TileLayerMetadata(FloatConstantNoDataCellType, layoutRight, layoutRight.extent, crs,
+      KeyBounds(SpaceTimeKey(0, 0, 1500L), SpaceTimeKey(0, 0, 3000L)))
+    val rightSpatial: TileLayerMetadata[SpatialKey] = TileLayerMetadata(FloatConstantNoDataCellType, layoutRight, layoutRight.extent, crs,
+      KeyBounds(SpatialKey(0, 0), SpatialKey(0, 0)))
+  }
+
+  @Test
+  def testMergedMetadataSameKeyType(): Unit = {
+    import geotrellis.layer.{KeyBounds, SpaceTimeKey}
+    import MergedMetadataFixture._
+    val merged = GeneralUtils.mergedMetadata(left, rightSpaceTime)
+    // non-mergeable fields from the left cube
+    assertEquals(crs, merged.crs)
+    assertEquals(layoutLeft.cellSize, merged.cellSize)
+    assertEquals(128, merged.tileCols)
+    // mergeable fields are the union
+    assertEquals(Extent(0, 0, 10, 20), merged.extent)
+    assertEquals(TileLayout(4, 8, 128, 128), merged.tileLayout)
+    assertEquals(KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(3, 7, 3000L)), merged.bounds)
+    assertEquals(FloatConstantNoDataCellType, merged.cellType)
+  }
+
+  @Test
+  def testMergedMetadataSpaceTimeSpatial(): Unit = {
+    import geotrellis.layer.{KeyBounds, SpaceTimeKey}
+    import MergedMetadataFixture._
+    val merged = GeneralUtils.mergedMetadata(left, rightSpatial)
+    assertEquals(layoutLeft.cellSize, merged.cellSize)
+    assertEquals(Extent(0, 0, 10, 20), merged.extent)
+    // spatial bounds are the union, temporal bounds come from the spacetime cube
+    assertEquals(KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(3, 7, 2000L)), merged.bounds)
+  }
+
+  @Test
+  def testMergedMetadataRightDominant(): Unit = {
+    import geotrellis.layer.{KeyBounds, SpaceTimeKey}
+    import MergedMetadataFixture._
+    val merged = GeneralUtils.mergedMetadata(left, rightSpatial, rightIsDominant = true)
+    // non-mergeable fields from the right cube
+    assertEquals(layoutRight.cellSize, merged.cellSize)
+    assertEquals(256, merged.tileCols)
+    assertEquals(TileLayout(1, 2, 256, 256), merged.tileLayout)
+    assertEquals(Extent(0, 0, 10, 20), merged.extent)
+    assertEquals(KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(0, 1, 2000L)), merged.bounds)
+  }
+
 
 
   @Test
