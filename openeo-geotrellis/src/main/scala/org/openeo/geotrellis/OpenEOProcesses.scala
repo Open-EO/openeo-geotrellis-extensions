@@ -25,7 +25,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext, SparkEnv, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, extentMerged, safeConvert}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
@@ -1274,54 +1274,67 @@ class OpenEOProcesses extends Serializable {
     result
   }
 
+  /**
+   * Merges a spacetime cube with a spatial cube.
+   *
+   * The metadata of the result covers the union of both cubes. The grid of the result (crs, cell size, tile size, grid
+   * origin) is determined by the cube that was the left operand of merge_cubes: the spacetime cube (leftCube) if
+   * swapOperands is false, the spatial cube (rightCube) if swapOperands is true. The temporal extent always comes from
+   * the spacetime cube.
+   */
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
+    val rightMd = rightCube.metadata
+    val updatedMetadata = GeneralUtils.mergedMetadata(leftCube.metadata, rightMd, rightIsDominant = swapOperands)
+    val targetCrs = updatedMetadata.crs
+    val mergedLayout = updatedMetadata.layout
 
-    // Every spacetime key of the left cube must be preserved in the result: a spatial key that is
-    // missing from the (possibly sparse) right cube simply means there is nothing to merge/combine
-    // for that key, not that the left data should be dropped.
-    val rdd = leftJoinSpacetimeSpatial(leftCube, resampled, leftOuterJoin = true)
-    if(operator == null) {
-      val outputCellType = cellTypeUnionWithNoData(leftCube.metadata.cellType,resampled.metadata.cellType)
-      //TODO: what if extent of joined cube is larger than left cube?
-      leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${rightCube.name}")
-      val rightBandCount = RDDBandCount(rightCube)
-      leftCube.sparkContext.clearJobGroup()
-      val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
-      return new ContextRDD(rdd.mapValues({case (l,rOpt) =>
-        rOpt match {
-          case Some(r) =>
-            if(swapOperands) {
-              MultibandTile( r.bands.map(t=>safeConvert(t,updatedMetadata.cellType))  ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
-            }else{
-              MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ r.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
-            }
-          case None =>
-            // No matching right-hand tile for this spacetime key: keep the left bands as-is.
-            if(swapOperands) {
-              MultibandTile(Vector.fill(rightBandCount)(ArrayTile.empty(updatedMetadata.cellType, l.cols, l.rows)) ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
-            }else{
-              MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ Vector.fill(rightBandCount)(ArrayTile.empty(updatedMetadata.cellType, l.cols, l.rows)))
-            }
-        }
-      }), updatedMetadata)
-    }else{
+    val resampledLeft = resampleCubeSpatial(leftCube,updatedMetadata, leftCube.partitioner,NearestNeighbor)._2
+    val rightPartitioner = mergeTargetPartitioner(rightCube.partitioner, rightMd.layout == mergedLayout && rightMd.crs == targetCrs, GeneralUtils.toSpatialBounds(updatedMetadata.bounds))
+    val resampledRight = resampleCubeSpatial_spatial(rightCube,targetCrs,mergedLayout,ResampleMethods.NearestNeighbor,rightPartitioner)._2
+    checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
 
-      val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
-      return new ContextRDD(rdd.mapValues({case (l,rOpt) =>
-        rOpt match {
-          case Some(r) =>
-            if(l.bandCount != r.bandCount){
-              throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.bandCount, r.bandCount))
-            }else{
-              MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
-            }
-          case None =>
-            // TODO: wrong interpretation, left should not be kept as-is, but rather the operator should be applied to left and a nodata tile
-            l
-        }
-      }), leftCube.metadata)
+    // Outer join: every spacetime key of the left cube is kept, tiles of the right cube at spatial keys without
+    // left data are replicated over the timestamps of the left cube.
+    val leftJoined = leftJoinSpacetimeSpatial(resampledLeft, resampledRight, leftOuterJoin = true).mapValues { case (l, r) => (Option(l), r) }
+    val joined = withRightOnlyTiles(leftJoined, resampledLeft, resampledRight) 
+    // the left operand of merge_cubes comes first, both for the band order and for the overlap resolver
+    if (swapOperands) mergeCubesGeneric(joined.mapValues(_.swap), operator, updatedMetadata, rightCube, leftCube)
+    else mergeCubesGeneric(joined, operator, updatedMetadata, leftCube, rightCube)
+  }
+
+  /**   
+   * Adds the tiles of the spatial cube `right` at spatial keys where the spacetime cube `left` has no tiles to `joined`,   
+   * replicated over all timestamps of `left`, as (None, Some(right)). Both cubes must be in the same layout.   
+   * Returns `joined` unchanged if there are no such tiles. The partitioner of `joined` is kept.   
+   */
+  private def withRightOnlyTiles(
+                                  joined: RDD[(SpaceTimeKey, (Option[MultibandTile], Option[MultibandTile]))],
+                                  left: MultibandTileLayerRDD[SpaceTimeKey], 
+                                  right: MultibandTileLayerRDD[SpatialKey]
+                                ): RDD[(SpaceTimeKey, (Option[MultibandTile], Option[MultibandTile]))] = {
+    val sc = left.sparkContext
+    sc.setJobDescription(s"Merge cubes: get keys of ${right.name}")
+    val rightKeys = right.keys.collect().toSet
+    if (rightKeys.isEmpty) {
+      sc.clearJobGroup()
+      return joined
+    }
+    sc.setJobDescription(s"Merge cubes: get keys of ${left.name}")
+    val leftKeys = findPartitionerKeys(left).getOrElse(left.keys.collect())
+    sc.clearJobGroup()
+
+    val timestamps = leftKeys.map(_.temporalKey).distinct
+    val rightOnlyKeys = rightKeys -- leftKeys.map(_.spatialKey)
+    if (timestamps.isEmpty || rightOnlyKeys.isEmpty) return joined
+
+    val extra = right
+      .filter { case (key, _) => rightOnlyKeys.contains(key) }
+      .flatMap { case (key, tile) => timestamps.map(t => (SpaceTimeKey(key, t), (Option.empty[MultibandTile], Option(tile)))) }
+
+    joined.partitioner match {
+      // partitioning with the same partitioner lets Spark use a PartitionerAwareUnionRDD, which keeps the partitioner
+      case Some(partitioner) => joined.union(extra.partitionBy(partitioner))
+      case None => joined.union(extra)
     }
   }
 
@@ -1334,23 +1347,48 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
+  /**
+   * Partitioner for a spatial cube that is resampled into the (merged) layout of a merge_cubes result.
+   * An existing partitioner is defined on the old key numbering, so it is rebuilt on the target bounds if the layout changed.
+   */
+  private def mergeTargetPartitioner(partitioner: Option[Partitioner], layoutUnchanged: Boolean, targetBounds: Bounds[SpatialKey]): Partitioner = {
+    if (layoutUnchanged) partitioner.orNull
+    else partitioner match {
+      case Some(sp: SpacePartitioner[SpatialKey]) if !sp.index.isInstanceOf[SparseSpaceOnlyPartitioner] && targetBounds.nonEmpty =>
+        SpacePartitioner[SpatialKey](targetBounds)(implicitly, implicitly, sp.index)
+      case _ if targetBounds.nonEmpty => SpacePartitioner[SpatialKey](targetBounds)
+      case _ => null
+    }
+  }
+
+  /**
+   * Merges two spatial cubes. The metadata of the result covers the union of both cubes, the grid
+   * (crs, cell size, tile size, grid origin) is determined by the left cube.
+   */
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
-    leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands)")
-    val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,NearestNeighbor,leftCube.partitioner.orNull)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val joined = outerJoin(leftCube,resampled)
-    val outputCellType = cellTypeUnionWithNoData(leftCube.metadata.cellType, resampled.metadata.cellType)
-    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
+    val mergedMd = GeneralUtils.mergedMetadata(leftCube.metadata, rightCube.metadata)
+    // the partitioner of the left cube is defined on the old key numbering, rebuild it on the merged bounds if needed
+    val targetPartitioner = mergeTargetPartitioner(leftCube.partitioner, mergedMd.layout == leftCube.metadata.layout, mergedMd.bounds)
+    val resampledRight = resampleCubeSpatial_spatial(rightCube,mergedMd.crs,mergedMd.layout,NearestNeighbor,targetPartitioner)._2
+    val resampledLeft = resampleCubeSpatial_spatial(leftCube,mergedMd.crs,mergedMd.layout,NearestNeighbor,targetPartitioner)._2
+    checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
+    val joined = outerJoin(resampledLeft,resampledRight)
+    val updatedMetadata = mergedMd.copy(bounds = joined.metadata)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
+  /**
+   * Merges two spacetime cubes. The metadata of the result covers the union of both cubes, the grid
+   * (crs, cell size, tile size, grid origin) is determined by the left cube.
+   */
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val resampled = resampleCubeSpatial(rightCube,leftCube,NearestNeighbor)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val joined = outerJoin(leftCube,resampled)
-    val outputCellType = cellTypeUnionWithNoData(leftCube.metadata.cellType, resampled.metadata.cellType)
-
-    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
+    // bounds are expressed in the key numbering of the merged layout, the target partitioner is built on these
+    val mergedMd = GeneralUtils.mergedMetadata(leftCube.metadata, rightCube.metadata)
+    val resampledRight = resampleCubeSpatial(rightCube,mergedMd, leftCube.partitioner,NearestNeighbor)._2
+    val resampledLeft = resampleCubeSpatial(leftCube,mergedMd, leftCube.partitioner,NearestNeighbor)._2
+    checkMetadataCompatible(resampledLeft.metadata, resampledRight.metadata)
+    val joined = outerJoin(resampledLeft,resampledRight)
+    val updatedMetadata = mergedMd.copy(bounds = joined.metadata)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
@@ -1508,18 +1546,23 @@ class OpenEOProcesses extends Serializable {
   }
 
 
-  private def mergeCubesGeneric[K: Boundable: PartitionerIndex: ClassTag
-  ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[K]], operator:String, metadata:TileLayerMetadata[K],leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
-    val converted = joined.mapValues{t=> (t._1.map(_.mapBands( (i,x) => safeConvert(x,metadata.cellType))),t._2.map( _.mapBands( (i,x) => safeConvert(x,metadata.cellType))))}
-    if(operator==null) {
+  private def mergeCubesGeneric[K: ClassTag
+  ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], operator: String, metadata: TileLayerMetadata[K], leftCube: MultibandTileLayerRDD[_], rightCube: MultibandTileLayerRDD[_]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
+    val converted = joined.mapValues { case (l, r) =>
+      (l.map(_.mapBands((_, t) => safeConvert(t, metadata.cellType))), r.map(_.mapBands((_, t) => safeConvert(t, metadata.cellType))))
+    }
+    if (operator == null) {
       combine_bands(converted, leftCube, rightCube, metadata)
-    }else{
+    } else {
       resolve_merge_overlap(converted, operator, metadata)
     }
-
   }
 
-  private def combine_bands[K](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K], updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
+
+  /**
+   * Band counts of the two cubes of a merge_cubes, the cubes can have different key types.
+   */
+  private def combine_bands[K](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], leftCube: MultibandTileLayerRDD[_], rightCube: MultibandTileLayerRDD[_], updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
     leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${leftCube.name}")
     val leftBandCount = RDDBandCount(leftCube)
     leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${rightCube.name}")
