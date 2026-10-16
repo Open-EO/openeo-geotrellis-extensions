@@ -924,7 +924,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     Files.createDirectories(outDir)
 
     val ret = saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
-      DeflateCompression(BEST_COMPRESSION))
+      DeflateCompression(BEST_COMPRESSION), new GTiffOptions)
     assertTrue(ret.get(0).datetime.contains("T"))
   }
 
@@ -1007,7 +1007,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     Files.createDirectories(outDir)
 
     saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
-      DeflateCompression(BEST_COMPRESSION))
+      DeflateCompression(BEST_COMPRESSION), new GTiffOptions)
 
     val paths = Files.list(outDir).iterator().asScala.toArray // 1 date, 1 polygon
     val geoTiffPath = paths.find(_.toString.endsWith(".tif")).get
@@ -1114,7 +1114,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     Files.createDirectories(outDir)
 
     saveSamplesSpatial(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
-      DeflateCompression(BEST_COMPRESSION))
+      DeflateCompression(BEST_COMPRESSION), new GTiffOptions)
 
     val paths = Files.list(outDir).iterator().asScala.toArray // 1 date, 1 polygon
     val geoTiffPath = paths.find(_.toString.endsWith(".tif")).get
