@@ -52,15 +52,6 @@ object Sentinel2FileLayerProviderTest {
   private val maxSpatialResolution = CellSize(10, 10)
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
-  // Methods with attributes get called in a non-intuitive order:
-  // - BeforeAll
-  // - ParameterizedTest
-  // - AfterAll
-  // - BeforeClass
-  // - AfterClass
-  //
-  // This order feels arbitrary, so I made the code robust against order changes.
-
   private var _sc: Option[SparkContext] = None
 
   private def sc: SparkContext = {
@@ -77,37 +68,17 @@ object Sentinel2FileLayerProviderTest {
   }
 
   @BeforeAll
-  def setUpSpark_BeforeClass(): Unit = sc
-
-  @BeforeAll
-  def setUpSpark_BeforeAll(): Unit = sc
-
-  var gotAfterAll = false
+  def setUpSpark(): Unit = sc
 
   @AfterAll
-  def tearDownSpark_AfterAll(): Unit = {
-    gotAfterAll = true
-    maybeStopSpark()
-  }
-
-  var gotAfterClass = false
-
-  @AfterAll
-  def tearDownSpark_AfterClass(): Unit = {
-    gotAfterClass = true;
-    maybeStopSpark()
-  }
-
-  def maybeStopSpark(): Unit = {
-    if (gotAfterAll && gotAfterClass) {
-      if (_sc.isDefined) {
-        println("Stopping SparkContext...")
-        BatchJobMetadataTracker.setGlobalTracking(false)
-        _sc.get.stop()
-        _sc = None
-        println("Stopped SparkContext")
-      }
+  def tearDownSpark(): Unit = {
+    _sc.foreach { sparkContext =>
+      println("Stopping SparkContext...")
+      BatchJobMetadataTracker.setGlobalTracking(false)
+      sparkContext.stop()
+      println("Stopped SparkContext")
     }
+    _sc = None
   }
 
   def maskingParams: Stream[Arguments] = Arrays.stream(Array(

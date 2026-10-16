@@ -37,34 +37,12 @@ object VectorCubeMethodsTest {
   }
 
   @BeforeAll
-  def setUpSpark_BeforeClass(): Unit = sc
-
-  @BeforeAll
-  def setUpSpark_BeforeAll(): Unit = sc
-
-  var gotAfterAll = false
+  def setUpSpark(): Unit = sc
 
   @AfterAll
-  def tearDownSpark_AfterAll(): Unit = {
-    gotAfterAll = true
-    maybeStopSpark()
-  }
-
-  var gotAfterClass = false
-
-  @AfterAll
-  def tearDownSpark_AfterClass(): Unit = {
-    gotAfterClass = true;
-    maybeStopSpark()
-  }
-
-  def maybeStopSpark(): Unit = {
-    if (gotAfterAll && gotAfterClass) {
-      if (_sc.isDefined) {
-        _sc.get.stop()
-        _sc = None
-      }
-    }
+  def tearDownSpark(): Unit = {
+    _sc.foreach(_.stop())
+    _sc = None
   }
 }
 
