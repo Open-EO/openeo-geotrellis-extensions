@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Support `is_valid` inside raster callbacks, including `reduce_dimension` callbacks ([#901](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/901)).
 - merge_cubes: merging a cube with a temporal dimension with a cube without a temporal dimension well now correctly add nodata bands to honor the expected band count.
 
 ## Before 2026-09-30
