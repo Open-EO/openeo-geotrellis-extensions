@@ -10,6 +10,7 @@ import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.RequestContext
 import org.openeo.geotrellis.layers.RasterTileLoader.SOFT_ERROR_MEGAPIXEL_COUNTER
+import org.openeo.geotrellis.layers.raster_source.BandSelectionRasterSource
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ResampledTile}
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
@@ -17,14 +18,13 @@ import software.amazon.awssdk.core.exception.AbortedException
 import java.io.IOException
 import java.time.temporal.ChronoUnit.SECONDS
 import java.util.Collections
+import scala.collection.mutable
 import scala.collection.parallel.CollectionConverters._
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
 //  attach e.g. a date to a RasterSource.
 object BandCompositeRasterSource {
   private val logger = LoggerFactory.getLogger(classOf[BandCompositeRasterSource])
-
-
 
   private def retryWithBackoff[R](maxAttempts: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
     val retryPolicy = new RetryPolicy[R]
@@ -48,7 +48,14 @@ object BandCompositeRasterSource {
     } catch {
       case e: AbortedException => throw e
       case e: Exception if softErrors => {
-        BatchJobMetadataTracker.tracker("").add(SOFT_ERROR_MEGAPIXEL_COUNTER, bounds.size*bands.length / (1024 * 1024) )
+
+        try{
+          val tracker = BatchJobMetadataTracker.tracker("")
+          tracker.add(SOFT_ERROR_MEGAPIXEL_COUNTER, bounds.size*bands.length / (1024 * 1024) )
+        }catch {
+          case e: Exception => logger.warn(s"load_collection: failed to increment soft error counter for ${source.name} - ${e.getMessage}", e)
+        }
+
         logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
         None
       }
@@ -57,13 +64,28 @@ object BandCompositeRasterSource {
   }
 }
 
+/**
+ * A multi-band [[RasterSource]] whose output bands are the concatenation of the bands contributed by `sources`:
+ * a [[BandSelectionRasterSource]] contributes its selected bands, any other source exactly one (its band 0).
+ * FileLayerProvider builds one of these per feature/date, in exactly the band order requested by the user, with
+ * missing bands filled in as `NoDataRasterSource` placeholders. Consecutive output bands served by the same physical
+ * multi-band dataset are represented by a single [[BandSelectionRasterSource]], so they are transformed and read
+ * together, in one call.
+ *
+ * `groupedBySource` lets RasterTileLoader regroup the bands by physical dataset, to avoid re-opening/re-reading the
+ * same dataset once per band.
+ *
+ * All bands are expected to share the same pixel grid: FileLayerProvider constructs every band of a feature against
+ * the same target extent/resolution/CRS (see RasterSourceDefinition), so a single GridBounds/RasterRegion can be
+ * shared across all underlying sources.
+ */
 class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource],
                                 override val crs: CRS,
                                 override val attributes: Map[String, String] = Map.empty,
                                 val predefinedExtent: Option[GridExtent[Long]] = None,
-                                parallelRead: Boolean = true,
-                                softErrors: Boolean = false,
-                                readFullTile: Boolean = false
+                                val parallelRead: Boolean = true,
+                                val softErrors: Boolean = false,
+                                val readFullTile: Boolean = false
                                ) extends MosaicRasterSource { // TODO: don't inherit?
 
   import BandCompositeRasterSource._
@@ -75,30 +97,70 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     _.reproject(crs)
   }
 
-  protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = requestContext.apply {
-    def reprojectRasterSourceAttemptFailed(source: RasterSource)(e: Exception): Unit =
-      logger.warn(s"attempt to reproject ${source.name} to $crs failed", e)
-
-    val selectedBands = bands.map(sources.toList)
-    selectedBands flatMap { rs =>
-      try Some(retryWithBackoff(maxRetries, reprojectRasterSourceAttemptFailed(rs)) {
-        rs.reproject(crs)
-      })
-      catch {
-        case e: AbortedException => throw e
-        case e: Exception if softErrors =>
-          val megapixels_failed =
-          if(predefinedExtent.isDefined) {
-            predefinedExtent.get.size*bands.length / (1024 * 1024)
-          }else{
-            //we don't know the size of the raster yet, return some value so that soft-errors counter is incremented
-            bands.length
-          }
-          BatchJobMetadataTracker.tracker("").add(SOFT_ERROR_MEGAPIXEL_COUNTER, megapixels_failed )
-          logger.warn(s"load_collection: ignoring soft error for ${rs.name} - ${e.getMessage}", e)
-          None
-        case e: Exception => throw new IOException(s"load_collection: Error while reading: ${rs.name} - ${e.getMessage}", e)
+  // (position in `sources`, band within that source) for every output band; never opens the sources
+  @transient private lazy val bandLayout: IndexedSeq[(Int, Int)] =
+    sources.toList.zipWithIndex.flatMap { case (source, sourceIndex) =>
+      val contributedBands = source match {
+        case selection: BandSelectionRasterSource => selection.bandCount
+        case _ => 1
       }
+      (0 until contributedBands).map(band => (sourceIndex, band))
+    }.toIndexedSeq
+
+  /**
+   * Groups the requested output `bands` per source, in order of first appearance: each entry holds the
+   * position of the source in `sources`, the bands to read from it, and their positions in the result.
+   */
+  private def readPlan(bands: Seq[Int]): Seq[(Int, Seq[Int], Seq[Int])] = {
+    val plan = mutable.LinkedHashMap[Int, (mutable.ArrayBuffer[Int], mutable.ArrayBuffer[Int])]()
+    bands.zipWithIndex.foreach { case (band, resultPosition) =>
+      val (sourceIndex, bandInSource) = bandLayout(band)
+      val (bandsInSource, resultPositions) = plan.getOrElseUpdate(sourceIndex, (mutable.ArrayBuffer(), mutable.ArrayBuffer()))
+      bandsInSource += bandInSource
+      resultPositions += resultPosition
+    }
+    plan.toSeq.map { case (sourceIndex, (bandsInSource, resultPositions)) => (sourceIndex, bandsInSource.toSeq, resultPositions.toSeq) }
+  }
+
+  /** Reprojects `rs` to this composite's CRS, retrying and honouring `softErrors` (`None` if it failed softly). */
+  private def reprojectedSource(rs: RasterSource, bandCount: Int): Option[RasterSource] = {
+    try Some(retryWithBackoff(maxRetries, (e: Exception) => logger.warn(s"attempt to reproject ${rs.name} to $crs failed", e)) {
+      rs.reproject(crs)
+    })
+    catch {
+      case e: AbortedException => throw e
+      case e: Exception if softErrors =>
+        //without a predefined extent, we don't know the size of the raster yet: count some value so that the soft-errors counter is incremented
+        val megapixelsFailed = predefinedExtent.map(_.size * bandCount / (1024 * 1024)).getOrElse(bandCount.toLong)
+        BatchJobMetadataTracker.tracker("").add(SOFT_ERROR_MEGAPIXEL_COUNTER, megapixelsFailed)
+        logger.warn(s"load_collection: ignoring soft error for ${rs.name} - ${e.getMessage}", e)
+        None
+      case e: Exception => throw new IOException(s"load_collection: Error while reading: ${rs.name} - ${e.getMessage}", e)
+    }
+  }
+
+  /**
+   * Reads the requested output `bands` with one `read` call per underlying source, returning one single-band
+   * raster per requested band, in the requested order, or `None` if any of them could not be read.
+   */
+  private def readPerSource(bands: Seq[Int], description: => String)
+                           (read: (RasterSource, Seq[Int]) => Option[Raster[MultibandTile]]): Option[Seq[Raster[Tile]]] = {
+    val plan = readPlan(bands)
+    val sourceList = sources.toList
+    def readSource(entry: (Int, Seq[Int], Seq[Int])): Option[Seq[(Int, Raster[Tile])]] = {
+      val (sourceIndex, bandsInSource, resultPositions) = entry
+      reprojectedSource(sourceList(sourceIndex), bandsInSource.size)
+        .flatMap(rs => read(rs, bandsInSource))
+        .map(raster => resultPositions.zip(raster.tile.bands.map(Raster(_, raster.extent))))
+    }
+    val readsBySource = if (parallelRead) plan.par.map(readSource).seq else plan.map(readSource)
+
+    if (readsBySource.forall(_.isDefined)) {
+      Some(readsBySource.flatMap(_.get).sortBy(_._1).map(_._2))
+    } else {
+      if (softErrors && readsBySource.forall(_.isEmpty))
+        logger.error(s"load_collection: soft errors left zero readable tiles for $description from $name, returning empty result")
+      None
     }
   }
 
@@ -114,7 +176,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   override def name: SourceName = sources.head.name
 
-  override def bandCount: Int = sources.size
+  override def bandCount: Int = bandLayout.size
 
   def readBoundsFullTile(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
     var union = bounds.reduce(_ combine _)
@@ -139,123 +201,110 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       logger.debug(s"Special case - percentageToRead: $percentageToRead > 0.5, readFullTile: $readFullTile")
       readBoundsFullTile(bounds)
     } else {
-      val rastersByBounds = reprojectedSources.zipWithIndex.toList.flatMap(s => {
-        s._1.readBounds(bounds).zipWithIndex.map(raster_int => ((raster_int._2, (s._2, raster_int._1))))
-      }).groupBy(_._1)
-      rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
-        val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
-        Raster(MultibandTile(sortedRasters.map(raster => safeConvert(raster.tile.band(0), cellType))), sortedRasters.head.extent)
-      }).iterator
+      val sourceList = reprojectedSources.toList
+      val rastersByBounds = readPlan(0 until bandCount).flatMap { case (sourceIndex, bandsInSource, resultPositions) =>
+        sourceList(sourceIndex).readBounds(bounds, bandsInSource).zipWithIndex.flatMap { case (raster, boundsIndex) =>
+          resultPositions.zip(raster.tile.bands).map { case (resultPosition, tile) => (boundsIndex, (resultPosition, Raster(tile, raster.extent))) }
+        }
+      }.groupBy(_._1)
+      rastersByBounds.toSeq.sortBy(_._1).map(_._2).map { rasters =>
+        val sortedRasters = rasters.map(_._2).sortBy(_._1).map(_._2)
+        Raster(MultibandTile(sortedRasters.map(raster => safeConvert(raster.tile, cellType))), sortedRasters.head.extent)
+      }.iterator
     }
 
   }
 
-  override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val selectedSources: scala.collection.Seq[RasterSource] = reprojectedSources(bands)
-
-    val singleBandRasters = {
-      if (parallelRead) {
-        selectedSources.par
-          .map {
-            _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
-          }
-          .collect { case Some(raster) => raster }
-
-      } else {
-        selectedSources
-          .map {
-            _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
-          }
-          .collect { case Some(raster) => raster }
-
-      }
-    }.iterator.to(Seq)
-
-    if (softErrors && singleBandRasters.isEmpty && selectedSources.nonEmpty)
-      logger.error(s"load_collection: soft errors left zero readable tiles for $extent from ${selectedSources.head.name}, returning empty result")
-
-    if (singleBandRasters.size == selectedSources.size)
-      Some(Raster(MultibandTile(singleBandRasters.map(raster => safeConvert(raster.tile, cellType))), singleBandRasters.head.extent))
-    else None
-  }
-
+  override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] =
+    readPerSource(bands, extent.toString)(_.read(extent, _)).map { singleBandRasters =>
+      Raster(MultibandTile(singleBandRasters.map(raster => safeConvert(raster.tile, cellType))), singleBandRasters.head.extent)
+    }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = requestContext.apply {
-    val sources = reprojectedSources(bands)
-    val selectedSources: IterableOnce[RasterSource] =
-      if (parallelRead) {
-        sources.par
-      } else {
-        sources
-      }
-
     def readBoundsAttemptFailed(source: RasterSource)(e: Exception): Unit =
       logger.warn(s"attempt to read $bounds from ${source.name} failed", e)
 
-    val singleBandRasters: Seq[Raster[Tile]] = selectedSources
-      .iterator
-      .map { rs =>
-        requestContext.apply {
-          retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
-            (BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0))), rs.cellType)
-          }
+    val singleBandRasters = readPerSource(bands, bounds.toString) { (rs, bandsInSource) =>
+      requestContext.apply {
+        retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
+          BandCompositeRasterSource.readBounds(rs, bounds, softErrors, bandsInSource)
+        }
+      }.map { raster =>
+        if (raster.tile.bands.forall(_.cellType == rs.cellType)) raster
+        else {
+          logger.debug(s"converting tile from ${raster.tile.cellType} to ${rs.cellType}")
+          raster.mapTile(_.mapBands((_, band) => safeConvert(band, rs.cellType)))
         }
       }
-      .collect { case (Some(raster), sourceCellType) =>
-        if (raster.cellType == sourceCellType) raster
-        else {
-          logger.debug(s"converting tile from ${raster.tile.cellType} to $sourceCellType")
-          Raster(safeConvert(raster.tile,sourceCellType), raster.extent)
-        }
-      }.toSeq
-
-    if (softErrors && singleBandRasters.isEmpty && sources.nonEmpty)
-      logger.error(s"load_collection: soft errors left zero readable tiles for $bounds from ${sources.head.name}, returning empty result")
+    }
 
     try {
-      if (singleBandRasters.isEmpty) {
-        None
-      } else {
-        val intersection = singleBandRasters.map(_.extent).reduce((left, right) => left.intersection(right).get)
-        val croppedRasters = singleBandRasters.map(_.crop(intersection))
-        if (singleBandRasters.size == selectedSources.size) {
-          val convertedRasters: Seq[Tile] = croppedRasters.map {
-            case Raster(croppedTile: CroppedTile, _) =>
-              croppedTile.sourceTile match {
-                case tile: ResampledTile => tile.cropAndConvert(croppedTile.gridBounds, cellType)
-                case _ => if (croppedTile.cellType != cellType) croppedTile.convert(cellType) else croppedTile
-              }
-          }
-          Some(Raster(MultibandTile(convertedRasters), intersection))
+      singleBandRasters.map { rasters =>
+        val intersection = rasters.map(_.extent).reduce((left, right) => left.intersection(right).get)
+        val convertedRasters: Seq[Tile] = rasters.map(_.crop(intersection)).map {
+          case Raster(croppedTile: CroppedTile, _) =>
+            croppedTile.sourceTile match {
+              case tile: ResampledTile => tile.cropAndConvert(croppedTile.gridBounds, cellType)
+              case _ => if (croppedTile.cellType != cellType) croppedTile.convert(cellType) else croppedTile
+            }
         }
-        else None
+        Raster(MultibandTile(convertedRasters), intersection)
       }
     } catch {
-      case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${sources.head.name.toString}", e)
+      case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${name.toString}", e)
     }
   }
+
+  /**
+   * Groups the sources by their underlying physical datasource name, preserving the order in which datasources are
+   * first encountered. Each group carries the true output band indices (positions in the resulting MultibandTile)
+   * of the bands its sources contribute, in order, alongside those sources.
+   */
+  def groupedBySource: Seq[(SourceName, Seq[Int], NonEmptyList[RasterSource])] = {
+    val outputBandsBySource = bandLayout.zipWithIndex.groupBy(_._1._1).map { case (sourceIndex, bands) => sourceIndex -> bands.map(_._2) }
+    val order = mutable.LinkedHashMap[SourceName, (mutable.ArrayBuffer[Int], mutable.ArrayBuffer[RasterSource])]()
+    sources.toList.zipWithIndex.foreach { case (source, sourceIndex) =>
+      val (outputBands, groupSources) = order.getOrElseUpdate(source.name, (mutable.ArrayBuffer(), mutable.ArrayBuffer()))
+      outputBands ++= outputBandsBySource(sourceIndex)
+      groupSources += source
+    }
+    order.toSeq.map { case (sourceName, (outputBands, groupSources)) =>
+      (sourceName, outputBands.toSeq, NonEmptyList.fromListUnsafe(groupSources.toList))
+    }
+  }
+
+  // These preserve all settings (attributes, predefinedExtent, readFullTile, ...): e.g. RasterSource.tileToLayout
+  // goes through them, and RasterTileLoader relies on the result still being a fully configured composite.
+  private def withSources(newSources: NonEmptyList[RasterSource],
+                          newCrs: CRS = crs,
+                          newPredefinedExtent: Option[GridExtent[Long]] = predefinedExtent): BandCompositeRasterSource =
+    new BandCompositeRasterSource(newSources, newCrs, attributes, newPredefinedExtent,
+      parallelRead = parallelRead, softErrors = softErrors, readFullTile = readFullTile)
 
   override def resample(
                          resampleTarget: ResampleTarget,
                          method: ResampleMethod,
                          strategy: OverviewStrategy
-                       ): RasterSource = new BandCompositeRasterSource(
+                       ): RasterSource = withSources(
     reprojectedSources map {
       _.resample(resampleTarget, method, strategy)
-    }, crs, parallelRead = parallelRead,
-    softErrors = softErrors)
+    },
+    newPredefinedExtent = predefinedExtent.map(resampleTarget(_))
+  )
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map {
+    withSources(sources map {
       _.convert(targetCellType)
-    }, crs,
-      parallelRead = parallelRead, softErrors = softErrors)
+    })
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map {
-      _.reproject(targetCRS, resampleTarget, method, strategy)
-    },
-      crs, parallelRead = parallelRead, softErrors = softErrors)
+    withSources(
+      reprojectedSources map {
+        _.reproject(targetCRS, resampleTarget, method, strategy)
+      },
+      newCrs = targetCRS,
+      newPredefinedExtent = predefinedExtent.map(extent => resampleTarget(extent.reproject(crs, targetCRS)))
+    )
 
   override def toString: String = s"BandCompositeRasterSource(${sources.toList}, $crs, $gridExtent, $name)"
 

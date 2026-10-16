@@ -1,8 +1,8 @@
 package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
-import geotrellis.proj4.LatLng
-import geotrellis.raster.GridBounds
+import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, GridBounds, TargetCellSize}
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.testkit.RasterMatchers
@@ -10,7 +10,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIf
-import org.openeo.geotrellis.layers.raster_source.{NoDataRasterSource, OpenEoSourcePath, SentinelXMLMetadataRasterSource}
+import org.openeo.geotrellis.layers.raster_source.{BandSelectionRasterSource, IndexedRasterSource, NoDataRasterSource, OpenEoSourcePath, SentinelXMLMetadataRasterSource, ValueOffsetRasterSource}
 
 class BandCompositeRasterSourceTest extends RasterMatchers {
 
@@ -24,7 +24,7 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
   def readManyBounds(): Unit = {
 
     val warpOptions = GDALWarpOptions(alignTargetPixels = true)
-    val rs = GDALRasterSource("/vsicurl/https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2",warpOptions)
+    val rs = GDALRasterSource("../testdata/org/openeo/geotrellis/layers/Sentinel2FileLayerProviderTest/T11TNM_20210101T184759_B02.jp2", warpOptions)
 
     val rasterSources = NonEmptyList.of(
       rs
@@ -141,12 +141,98 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
 
     assertFalse(composite == new BandCompositeRasterSource(NonEmptyList.of(b02), crs = LatLng))
     assertFalse(composite == new BandCompositeRasterSource(NonEmptyList.of(b02, b03), crs = LatLng, readFullTile = true))
+  }
 
-    val multiband = new MultibandCompositeRasterSource(NonEmptyList.of((b02, Seq(0)), (b03, Seq(0))), crs = LatLng)
-    val multibandCopy = roundTrip(multiband)
-    assertEquals(multiband, multibandCopy)
-    assertEquals(multiband.hashCode(), multibandCopy.hashCode())
-    assertFalse(multiband == composite)
-    assertFalse(multiband == new MultibandCompositeRasterSource(NonEmptyList.of((b02, Seq(0)), (b03, Seq(1))), crs = LatLng))
+  @Test
+  def groupedBySourceAndSettingsSurviveTransformations(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val other = GeoTiffRasterSource(singleBandGeotiffPath.replace("cgls_ndvi300", "chl_masked"))
+    val predefinedExtent = Some(physical.gridExtent)
+    val composite = new BandCompositeRasterSource(
+      NonEmptyList.of(IndexedRasterSource(physical, 0), other, IndexedRasterSource(physical, 0)),
+      crs = physical.crs, attributes = Map("date" -> "2020-01-01"), predefinedExtent = predefinedExtent,
+      softErrors = true, readFullTile = true)
+
+    val groups = composite.groupedBySource.map { case (name, outputBands, _) => name -> outputBands }
+    assertEquals(Seq(physical.name -> Seq(0, 2), other.name -> Seq(1)), groups)
+
+    val converted = composite.convert(FloatConstantNoDataCellType).asInstanceOf[BandCompositeRasterSource]
+    assertEquals(composite.attributes, converted.attributes)
+    assertEquals(predefinedExtent, converted.predefinedExtent)
+    assertTrue(converted.softErrors)
+    assertTrue(converted.readFullTile)
+    assertEquals(groups, converted.groupedBySource.map { case (name, outputBands, _) => name -> outputBands })
+  }
+
+  @Test
+  def reprojectionUpdatesCrsAndPredefinedExtent(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val composite = new BandCompositeRasterSource(
+      NonEmptyList.of(IndexedRasterSource(physical, 0), physical),
+      crs = physical.crs, predefinedExtent = Some(physical.gridExtent))
+
+    val reprojected = composite.reproject(WebMercator).asInstanceOf[BandCompositeRasterSource]
+    assertEquals(WebMercator, reprojected.crs)
+    assertTrue(reprojected.sources.forall(_.crs == WebMercator))
+    assertEquals(reprojected.sources.head.gridExtent, reprojected.gridExtent)
+  }
+
+  @Test
+  def resampleUpdatesPredefinedExtent(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val composite = new BandCompositeRasterSource(
+      NonEmptyList.of(IndexedRasterSource(physical, 0), physical),
+      crs = physical.crs, predefinedExtent = Some(physical.gridExtent))
+
+    val target = TargetCellSize(CellSize(physical.cellSize.width * 2, physical.cellSize.height * 2))
+    val resampled = composite.resample(target, geotrellis.raster.resample.NearestNeighbor, geotrellis.raster.io.geotiff.Auto(0)).asInstanceOf[BandCompositeRasterSource]
+    assertEquals(physical.crs, resampled.crs)
+    assertEquals(target.cellSize, resampled.gridExtent.cellSize)
+    assertEquals(resampled.sources.head.gridExtent, resampled.gridExtent)
+  }
+
+  @Test
+  def sameNamedBandsWithDifferentValueTransformationsAreReadSeparately(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val scaled = new ValueOffsetRasterSource(physical, 2.0, 0.0)
+    val offset = new ValueOffsetRasterSource(physical, 1.0, 5.0)
+    assertEquals(scaled.name, offset.name)
+
+    val composite = new BandCompositeRasterSource(
+      NonEmptyList.of(IndexedRasterSource(scaled, 0), IndexedRasterSource(offset, 0)), crs = physical.crs)
+    val bounds = GridBounds(100L, 100L, 131L, 131L)
+    val result = composite.read(bounds, Seq(0, 1)).get.tile
+
+    val expectedScaled = scaled.read(bounds, Seq(0)).get.tile.band(0)
+    val expectedOffset = offset.read(bounds, Seq(0)).get.tile.band(0)
+    assertTrue(expectedScaled.toArrayDouble().toSeq != expectedOffset.toArrayDouble().toSeq)
+    assertEquals(expectedScaled.toArrayDouble().toSeq, result.band(0).toArrayDouble().toSeq)
+    assertEquals(expectedOffset.toArrayDouble().toSeq, result.band(1).toArrayDouble().toSeq)
+  }
+
+  @Test
+  def bandSelectionServesConsecutiveBandsInOneRead(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    var reads = 0
+    val counting = new ValueOffsetRasterSource(physical, 1.0, 0.0) {
+      override def read(bounds: GridBounds[Long], bands: Seq[Int]) = { reads += 1; super.read(bounds, bands) }
+    }
+    val placeholder = NoDataRasterSource.instance(physical.gridExtent, physical.crs)
+    val composite = new BandCompositeRasterSource(
+      NonEmptyList.of(BandSelectionRasterSource(counting, Seq(0, 0)), placeholder),
+      crs = physical.crs, parallelRead = false)
+    assertEquals(3, composite.bandCount)
+
+    val bounds = GridBounds(100L, 100L, 131L, 131L)
+    val result = composite.read(bounds, Seq(2, 1, 0)).get.tile
+    assertEquals(1, reads)
+    assertEquals(3, result.bandCount)
+    val expected = physical.read(bounds, Seq(0)).get.tile.band(0).toArrayDouble().toSeq
+    assertTrue(result.band(0).isNoDataTile)
+    assertEquals(expected, result.band(1).toArrayDouble().toSeq)
+    assertEquals(expected, result.band(2).toArrayDouble().toSeq)
+
+    val groups = composite.groupedBySource.map { case (name, outputBands, groupSources) => (name, outputBands, groupSources.size) }
+    assertEquals(Seq((physical.name, Seq(0, 1), 1), (placeholder.name, Seq(2), 1)), groups)
   }
 }
