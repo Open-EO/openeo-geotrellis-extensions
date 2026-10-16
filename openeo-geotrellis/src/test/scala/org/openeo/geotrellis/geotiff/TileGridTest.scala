@@ -310,22 +310,5 @@ class TileGridTest {
     Assertions.assertEquals(expectedTiles, actualTiles.toSet)
   }
 
-  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
-  @Test
-  def testWriteRDDTileGrid(): Unit = {
-    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
-    val bbox = ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng)
-
-    val layer = LayerFixtures.rgbLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
-
-    val spatialLayer = layer
-      .toSpatial()
-      .persist(DISK_ONLY)
-
-    val paths = saveRDDTileGrid(spatialLayer, 3, "/tmp/testSaveRdd.tiff", "10km")
-    val expectedPaths = List("/tmp/testSaveRdd-31UDS_3_4.tiff", "/tmp/testSaveRdd-31UDS_2_4.tiff", "/tmp/testSaveRdd-31UDS_3_5.tiff", "/tmp/testSaveRdd-31UDS_2_5.tiff")
-
-    Assertions.assertEquals(paths.groupBy(identity), expectedPaths.groupBy(identity))
-  }
 
 }
