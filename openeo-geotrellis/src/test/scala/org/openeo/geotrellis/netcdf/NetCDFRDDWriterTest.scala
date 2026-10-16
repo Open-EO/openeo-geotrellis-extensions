@@ -23,6 +23,7 @@ import org.openeo.geotrellis.stac.Item
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons, TemporalResolution}
 import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
+import ucar.ma2.DataType
 import ucar.nc2.dataset.NetcdfDataset
 
 import java.nio.file.Path
@@ -727,7 +728,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
 
   @Test
   def testSetupNetCDF(): Unit = {
-    def setup(cellType: CellType) = {
+    def setup(netCdfDataType: DataType, nodata: Option[Number]) = {
 
       val dimMapping = new util.HashMap[String, String]()
       dimMapping.put("t", "myTimeDim")
@@ -738,7 +739,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
         RasterExtent(Extent(0, 0, 10, 10), 512, 512),
         Seq(ZonedDateTime.parse("2021-05-01T00:00:00Z"), ZonedDateTime.parse("2021-05-10T00:00:00Z")),
         new util.ArrayList(util.Arrays.asList("b1", "b2")),
-        LatLng, cellType, dimMapping,
+        LatLng, netCdfDataType, nodata, dimMapping,
         TemporalResolution.days,
         attributes, null
       )
@@ -748,19 +749,19 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       file.close()
     }
 
-    setup(UByteUserDefinedNoDataCellType(5))
-    setup(FloatConstantNoDataCellType)
+    setup(DataType.UBYTE, Some(5))
+    setup(DataType.FLOAT, Some(Float.NaN))
 
     //boolean not supported by library
     //setup(BitCellType)
-    setup(UShortCellType)
-    setup(IntUserDefinedNoDataCellType(255))
+    setup(DataType.USHORT, None)
+    setup(DataType.INT, Some(255))
   }
 
 
   @Test
   def testNetCDFBandAttributes(): Unit = {
-    def setup(cellType: CellType) = {
+    def setup(netCdfDataType: DataType, nodata: Option[Number]) = {
 
       val dimMapping = new util.HashMap[String, String]()
       dimMapping.put("t", "myTimeDim")
@@ -776,7 +777,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
         RasterExtent(Extent(0, 0, 10, 10), 512, 512),
         Seq(ZonedDateTime.parse("2021-05-01T00:00:00Z"), ZonedDateTime.parse("2021-05-10T00:00:00Z")),
         new util.ArrayList(util.Arrays.asList("b1", "b2")),
-        LatLng, cellType, dimMapping,
+        LatLng, netCdfDataType, nodata, dimMapping,
         TemporalResolution.days,
         attributes, bandMetadata
       )
@@ -804,13 +805,13 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       file.close()
     }
 
-    setup(UByteUserDefinedNoDataCellType(5))
-    setup(FloatConstantNoDataCellType)
+    setup(DataType.UBYTE, Some(5))
+    setup(DataType.FLOAT, Some(Float.NaN))
 
     //boolean not supported by library
     //setup(BitCellType)
-    setup(UShortCellType)
-    setup(IntUserDefinedNoDataCellType(255))
+    setup(DataType.USHORT, None)
+    setup(DataType.INT, Some(255))
   }
 
   @Test
