@@ -538,10 +538,12 @@ object NetCDFRDDWriter {
         val sorted = tiles.toSeq.sortBy { case (instant, _, _) => instant }
         val dates = sorted.map { case (instant, _, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
         logger.info(s"Writing $name with dates $dates.")
-        val extent = sorted.head._2.extent
+
         val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2), dates=dates, bandNames,addBandsStats = addBandsStatistics)
+        val cellType = safeBitCellType(rdd.metadata.cellType)
+
         val assetPath = try{
-          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
+          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata, cellType)
         }catch {
           case t: IOException => {
             if(TaskContext.get().attemptNumber()<2){
@@ -561,7 +563,7 @@ object NetCDFRDDWriter {
           if (crs == LatLng) fixBboxLargerThanWorld(tiles.head._3)
           else tiles.head._3
         Item(id = UUID.randomUUID().toString, datetime = null , bbox = croppedBbox,
-          assets = Collections.singletonMap("openEO", Asset(path = assetPath, cellType = BitCellType, metadata = assetsMetadata)))
+          assets = Collections.singletonMap("openEO", Asset(path = assetPath, cellType = cellType, metadata = assetsMetadata)))
       }.collect()
       .toList.asJava
   }
@@ -644,8 +646,10 @@ object NetCDFRDDWriter {
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
         val assetMetadata = setupAssetMetadata(rdd.metadata, Seq(sample), dates=null, bandNames, addBandsStatistics)
+        val cellType = safeBitCellType(rdd.metadata.cellType)
+
         val assetPath = try {
-          writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
+          writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata, cellType)
         } catch {
           case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
@@ -653,7 +657,7 @@ object NetCDFRDDWriter {
           if (crs == LatLng) fixBboxLargerThanWorld(extent.extent)
           else extent.extent
         Item(id = UUID.randomUUID().toString, datetime = null, bbox = bbox,
-          assets = Collections.singletonMap("openEO", Asset(assetPath, cellType = BitCellType, metadata = assetMetadata)))
+          assets = Collections.singletonMap("openEO", Asset(assetPath, cellType = cellType, metadata = assetMetadata)))
       }.collect()
       .toList.asJava
   }
@@ -680,7 +684,8 @@ object NetCDFRDDWriter {
                   bandNames: ArrayList[String],
                   crs:CRS, dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String],
-                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]]): String = {
+                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
+                  cellType: CellType): String = {
     val areas = rasters.map(raster => raster.extent.area)
     logger.info(s"Writing ${rasters.size} rasters to disk. Areas: ${areas.mkString(",")}")
     val maxExtent:Extent = rasters.map(_._2).reduce((a, b) => a.union(b).extent)
@@ -698,7 +703,6 @@ object NetCDFRDDWriter {
       aRaster = aRasterOption.get
     }
     val rasterExtent: RasterExtent = aRaster.rasterExtent
-    val cellType = safeBitCellType(aRaster.cellType)
     val (netcdfType: DataType, nodata: Option[Number]) = netCdfDataType(cellType)
 
     val intermediatePath =
@@ -732,7 +736,6 @@ object NetCDFRDDWriter {
     }else{
       path
     }
-
   }
 
   private def uploadToS3(objectStoragePath: String, localPath: String):String = {
