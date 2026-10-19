@@ -1209,6 +1209,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           case "last" => applyListFunction("data", lastFunctionWithNoData, dataTypeMode = PRESERVE_DATATYPE_MODE)
           case "is_nodata" if hasX => mapFunction("x", Undefined.apply)
           case "is_nan" if hasX => mapFunction("x", Undefined.apply)
+          case "is_valid" if hasX => mapFunction("x", tile => tile.convert(DoubleConstantNoDataCellType).mapDouble(z => if (java.lang.Double.isFinite(z)) 1.0 else 0.0).convert(BitCellType))
           case "array_element" => arrayElementFunction(arguments)
           case "array_modify" => arrayModifyFunction(arguments)
           case "array_interpolate_linear" => applyListFunction("data", linearInterpolation, dataTypeMode = PRESERVE_DATATYPE_MODE)
@@ -1231,7 +1232,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
     if(operator != "linear_scale_range") {
       //TODO: generalize to other operations that result in a specific datatype?
-      if(Array("gt","lt","lte","gte","eq","neq","between","any","and","all","or", "is_nodata", "is_nan", "array_contains").contains(operator)) {
+      if(Array("gt","lt","lte","gte","eq","neq","between","any","and","all","or", "is_nodata", "is_nan", "is_valid", "array_contains").contains(operator)) {
         resultingDataType = BitCellType
       }
     }
