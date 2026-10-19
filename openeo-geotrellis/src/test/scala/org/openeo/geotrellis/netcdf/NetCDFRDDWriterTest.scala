@@ -100,9 +100,22 @@ class NetCDFRDDWriterTest extends RasterMatchers {
 
     val targetDir = temporaryFolder.toString
 
-    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
+    val items = NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
       sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M",
-        "SCENECLASSIFICATION_20M")), Some("prefixTest")))
+        "SCENECLASSIFICATION_20M")), Some("prefixTest"))
+
+    val assets = for {
+      item <- items.asScala
+      asset <- item.assets.asScala.values
+    } yield asset
+
+    for (asset <- assets) {
+      assertEquals("int16", asset.dataType)
+      assertEquals(32767, asset.nodata.shortValue())
+    }
+
+    // TODO: reduce code duplication
+    val sampleFilenames: util.List[String] = assetFileNames(items)
 
     val expectedPaths = util.Arrays.asList(s"$targetDir/prefixTest_0.nc", s"$targetDir/prefixTest_1.nc")
 
