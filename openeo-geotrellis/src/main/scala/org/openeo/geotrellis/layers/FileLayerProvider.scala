@@ -945,10 +945,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         if(link.nodata.isEmpty && (link.title.contains("SCENECLASSIFICATION") || link.title.contains("SCL"))) Some(0.0)
         else link.nodata
 
-      val cellTypeSTAC = if (dataType.isDefined){
-        Some(ConvertTargetCellType(dataType.get.withNoData(nodata)))
+      val cellTypeSTAC = (dataType, nodata) match {
+        case (Some(dt), Some(nd)) =>
+          // explicit "nodata": null means no nodata (https://github.com/radiantearth/stac-spec/issues/1401)
+          Some(ConvertTargetCellType(dt.withNoData(Option(nd))))
+        case _ => None
       }
-      else None
 
       //special case handling for data that does not declare nodata properly
       val targetCellType = link.title match {
