@@ -14,7 +14,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkContext, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert, statsDouble, statsInt}
+import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.geotiff.preProcess
 import org.openeo.geotrellis.stac.{Asset, Item}
@@ -84,66 +84,18 @@ object NetCDFRDDWriter {
   }
 
   def saveSingleNetCDFSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
-                       path: String,
-                       bandNames: ArrayList[String],
-                       dimensionNames: java.util.Map[String,String],
-                       attributes: java.util.Map[String,String],
-                       bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
-                       zLevel:Int,
-                      ): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel, addBandStatistics=false)
-  }
-
-  def saveSingleNetCDFSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
                                path: String,
                                options:NetCDFOptions,
                              ): java.util.List[Item] = {
-    saveSingleNetCDFSpatial(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics)
-  }
-
-  def saveSingleNetCDFSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
-                              path: String,
-                              bandNames: ArrayList[String],
-                              dimensionNames: java.util.Map[String,String],
-                              attributes: java.util.Map[String,String],
-                              bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
-                              zLevel:Int,
-                              addBandsStatistics: Boolean,
-                             ): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel, addBandsStatistics)
+    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
   }
 
   def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String],
-                  bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
-                  zLevel:Int,
-                 ): java.util.List[Item] = {
-
-    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel, addBandStatistics = false)
+                       path: String,
+                       options:NetCDFOptions,
+                      ): java.util.List[Item] = {
+    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
   }
-
-  def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String],
-                  bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
-                  zLevel:Int,
-                  addBandsStatistics: Boolean,
-                 ): java.util.List[Item] = {
-
-    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel, addBandsStatistics)
-  }
-
-    def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                         path: String,
-                         options:NetCDFOptions,
-                        ): java.util.List[Item] = {
-      saveSingleNetCDF(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,options.zLevel, options.addBandStatistics)
-    }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[Item] = {
     saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
@@ -366,113 +318,17 @@ object NetCDFRDDWriter {
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
-                  polygons: ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                 ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, bandsMetadata = null)
-
-  // Overload to avoid: "multiple overloaded alternatives of method saveSamples define default arguments"
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  filenamePrefix: Option[String],
-                  ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, bandsMetadata = null, filenamePrefix)
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  filenamePrefix: Option[String],
-                  addBandsStatistics:Boolean
-                 ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, bandsMetadata = null, addBandsStatistics = addBandsStatistics, filenamePrefix)
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons: ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String, String],
-                  attributes: java.util.Map[String, String],
-                 ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames, attributes, bandsMetadata = null, None)
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons: ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String, String],
-                  attributes: java.util.Map[String, String],
-                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
-                 ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames, attributes, bandsMetadata, None)
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String],
-                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
-                  filenamePrefix: Option[String],
-                 ): java.util.List[Item] = {
-    val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
-    val features = sampleNames.asScala.toSeq.zip(reprojected.polygons)
-    logger.info(s"Using metadata: ${rdd.metadata}.")
-    logger.info(s"Using features: ${features}.")
-    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, addBandsStatistics = false, filenamePrefix)
-  }
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
                   polygons:ProjectedPolygons,
                   sampleNames: ArrayList[String],
                   options:NetCDFOptions,
                   filenamePrefix: Option[String],
                  ): java.util.List[Item] = {
     if (options.bandNames.isEmpty) logger.error("Couldn't find bandNames in options. It cannot be empty")
-    saveSamples(rdd, path, polygons, sampleNames, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix, options.retainNoDataTiles)
-  }
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String],
-                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
-                  addBandsStatistics: Boolean,
-                  filenamePrefix: Option[String],
-                  retainNoDataTiles: Boolean = false
-                 ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toSeq.zip(reprojected.polygons)
     logger.info(s"Using metadata: ${rdd.metadata}.")
     logger.info(s"Using features: ${features}.")
-    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, addBandsStatistics, filenamePrefix, retainNoDataTiles)
-  }
-
-  def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
-                  path: String,
-                  polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String],
-                  bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
-                  filenamePrefix: Option[String] = None,
-                 ): java.util.List[Item] = {
-    val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
-    val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes, bandsMetadata, addBandsStatistics = false, filenamePrefix)
+    groupByFeatureAndWriteToNetCDF(rdd, features, path, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix, options.retainNoDataTiles)
   }
 
   def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
@@ -483,23 +339,9 @@ object NetCDFRDDWriter {
                          filenamePrefix: Option[String],
                         ): java.util.List[Item] = {
     if (options.bandNames.isEmpty) logger.error("Couldn't find bandNames in options. It cannot be empty")
-    saveSamplesSpatial(rdd,path,polygons,sampleNames,options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix)
-  }
-
-  def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
-                         path: String,
-                         polygons:ProjectedPolygons,
-                         sampleNames: ArrayList[String],
-                         bandNames: ArrayList[String],
-                         dimensionNames: java.util.Map[String,String],
-                         attributes: java.util.Map[String,String],
-                         bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
-                         addBandsStatistics: Boolean,
-                         filenamePrefix: Option[String],
-                        ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes, bandsMetadata, addBandsStatistics, filenamePrefix)
+    groupByFeatureAndWriteToNetCDFSpatial(rdd, features, path, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix)
   }
 
   private def groupByFeatureAndWriteToNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: Seq[(String, Geometry)],
