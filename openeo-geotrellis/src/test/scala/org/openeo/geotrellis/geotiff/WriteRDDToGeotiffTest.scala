@@ -24,6 +24,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource, ValueSource}
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithLocalTestdata
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrellis.stac.{Asset, Item}
 import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -66,6 +67,13 @@ object WriteRDDToGeotiffTest{
     Arguments.of(false, Tiff),
     Arguments.of(true, BigTiff),
   )
+
+  private def allAssets(items: util.List[Item]): Iterable[Asset] = {
+    for {
+      item <- items.asScala
+      asset <- item.assets.asScala.values
+    } yield asset
+  }
 }
 
 class WriteRDDToGeotiffTest extends RasterMatchers {
@@ -749,12 +757,9 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       outDir + "/openEO_2017-01-03Z_B03.tif",
     )
 
-    val assets = for {
-      item <- tiles.asScala.toSeq
-      asset <- item.assets.asScala.values
-    } yield asset
+    val assets = allAssets(tiles)
 
-    val actualPaths = assets.map(_.path).sorted
+    val actualPaths = assets.map(_.path).toSeq.sorted
     assertEquals(expectedPaths, actualPaths)
 
     for (asset <- assets) {
@@ -803,12 +808,9 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       outDir + "/openEO_2017-01-03Z_B03.tif",
     )
 
-    val assets = for {
-      item <- tiles.asScala.toSeq
-      asset <- item.assets.asScala.values
-    } yield asset
+    val assets = allAssets(tiles)
 
-    val actualPaths = assets.map(_.path).sorted
+    val actualPaths = assets.map(_.path).toSeq.sorted
     assertEquals(expectedPaths, actualPaths)
 
     for (asset <- assets) {
@@ -938,10 +940,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val items = saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION))
 
-    val assets = for {
-      item <- items.asScala.toSeq
-      asset <- item.assets.asScala.values
-    } yield asset
+    val assets = allAssets(items)
 
     for (asset <- assets) {
       assertEquals("int8", asset.dataType)
@@ -986,12 +985,9 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       outDir + "/openEO_2023-04-07Z_0-testName.tif",
     )
 
-    val assets = for {
-      item <- items.asScala.toSeq
-      asset <- item.assets.asScala.values
-    } yield asset
+    val assets = allAssets(items)
 
-    val actualPaths = assets.map(_.path).sorted
+    val actualPaths = assets.map(_.path).toSeq.sorted
 
     assertEquals(expectedPaths, actualPaths)
 
@@ -1073,10 +1069,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
 
-    val assets = for {
-      item <- items.asScala.toSeq
-      asset <- item.assets.asScala.values
-    } yield asset
+    val assets = allAssets(items)
 
     for (asset <- assets) {
       assertEquals("int8", asset.dataType)
@@ -1113,12 +1106,9 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       outDir + "/openEO_1-testName.tif"
 
     )
-    val assets = for {
-      item <- tiles.asScala.toSeq
-      asset <- item.assets.asScala.values
-    } yield asset
+    val assets = allAssets(tiles)
 
-    val actualPaths = assets.map(_.path).sorted
+    val actualPaths = assets.map(_.path).toSeq.sorted
     assertEquals(expectedPaths, actualPaths)
 
     for (path <- expectedPaths) {
@@ -1196,10 +1186,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
 
-    val assets = for {
-      item <- items.asScala.toSeq
-      asset <- item.assets.asScala.values
-    } yield asset
+    val assets = allAssets(items)
 
     for (asset <- assets) {
       assertEquals("int8", asset.dataType)

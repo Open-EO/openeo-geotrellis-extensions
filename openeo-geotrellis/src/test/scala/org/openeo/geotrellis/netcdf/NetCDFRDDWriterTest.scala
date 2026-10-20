@@ -111,7 +111,6 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       assertEquals(32767, asset.nodata.shortValue())
     }
 
-    // TODO: reduce code duplication
     val sampleFilenames: util.List[String] = assetFileNames(items)
 
     val expectedPaths = util.Arrays.asList(s"$targetDir/prefixTest_0.nc", s"$targetDir/prefixTest_1.nc")
@@ -461,11 +460,10 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       .collect(util.stream.Collectors.toList())
 
   private def allAssets(items: util.List[Item]): Iterable[Asset] = {
-    val assets = for {
+    for {
       item <- items.asScala
       asset <- item.assets.asScala.values
     } yield asset
-    assets
   }
 
   @Test

@@ -261,7 +261,7 @@ object NetCDFRDDWriter {
             }
             val variable = actualBandNames.get(bandIndex)
 
-            var tile = multibandTile.band(bandIndex) // TODO: val instead
+            var tile = multibandTile.band(bandIndex)
             tile = safeConvert(tile, cellType)
 
             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
@@ -270,12 +270,10 @@ object NetCDFRDDWriter {
             }
             if (addBandStatistics) bandsStatistics(tile, bandStatistics, variable)
             try{
-              writeTile(variable, origin, tile, netcdfType, netcdfFile) // potentially writes to another data_type i.e. uint8ud255; this is the one we want to expose
-            }catch {
-              case t: IOException => {
-                logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"),t)
-              }
-              case t: Throwable =>  throw t
+              writeTile(variable, origin, tile, netcdfType, netcdfFile)
+            } catch {
+              case e: IOException =>
+                logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"), e)
             }
           }
         }
@@ -330,7 +328,6 @@ object NetCDFRDDWriter {
       safeCellType
     case _ => cellType
   }
-
 
   private def cacheAndRepartition[K](rdd: MultibandTileLayerRDD[K]) = {
     val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
