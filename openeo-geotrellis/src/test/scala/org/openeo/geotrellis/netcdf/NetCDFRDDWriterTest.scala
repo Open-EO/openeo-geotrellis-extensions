@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
-import org.openeo.geotrellis.stac.Item
+import org.openeo.geotrellis.stac.{Asset, Item}
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons, TemporalResolution}
 import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
@@ -104,10 +104,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M",
         "SCENECLASSIFICATION_20M")), Some("prefixTest"))
 
-    val assets = for {
-      item <- items.asScala
-      asset <- item.assets.asScala.values
-    } yield asset
+    val assets = allAssets(items)
 
     for (asset <- assets) {
       assertEquals("int16", asset.dataType)
@@ -463,6 +460,14 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       }
       .collect(util.stream.Collectors.toList())
 
+  private def allAssets(items: util.List[Item]): Iterable[Asset] = {
+    val assets = for {
+      item <- items.asScala
+      asset <- item.assets.asScala.values
+    } yield asset
+    assets
+  }
+
   @Test
   def testWriteSingleNetCDFLarge(): Unit = {
 
@@ -481,10 +486,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     val ds = NetcdfDataset.openDataset("/tmp/stitched.nc", true, null)
     val b04 = ds.findVariable("TOC-B04_10M")
 
-    val assets = for {
-      item <- items.asScala
-      asset <- item.assets.asScala.values
-    } yield asset
+    val assets = allAssets(items)
 
     for (asset <- assets) {
       assertEquals("int8", asset.dataType)
@@ -609,10 +611,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     val units = crs.findAttributeIgnoreCase("units")
     assertEquals("degrees_east", units.getStringValue)
 
-    val assets = for {
-      item <- items.asScala
-      asset <- item.assets.asScala.values
-    } yield asset
+    val assets = allAssets(items)
 
     for (asset <- assets) {
       assertEquals("int8", asset.dataType)
@@ -737,10 +736,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       // When the samples are in the same day, they should still be separate
       assertEquals(dates.length, ds.findDimension("t").getLength)
 
-      val assets = for {
-        item <- items.asScala
-        asset <- item.assets.asScala.values
-      } yield asset
+      val assets = allAssets(items)
 
       for (asset <- assets) {
         assertEquals("int8", asset.dataType)
