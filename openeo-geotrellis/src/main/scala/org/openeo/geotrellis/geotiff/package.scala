@@ -353,7 +353,7 @@ package object geotiff {
           val layoutRow = key.getComponent[SpatialKey]._2
           val bandSegmentOffset = bandSegmentCount * (if (formatOptions.separateAssetPerBand) 0 else bandIndex)
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
-          val tileToWrite = if (tile.cellType == BitCellType) safeConvert(tile, safeBitCellType(tile.cellType)) else tile
+          val tileToWrite = safeConvert(tile, safeBitCellType(tile.cellType))
           
           val bandStatistics =
             if (formatOptions.addBandStatistics) {
@@ -902,7 +902,7 @@ package object geotiff {
           val bandSegmentOffset = bandSegmentCount * bandIndex
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
 
-          val tileToWrite = if (tile.cellType == BitCellType) safeConvert(tile, safeBitCellType(tile.cellType)) else tile
+          val tileToWrite = safeConvert(tile, safeBitCellType(tile.cellType))
 
           val bytes =
             if (cols != tileToWrite.cols || rows != tileToWrite.rows) {
@@ -1077,7 +1077,7 @@ package object geotiff {
     }
     fo.assertNoConflicts()
 
-    val adjustedToWrite = if (adjusted.cellType == BitCellType) adjusted.mapTile(_.convert(safeBitCellType(adjusted.cellType))) else adjusted
+    val adjustedToWrite = adjusted.mapTile(_.convert(safeBitCellType(adjusted.cellType)))
     val geoTiff = MultibandGeoTiff(adjustedToWrite, contextRDD.metadata.crs, GeoTiffOptions(compression))
       .withOverviews(getOverviewResampleMethod(fo), blockSize = fo.tileSize)
       .withCompression(formatOptions.getOrElse(new GTiffOptions))
@@ -1218,7 +1218,7 @@ package object geotiff {
     }
     fo.assertNoConflicts()
 
-    val tileToWrite = if (adjusted.tile.cellType == BitCellType) adjusted.tile.convert(safeBitCellType(adjusted.tile.cellType)) else adjusted.tile
+    val tileToWrite = adjusted.tile.convert(safeBitCellType(adjusted.tile.cellType))
 
     val bandNames = fo.getBandNames
     val bandStatistics = 
