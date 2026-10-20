@@ -66,7 +66,7 @@ class TileGridTest {
       .toSpatial()
       .persist(DISK_ONLY)
 
-    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6))
+    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6), new GTiffOptions)
     val expectedPaths = Set(
       outDir + "/testSaveStitched-31UDS_3_4.tiff",
       outDir + "/testSaveStitched-31UDS_2_4.tiff",
@@ -85,7 +85,7 @@ class TileGridTest {
     val extent = bbox.reproject(spatialLayer.metadata.crs)
     val cropBounds = Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax).asJava
 
-    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6))
+    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6), new GTiffOptions)
     val expectedCroppedPaths = Set(
       outDir + "/testSaveStitched_cropped-31UDS_3_4.tiff",
       outDir + "/testSaveStitched_cropped-31UDS_2_4.tiff",
@@ -229,7 +229,7 @@ class TileGridTest {
 
     val layer = LayerFixtures.testLayerProvider(NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), "org/openeo/geotrellis/testSaveStitchWithTileGridsTemporal_features.json").readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
-    val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
+    val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6), new GTiffOptions)
     val expectedTiles = Set(
       ("/tmp/openEO_2020-04-05Z_31UDS_3_4.tif", isoFormattedDate),
       ("/tmp/openEO_2020-04-05Z_31UDS_2_4.tif", isoFormattedDate),
@@ -292,7 +292,9 @@ class TileGridTest {
 
     val layer = LayerFixtures.testLayerProvider(NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"), "org/openeo/geotrellis/testSaveStitchWithTileGridsTemporalPrefix_features.json").readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
-    val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6), filenamePrefix = Some("testPrefix"))
+    val options = new GTiffOptions
+    options.setFilenamePrefix("testPrefix")
+    val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6), options)
     val expectedTiles = Set(
       ("/tmp/testPrefix_2020-04-05Z_31UDS_3_4.tif", isoFormattedDate),
       ("/tmp/testPrefix_2020-04-05Z_31UDS_2_4.tif", isoFormattedDate),
@@ -308,22 +310,5 @@ class TileGridTest {
     Assertions.assertEquals(expectedTiles, actualTiles.toSet)
   }
 
-  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
-  @Test
-  def testWriteRDDTileGrid(): Unit = {
-    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
-    val bbox = ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng)
-
-    val layer = LayerFixtures.rgbLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
-
-    val spatialLayer = layer
-      .toSpatial()
-      .persist(DISK_ONLY)
-
-    val paths = saveRDDTileGrid(spatialLayer, 3, "/tmp/testSaveRdd.tiff", "10km")
-    val expectedPaths = List("/tmp/testSaveRdd-31UDS_3_4.tiff", "/tmp/testSaveRdd-31UDS_2_4.tiff", "/tmp/testSaveRdd-31UDS_3_5.tiff", "/tmp/testSaveRdd-31UDS_2_5.tiff")
-
-    Assertions.assertEquals(paths.groupBy(identity), expectedPaths.groupBy(identity))
-  }
 
 }
