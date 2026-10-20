@@ -726,7 +726,8 @@ class NetCDFRDDWriterTest extends RasterMatchers {
         dataCubeContextRDD,
         "tmp/testWriteSingleNetCDFMultipleSamplesOnADay_" + date2.toString.replace(":", "_") + ".nc",
         options
-      ))
+      )
+      val sampleFilenames: util.List[String] = assetFileNames(items)
       val ds = NetcdfDataset.openDataset(sampleFilenames.get(0), true, null)
       // When the samples are in the same day, they should still be separate
       assertEquals(dates.length, ds.findDimension("t").getLength)
