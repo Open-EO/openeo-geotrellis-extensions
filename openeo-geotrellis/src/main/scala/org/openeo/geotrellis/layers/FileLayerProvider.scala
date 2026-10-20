@@ -949,6 +949,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         case (Some(dt), Some(nd)) =>
           // explicit "nodata": null means no nodata (https://github.com/radiantearth/stac-spec/issues/1401)
           Some(ConvertTargetCellType(dt.withNoData(Option(nd))))
+        case (Some(dt), None) =>
+          logger.warn(s"STAC item ${feature.id} asset ${link.href} specifies data_type $dt but no nodata value; retaining file data type")
+          None
         case _ => None
       }
 
