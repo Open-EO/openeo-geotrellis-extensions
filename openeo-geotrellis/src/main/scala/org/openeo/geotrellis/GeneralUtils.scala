@@ -2,11 +2,13 @@ package org.openeo.geotrellis
 
 import geotrellis.layer.{Boundable, Bounds, EmptyBounds, KeyBounds, LayoutDefinition, SpatialComponent, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
-import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleCellType, DoubleArrayTile, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, isData, isNoData, shortNODATA, ubyteNODATA, ushortNODATA}
-import geotrellis.raster.GridBounds
+import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleArrayTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, GridBounds, GridExtent, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, RasterExtent, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, isData, isNoData, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.vector.Extent
 import org.slf4j.LoggerFactory
+import spire.math.Integral
+
 import java.util
+import java.util.Map
 import scala.reflect.{ClassTag, classTag}
 
 object GeneralUtils {
@@ -266,6 +268,13 @@ object GeneralUtils {
     }
   }
 
+  def toExtent(extent: Map[String, Double]) = Extent(
+    extent.get("xmin"),
+    extent.get("ymin"),
+    extent.get("xmax"),
+    extent.get("ymax")
+  )
+
   def extentMerged(extentLeft:Extent, extentRight:Extent, crsLeft: CRS, crsRight: CRS): Extent = {
     if (extentLeft == extentRight && crsLeft == crsRight) extentLeft
     else {
@@ -286,6 +295,43 @@ object GeneralUtils {
       logger.info(s"layoutMerged: layoutLeft=$layoutLeft, layoutRight=$layoutRight, crsLeft=$crsLeft, crsRight=$crsRight, result layout =$result")
       result
     }
+  }
+
+  def gridBoundsFor(re: RasterExtent, subExtent: Extent, clamp: Boolean = true): GridBounds[Int] = {
+    // West and North boundaries are a simple mapToGrid call.
+    val colMin: Int = re.mapXToGrid(subExtent.xmin)
+    val rowMin: Int = re.mapYToGrid(subExtent.ymax)
+
+    // If South East corner is on grid border lines, we want to still only include
+    // what is to the West and\or North of the point. However if the border point
+    // is not directly on a grid division, include the whole row and/or column that
+    // contains the point.
+    val colMax: Long = Integral[Long].fromLong {
+      val colMaxDouble = re.mapXToGridDouble(subExtent.xmax)
+
+      if (math.abs(colMaxDouble - GridExtent.floorWithTolerance(colMaxDouble)) < GridExtent.epsilon)
+        GridExtent.floorWithTolerance(colMaxDouble).toLong - 1L
+      else
+        GridExtent.floorWithTolerance(colMaxDouble).toLong
+    }
+
+    val rowMax: Long = Integral[Long].fromLong {
+      val rowMaxDouble = re.mapYToGridDouble(subExtent.ymin)
+
+      if (math.abs(rowMaxDouble - GridExtent.floorWithTolerance(rowMaxDouble)) < GridExtent.epsilon)
+        GridExtent.floorWithTolerance(rowMaxDouble).toLong - 1L
+      else
+        GridExtent.floorWithTolerance(rowMaxDouble).toLong
+    }
+
+    if (clamp)
+      GridBounds(
+        colMin = colMin.max(0).min(re.cols - 1).intValue(),
+        rowMin = rowMin.max(0).min(re.rows - 1).intValue(),
+        colMax = colMax.max(0).min(re.cols - 1).intValue(),
+        rowMax = rowMax.max(0).min(re.rows - 1).intValue())
+    else
+      GridBounds[Int](colMin, rowMin, colMax.toInt, rowMax.toInt)
   }
 
   /**

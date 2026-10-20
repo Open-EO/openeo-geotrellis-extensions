@@ -23,7 +23,7 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.apache.spark.{Partitioner, SparkContext, TaskContext}
 import org.openeo.geotrellis
-import org.openeo.geotrellis.GeneralUtils.{Stats, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert, statsDouble, statsInt}
+import org.openeo.geotrellis.GeneralUtils.{Stats, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, gridBoundsFor, safeConvert, statsDouble, statsInt, toExtent}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.{Asset, Item, STACItem}
@@ -104,13 +104,6 @@ package object geotiff {
 
 
   type SRDD = RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]]
-
-  private def toExtent(extent: Map[String, Double]) = Extent(
-    extent.get("xmin"),
-    extent.get("ymin"),
-    extent.get("xmax"),
-    extent.get("ymax")
-  )
 
   // ~ SpatialTiledRasterLayer in GeoPySpark but supports compression
   def saveStitched(rdd: SRDD, path: String, compression: Compression, formatOptions: GTiffOptions): Item =
@@ -607,44 +600,6 @@ package object geotiff {
         CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
       }
     }
-  }
-
-
-  private def gridBoundsFor(re: RasterExtent, subExtent: Extent, clamp: Boolean = true): GridBounds[Int] = {
-    // West and North boundaries are a simple mapToGrid call.
-    val colMin: Int = re.mapXToGrid(subExtent.xmin)
-    val rowMin: Int = re.mapYToGrid(subExtent.ymax)
-
-    // If South East corner is on grid border lines, we want to still only include
-    // what is to the West and\or North of the point. However if the border point
-    // is not directly on a grid division, include the whole row and/or column that
-    // contains the point.
-    val colMax: Long = Integral[Long].fromLong {
-      val colMaxDouble = re.mapXToGridDouble(subExtent.xmax)
-
-      if (math.abs(colMaxDouble - GridExtent.floorWithTolerance(colMaxDouble)) < GridExtent.epsilon)
-        GridExtent.floorWithTolerance(colMaxDouble).toLong - 1L
-      else
-        GridExtent.floorWithTolerance(colMaxDouble).toLong
-    }
-
-    val rowMax: Long = Integral[Long].fromLong {
-      val rowMaxDouble = re.mapYToGridDouble(subExtent.ymin)
-
-      if (math.abs(rowMaxDouble - GridExtent.floorWithTolerance(rowMaxDouble)) < GridExtent.epsilon)
-        GridExtent.floorWithTolerance(rowMaxDouble).toLong - 1L
-      else
-        GridExtent.floorWithTolerance(rowMaxDouble).toLong
-    }
-
-    if (clamp)
-      GridBounds(
-        colMin = colMin.max(0).min(re.cols - 1).intValue(),
-        rowMin = rowMin.max(0).min(re.rows - 1).intValue(),
-        colMax = colMax.max(0).min(re.cols - 1).intValue(),
-        rowMax = rowMax.max(0).min(re.rows - 1).intValue())
-    else
-      GridBounds[Int](colMin, rowMin, colMax.toInt, rowMax.toInt)
   }
 
   def preProcess[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], cropBounds: Option[Extent], retainNoDataTiles:Boolean): (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = {
