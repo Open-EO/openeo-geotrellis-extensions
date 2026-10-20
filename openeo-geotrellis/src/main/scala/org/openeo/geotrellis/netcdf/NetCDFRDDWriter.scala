@@ -199,10 +199,17 @@ object NetCDFRDDWriter {
       }
     val bandStatistics = collection.mutable.Map[String,(Double,Double,Double,Double,Int,Int)]() // min, max, sum, sum of the power, valid data count, total data count
     var netcdfFile: NetcdfFileWriter = null
-    val cellType = cachedRDD.map(_._2.cellType).fold(BitCellType)((x,y)=> {
-      // check https://github.com/locationtech/geotrellis/issues/3597 for fixed geotrellis union
-      cellTypeUnion(x,y)
-    })
+    val cellType = {
+      val unionCellType = cachedRDD.map(_._2.cellType).fold(BitCellType)((x,y)=> {
+        // check https://github.com/locationtech/geotrellis/issues/3597 for fixed geotrellis union
+        cellTypeUnion(x,y)
+      })
+
+      safeBitCellType(unionCellType)
+    }
+
+    val (netcdfType: DataType, nodata: Option[Number]) = netCdfDataType(cellType)
+
     for(tuple <- cachedRDD.toLocalIterator){
 
       val timeDimIndex =
@@ -235,7 +242,7 @@ object NetCDFRDDWriter {
 
 
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, actualBandNames, preProcessedRdd.metadata.crs, cellType, dimensionNames, temporalResolution, attributes, bandsMetadata, zLevel, writeTimeDimension = dates.nonEmpty)
+        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, actualBandNames, preProcessedRdd.metadata.crs, netcdfType, nodata, dimensionNames, temporalResolution, attributes, bandsMetadata, zLevel, writeTimeDimension = dates.nonEmpty)
       }
 
 
@@ -255,9 +262,7 @@ object NetCDFRDDWriter {
             val variable = actualBandNames.get(bandIndex)
 
             var tile = multibandTile.band(bandIndex)
-            if (tile.cellType != cellType) {
-              tile = safeConvert(tile, cellType)
-            }
+            tile = safeConvert(tile, cellType)
 
             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
               tile = tile.crop(rasterExtent.cols-gridExtent.colMin,rasterExtent.rows-gridExtent.rowMin,raster.CropOptions(force=true))
@@ -265,12 +270,10 @@ object NetCDFRDDWriter {
             }
             if (addBandStatistics) bandsStatistics(tile, bandStatistics, variable)
             try{
-              writeTile(variable, origin, tile, netcdfFile)
-            }catch {
-              case t: IOException => {
-                logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"),t)
-              }
-              case t: Throwable =>  throw t
+              writeTile(variable, origin, tile, netcdfType, netcdfFile)
+            } catch {
+              case e: IOException =>
+                logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"), e)
             }
           }
         }
@@ -313,11 +316,18 @@ object NetCDFRDDWriter {
       if (rdd.metadata.crs == LatLng) fixBboxLargerThanWorld(cropBounds.getOrElse(extent))
       else cropBounds.getOrElse(extent)
     val item = Item(id = UUID.randomUUID().toString, bbox = croppedBbox, datetime = null,
-      assets = Collections.singletonMap("openEO", Asset(finalPath,metadata = assetsMetadata)))
+      assets = Collections.singletonMap("openEO", Asset(finalPath, cellType = cellType, metadata = assetsMetadata)))
 
     Collections.singletonList(item)
   }
 
+  private def safeBitCellType(cellType: CellType): CellType = cellType match {
+    case BitCellType =>
+      val safeCellType = UByteUserDefinedNoDataCellType(255.toByte)
+      logger.debug(s"converting $cellType to $safeCellType")
+      safeCellType
+    case _ => cellType
+  }
 
   private def cacheAndRepartition[K](rdd: MultibandTileLayerRDD[K]) = {
     val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
@@ -342,7 +352,8 @@ object NetCDFRDDWriter {
     shuffledRDD
   }
 
-  private def writeTile(variable: String, origin: Array[Int], tile: Tile, netcdfFile: NetcdfFileWriter) = {
+  private def writeTile(variable: String, origin: Array[Int], tile: Tile, netcdfType: DataType, netcdfFile: NetcdfFileWriter) = {
+    // assumes tile is already converted to cellType/netcdfType
     val cols = tile.cols
     val rows = tile.rows
 
@@ -351,14 +362,14 @@ object NetCDFRDDWriter {
     val shape = if(origin.length==3) scala.Array[Int](1, rows, cols) else scala.Array[Int]( rows, cols)
     val bandArray =
       geotrellisArrayTile match {
-        case t: BitArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape, t.convert(UByteUserDefinedNoDataCellType(255.byteValue())).asInstanceOf[UByteArrayTile].array)
-        case t: ByteArrayTile => ucar.ma2.Array.factory(DataType.BYTE, shape, t.array)
-        case t: UByteArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape, t.array)
-        case t: ShortArrayTile => ucar.ma2.Array.factory(DataType.SHORT, shape, t.array)
-        case t: UShortArrayTile => ucar.ma2.Array.factory(DataType.USHORT, shape, t.array)
-        case t: IntArrayTile => ucar.ma2.Array.factory(DataType.INT, shape, t.array)
-        case t: FloatArrayTile => ucar.ma2.Array.factory(DataType.FLOAT, shape, t.array)
-        case t: DoubleArrayTile => ucar.ma2.Array.factory(DataType.DOUBLE, shape, t.array)
+        case t: BitArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: ByteArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: UByteArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: ShortArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: UShortArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: IntArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: FloatArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: DoubleArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
       }
 
     netcdfFile.write(variable, origin, bandArray)
@@ -524,10 +535,12 @@ object NetCDFRDDWriter {
         val sorted = tiles.toSeq.sortBy { case (instant, _, _) => instant }
         val dates = sorted.map { case (instant, _, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
         logger.info(s"Writing $name with dates $dates.")
-        val extent = sorted.head._2.extent
+
         val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2), dates=dates, bandNames,addBandsStats = addBandsStatistics)
+        val cellType = safeBitCellType(rdd.metadata.cellType)
+
         val assetPath = try{
-          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
+          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata, cellType)
         }catch {
           case t: IOException => {
             if(TaskContext.get().attemptNumber()<2){
@@ -547,7 +560,7 @@ object NetCDFRDDWriter {
           if (crs == LatLng) fixBboxLargerThanWorld(tiles.head._3)
           else tiles.head._3
         Item(id = UUID.randomUUID().toString, datetime = null , bbox = croppedBbox,
-          assets = Collections.singletonMap("openEO", Asset(path = assetPath,metadata = assetsMetadata)))
+          assets = Collections.singletonMap("openEO", Asset(path = assetPath, cellType = cellType, metadata = assetsMetadata)))
       }.collect()
       .toList.asJava
   }
@@ -630,8 +643,10 @@ object NetCDFRDDWriter {
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
         val assetMetadata = setupAssetMetadata(rdd.metadata, Seq(sample), dates=null, bandNames, addBandsStatistics)
+        val cellType = safeBitCellType(rdd.metadata.cellType)
+
         val assetPath = try {
-          writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
+          writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata, cellType)
         } catch {
           case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
@@ -639,7 +654,7 @@ object NetCDFRDDWriter {
           if (crs == LatLng) fixBboxLargerThanWorld(extent.extent)
           else extent.extent
         Item(id = UUID.randomUUID().toString, datetime = null, bbox = bbox,
-          assets = Collections.singletonMap("openEO", Asset(assetPath, metadata = assetMetadata)))
+          assets = Collections.singletonMap("openEO", Asset(assetPath, cellType = cellType, metadata = assetMetadata)))
       }.collect()
       .toList.asJava
   }
@@ -666,7 +681,8 @@ object NetCDFRDDWriter {
                   bandNames: ArrayList[String],
                   crs:CRS, dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String],
-                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]]): String = {
+                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
+                  cellType: CellType): String = {
     val areas = rasters.map(raster => raster.extent.area)
     logger.info(s"Writing ${rasters.size} rasters to disk. Areas: ${areas.mkString(",")}")
     val maxExtent:Extent = rasters.map(_._2).reduce((a, b) => a.union(b).extent)
@@ -684,6 +700,7 @@ object NetCDFRDDWriter {
       aRaster = aRasterOption.get
     }
     val rasterExtent: RasterExtent = aRaster.rasterExtent
+    val (netcdfType: DataType, nodata: Option[Number]) = netCdfDataType(cellType)
 
     val intermediatePath =
     if (path.startsWith("s3:/")) {
@@ -698,12 +715,12 @@ object NetCDFRDDWriter {
         Duration.between(fixedTimeOffset, time).getSeconds % secondsPerDay != 0
     }) TemporalResolution.days else TemporalResolution.seconds
 
-    val netcdfFile: NetcdfFileWriter = setupNetCDF(intermediatePath, rasterExtent, dates, bandNames, crs, aRaster.cellType, dimensionNames, temporalResolution, attributes, bandsMetadata, writeTimeDimension = dates != null)
+    val netcdfFile: NetcdfFileWriter = setupNetCDF(intermediatePath, rasterExtent, dates, bandNames, crs, netcdfType, nodata, dimensionNames, temporalResolution, attributes, bandsMetadata, writeTimeDimension = dates != null)
     try{
 
       for (bandIndex <- bandNames.asScala.indices) {
         for (i <- equalRasters.indices) {
-          writeTile(bandNames.get(bandIndex),  if(dates!=null)  scala.Array(i , 0, 0) else scala.Array( 0, 0), equalRasters(i).tile.band(bandIndex), netcdfFile)
+          writeTile(bandNames.get(bandIndex),  if(dates!=null)  scala.Array(i , 0, 0) else scala.Array( 0, 0), equalRasters(i).tile.band(bandIndex).convert(cellType), netcdfType, netcdfFile)
         }
         netcdfFile.flush()
       }
@@ -716,7 +733,6 @@ object NetCDFRDDWriter {
     }else{
       path
     }
-
   }
 
   private def uploadToS3(objectStoragePath: String, localPath: String):String = {
@@ -733,14 +749,14 @@ object NetCDFRDDWriter {
   }
 
   private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
-                                  bandNames: util.List[String], crs: CRS, cellType: CellType,
+                                  bandNames: util.List[String], crs: CRS, netcdfType: DataType, nodata: Option[Number],
                                   dimensionNames: java.util.Map[String, String],
                                   temporalResolution: TemporalResolution.Value,
                                   attributes: java.util.Map[String, String],
                                   bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                   zLevel: Int = 6, writeTimeDimension: Boolean = true) = {
 
-    logger.info(s"Writing netCDF to $path with bands $bandNames, $cellType, $crs, $rasterExtent, $dimensionNames, attributes $attributes, bands metadata $bandsMetadata, zLevel $zLevel")
+    logger.info(s"Writing netCDF to $path with bands $bandNames, $netcdfType, $nodata, $crs, $rasterExtent, $dimensionNames, attributes $attributes, bands metadata $bandsMetadata, zLevel $zLevel")
     val theChunking = new OpenEOChunking(zLevel)
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, theChunking)
 
@@ -806,10 +822,6 @@ object NetCDFRDDWriter {
     }
     bandDimension.add(yDimension)
     bandDimension.add(xDimension)
-
-    val (netcdfType:DataType,nodata:Option[Number]) = getNoDataValue(cellType)
-
-
 
     for (bandName <- bandNames.asScala) {
       val varName = bandName.replace("/","_")
@@ -947,32 +959,31 @@ object NetCDFRDDWriter {
     metadata
   }
 
-  private def getNoDataValue(cellType: CellType): (DataType,Option[Number]) = {
+  private def netCdfDataType(cellType: CellType): (DataType, Option[Number]) =
     cellType match {
-      case BitCellType => (DataType.UBYTE,None)
-      case ByteCellType => (DataType.BYTE,None)
-      case UByteCellType => (DataType.UBYTE,None)
-      case ShortCellType => (DataType.SHORT,None)
-      case UShortCellType => (DataType.USHORT,None)
-      case IntCellType => (DataType.INT,None)
-      case FloatCellType => (DataType.FLOAT,None)
-      case DoubleCellType => (DataType.DOUBLE,None)
-      case ByteConstantNoDataCellType => (DataType.BYTE,Some(byteNODATA))
-      case UByteConstantNoDataCellType => (DataType.UBYTE,Some(ubyteNODATA))
-      case ShortConstantNoDataCellType => (DataType.SHORT,Some(shortNODATA))
-      case UShortConstantNoDataCellType => (DataType.USHORT,Some(ushortNODATA))
-      case IntConstantNoDataCellType => (DataType.INT,Some(NODATA))
-      case FloatConstantNoDataCellType => (DataType.FLOAT,Some(floatNODATA))
-      case DoubleConstantNoDataCellType => (DataType.DOUBLE,Some(doubleNODATA))
-      case ct: ByteUserDefinedNoDataCellType => (DataType.BYTE,Some(ct.noDataValue))
-      case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE,Some(ct.widenedNoData.asInt))
-      case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT,Some(ct.noDataValue))
-      case ct: UShortUserDefinedNoDataCellType => (DataType.USHORT,Some(ct.widenedNoData.asInt.toShort))
-      case ct: IntUserDefinedNoDataCellType => (DataType.INT,Some(ct.widenedNoData.asInt))
-      case ct: FloatUserDefinedNoDataCellType => (DataType.FLOAT,Some(ct.noDataValue))
-      case ct: DoubleUserDefinedNoDataCellType => (DataType.DOUBLE,Some(ct.noDataValue))
+      case BitCellType => (DataType.UBYTE, None)
+      case ByteCellType => (DataType.BYTE, None)
+      case UByteCellType => (DataType.UBYTE, None)
+      case ShortCellType => (DataType.SHORT, None)
+      case UShortCellType => (DataType.USHORT, None)
+      case IntCellType => (DataType.INT, None)
+      case FloatCellType => (DataType.FLOAT, None)
+      case DoubleCellType => (DataType.DOUBLE, None)
+      case ByteConstantNoDataCellType => (DataType.BYTE, Some(byteNODATA))
+      case UByteConstantNoDataCellType => (DataType.UBYTE, Some(ubyteNODATA))
+      case ShortConstantNoDataCellType => (DataType.SHORT, Some(shortNODATA))
+      case UShortConstantNoDataCellType => (DataType.USHORT, Some(ushortNODATA))
+      case IntConstantNoDataCellType => (DataType.INT, Some(NODATA))
+      case FloatConstantNoDataCellType => (DataType.FLOAT, Some(floatNODATA))
+      case DoubleConstantNoDataCellType => (DataType.DOUBLE, Some(doubleNODATA))
+      case ct: ByteUserDefinedNoDataCellType => (DataType.BYTE, Some(ct.noDataValue))
+      case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE, Some(ct.widenedNoData.asInt))
+      case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT, Some(ct.noDataValue))
+      case ct: UShortUserDefinedNoDataCellType => (DataType.USHORT, Some(ct.widenedNoData.asInt.toShort))
+      case ct: IntUserDefinedNoDataCellType => (DataType.INT, Some(ct.widenedNoData.asInt))
+      case ct: FloatUserDefinedNoDataCellType => (DataType.FLOAT, Some(ct.noDataValue))
+      case ct: DoubleUserDefinedNoDataCellType => (DataType.DOUBLE, Some(ct.noDataValue))
     }
-  }
 
   @throws[IOException]
   @throws[InvalidRangeException]

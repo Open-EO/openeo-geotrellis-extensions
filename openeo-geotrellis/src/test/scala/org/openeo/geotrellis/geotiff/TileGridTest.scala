@@ -309,6 +309,4 @@ class TileGridTest {
 
     Assertions.assertEquals(expectedTiles, actualTiles.toSet)
   }
-
-
 }

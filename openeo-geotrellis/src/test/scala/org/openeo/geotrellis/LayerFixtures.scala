@@ -1672,8 +1672,8 @@ object LayerFixtures {
 
   def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent , crs:CRS = LatLng) = {
 
-    val intImage = createTextImage(layoutCols * 256, layoutRows * 256)
-    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+    val byteImage = createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(byteImage, layoutCols * 256, layoutRows * 256)
 
     val secondBand = imageTile.map { x => if (x >= 5) 10 else 100 }
     val thirdBand = imageTile.map { x => if (x >= 5) 50 else 200 }
