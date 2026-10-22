@@ -186,7 +186,15 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     intern.computeHistogramTimeSeries(datacube, polygons.polygons, polygons.crs, startDate, endDate, histogramsCollector, unusedCancellationContext, sc)
   }
 
+  //noinspection ScalaUnusedSymbol
+  def reduce_spatial_spatiotemporal_cube(cube: MultibandTileLayerRDD[SpaceTimeKey],
+                                         scriptBuilder: SparkAggregateScriptBuilder, outputDir: String): Unit =
+    reduce_spatial.reduceSpatiotemporalCube(cube, scriptBuilder, outputDir)
 
+  //noinspection ScalaUnusedSymbol
+  def reduce_spatial_spatial_cube(cube: MultibandTileLayerRDD[SpatialKey], scriptBuilder: SparkAggregateScriptBuilder,
+                                  outputDir: String): Unit =
+    reduce_spatial.reduceSpatialCube(cube, scriptBuilder, outputDir)
 
   private def sc: SparkContext = SparkContext.getOrCreate()
 

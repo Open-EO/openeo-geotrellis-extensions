@@ -56,7 +56,7 @@ package object geotrellis {
 
   private val s3ClientCache = new ConcurrentHashMap[(Region, URI), S3Client]
 
-  private[geotrellis] def s3Client(region: Region = null, endpoint: URI = null): S3Client =
+  private[openeo] def s3Client(region: Region = null, endpoint: URI = null): S3Client =
     s3ClientCache.computeIfAbsent((region, endpoint), s3Client.asJava)
 
   private val s3Client: ((Region, URI)) => S3Client = { case (region, endpoint) =>

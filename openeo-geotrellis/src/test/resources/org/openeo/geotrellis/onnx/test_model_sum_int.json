@@ -29,8 +29,8 @@
         "name": "input",
         "description": "Input image tensor with named dimensions",
         "data_type": "int32",
-        "shape": [1, 3, 256, 256],
-        "dim_order": ["batch", "bands", "height", "width"]
+        "shape": [3, 256, 256],
+        "dim_order": ["bands", "height", "width"]
       }
     ],
     "mlm:output": [
@@ -38,8 +38,8 @@
         "name": "output",
         "description": "Sum of bands",
         "data_type": "int32",
-        "shape": [1, 256, 256],
-        "dim_order": ["bands", "height", "width"]
+        "shape": [256, 256],
+        "dim_order": ["height", "width"]
       }
     ]
   },

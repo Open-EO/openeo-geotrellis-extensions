@@ -46,7 +46,7 @@
   "links": [],
   "assets": {
     "model": {
-      "href": "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/test_model_sum_double.onnx",
+      "href": "file://../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/test_model_sum_double.onnx",
       "type": "application/x-onnx",
       "title": "ONNX test Model ",
       "roles": ["ml-model:checkpoint", "mlm:model"]

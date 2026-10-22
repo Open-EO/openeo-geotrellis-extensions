@@ -1,7 +1,6 @@
 package org.openeo.geotrellis
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import org.apache.commons.io.IOUtils
 import geotrellis.layer.{SpaceTimeKey, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.ResampleMethods.NearestNeighbor
@@ -18,6 +17,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector._
+import org.apache.commons.io.{FileUtils, IOUtils}
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
@@ -36,9 +36,11 @@ import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAg
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTemporal}
 import org.openeo.geotrellis.layers.FileLayerProviderTest
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrellis.testutil.stac._
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
+import java.io.File
 import java.nio.file.{Files, Path, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -191,6 +193,66 @@ object Constant1Partitioner extends PartitionerIndex[SpaceTimeKey] {
 }
 
 class OpenEOProcessesSpec extends RasterMatchers {
+
+  @Test
+  def sparseSpaceTimePartitionerEqualityIncludesIndicesForOldAndNewPartitionTargets(): Unit = {
+    val candidateKeys = for {
+      day <- 0 until 5
+      col <- 0 until 32
+      row <- 0 until 32
+    } yield SpaceTimeKey(col, row, day.toLong * 24 * 60 * 60 * 1000)
+
+    val bounds = KeyBounds(SpaceTimeKey(0, 0, 0L), SpaceTimeKey(31, 31, 4L * 24 * 60 * 60 * 1000))
+    val spark = OpenEOProcessesSpec.sc
+    val reductionsByLimit = Seq(64, 500).map { maxPartitionSizeMb =>
+      maxPartitionSizeMb -> DatacubeSupport.optimalReductionForSparseKeys(
+        candidateKeys, maxPartitionSizeMb, 128 * 128, 32, 2
+      )._1
+    }.toMap
+    assertNotEquals(reductionsByLimit(64), reductionsByLimit(500),
+      "The 64 MB and former 500 MB limits should exercise different sparse partition layouts")
+
+    Seq(64, 500).foreach { maxPartitionSizeMb =>
+      val reduction = reductionsByLimit(maxPartitionSizeMb)
+      val indexedKeys = candidateKeys.map(key => (SparseSpaceTimePartitioner.toIndex(key, reduction), key))
+      val distinctIndices = indexedKeys.map(_._1).distinct.sorted
+      assertTrue(distinctIndices.length >= 3)
+
+      val sourceIndex = new SparseSpaceTimePartitioner(distinctIndices.take(2).toArray, reduction)
+      val targetIndex = new SparseSpaceTimePartitioner(distinctIndices.slice(1, 3).toArray, reduction)
+      assertTrue(!sourceIndex.equals(targetIndex), s"Different sparse indices must not compare equal at $maxPartitionSizeMb MB")
+      assertEquals(sourceIndex.hashCode(), new SparseSpaceTimePartitioner(distinctIndices.take(2).toArray, reduction).hashCode())
+
+      val sharedIndex = distinctIndices(1)
+      val sharedKey = indexedKeys.find(_._1 == sharedIndex).get._2
+      val sourcePartitioner = SpacePartitioner[SpaceTimeKey](bounds)(implicitly, implicitly, sourceIndex)
+      val targetPartitioner = SpacePartitioner[SpaceTimeKey](bounds)(implicitly, implicitly, targetIndex)
+      assertTrue(sourcePartitioner.getPartition(sharedKey) != targetPartitioner.getPartition(sharedKey))
+
+      val extent = Extent(0, 0, 32, 32)
+      val metadata = TileLayerMetadata(
+        DoubleConstantNoDataCellType,
+        LayoutDefinition(extent, TileLayout(32, 32, 1, 1)),
+        extent,
+        LatLng,
+        bounds
+      )
+      val keysInSharedRegion = indexedKeys.filter(_._1 == sharedIndex).map(_._2).distinct
+      val input = ContextRDD(spark.parallelize(keysInSharedRegion.map(_ -> 1), 1).partitionBy(sourcePartitioner), metadata)
+      val transformed = ContextRDD(input.mapPartitions(
+        _.map { case (key, value) => (key, value) },
+        preservesPartitioning = true
+      ), metadata)
+      val repartitioned = targetPartitioner(transformed)
+      val placements = repartitioned.mapPartitionsWithIndex { (partition, records) =>
+        records.map { case (key, _) => (partition, targetPartitioner.getPartition(key)) }
+      }.collect()
+
+      assertEquals(keysInSharedRegion.size, placements.length, s"No keys may be lost at $maxPartitionSizeMb MB")
+      assertTrue(placements.forall { case (actual, expected) => actual == expected },
+        s"Shared keys must be routed by the target sparse index at $maxPartitionSizeMb MB")
+    }
+  }
 
   def time[R](block: => R): R = {
     val t0 = System.nanoTime()
@@ -590,7 +652,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // Compare to reference tile.
     saveRDD(resultCube.toSpatial(times.head),2, "groupByGeometry_2017-01-15_actual.tif", 6, Some(datacube.metadata.extent))
     val actualRaster = GeoTiffRasterSource("groupByGeometry_2017-01-15_actual.tif").read().get
-    val referenceRaster = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testGroupAndMaskByGeometry.tif").read().get
+    val referenceRaster = GeoTiffRasterSource("../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/testGroupAndMaskByGeometry.tif").read().get
     assertRastersEqual(referenceRaster, actualRaster)
 
     // Visualize RDD.
@@ -695,7 +757,14 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val outDir = "/tmp/aggregateTemporalTest/"
     Files.createDirectories(Paths.get(outDir))
     val dates: List[ZonedDateTime] = getDatesForCube
-    var cube: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType,dates = Some(dates))
+
+    // Use a distinct, fully predictable pattern per observation date (instead of random
+    // noise) so that both the median aggregation and the spatial statistics have an
+    // exactly computable expected outcome.
+    val patterns = List(XGradient, YGradient, Checkerboard, Diagonal, XGradient)
+    val originalCube: MultibandTileLayerRDD[SpaceTimeKey] =
+      LayerFixtures.patternedTemporalLayer(pixelType, dates = dates, patterns = patterns)
+    var cube: MultibandTileLayerRDD[SpaceTimeKey] = originalCube
     if(index != null) {
       cube = cube.withContext(_.partitionBy(new SpacePartitioner[SpaceTimeKey](cube.metadata.bounds)(implicitly, implicitly, index)))
     }
@@ -731,12 +800,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
     }
     val listener = new GetInfoSparkListener()
     SparkContext.getOrCreate().addSparkListener(listener)
-    val resultTiles: Array[MultibandTile] = aggregatedCube.values.collect()
+    val resultTuples: Array[(SpaceTimeKey, MultibandTile)] = aggregatedCube.collect()
     SparkContext.getOrCreate().removeSparkListener(listener)
     println(f"${listener.getTasksCompleted} vs ${expectedTasks}")
     assertTrue(listener.getTasksCompleted <= expectedTasks)
 
-
+    val resultTiles: Array[MultibandTile] = resultTuples.map(_._2)
     val validTile = resultTiles.find(_ != null).get
     val emptyTile = ArrayMultibandTile.empty(validTile.cellType, validTile.bandCount, validTile.cols, validTile.rows)
     val filledResult = resultTiles.map { t => if (t != null) t.band(0) else emptyTile.band(0) }
@@ -753,22 +822,111 @@ class OpenEOProcessesSpec extends RasterMatchers {
     GeoTiff(Raster(MultibandTile(filledResult), cube.metadata.extent), cube.metadata.crs)
       .write(outDir + pixelType + ".tiff", optimizedOrder = true)
 
+    // --- Verify the median aggregation is exactly correct, pixel by pixel. ---
+    // Every input pixel's value is a known deterministic function of (col, row, pattern),
+    // so we can compute the expected median analytically and compare it to the actual
+    // aggregation result instead of merely checking the output cell type.
+    //
+    // The two intervals split the 5 dates into two groups relative to middleDate:
+    //  - label 1 ([middleDate-30y, middleDate)): dates strictly before middleDate
+    //  - label 2 ([middleDate, middleDate+1000y)): dates on/after middleDate
+    val cols = 256
+    val rows = 256
+
+    val datesWithPatterns = dates.zip(patterns)
+    val patternsByLabelMillis: Map[Long, List[org.openeo.geotrellis.testutil.stac.RasterPattern]] = Map(
+      ZonedDateTime.parse(labels(0)).toInstant.toEpochMilli ->
+        datesWithPatterns.collect { case (d, p) if d.isBefore(middleDate) => p },
+      ZonedDateTime.parse(labels(1)).toInstant.toEpochMilli ->
+        datesWithPatterns.collect { case (d, p) if !d.isBefore(middleDate) => p },
+    )
+
+    // Raw (unscaled, 0-10000) pattern value, rescaled/quantized exactly the same way
+    // LayerFixtures.patternedTemporalLayer did when building the input cube.
+    def pixelValue(col: Int, row: Int, pattern: org.openeo.geotrellis.testutil.stac.RasterPattern): Double = {
+      val raw = StacTestGenerator.patternValue(col, row, cols, rows, pattern)
+      pixelType match {
+        case PixelType.Bit => if (raw >= 5000.0) 1.0 else 0.0
+        case PixelType.Double => 20.0 + raw / 100.0
+        case PixelType.Float => (20.0 + raw / 100.0).toFloat.toDouble
+        case PixelType.Int | PixelType.Short | PixelType.Byte => math.round(20.0 + raw / 100.0).toDouble
+        case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
+      }
+    }
+
+    def expectedMedian(labelMillis: Long, col: Int, row: Int): Double = {
+      val values = patternsByLabelMillis(labelMillis).map(pixelValue(col, row, _)).sorted
+      val n = values.size
+      if (n % 2 == 1) values(n / 2)
+      else {
+        val avg = (values(n / 2 - 1) + values(n / 2)) / 2.0
+        pixelType match {
+          // Integral cell types truncate the averaged pair of middle values.
+          case PixelType.Double | PixelType.Float => avg
+          case _ => avg.toInt.toDouble
+        }
+      }
+    }
+
+    val delta = pixelType match {
+      case PixelType.Double | PixelType.Float => 0.01
+      case _ => 1e-9 // integral types: median is an exact integer, no rounding error
+    }
+
+    for {
+      (key, tile) <- resultTuples
+      if tile != null
+    } {
+      val band = tile.band(0)
+      val colOffset = key.spatialKey.col * band.cols
+      val rowOffset = key.spatialKey.row * band.rows
+      for (localRow <- 0 until band.rows; localCol <- 0 until band.cols) {
+        val globalCol = colOffset + localCol
+        val globalRow = rowOffset + localRow
+        if (globalCol < cols && globalRow < rows) {
+          assertEquals(expectedMedian(key.instant, globalCol, globalRow), band.getDouble(localCol, localRow), delta,
+            s"median mismatch at ($globalCol, $globalRow) for key $key")
+        }
+      }
+    }
+
     val builder = new SparkAggregateScriptBuilder
     val emptyMap = new util.HashMap[String, Object]()
     builder.expressionEnd("min", emptyMap)
     builder.expressionEnd("max", emptyMap)
     builder.expressionEnd("mean", emptyMap)
 
-    val geometries = ProjectedPolygons.fromExtent(cube.metadata.extent, cube.metadata.crs.toString())
+    val geometries = ProjectedPolygons.fromExtent(originalCube.metadata.extent, originalCube.metadata.crs.toString())
     val splitPolygons = splitOverlappingPolygons(geometries.polygons)
+    // Use the original (unpartitioned) cube for this spatial-statistics check: it is
+    // independent of which temporal partitioner is under test, and some partitioners
+    // (e.g. a sparse partitioner scoped to a small, explicit set of spatial keys) are
+    // by design only meant to expose a subset of the tiles, which would otherwise make
+    // the expected min/max/mean computation below dependent on partitioner internals.
     val outDirSpacial = outDir + pixelType
-    new AggregatePolygonProcess().aggregateSpatialGeneric(scriptBuilder = builder, datacube = cube, polygonsWithIndexMapping = splitPolygons,
-      geometries.crs, bandCount = new OpenEOProcesses().RDDBandCount(cube), outDirSpacial)
+    if (Files.exists(Paths.get(outDirSpacial))) FileUtils.deleteDirectory(new File(outDirSpacial))
+    new AggregatePolygonProcess().aggregateSpatialGeneric(scriptBuilder = builder, datacube = originalCube, polygonsWithIndexMapping = splitPolygons,
+      geometries.crs, bandCount = new OpenEOProcesses().RDDBandCount(originalCube), outDirSpacial)
+
+    // --- Verify the spatial min/max/mean per date. ---
+    // Computed directly from the materialized cube tiles rather than hardcoded constants,
+    // so the assertion reflects exactly what the deterministic patterns produce.
+    val samplesByDateInstant: Map[Long, Seq[Double]] = originalCube.collect().flatMap { case (key, tile) =>
+      val band = tile.band(0)
+      for {
+        row <- 0 until band.rows
+        col <- 0 until band.cols
+        v = band.getDouble(col, row)
+        if !isNoData(v)
+      } yield key.instant -> v
+    }.groupBy(_._1).view.mapValues(_.map(_._2).toSeq).toMap
 
     val groupedStats = parseCSV(outDirSpacial)
-    for ((_, stats) <- groupedStats) pixelType match {
-      case PixelType.Bit => assertEqualTimeseriesStats(Seq(Seq(0, 1, 0.5)), stats, 0.01)
-      case _ => assertEqualTimeseriesStats(Seq(Seq(20, 120, 70.0)), stats, 0.5)
+    for ((dateStr, stats) <- groupedStats) {
+      val instant = ZonedDateTime.parse(dateStr).toInstant.toEpochMilli
+      val samples = samplesByDateInstant(instant)
+      val expectedStats = Seq(samples.min, samples.max, samples.sum / samples.size)
+      assertEqualTimeseriesStats(Seq(expectedStats), stats, 0.01)
     }
   }
 
@@ -802,6 +960,33 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val max = originalSeries.map(_._2).max
     firstSeries.zip(originalSeries).foreach(t=> if(t._2._2==max) assertTrue(t._1._2==1 ) else assertTrue(t._1._2==0 ))
 
+  }
+
+  @Test
+  def transformTimeDimensionUsesMetadataBounds(): Unit = {
+    val timestamp = ZonedDateTime.parse("2019-01-21T00:00:00Z")
+    val layer = LayerFixtures.randomNoiseLayer(
+      pixelType = PixelType.Short,
+      dates = Some(List(timestamp)),
+      cols = 64,
+      rows = 64
+    )
+    val partitioned = new ContextRDD(layer.partitionBy(SpacePartitioner(layer.metadata.bounds.get)), layer.metadata)
+    val lazyFailure = new ContextRDD(
+      partitioned.mapPartitions[(SpaceTimeKey, MultibandTile)](
+        _ => throw new IllegalStateException("RDD should stay lazy"),
+        preservesPartitioning = true
+      ),
+      partitioned.metadata
+    )
+
+    val transformed = new OpenEOProcesses().transformTimeDimension[SpaceTimeKey](
+      lazyFailure,
+      timeseries => timeseries.iterator.map { case (key, tile) => key -> tile }.toMap,
+      reduce = false
+    )
+
+    assertNotNull(transformed)
   }
 
   @Test
@@ -1084,9 +1269,10 @@ class OpenEOProcessesSpec extends RasterMatchers {
     def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
       val model =
         if (path.startsWith("http")) path
+        else if (path.startsWith("../")) path
         else getClass.getResource(path).getPath
       val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tile.cols/layoutCols, tile.rows/layoutRows))
-      val resultCube = new OpenEOProcesses().predictONNXModel(datacube,model)
+      val resultCube = onnx.predictONNXModel(datacube,model)
       assertEquals(expectedType, resultCube.metadata.cellType)
       val theResultTile = resultCube.stitch().tile
       assertEquals(expectedNBands,theResultTile.bandCount)
@@ -1151,7 +1337,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       Seq(resultArray(3),resultArray(1)),ShortConstantNoDataCellType, 2
     )
     // test download model
-    runONNX("https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx",
+    runONNX("../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/test_model.onnx",
       new ArrayMultibandTile(Array(tileFloat(4))),
       Seq(resultArray(0)), FloatConstantNoDataCellType
     )
@@ -1185,8 +1371,9 @@ class OpenEOProcessesSpec extends RasterMatchers {
     def runONNX(path: String, datacube:  MultibandTileLayerRDD[SpaceTimeKey], expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
       val model =
         if (path.startsWith("http")) path
-       else getClass.getResource(path).getPath
-      val resultCube = new OpenEOProcesses().predictONNXModel(datacube,model)
+        else if (path.startsWith("../testdata/")) new File(path).getAbsolutePath
+        else getClass.getResource(path).getPath
+      val resultCube = onnx.predictONNXModel(datacube,model)
       assertEquals(expectedType, resultCube.metadata.cellType)
 
       val results = resultCube.toSpatial(date)
@@ -1254,7 +1441,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       Seq(resultArray(3),resultArray(1)),ShortConstantNoDataCellType, 2
     )
     // test download model
-    runONNX("https://artifactory.vgt.vito.be:443/auxdata-public/openeo/test_model.onnx",
+    runONNX("../testdata/org/openeo/geotrellis/OpenEOProcessesSpec/test_model.onnx",
       datacubeOneBand(tileFloat(4), tileSize),
       Seq(resultArray(0)), FloatConstantNoDataCellType
     )
@@ -1269,30 +1456,37 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   @Test
   def testPredictONNXSpatialSTAC(): Unit = {
-    val layoutCols = 3
-    val layoutRows = 2
+    val layoutCols = 6
+    val layoutRows = 3
     val tileSize = 256
 
     def runONNX(path: String, tile: ArrayMultibandTile, expectedBands: Seq[Array[Int]], expectedType: CellType, expectedNBands:Int=1): Unit = {
-      val modelPath = IOUtils.toString(getClass.getResource(path), "UTF-8")
-      val model = new ObjectMapper().readValue(modelPath, classOf[util.Map[String, Any]])
-      val modelString = new ObjectMapper().writeValueAsString(model)
+      val modelPath = getClass.getResource(path)
+      val modelAsString = IOUtils.toString(modelPath, "UTF-8")
+      val modelAsMap = new ObjectMapper().readValue(modelAsString, classOf[util.Map[String, Any]])
+      val modelAsJson = new ObjectMapper().writeValueAsString(modelAsMap)
 
       val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, tile, new TileLayout(layoutCols, layoutRows, tile.cols/layoutCols, tile.rows/layoutRows))
-      val resultCube = new OpenEOProcesses().predictONNXSTAC(datacube,modelString)
+      val resultCube = onnx.predictONNXSTAC(datacube,modelAsJson)
       assertEquals(expectedType, resultCube.metadata.cellType)
       val theResultTile = resultCube.stitch().tile
-      resultCube.collect()
       assertEquals(expectedNBands,theResultTile.bandCount)
       (0 until expectedNBands).foreach {n =>
         assertArrayEquals(expectedBands(n), theResultTile.band(n).toArray())
+      }
+      val resultCubeFile = onnx.predictONNXSTACFile(datacube, modelPath.toString)
+      assertEquals(expectedType, resultCubeFile.metadata.cellType)
+      val theResultTileFile = resultCubeFile.stitch().tile
+      assertEquals(expectedNBands,theResultTileFile.bandCount)
+      (0 until expectedNBands).foreach {n =>
+        assertArrayEquals(expectedBands(n), theResultTileFile.band(n).toArray())
       }
     }
     val tileFloat = (i:Float) => FloatArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     val tileDouble = (i:Double) =>  DoubleArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     val tileInt = (i:Int) => IntArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
     val tileShort = (i:Short) => ShortArrayTile.fill(i,layoutCols * tileSize, layoutRows * tileSize)
-    val resultArray = (i:Int) =>  Array.fill(layoutCols * tileSize * layoutRows * tileSize)(i)
+    def resultArray(i:Int, ts:Int = 256): Array[Int] = {Array.fill(layoutCols * ts * layoutRows * ts)(i)}
 
 
 
@@ -1352,10 +1546,14 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // test where the ONNX model is downloaded and sums the values of the bands
     val tileSizeSmall = 4
     val tileDoubleSmall = (i:Float) => DoubleArrayTile.fill(i,layoutCols * tileSizeSmall, layoutRows * tileSizeSmall)
-    val resultArraySmall = (i:Int) =>  Array.fill(layoutCols * tileSizeSmall * layoutRows * tileSizeSmall)(i)
     runONNX("/org/openeo/geotrellis/onnx/testModelSumStac.json",
       new ArrayMultibandTile(Array(tileDoubleSmall(1),tileDoubleSmall(1),tileDoubleSmall(1))),
-      Seq(resultArraySmall(3)), DoubleConstantNoDataCellType
+      Seq(resultArray(3, tileSizeSmall)), DoubleConstantNoDataCellType
+    )
+
+    runONNX("/org/openeo/geotrellis/onnx/roadMapSegmentationSTAC.json",
+      new ArrayMultibandTile(Array(tileFloat(1),tileFloat(1),tileFloat(1))),
+      Seq(resultArray(0, 4),resultArray(-11, 4),resultArray(3, 4),resultArray(1, 4),resultArray(9, 4),resultArray(-5, 4),resultArray(1, 4),resultArray(2, 4),resultArray(-2, 4),resultArray(-7, 4)), FloatConstantNoDataCellType, 10
     )
 
   }

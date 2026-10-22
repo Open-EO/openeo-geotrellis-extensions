@@ -92,9 +92,6 @@
               "bandNames": [
                 "WMS"
               ],
-              "bandNames": [
-                "WMS"
-              ],
               "category": "QUICKLOOK"
             }
           ],
@@ -115,9 +112,6 @@
               "bandNames": [
                 "AOT_60M"
               ],
-              "bandNames": [
-                "AOT_60M"
-              ],
               "category": "QUALITY"
             },
             {
@@ -125,9 +119,6 @@
               "type": "image/tiff",
               "length": 698406,
               "title": "RAA_60M",
-              "bandNames": [
-                "RAA_60M"
-              ],
               "bandNames": [
                 "RAA_60M"
               ],
@@ -141,9 +132,6 @@
               "bandNames": [
                 "SCENECLASSIFICATION_20M"
               ],
-              "bandNames": [
-                "SCENECLASSIFICATION_20M"
-              ],
               "category": "QUALITY"
             },
             {
@@ -151,9 +139,6 @@
               "type": "image/tiff",
               "length": 103967,
               "title": "SZA_60M",
-              "bandNames": [
-                "SZA_60M"
-              ],
               "bandNames": [
                 "SZA_60M"
               ],
@@ -167,9 +152,6 @@
               "bandNames": [
                 "VZA_60M"
               ],
-              "bandNames": [
-                "VZA_60M"
-              ],
               "category": "QUALITY"
             },
             {
@@ -177,9 +159,6 @@
               "type": "image/tiff",
               "length": 1706648,
               "title": "WVP_60M",
-              "bandNames": [
-                "WVP_60M"
-              ],
               "bandNames": [
                 "WVP_60M"
               ],
@@ -194,9 +173,6 @@
               "title": "TOC-B01_60M",
               "bandNames": [
                 "TOC-B01_60M"
-              ],
-              "bandNames": [
-                "TOC-B01_60M"
               ]
             },
             {
@@ -204,9 +180,6 @@
               "type": "image/tiff",
               "length": 149337525,
               "title": "TOC-B02_10M",
-              "bandNames": [
-                "TOC-B02_10M"
-              ],
               "bandNames": [
                 "TOC-B02_10M"
               ]
@@ -218,9 +191,6 @@
               "title": "TOC-B03_10M",
               "bandNames": [
                 "TOC-B03_10M"
-              ],
-              "bandNames": [
-                "TOC-B03_10M"
               ]
             },
             {
@@ -228,9 +198,6 @@
               "type": "image/tiff",
               "length": 150162138,
               "title": "TOC-B04_10M",
-              "bandNames": [
-                "TOC-B04_10M"
-              ],
               "bandNames": [
                 "TOC-B04_10M"
               ]
@@ -242,9 +209,6 @@
               "title": "TOC-B05_20M",
               "bandNames": [
                 "TOC-B05_20M"
-              ],
-              "bandNames": [
-                "TOC-B05_20M"
               ]
             },
             {
@@ -252,9 +216,6 @@
               "type": "image/tiff",
               "length": 42715712,
               "title": "TOC-B06_20M",
-              "bandNames": [
-                "TOC-B06_20M"
-              ],
               "bandNames": [
                 "TOC-B06_20M"
               ]
@@ -266,9 +227,6 @@
               "title": "TOC-B07_20M",
               "bandNames": [
                 "TOC-B07_20M"
-              ],
-              "bandNames": [
-                "TOC-B07_20M"
               ]
             },
             {
@@ -276,9 +234,6 @@
               "type": "image/tiff",
               "length": 150215420,
               "title": "TOC-B08_10M",
-              "bandNames": [
-                "TOC-B08_10M"
-              ],
               "bandNames": [
                 "TOC-B08_10M"
               ]

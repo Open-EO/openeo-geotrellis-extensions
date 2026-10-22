@@ -1,6 +1,5 @@
 package org.openeo.geotrellis
 
-import ai.onnxruntime.{OrtEnvironment, OrtSession, TensorInfo}
 import geotrellis.layer.SpatialKey._
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
@@ -22,23 +21,20 @@ import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
-import org.apache.commons.io.FileUtils
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
-import org.apache.spark.{Partitioner, SparkContext}
-import org.openeo.geotrellis.GeneralUtils.safeConvert
+import org.apache.spark.{Partitioner, SparkContext, SparkEnv, TaskContext}
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, extentMerged, safeConvert}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrellis.onnx.StacModelParser
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, LegacySCLConvolutionFilter, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SCLMaskFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
 
 import java.io.File
-import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.format.DateTimeFormatter
@@ -56,6 +52,28 @@ object OpenEOProcesses{
   private val DEFAULT_MAX_PARTITION_SIZE_IN_MB = 500.0
   private val DEFAULT_BAND_COUNT = 6
   private val DEFAULT_DISTINCT_TEMPORAL_KEY_COUNT = 10
+  /** Exit code used by [[OpenEOProcesses#failOnce]] to kill an executor. */
+  val FailOnceExitCode = 42
+
+  /** Thrown by [[OpenEOProcesses#failOnce]] when the task runs in the driver JVM (local mode). */
+  class FailOnceException(message: String) extends RuntimeException(message)
+
+  /**
+    * Convolve a single tile with the given kernel, choosing between a direct spatial
+    * convolution and an FFT-based convolution depending on kernel size.
+    * This is the reusable "kernel operation" also used by [[OpenEOProcesses#apply_kernel]],
+    * factored out so it can be reused by other single-tile operations such as majority-vote
+    * postprocessing (see [[org.openeo.geotrellis.MajorityVote]]).
+    */
+  private[geotrellis] def convolveTile(tile: Tile, kernelTile: Tile, bounds: Option[GridBounds[Int]] = None): Tile = {
+    if (kernelTile.cols > 10 || kernelTile.rows > 10) {
+      val convolved = FFTConvolve(tile, kernelTile)
+      bounds.map(convolved.crop).getOrElse(convolved)
+    } else {
+      val k = new Kernel(kernelTile)
+      Convolve(tile, k, bounds, TargetCell.All)
+    }
+  }
 
   private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)],cellType: CellType) = {
     MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)).map( t => {
@@ -131,6 +149,38 @@ object OpenEOProcesses{
       }
     }
   }
+
+
+  def findPartitionerSpatialKeys[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): Option[Array[SpatialKey]] = {
+    val keys: Option[Array[SpatialKey]] = if (datacube.partitioner.isDefined && (datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] || datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpatialKey]])) {
+      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]].index
+      index match {
+        case value: SpatialKeysProvider =>
+          value.spatialKeys
+        case _ =>
+          Option.empty
+      }
+    } else {
+      Option.empty
+    }
+    keys
+  }
+
+  def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]): Option[Array[SpaceTimeKey]] = {
+    val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+      if (index.isInstanceOf[SparseSpaceTimePartitioner]) {
+        index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
+      } else if (index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+        index.asInstanceOf[SparseSpaceOnlyPartitioner].theKeys
+      } else {
+        Option.empty
+      }
+    } else {
+      Option.empty
+    }
+    keys
+  }
 }
 
 class OpenEOProcesses extends Serializable {
@@ -201,13 +251,15 @@ class OpenEOProcesses extends Serializable {
       transformTimeDimension(datacube,applyToTimeseries,reduce)
     }
 
-  private def transformTimeDimension[KT](datacube: MultibandTileLayerRDD[SpaceTimeKey],applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[KT, MultibandTile],  reduce:Boolean ): RDD[(KT, MultibandTile)] = {
+  private[geotrellis] def transformTimeDimension[KT](datacube: MultibandTileLayerRDD[SpaceTimeKey],applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[KT, MultibandTile],  reduce:Boolean ): RDD[(KT, MultibandTile)] = {
     val index: Option[PartitionerIndex[SpaceTimeKey]] = maybePartitionerIndex(datacube)
+    val metadataBounds = datacube.metadata.bounds
+    val singleTemporalSlice = metadataBounds.exists(bounds => bounds.maxKey.time == bounds.minKey.time)
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val rdd: RDD[(SpaceTimeKey, MultibandTile)] =
       if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner]
         || index.get.isInstanceOf[ByTileSpacetimePartitioner]
-        || (!datacube.getBounds.isEmpty && datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time))) {
+        || singleTemporalSlice)) {
         datacube
       } else {
         val keys: Option[Array[SpatialKey]] = findPartitionerSpatialKeys(datacube)
@@ -222,10 +274,8 @@ class OpenEOProcesses extends Serializable {
                 DEFAULT_BAND_COUNT
               }
             val reduction =
-              if (datacube.getBounds.get.maxKey.time == datacube.getBounds.get.minKey.time) {
-                val tileSizeInMb: Double = (bandCount * datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes).toDouble / (1024 * 1024)
-                val maxRecordsPerPartition: Double = math.min(DEFAULT_MAX_PARTITION_SIZE_IN_MB / tileSizeInMb, 1024)
-                math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
+              if (singleTemporalSlice) {
+                DatacubeSupport.computeReductionForTileSize(datacube.metadata.tileCols, datacube.metadata.tileRows,bandCount, datacube.metadata.cellType.bits, DEFAULT_MAX_PARTITION_SIZE_IN_MB.intValue)
               } else {
                 val maybeKeys = findPartitionerKeys(datacube)
                 val distinctTemporalKeyCount: Int =
@@ -353,36 +403,6 @@ class OpenEOProcesses extends Serializable {
     groupedOnTime
   }
 
-  def findPartitionerSpatialKeys[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): Option[Array[SpatialKey]] = {
-    val keys: Option[Array[SpatialKey]] = if (datacube.partitioner.isDefined && (datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] || datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpatialKey]])) {
-      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]].index
-      index match {
-        case value: SpatialKeysProvider =>
-          value.spatialKeys
-        case _ =>
-          Option.empty
-      }
-    } else {
-      Option.empty
-    }
-    keys
-  }
-
-  def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]): Option[Array[SpaceTimeKey]] = {
-    val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
-      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-      if (index.isInstanceOf[SparseSpaceTimePartitioner]) {
-        index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
-      } else if (index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
-        index.asInstanceOf[SparseSpaceOnlyPartitioner].theKeys
-      } else {
-        Option.empty
-      }
-    } else {
-      Option.empty
-    }
-    keys
-  }
 
   /**
    * @param datacube The datacube to be masked. The celltype is assumed to be Float with NoDataHandling.
@@ -664,6 +684,43 @@ class OpenEOProcesses extends Serializable {
     }),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
   }
 
+  /**
+   * Fails the first attempt of the Spark stage that evaluates this datacube, to test recovery from failures.
+   *
+   * Only the first attempt of the task for the given partition in stage attempt 0
+   * (see [[org.apache.spark.scheduler.StageInfo#attemptNumber]]) fails: it calls System.exit, which kills a single
+   * executor. Spark then reschedules the lost tasks and recomputes the shuffle output that was stored on that
+   * executor; retried attempts pass the data through unchanged.
+   * Each Spark stage that evaluates the datacube starts again at attempt 0, so it fails once per such stage.
+   *
+   * In local mode the executor runs inside the driver JVM, so exiting would stop the whole application. There, the
+   * task throws a [[FailOnceException]] instead, which makes Spark retry the task. This requires task retries to be
+   * enabled, e.g. with a `local[N,maxFailures]` master; a plain `local[N]` master does not retry failed tasks.
+   *
+   * @param partition index of the partition whose task fails, between 0 and the number of partitions - 1
+   */
+  def failOnce[K: ClassTag](datacube: MultibandTileLayerRDD[K], partition: Int = 0): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    val numPartitions = datacube.getNumPartitions
+    require(partition >= 0 && partition < numPartitions,
+      s"failOnce: partition $partition is out of range, the datacube has $numPartitions partition(s)")
+
+    datacube.withContext(_.mapPartitionsWithIndex({ (partitionIndex, tiles) =>
+      val taskContext = TaskContext.get()
+      // Only a single task fails, so only one executor is lost; its retry has a higher (stage or task) attempt number.
+      if (partitionIndex == partition && taskContext.stageAttemptNumber() == 0 && taskContext.attemptNumber() == 0) {
+        val executorId = SparkEnv.get.executorId
+        if (executorId == "driver") {
+          logger.warn(s"failOnce: failing attempt 0 of stage ${taskContext.stageId()} (partition $partitionIndex) with an exception, because this executor runs in the driver")
+          throw new FailOnceException(s"failOnce: failing the first attempt of stage ${taskContext.stageId()} (partition $partitionIndex)")
+        } else {
+          logger.warn(s"failOnce: exiting executor $executorId during attempt 0 of stage ${taskContext.stageId()} (partition $partitionIndex)")
+          System.exit(FailOnceExitCode)
+        }
+      }
+      tiles
+    }, preservesPartitioning = true))
+  }
+
   def filterEmptyTile[K:ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
     datacube.withContext(_.filter(t => {
       val emptyTile = t._2.isInstanceOf[EmptyMultibandTile]
@@ -780,7 +837,9 @@ class OpenEOProcesses extends Serializable {
       val leftPart = leftCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
       val rightPart = rightCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
       logger.info(s"Merging cubes with spatial indices: ${leftPart.index} - ${rightPart.index}")
-      if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[SparseSpaceTimePartitioner]) {
+      if(leftPart.index.isInstanceOf[SparseSpaceTimePartitioner] &&
+        rightPart.index.isInstanceOf[SparseSpaceTimePartitioner] &&
+        leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].hasSameIndexReduction(rightPart.index.asInstanceOf[SparseSpaceTimePartitioner])) {
         val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices).distinct.sorted
         implicit val newIndex: PartitionerIndex[K] = new SparseSpaceTimePartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
         SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
@@ -827,7 +886,7 @@ class OpenEOProcesses extends Serializable {
         SpacePartitioner[K](kb)(implicitly,implicitly,index)
       } else {
         val nrBands = leftCount.getOrElse(10) + rightCount.getOrElse(10)
-        val outputCellType = maybeCellType(leftCube).getOrElse(DoubleCellType).union(maybeCellType(rightCube).getOrElse(DoubleCellType))
+        val outputCellType = cellTypeUnionWithNoData(maybeCellType(leftCube).getOrElse(DoubleCellType), maybeCellType(rightCube).getOrElse(DoubleCellType))
         val tileSize = maybeTileSize(leftCube).getOrElse(128 * 128)
         val newIndex = getPartitionerIndexForMaxPartitionSize[K](nrBands, tileSize, outputCellType.bits)
         SpacePartitioner[K](kb)(implicitly, implicitly, newIndex)
@@ -1078,37 +1137,204 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, resampled)
-    if(operator == null) {
-      val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
-      //TODO: what if extent of joined cube is larger than left cube?
-      val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
-      return new ContextRDD(rdd.mapValues({case (l,r) =>
-        if(swapOperands) {
-          MultibandTile( r.bands.map(t=>safeConvert(t,updatedMetadata.cellType))  ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
-        }else{
-          MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ r.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
-        }
-      }), updatedMetadata)
-    }else{
+  /**
+   * openEO process resample_cube_temporal: aligns the temporal dimension of `datacube` with the one of `target`, using
+   * the nearest neighbor method. Ties are resolved by choosing the earlier timestamp.
+   *
+   * Without `validWithinDays`, every target timestamp gets the tiles of the nearest source timestamp, regardless of their
+   * values, so a source timestamp can be assigned to multiple target timestamps.
+   * With `validWithinDays`, each pixel (per band) gets the value of the nearest source timestamp within that many days
+   * before or after the target timestamp for which it is valid (not no-data); if there is none, it is no-data. All target
+   * timestamps are present in the result, also those without any source timestamp within `validWithinDays`; if the
+   * cell type has no no-data value, it is then changed to one that has.
+   *
+   * The temporal labels of a cube are taken from the keys of its sparse partitioner if it has one, otherwise they are
+   * collected from the cube's keys (which evaluates it).
+   */
+  def resampleCubeTemporal(datacube: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], validWithinDays: Option[Double] = None): MultibandTileLayerRDD[SpaceTimeKey] = {
+    validWithinDays.foreach(days =>
+      require(days >= 0 && !days.isInfinite, s"resample_cube_temporal: valid_within should be a non-negative number of days, got: $days"))
 
-      val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
-      return new ContextRDD(rdd.mapValues({case (l,r) =>
-        if(l.bandCount != r.bandCount){
-          if(l.bandCount==0) {
-            r
-          }else if(r.bandCount==0) {
-            l
+    def temporalLabels(cube: MultibandTileLayerRDD[SpaceTimeKey]): Array[Long] =
+      findPartitionerKeys(cube)
+        .map(_.map(_.instant).distinct)
+        .getOrElse(cube.keys.map(_.instant).distinct().collect())
+        .sorted
+
+    val targetInstants = temporalLabels(target)
+    val sourceInstants = if (targetInstants.isEmpty) Array.emptyLongArray else temporalLabels(datacube)
+    if (targetInstants.isEmpty || sourceInstants.isEmpty || datacube.metadata.bounds.isEmpty) {
+      logger.warn(s"resample_cube_temporal: no ${if (targetInstants.isEmpty) "target" else "source"} timestamps, returning an empty cube")
+      return ContextRDD(datacube.sparkContext.emptyRDD[(SpaceTimeKey, MultibandTile)], datacube.metadata.copy(bounds = EmptyBounds: Bounds[SpaceTimeKey]))
+    }
+
+    // Candidates ordered by distance to the target timestamp, ties resolved by choosing the earlier timestamp.
+    def byDistanceTo(t: Long): Ordering[Long] = Ordering.by((s: Long) => (math.abs(s - t), s))
+
+    // both arrays are sorted and distinct: index of the first element >= x (lower) or > x (upper)
+    def lowerBound(instants: Array[Long], x: Long): Int = {
+      val i = java.util.Arrays.binarySearch(instants, x)
+      if (i >= 0) i else -i - 1
+    }
+    def upperBound(instants: Array[Long], x: Long): Int = {
+      val i = java.util.Arrays.binarySearch(instants, x)
+      if (i >= 0) i + 1 else -i - 1
+    }
+
+    val targetsBySource: Map[Long, Array[Long]] = validWithinDays match {
+      case None =>
+        targetInstants
+          .map { t =>
+            val i = lowerBound(sourceInstants, t)
+            val nearest =
+              if (i == 0) sourceInstants(0)
+              else if (i == sourceInstants.length) sourceInstants(i - 1)
+              else byDistanceTo(t).min(sourceInstants(i - 1), sourceInstants(i))
+            (nearest, t)
           }
-          throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.bandCount, r.bandCount))
-        }else{
-          MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
+          .groupBy(_._1).map { case (s, pairs) => (s, pairs.map(_._2)) }
+      case Some(days) =>
+        val windowMillis = math.round(days * 24 * 3600 * 1000)
+        def saturatingAdd(a: Long, b: Long): Long = {
+          val sum = a + b
+          if (((a ^ sum) & (b ^ sum)) < 0) (if (a < 0) Long.MinValue else Long.MaxValue) else sum
         }
+        sourceInstants
+          .map(s => (s, targetInstants.slice(lowerBound(targetInstants, saturatingAdd(s, -windowMillis)), upperBound(targetInstants, saturatingAdd(s, windowMillis)))))
+          .filter(_._2.nonEmpty)
+          .toMap
+    }
+    logger.info(s"resample_cube_temporal: ${sourceInstants.length} source and ${targetInstants.length} target timestamps, valid_within: $validWithinDays")
 
-      }), leftCube.metadata)
+    val spaceTimeBounds = datacube.metadata.bounds.get
+    val newBounds = KeyBounds(
+      SpaceTimeKey(spaceTimeBounds.minKey.spatialKey, TemporalKey(targetInstants.head)),
+      SpaceTimeKey(spaceTimeBounds.maxKey.spatialKey, TemporalKey(targetInstants.last))
+    )
+    val incomingIndex = maybePartitionerIndex(datacube)
+    val index: PartitionerIndex[SpaceTimeKey] = incomingIndex match {
+      // these don't depend on time, so remain valid
+      case Some(i @ (_: SparseSpaceOnlyPartitioner | _: ByTileSpacetimePartitioner)) => i
+      case _ =>
+        findPartitionerSpatialKeys(datacube).filter(_.nonEmpty) match {
+          case Some(spatialKeys) =>
+            val newKeys = spatialKeys.distinct.flatMap(sk => targetInstants.map(t => SpaceTimeKey(sk, TemporalKey(t))))
+            new SparseSpaceTimePartitioner(newKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4, Some(newKeys))
+          case None =>
+            maybeBandCount(datacube)
+              .map(bandCount => getPartitionerIndexForMaxPartitionSize[SpaceTimeKey](bandCount, datacube.metadata.tileLayout.tileSize, datacube.metadata.cellType.bits, 100.0))
+              .getOrElse(SpaceTimeByMonthPartitioner)
+        }
+    }
+    val partitioner = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly, implicitly, index)
+
+    // target timestamps without a source timestamp within valid_within are kept, as no-data tiles
+    val coveredTargets = targetsBySource.valuesIterator.flatten.toSet
+    val uncoveredTargets = targetInstants.filterNot(coveredTargets.contains)
+    // no-data tiles require a cell type with no-data: switch to one that can represent all values of the original
+    val cellType = datacube.metadata.cellType match {
+      case ct: NoNoData if uncoveredTargets.nonEmpty => if (ct.isFloatingPoint) ct.withDefaultNoData() else GeneralUtils.upgradeCellTypes(ct)
+      case ct => ct
+    }
+    val source =
+      if (cellType == datacube.metadata.cellType) datacube
+      else datacube.mapValues(tile => if (tile.cellType == cellType) tile else tile.convert(cellType))
+
+    val candidates: RDD[(SpaceTimeKey, (Long, MultibandTile))] = source.flatMap { case (key, tile) =>
+      targetsBySource.getOrElse(key.instant, Array.emptyLongArray)
+        .map(t => (SpaceTimeKey(key.spatialKey, TemporalKey(t)), (key.instant, tile)))
+    }
+    val candidatesWithNoData: RDD[(SpaceTimeKey, (Long, MultibandTile))] =
+      if (uncoveredTargets.isEmpty) candidates
+      else {
+        val noDataTiles = source
+          .map { case (key, tile) => (key.spatialKey, (tile.cols, tile.rows, tile.bandCount)) }
+          .reduceByKey((a, b) => if (b._3 > a._3) b else a)
+          .flatMap { case (spatialKey, (cols, rows, bandCount)) =>
+            uncoveredTargets.map(t => (SpaceTimeKey(spatialKey, TemporalKey(t)), (t, ArrayMultibandTile.empty(cellType, bandCount, cols, rows): MultibandTile)))
+          }
+        candidates.union(noDataTiles)
+      }
+
+    val resampled: RDD[(SpaceTimeKey, MultibandTile)] = validWithinDays match {
+      case None =>
+        // a single source timestamp per target timestamp, so there is at most one tile per key
+        candidates.partitionBy(partitioner).mapValues(_._2)
+      case Some(_) =>
+        candidatesWithNoData.groupByKey(partitioner).map { case (key, sourceTiles) =>
+          val ordered = sourceTiles.toSeq.sortBy(_._1)(byDistanceTo(key.instant)).map(_._2)
+          val nonEmpty = ordered.filterNot(_.isInstanceOf[EmptyMultibandTile])
+          // merge only fills the no-data cells of the left tile, so the nearest valid value per cell and band wins
+          (key, if (nonEmpty.isEmpty) ordered.head else nonEmpty.reduceLeft(_ merge _))
+        }
+    }
+
+    val result = ContextRDD(resampled, datacube.metadata.copy(cellType = cellType, bounds = newBounds: Bounds[SpaceTimeKey]))
+    result.name = s"resample_cube_temporal of ${datacube.name}"
+    result
+  }
+
+  /**
+   * Merges a spacetime cube with a spatial cube.
+   *
+   * The metadata of the result covers the union of both cubes. The grid of the result (crs, cell size, tile size, grid
+   * origin) is determined by the cube that was the left operand of merge_cubes: the spacetime cube (leftCube) if
+   * swapOperands is false, the spatial cube (rightCube) if swapOperands is true. The temporal extent always comes from
+   * the spacetime cube.
+   */
+  def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val rightMd = rightCube.metadata
+    val updatedMetadata = GeneralUtils.mergedMetadata(leftCube.metadata, rightMd, rightIsDominant = swapOperands)
+    val targetCrs = updatedMetadata.crs
+    val mergedLayout = updatedMetadata.layout
+
+    val resampledLeft = resampleCubeSpatial(leftCube,updatedMetadata, leftCube.partitioner,NearestNeighbor)._2
+    val rightPartitioner = mergeTargetPartitioner(rightCube.partitioner, rightMd.layout == mergedLayout && rightMd.crs == targetCrs, GeneralUtils.toSpatialBounds(updatedMetadata.bounds))
+    val resampledRight = resampleCubeSpatial_spatial(rightCube,targetCrs,mergedLayout,ResampleMethods.NearestNeighbor,rightPartitioner)._2
+    checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
+
+    // Outer join: every spacetime key of the left cube is kept, tiles of the right cube at spatial keys without
+    // left data are replicated over the timestamps of the left cube.
+    val leftJoined = leftJoinSpacetimeSpatial(resampledLeft, resampledRight, leftOuterJoin = true).mapValues { case (l, r) => (Option(l), r) }
+    val joined = withRightOnlyTiles(leftJoined, resampledLeft, resampledRight) 
+    // the left operand of merge_cubes comes first, both for the band order and for the overlap resolver
+    if (swapOperands) mergeCubesGeneric(joined.mapValues(_.swap), operator, updatedMetadata, rightCube, leftCube)
+    else mergeCubesGeneric(joined, operator, updatedMetadata, leftCube, rightCube)
+  }
+
+  /**   
+   * Adds the tiles of the spatial cube `right` at spatial keys where the spacetime cube `left` has no tiles to `joined`,   
+   * replicated over all timestamps of `left`, as (None, Some(right)). Both cubes must be in the same layout.   
+   * Returns `joined` unchanged if there are no such tiles. The partitioner of `joined` is kept.   
+   */
+  private def withRightOnlyTiles(
+                                  joined: RDD[(SpaceTimeKey, (Option[MultibandTile], Option[MultibandTile]))],
+                                  left: MultibandTileLayerRDD[SpaceTimeKey], 
+                                  right: MultibandTileLayerRDD[SpatialKey]
+                                ): RDD[(SpaceTimeKey, (Option[MultibandTile], Option[MultibandTile]))] = {
+    val sc = left.sparkContext
+    sc.setJobDescription(s"Merge cubes: get keys of ${right.name}")
+    val rightKeys = right.keys.collect().toSet
+    if (rightKeys.isEmpty) {
+      sc.clearJobGroup()
+      return joined
+    }
+    sc.setJobDescription(s"Merge cubes: get keys of ${left.name}")
+    val leftKeys = findPartitionerKeys(left).getOrElse(left.keys.collect())
+    sc.clearJobGroup()
+
+    val timestamps = leftKeys.map(_.temporalKey).distinct
+    val rightOnlyKeys = rightKeys -- leftKeys.map(_.spatialKey)
+    if (timestamps.isEmpty || rightOnlyKeys.isEmpty) return joined
+
+    val extra = right
+      .filter { case (key, _) => rightOnlyKeys.contains(key) }
+      .flatMap { case (key, tile) => timestamps.map(t => (SpaceTimeKey(key, t), (Option.empty[MultibandTile], Option(tile)))) }
+
+    joined.partitioner match {
+      // partitioning with the same partitioner lets Spark use a PartitionerAwareUnionRDD, which keeps the partitioner
+      case Some(partitioner) => joined.union(extra.partitionBy(partitioner))
+      case None => joined.union(extra)
     }
   }
 
@@ -1121,23 +1347,48 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
+  /**
+   * Partitioner for a spatial cube that is resampled into the (merged) layout of a merge_cubes result.
+   * An existing partitioner is defined on the old key numbering, so it is rebuilt on the target bounds if the layout changed.
+   */
+  private def mergeTargetPartitioner(partitioner: Option[Partitioner], layoutUnchanged: Boolean, targetBounds: Bounds[SpatialKey]): Partitioner = {
+    if (layoutUnchanged) partitioner.orNull
+    else partitioner match {
+      case Some(sp: SpacePartitioner[SpatialKey]) if !sp.index.isInstanceOf[SparseSpaceOnlyPartitioner] && targetBounds.nonEmpty =>
+        SpacePartitioner[SpatialKey](targetBounds)(implicitly, implicitly, sp.index)
+      case _ if targetBounds.nonEmpty => SpacePartitioner[SpatialKey](targetBounds)
+      case _ => null
+    }
+  }
+
+  /**
+   * Merges two spatial cubes. The metadata of the result covers the union of both cubes, the grid
+   * (crs, cell size, tile size, grid origin) is determined by the left cube.
+   */
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
-    leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands)")
-    val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,NearestNeighbor,leftCube.partitioner.orNull)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val joined = outerJoin(leftCube,resampled)
-    val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
-    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
+    val mergedMd = GeneralUtils.mergedMetadata(leftCube.metadata, rightCube.metadata)
+    // the partitioner of the left cube is defined on the old key numbering, rebuild it on the merged bounds if needed
+    val targetPartitioner = mergeTargetPartitioner(leftCube.partitioner, mergedMd.layout == leftCube.metadata.layout, mergedMd.bounds)
+    val resampledRight = resampleCubeSpatial_spatial(rightCube,mergedMd.crs,mergedMd.layout,NearestNeighbor,targetPartitioner)._2
+    val resampledLeft = resampleCubeSpatial_spatial(leftCube,mergedMd.crs,mergedMd.layout,NearestNeighbor,targetPartitioner)._2
+    checkMetadataCompatible(resampledLeft.metadata,resampledRight.metadata)
+    val joined = outerJoin(resampledLeft,resampledRight)
+    val updatedMetadata = mergedMd.copy(bounds = joined.metadata)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
+  /**
+   * Merges two spacetime cubes. The metadata of the result covers the union of both cubes, the grid
+   * (crs, cell size, tile size, grid origin) is determined by the left cube.
+   */
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val resampled = resampleCubeSpatial(rightCube,leftCube,NearestNeighbor)._2
-    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val joined = outerJoin(leftCube,resampled)
-    val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
-
-    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
+    // bounds are expressed in the key numbering of the merged layout, the target partitioner is built on these
+    val mergedMd = GeneralUtils.mergedMetadata(leftCube.metadata, rightCube.metadata)
+    val resampledRight = resampleCubeSpatial(rightCube,mergedMd, leftCube.partitioner,NearestNeighbor)._2
+    val resampledLeft = resampleCubeSpatial(leftCube,mergedMd, leftCube.partitioner,NearestNeighbor)._2
+    checkMetadataCompatible(resampledLeft.metadata, resampledRight.metadata)
+    val joined = outerJoin(resampledLeft,resampledRight)
+    val updatedMetadata = mergedMd.copy(bounds = joined.metadata)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
@@ -1295,18 +1546,23 @@ class OpenEOProcesses extends Serializable {
   }
 
 
-  private def mergeCubesGeneric[K: Boundable: PartitionerIndex: ClassTag
-  ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[K]], operator:String, metadata:TileLayerMetadata[K],leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
-    val converted = joined.mapValues{t=> (t._1.map(_.mapBands( (i,x) => safeConvert(x,metadata.cellType))),t._2.map( _.mapBands( (i,x) => safeConvert(x,metadata.cellType))))}
-    if(operator==null) {
+  private def mergeCubesGeneric[K: ClassTag
+  ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], operator: String, metadata: TileLayerMetadata[K], leftCube: MultibandTileLayerRDD[_], rightCube: MultibandTileLayerRDD[_]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
+    val converted = joined.mapValues { case (l, r) =>
+      (l.map(_.mapBands((_, t) => safeConvert(t, metadata.cellType))), r.map(_.mapBands((_, t) => safeConvert(t, metadata.cellType))))
+    }
+    if (operator == null) {
       combine_bands(converted, leftCube, rightCube, metadata)
-    }else{
+    } else {
       resolve_merge_overlap(converted, operator, metadata)
     }
-
   }
 
-  private def combine_bands[K](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K], updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
+
+  /**
+   * Band counts of the two cubes of a merge_cubes, the cubes can have different key types.
+   */
+  private def combine_bands[K](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], leftCube: MultibandTileLayerRDD[_], rightCube: MultibandTileLayerRDD[_], updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
     leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${leftCube.name}")
     val leftBandCount = RDDBandCount(leftCube)
     leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${rightCube.name}")
@@ -1435,23 +1691,84 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
+  /**
+   * Joins a SpaceTimeKey-indexed cube (left) with a SpatialKey-indexed cube (right).
+   *
+   * @param leftOuterJoin when true, every spacetime key of `left` is preserved in the result,
+   *                       even when `right` has no matching spatial key (paired with `None`).
+   *                       When false, only spacetime keys with a matching spatial key on `right`
+   *                       are kept (plain inner join).
+   */
+  def leftJoinSpacetimeSpatial[T : ClassTag](left: MultibandTileLayerRDD[SpaceTimeKey], right: RDD[(SpatialKey, T)], leftOuterJoin: Boolean): RDD[(SpaceTimeKey, (MultibandTile, Option[T]))] = {
+    val maybePartitioner = left.partitioner.collect {
+      case partitioner: SpacePartitioner[SpaceTimeKey] => partitioner
+    }
+    val maybeIndex = maybePartitioner.map(_.index)
+
+    if (maybeIndex.exists(_.isInstanceOf[ByTileSpacetimePartitioner])) {
+      val byTileIndex = maybeIndex.get.asInstanceOf[ByTileSpacetimePartitioner]
+      // The right (spatial) cube needs to be replicated over every distinct temporal key that
+      // occurs in the left cube, otherwise only the (arbitrary) single temporal key we'd pick
+      // would end up joined and all other dates would be silently dropped.
+      val timestamps = left.map(_._1.temporalKey).distinct().collect().toSet
+      val rightAsSpacetime = right
+        .flatMap { case (spatialKey, tile) =>
+          timestamps.map { temporalKey => (SpaceTimeKey(spatialKey.col, spatialKey.row, temporalKey), tile) }
+        }
+        .partitionBy(SpacePartitioner[SpaceTimeKey](left.metadata.bounds.get)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), byTileIndex))
+      if (leftOuterJoin) {
+        left.leftOuterJoin(rightAsSpacetime, maybePartitioner.get)
+      } else {
+        left.join(rightAsSpacetime, maybePartitioner.get).mapValues { case (l, r) => (l, Some(r)) }
+      }
+    } else {
+      val maybeKeys = findPartitionerKeys(left)
+      logger.info(s"leftJoinSpacetimeSpatial: Found ${maybeKeys.map(_.size).getOrElse(0)} keys in left cube for partitioner ${maybePartitioner.getOrElse("None")}")
+      if (maybeKeys.isDefined) {
+        val timestamps = maybeKeys.get.map(_.temporalKey).toSet
+        val rightAsSpacetime = right
+          .flatMap { case (spatialKey, tile) =>
+            timestamps.map { temporalKey =>
+              (SpaceTimeKey(spatialKey.col, spatialKey.row, temporalKey), tile)
+            }
+          }
+        val rightWithMetadata: RDD[(SpaceTimeKey, T)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = ContextRDD(rightAsSpacetime, left.metadata)
+        if (leftOuterJoin) {
+          left.leftOuterJoin(maybePartitioner.get(rightWithMetadata), left.partitioner.get)
+        } else {
+          left.join(maybePartitioner.get(rightWithMetadata), maybePartitioner.get).mapValues { case (l, r) => (l, Some(r)) }
+        }
+      } else {
+        new SpatialToSpacetimeJoinRdd[T](left, right, leftOuterJoin)
+      }
+    }
+  }
+
   def rasterMask_spacetime_spatial(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpatialKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpaceTimeKey] = {
     val resampledMask = resampleCubeSpatial_spatial(mask, datacube.metadata.crs, datacube.metadata.layout, ResampleMethods.NearestNeighbor, mask.partitioner.orNull)._2
-    val joined = new SpatialToSpacetimeJoinRdd[MultibandTile](datacube, resampledMask)
+    // Every spacetime key of the datacube must be preserved: a spatial key missing from the
+    // (possibly sparse) mask cube means there is no mask information for that key, so the data
+    // should be passed through unmodified rather than dropped.
+    val joined = leftJoinSpacetimeSpatial(datacube, resampledMask, leftOuterJoin = true)
 
     val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
     val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
     val masked = joined.mapValues(t => {
       val dataTile = t._1
 
-      val maskTile = t._2
-      var maskIndex = 0
-      dataTile.mapBands((index,tile) =>{
-        if(dataTile.bandCount == maskTile.bandCount){
-          maskIndex = index
-        }
-        tile.dualCombine(maskTile.band(maskIndex))((v1,v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1,v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
-      })
+      t._2 match {
+        case Some(maskTile) =>
+          var maskIndex = 0
+          dataTile.mapBands((index, tile) => {
+            if (dataTile.bandCount == maskTile.bandCount) {
+              maskIndex = index
+            }
+            tile.dualCombine(maskTile.band(maskIndex))((v1, v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1, v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
+          })
+        case None =>
+          // No mask information for this spacetime key: leave the data unmodified.
+          dataTile
+      }
 
     })
 
@@ -1490,14 +1807,9 @@ class OpenEOProcesses extends Serializable {
   def apply_kernel[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K],kernel:Tile): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
     datacube.sparkContext.setCallSite(s"apply_kernel")
     val k = new Kernel(kernel)
-    val outputCellType = datacube.convert(datacube.metadata.cellType.union(kernel.cellType))
-    if (kernel.cols > 10 || kernel.rows > 10) {
-      MultibandFocalOperation(outputCellType, k, None) { (tile, bounds: Option[GridBounds[Int]]) => {
-        FFTConvolve(tile, kernel).crop(bounds.get)
-      }
-      }
-    } else {
-      MultibandFocalOperation(outputCellType, k, None) { (tile, bounds) => Convolve(tile, k, bounds, TargetCell.All) }
+    val outputCellType = datacube.convert(cellTypeUnionWithNoData(datacube.metadata.cellType, kernel.cellType))
+    MultibandFocalOperation(outputCellType, k, None) { (tile, bounds: Option[GridBounds[Int]]) =>
+      OpenEOProcesses.convolveTile(tile, kernel, bounds)
     }
   }
 
@@ -1614,15 +1926,26 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(resultRDD, newMetadata)
   }
 
-  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val filter = new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+  // Real overload, not a default parameter: Py4J callers must supply every argument, so a default
+  // value alone wouldn't keep them on the legacy path.
+  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] =
+    toSclDilationMask(datacube, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size, useSeparableConvolution = true)
+
+  /**
+   * @param useSeparableConvolution use the faster separable convolution instead of the original
+   *                                 FFT-based dilation. Not bit-identical on real data (rare
+   *                                 boundary-pixel flips near the mask thresholds).
+   */
+  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int, useSeparableConvolution: Boolean): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val filter: SCLMaskFilter =
+      if (useSeparableConvolution) new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+      else new LegacySCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
     // Buffer each input tile so that the dilation is consistent across tile boundaries.
     val bufferInPixels: Int = filter.bufferInPixels
     val bufferedRDD: RDD[(SpaceTimeKey, BufferedTile[MultibandTile])] = datacube.bufferTiles(bufferInPixels)
     // Create mask.
     val mask: RDD[(SpaceTimeKey, MultibandTile)] = bufferedRDD.mapValues((tile: BufferedTile[MultibandTile]) => {
-      val originalBounds = tile.targetArea
-      MultibandTile(filter.createMask(tile.tile).crop(originalBounds))
+      MultibandTile(filter.createMask(tile.tile, tile.targetArea))
     })
     val updatedMetadata = datacube.metadata.copy(cellType = BitCellType)
     ContextRDD(new ShuffledRDD[SpaceTimeKey, MultibandTile,MultibandTile](mask,mask.partitioner.get), updatedMetadata)
@@ -1668,154 +1991,16 @@ class OpenEOProcesses extends Serializable {
   def predictONNX(datacube: Object, model: String): Object = {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
-        if (model.endsWith(".onnx")) predictONNXModel(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
-        else if (model.startsWith("{")) predictONNXSTAC(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+        if (model.endsWith(".onnx")) onnx.predictONNXModel(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+        else if (model.startsWith("{")) onnx.predictONNXSTAC(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
+        else if (model.contains("json")) onnx.predictONNXSTACFile(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], model)
         else throw new IllegalArgumentException(s"ONNX: Only supports models with .onnx extension, but got $model.")
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
-        if (model.endsWith(".onnx")) predictONNXModel(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
-        else if (model.startsWith("{")) predictONNXSTAC(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        if (model.endsWith(".onnx")) onnx.predictONNXModel(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        else if (model.startsWith("{")) onnx.predictONNXSTAC(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
+        else if (model.contains(".json")) onnx.predictONNXSTACFile(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], model)
         else throw new IllegalArgumentException(s"ONNX: Only supports models with .onnx extension, but got $model.")
       case _ => throw new IllegalArgumentException(s"Unsupported rdd type for predict_onnx: $datacube")
-    }
-  }
-
-  def predictONNXModel[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
-    val modelPath = Paths.get(model)
-    val (modelFile, isTemp) = if (Files.exists(modelPath)) {
-      (modelPath,false)
-    } else {
-      val tempFileName = Files.createTempFile(null, ".onnx")
-      FileUtils.copyURLToFile(new URL(model), tempFileName.toFile)
-      (tempFileName,true)
-    }
-    val env = OrtEnvironment.getEnvironment()
-    val session = env.createSession(modelFile.toString, new OrtSession.SessionOptions())
-    val inputNames = session.getInputNames
-    val outputNames = session.getOutputNames
-
-    if (inputNames.size() > 1)
-      // TODO support the case for multiple inputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one input, but got ${inputNames.size()}: $inputNames.")
-    if (outputNames.size() > 1)
-      // TODO support the case for multiple outputs
-      throw new IllegalArgumentException(
-        s"ONNX: Only supports one output, but got ${outputNames.size()}: $outputNames.")
-
-
-    val inputName = inputNames.toArray()(0).asInstanceOf[String]
-    val inputInfo = session.getInputInfo.get(inputName).getInfo.asInstanceOf[TensorInfo]
-    val outputName = outputNames.toArray()(0).asInstanceOf[String]
-    val outputInfo = session.getOutputInfo.get(outputName).getInfo.asInstanceOf[TensorInfo]
-
-    val inputType = inputInfo.`type`
-    val outputType = outputInfo.`type`
-    if (inputType != outputType)
-      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputType and output type $outputType.")
-
-    val inputShape = inputInfo.getShape
-    val tileCols = datacube.metadata.tileLayout.tileCols
-    val tileRows = datacube.metadata.tileLayout.tileRows
-    val retiled = if (tileCols != inputShape(inputShape.length-1) || tileRows != inputShape(inputShape.length-2)) {
-      logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(inputShape.length-1)},${inputShape(inputShape.length-2)})")
-      retileGeneric(datacube,inputShape(inputShape.length-2).toInt,inputShape(inputShape.length-1).toInt,0,0)
-    } else datacube
-    if (isTemp) Files.delete(modelFile)
-    ContextRDD(
-      retiled.mapValues(x => onnx.predictOnnx(x,model)),
-      retiled.metadata
-    )
-  }
-  
-  def predictONNXSTAC[K: SpatialComponent: ClassTag, M: Component[*, Bounds[K]]](datacube: MultibandTileLayerRDD[K], model:String): MultibandTileLayerRDD[K] = {
-    val parsedModel = StacModelParser.parse(model)
-    val modelName = parsedModel.modelName
-    val modelUrl = parsedModel.modelAssetHref
-    val modelPath = Paths.get(modelUrl)
-    val inputs = parsedModel.inputs
-    if (inputs.length > 1)
-      throw new IllegalArgumentException(s"ONNX: Only supports one input, but got ${inputs.length}.")
-    val outputs = parsedModel.outputs
-    if (outputs.length > 1)
-      throw new IllegalArgumentException(s"ONNX: Only supports one output, but got ${outputs.length}.")
-
-    val input = inputs.head
-    val inputDataType = input.dataType
-    val output = outputs.head
-    val outputDataType = output.dataType
-
-    if (inputDataType != outputDataType)
-      throw new IllegalArgumentException(s"ONNX: only supports models with the same input type as output types, but got input type $inputDataType and output type $outputDataType.")
-
-    val inputDimOrder = input.dimOrder
-    val inputShape = input.shape
-    if (inputShape.length != inputDimOrder.length)
-      throw new IllegalArgumentException(s"ONNX: input shape length (${inputShape.length}) does not match input dim order length (${inputDimOrder.length}), shape is $inputShape and dim order is $inputDimOrder.")
-    val outputDimOrder = output.dimOrder
-    val outputShape = output.shape
-    if (outputShape.length != outputDimOrder.length)
-      throw new IllegalArgumentException(s"ONNX: output shape length (${outputShape.length}) does not match output dim order length (${outputDimOrder.length}), shape is $outputShape and dim order is $outputDimOrder.")
-    inputShape.length match {
-      case 1 =>
-        throw new IllegalArgumentException(s"ONNX: only supports models with 2 or more dimensions, but got ${inputShape.length}.")
-      case 2 =>
-        if (inputDimOrder(0) != "height")
-          logger.warn(s"ONNX: input dim order does not have 'height' as the first dimension, but got ${inputDimOrder(0)}.")
-        if (inputDimOrder(1) != "width")
-          logger.warn(s"ONNX: input dim order does not have 'width' as the second dimension, but got ${inputDimOrder(1)}.")
-
-        val tileCols = datacube.metadata.tileLayout.tileCols
-        val tileRows = datacube.metadata.tileLayout.tileRows
-        val retiled = if (tileCols != inputShape(1) || tileRows != inputShape(0)) {
-          logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(1)},${inputShape(0)})")
-          retileGeneric(datacube, inputShape(0).toInt, inputShape(1).toInt, 0, 0)
-        } else datacube
-        ContextRDD(
-          retiled.mapValues(x => onnx.predictOnnx(x, modelUrl)),
-          retiled.metadata
-        )
-      case 3 =>
-        if (inputDimOrder(0) != "bands")
-          logger.warn(s"ONNX: input dim order does not have 'bands' as the first dimension, but got ${inputDimOrder(0)}.")
-        if (inputDimOrder(1) != "height")
-          logger.warn(s"ONNX: input dim order does not have 'height' as the second dimension, but got ${inputDimOrder(1)}.")
-        if (inputDimOrder(2) != "width")
-          logger.warn(s"ONNX: input dim order does not have 'width' as the third dimension, but got ${inputDimOrder(2)}.")
-
-        val tileCols = datacube.metadata.tileLayout.tileCols
-        val tileRows = datacube.metadata.tileLayout.tileRows
-        val retiled = if (tileCols != inputShape(2) || tileRows != inputShape(1)) {
-          logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(2)},${inputShape(1)})")
-          retileGeneric(datacube, inputShape(1).toInt, inputShape(2).toInt, 0, 0)
-        } else datacube
-        ContextRDD(
-          retiled.mapValues(x => onnx.predictOnnx(x, modelUrl)),
-          retiled.metadata
-        )
-      case 4 =>
-        if (inputDimOrder(0) != "batch")
-          throw new IllegalArgumentException(s"ONNX: input dim order does not have 'batch' as the first dimension, but got ${inputDimOrder(0)}.")
-        if (inputDimOrder(1) != "bands")
-          logger.warn(s"ONNX: input dim order does not have 'bands' as the second dimension, but got ${inputDimOrder(1)}.")
-        if (inputDimOrder(2) != "height")
-          logger.warn(s"ONNX: input dim order does not have 'height' as the third dimension, but got ${inputDimOrder(2)}.")
-        if (inputDimOrder(3) != "width")
-          logger.warn(s"ONNX: input dim order does not have 'width' as the fourth dimension, but got ${inputDimOrder(3)}.")
-        if (inputShape(0) != 1){
-            throw new IllegalArgumentException(s"ONNX: only supports models with batch size of 1, but got ${inputShape(0)}.")
-        }
-        val tileCols = datacube.metadata.tileLayout.tileCols
-        val tileRows = datacube.metadata.tileLayout.tileRows
-        val retiled = if (tileCols != inputShape(3) || tileRows != inputShape(2)) {
-          logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(3)},${inputShape(2)})")
-          retileGeneric(datacube, inputShape(2).toInt, inputShape(3).toInt, 0, 0)
-        } else datacube
-        ContextRDD(
-          retiled.mapValues(x => onnx.predictOnnx(x, modelUrl)),
-          retiled.metadata
-        )
-      case _ =>
-        throw new IllegalArgumentException(s"ONNX: only supports models with 3 or less dimensions, but got ${inputShape.length}.")
     }
   }
 
@@ -1851,6 +2036,3 @@ class OpenEOProcesses extends Serializable {
   }
 
 }
-
-
-

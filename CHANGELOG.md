@@ -4,7 +4,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+
+<!-- start-of-changelog -->
+
+
+
+## Unreleased
+
+### Removed
+
+- `org.openeo.geotrellis.geotiff.PyramidFactory` (`from_disk`, `from_s3`, `from_uris`) and `MultibandCompositeRasterSource`: no longer used by the Python driver ([Open-EO/openeo-geopyspark-driver#1885](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1885)).
+- `AgEra5FileLayerProvider`: unused; AgERA5 is loaded through `FileLayerProvider` with `Agera5SearchClient`.
+- `MultibandCompositeRasterSource` was merged back into `BandCompositeRasterSource`, which now also preserves all its settings (attributes, predefined extent, `readFullTile`, ...) across `resample`/`convert`/`reproject`.
+
+### Fixed
+
+- Support `is_valid` inside raster callbacks, including `reduce_dimension` callbacks ([#901](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/901)).
+- merge_cubes: merging a cube with a temporal dimension with a cube without a temporal dimension well now correctly add nodata bands to honor the expected band count.
+- Raw integral rasters without a NODATA value no longer treat 0 as NODATA; instead, their cell type is widened (e.g. uint16 to int32) to make room for a NODATA value outside of their original range.
+  Do not assume a raw data type if `nodata` is absent in STAC. ([#805](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/805))
+- Export cubes of bit cell type to GeoTIFF and netCDF as unsigned bytes with NODATA 255; this information
+  is available for exposure in the STAC metadata. ([#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
+
+## Before 2026-09-30
+
+- Fixed potential bug in merge of spacetime to spatial data cube, which could have effect when Spark does partial stage recomputes.
 
 ### Added
 
@@ -19,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Experimental support for improved CORSA compression and decompression ([#702](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/702))
 - Support BigTiff output ([#792](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/792))
 - Support treating missing angle bands file as soft error ([#692](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/692))
+- Fail fast when produced GeoTiff is corrupt ([#794](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/794))
+- Avoid GDAL warning: `TIFFReadDirectory:Sum of Photometric type-related color channels and ExtraSamples doesn't match SamplesPerPixel. Defining non-color channels as ExtraSamples.` ([#757](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/757))
+- Support `reduce_spatial` ([#791](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/791))
 
 ### Changed
 
@@ -34,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `save_result` : add metadata for NetCDF assets ([#406](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/406))
 - `regrid`/`apply_neighborhood`: optimize target partitioner based on target tile size, reducing executor memory pressure for large tiles ([#626](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/626))
 - Improve default values for `DataCubeParameters` ([#748](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/748))
+- use dataType and nodata from STAC metadata and take a union of the dataTypes for the datacube ([#658](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/658))
 
 ### Removed
 

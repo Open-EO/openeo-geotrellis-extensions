@@ -7,21 +7,21 @@
     <packaging>pom</packaging>
     <name>openeo-geotrellis-extensions</name>
     <properties>
-        <gt-version>32.0</gt-version>
+        <gt-version>32.2</gt-version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
         <spark.version>4.0.1</spark.version>
         <scala.binary.version>2.13</scala.binary.version>
         <scala.version>2.13.18</scala.version>
-        <geotrellis.version>3.8.1</geotrellis.version>
+        <geotrellis.version>3.8.1+26-d994e356-SNAPSHOT</geotrellis.version>
         <gdal-bindings.version>3.12.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
-        <openeo-opensearch-client.version>2.0.1-SNAPSHOT</openeo-opensearch-client.version>
+        <openeo-opensearch-client.version>2.1.1-SNAPSHOT</openeo-opensearch-client.version>
         <catboost-spark.version>1.2.10</catboost-spark.version>
         <awssdk.version>2.23.19</awssdk.version>
         <jaxb.api.version>2.3.0</jaxb.api.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <revision>2.6.3_2.13-SNAPSHOT</revision>
+        <revision>2.6.4_2.13-SNAPSHOT</revision>
         <junit.version>5.14.1</junit.version>
         <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
     </properties>
@@ -44,11 +44,6 @@
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>s3</artifactId>
                 <version>${awssdk.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.scalactic</groupId>
-                <artifactId>scalactic_${scala.binary.version}</artifactId>
-                <version>3.2.17</version>
             </dependency>
             <dependency>
                 <groupId>org.scala-lang</groupId>
@@ -76,15 +71,17 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <modules>
+                <module>geotrellis-common</module>
                 <module>geotrellis-s3-extensions</module>
                 <module>geotrellis-sentinelhub</module>
+                <module>snap-integration</module>
                 <module>geotrellis-extensions</module>
                 <module>openeo-geotrellis</module>
-                <module>geotrellis-common</module>
                 <module>openeo-logging</module>
                 <module>geopyspark-geotrellis</module>
                 <module>openeo-dependencies</module>
                 <module>openeo-geotrellis-healpix</module>
+                <module>sar-terrain-correction</module>
             </modules>
         </profile>
     </profiles>
@@ -193,6 +190,68 @@
                 </executions>
             </plugin>
         </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.1</version>
+                    <configuration>
+                        <source>21</source>
+                        <target>21</target>
+                        <encoding>UTF-8</encoding>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>net.alchim31.maven</groupId>
+                    <artifactId>scala-maven-plugin</artifactId>
+                    <version>3.2.2</version>
+                    <executions>
+                        <execution>
+                            <id>scala-compile-first</id>
+                            <phase>process-resources</phase>
+                            <goals>
+                                <goal>compile</goal>
+                                <goal>testCompile</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <scalaCompatVersion>${scala.binary.version}</scalaCompatVersion>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>2.22.2</version>
+                    <configuration>
+                        <parallel>classes</parallel>
+                        <threadCount>3</threadCount>
+                        <environmentVariables>
+                            <PATH>../venv/bin:${env.PATH}</PATH>
+                            <LD_LIBRARY_PATH>../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
+                            <PROJ_LIB>/usr/share/proj</PROJ_LIB>
+                            <SPARK_LOCAL_IP>127.0.0.1</SPARK_LOCAL_IP>
+                        </environmentVariables>
+                        <argLine>--add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED</argLine>
+                        <systemPropertyVariables>
+                            <software.amazon.awssdk.http.service.impl>software.amazon.awssdk.http.apache.ApacheSdkHttpService</software.amazon.awssdk.http.service.impl>
+                        </systemPropertyVariables>
+                        <reuseForks>false</reuseForks>
+                        <includes>
+                            <include>**/Test*.*</include>
+                            <include>**/*Test.*</include>
+                            <include>**/*Tests.*</include>
+                            <include>**/*TestCase.*</include>
+
+                            <include>**/Spec*.*</include>
+                            <include>**/*Spec.*</include>
+                            <include>**/*Specs.*</include>
+                        </includes>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
     <organization>
         <name>VITO</name>

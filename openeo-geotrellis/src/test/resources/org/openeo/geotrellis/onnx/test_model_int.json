@@ -29,8 +29,8 @@
         "name": "input",
         "description": "Input image tensor with named dimensions",
         "data_type": "int32",
-        "shape": [1, 1, 256, 256],
-        "dim_order": ["batch", "bands", "height", "width"]
+        "shape": [1, 256, 256],
+        "dim_order": ["bands", "height", "width"]
       }
     ],
     "mlm:output": [

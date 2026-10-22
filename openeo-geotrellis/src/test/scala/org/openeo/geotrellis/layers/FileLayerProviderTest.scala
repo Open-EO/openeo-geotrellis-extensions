@@ -9,32 +9,30 @@ import geotrellis.raster.resample.{Bilinear, CubicConvolution, ResampleMethod}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, Raster, RasterSource, ShortConstantNoDataCellType, isNoData}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, IntConstantNoDataCellType, Raster, RasterExtent, RasterSource, ShortConstantNoDataCellType, isData, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
-import org.apache.commons.io.FileUtils
 import org.apache.spark.rdd.RDD
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.{HashPartitioner, SparkConf, SparkContext, SparkTestHelper}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api._
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
-import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
+import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithLocalTestdata
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.geotiff._
-import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
-import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
+import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link, STACFeatureCollection}
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener}
@@ -44,7 +42,7 @@ import ucar.nc2.util.CompareNetcdf2.ObjFilter
 import ucar.nc2.{Attribute, NetcdfFile, Variable}
 
 import java.io.{File, FileInputStream, FileOutputStream}
-import java.net.{URI, URL}
+import java.net.URI
 import java.nio.file.{Files, Path, Paths}
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, LocalDateTime, ZoneId, ZonedDateTime}
@@ -221,17 +219,6 @@ class FileLayerProviderTest extends RasterMatchers {
     assertEquals(32, physicalMean)
   }
 
-
-  private def _getSentinel5PRasterSources(bbox: ProjectedExtent, date: ZonedDateTime, zoom: Int, featuresJsonString: Option[String] = None): (RDD[LayoutTileSource[SpaceTimeKey]], TileLayerMetadata[SpaceTimeKey]) = {
-    val fileLayerProvider = if (featuresJsonString.isDefined) sentinel5PJsonStringFileLayerProvider(featuresJsonString.get) else sentinel5PFileLayerProvider
-
-    val overlappingRasterSources: Seq[RasterSource] = fileLayerProvider.loadRasterSourceRDD(bbox, date, date, zoom).map(_._1)
-    val commonCellType = overlappingRasterSources.head.cellType
-    val metadata = layerMetadata(bbox, date, date, zoom min zoom, commonCellType, sentinel5PLayoutScheme, sentinel5PMaxSpatialResolution)
-
-    val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, sentinel5PMaxSpatialResolution, sentinel5PCollectionId)(sc)
-    (rasterSources, metadata)
-  }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
@@ -1051,10 +1038,7 @@ class FileLayerProviderTest extends RasterMatchers {
 
   @Test
   def testReadKeysToRasterSources(@TempDir tempDir: Path): Unit = {
-    val Filename = "zarrExample.tar"
-    val url = new URL(s"https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/$Filename")
-    FileUtils.copyURLToFile(url, tempDir.resolve(Filename).toFile)
-    val tarFile = tempDir resolve Filename
+    val tarFile = Paths.get("../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/zarrExample.tar")
     unpackTarFile(tarFile, tempDir)
     val date = LocalDate.of(2020, 3, 15).atStartOfDay(UTC)
     val crs = CRS.fromEpsgCode(32631)
@@ -1080,7 +1064,7 @@ class FileLayerProviderTest extends RasterMatchers {
 
 
   @Test
-  def testHDFRasterSourceProvider(@TempDir tempDir: Path): Unit = {
+  def testHDFRasterSourceProvider(): Unit = {
     val date = LocalDateTime.of(2026, 5, 6, 21, 0).atZone(UTC)
     val endDate = LocalDateTime.of(2026, 5, 6, 21, 10).atZone(UTC)
 
@@ -1092,11 +1076,9 @@ class FileLayerProviderTest extends RasterMatchers {
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     dataCubeParameters.globalExtent = Some(boundingBox)
 
-    val dirArti = "https://artifactory.vgt.vito.be/artifactory/testdata-public/"
     val dirModis = "eodata/Terra/MODIS/MOD10A1.061/2026/04/06/MOD10A1.A2026096.h26v06.061.2026098032156/"
     val fileName = "MOD10A1.A2026096.h26v06.061.2026098032156.hdf"
-    val urlArti = new URL(s"$dirArti$dirModis$fileName")
-    FileUtils.copyURLToFile(urlArti, tempDir.resolve(dirModis).resolve(fileName).toFile)
+    val hdfFile = Paths.get("../testdata").resolve(dirModis).resolve(fileName)
 
     val feature = OpenSearchResponses.Feature(
       id = "MODIS",
@@ -1104,7 +1086,7 @@ class FileLayerProviderTest extends RasterMatchers {
       nominalDate = date,
       links = Array(
         Link(
-          href= tempDir.resolve(dirModis).resolve(fileName).toUri,
+          href = hdfFile.toAbsolutePath.toUri,
           title = Some("MODIS Terra Snow Cover Daily Global 500m"),
           bandNames = Some(Seq("NDSI", "NDSI_Snow_Cover"))
         )
@@ -1119,17 +1101,17 @@ class FileLayerProviderTest extends RasterMatchers {
       openSearch = openEOSearchClient,
       openSearchCollectionId = "MODIS",
       NonEmptyList.of("NDSI", "NDSI_Snow_Cover"),
-      rootPath = tempDir.resolve("/eodata/Terra/MODIS"),
+      rootPath = hdfFile.getParent,
       maxSpatialResolution = CellSize(1, 1),
       SplitYearMonthDayPathDateExtractor,
       layoutScheme = FloatingLayoutScheme(256),
     )
-    
+
     val provider = FileLayerProvider(
       openEOSearchClient,
       "MODIS",
       openSearchLinkTitles = NonEmptyList.of("NDSI"),
-      rootPath = "/eodata/Terra/MODIS",
+      rootPath = hdfFile.getParent.toString,
       CellSize(10, 10),
       SplitYearMonthDayPathDateExtractor,
       layoutScheme = FloatingLayoutScheme(256),
@@ -1463,7 +1445,7 @@ class FileLayerProviderTest extends RasterMatchers {
     dataCubeParameters.globalExtent = Some(ProjectedExtent(Extent(526300.0, 7682200.0, 646340.0, 7802240.0), CRS.fromName("EPSG:32660")))
 
     val factory = new PyramidFactory(
-      loadFeaturesWithArtifactoryMock("/org/openeo/geotrellis/testAntimerideanArtifacts2.json"),
+      loadFeaturesWithLocalTestdata("/org/openeo/geotrellis/testAntimerideanArtifacts2.json"),
       "GLOBAL-MOSAICS",
       java.util.Arrays.asList("VV"),
       "/eodata",
@@ -1504,7 +1486,7 @@ class FileLayerProviderTest extends RasterMatchers {
     dataCubeParameters.globalExtent = Some(ProjectedExtent(Extent(526300.0, 7682200.0, 646340.0, 7802240.0), CRS.fromName("EPSG:32660")))
 
     val factory = new PyramidFactory(
-      loadFeaturesWithArtifactoryMock("/org/openeo/geotrellis/testAntimerideanArtifacts2.json"),
+      loadFeaturesWithLocalTestdata("/org/openeo/geotrellis/testAntimerideanArtifacts2.json"),
       "GLOBAL-MOSAICS",
       java.util.Arrays.asList("VV"),
       "/eodata",
@@ -1607,6 +1589,8 @@ class FileLayerProviderTest extends RasterMatchers {
     val (datacubeParams, result) = keysForLargeArea()
 
     val allTiles = result._1.collect()
+    // listener events are delivered asynchronously: make sure the last job end has been counted
+    SparkTestHelper.waitUntilListenerBusEmpty(sc)
     sc.removeSparkListener(listener)
     print(allTiles)
     val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
@@ -1622,12 +1606,12 @@ class FileLayerProviderTest extends RasterMatchers {
     //overlap filter has removed the other potential sources
     assertEquals(229, ids.size)
 
-    assertTrue(Seq(1, 2).contains(listener.getJobsCompleted))
-    assertTrue(listener.getStagesCompleted <= 4)
+    assertTrue(Seq(3, 4, 5).contains(listener.getJobsCompleted))
+    assertTrue(listener.getStagesCompleted <= 9)
     assertTrue(listener.getTasksCompleted >= 90) // Range to make test less flaky
     assertTrue(listener.getTasksCompleted <= 200)
     assertTrue(allTiles.length >= 2384 - 0.1)
-    assertTrue(allTiles.length <= 4928 + 0.1)
+    assertTrue(allTiles.length <= 7193 + 0.1)
   }
 
   @Test
@@ -1644,6 +1628,8 @@ class FileLayerProviderTest extends RasterMatchers {
 
     val allTiles = result._1.collect()
 
+    // listener events are delivered asynchronously: make sure the last job end has been counted
+    SparkTestHelper.waitUntilListenerBusEmpty(sc)
     sc.removeSparkListener(listener)
     print(allTiles)
     val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
@@ -1709,7 +1695,7 @@ class FileLayerProviderTest extends RasterMatchers {
   @Disabled("temporarily disabled: lowering geotrellis.raster.gdal.number-of-attempts does not work")
   @Test
   def readGDALRasterSourceFromCorruptTileThrows(): Unit = {
-    val rs = GDALRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/T29UMV_20180327T114351_B04_10m.jp2")
+    val rs = GDALRasterSource("../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/T29UMV_20180327T114351_B04_10m.jp2")
 
     try {
       rs.read()
@@ -1734,7 +1720,7 @@ class FileLayerProviderTest extends RasterMatchers {
     bands.add("precipitation-flux")
 
     val outLocation = f"$outDir/testMultibandCOGViaSTAC.nc"
-    val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testMultibandCOGViaSTAC.nc"
+    val referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testMultibandCOGViaSTAC.nc"
 
     writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory, outLocation, referenceFile)
 
@@ -1757,7 +1743,7 @@ class FileLayerProviderTest extends RasterMatchers {
     bands.add("temperature-mean")
     bands.add("precipitation-flux")
 
-    val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testMultibandCOGViaSTACResampledCubic.nc"
+    val referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testMultibandCOGViaSTACResampledCubic.nc"
     writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory,
       f"$outDir/testMultibandCOGViaSTACResampledCubic.nc", referenceFile)
   }
@@ -1765,6 +1751,7 @@ class FileLayerProviderTest extends RasterMatchers {
   @ParameterizedTest
   @ValueSource(booleans = Array(false, true))
   def testMultibandNoNoDataCOGViaSTAC(loadPerProduct: Boolean, @TempDir outDir: Path): Unit = {
+    // 2 adjacent Short GeoTiffs without NODATA value (34TFR_000 and 34TFR_001, seam at x=610240); actual values >= 13
     val pyramidFactory = LayerFixtures.stacCogNoNoDataCollection
 
     val projectedPolygons = ProjectedPolygons.fromExtent(
@@ -1777,13 +1764,83 @@ class FileLayerProviderTest extends RasterMatchers {
     dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
     dataCubeParameters.loadPerProduct = loadPerProduct
 
+    val Seq((_, cube)) = pyramidFactory.datacube_seq(projectedPolygons, "2020-07-01T00:00:00Z",
+      "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+
+    cube.cache()
+
+    // raw Short is widened to Int with NODATA rather than given a NODATA value of 0
+    assertEquals(IntConstantNoDataCellType, cube.metadata.cellType)
+    assertTrue(cube.values.collect().forall(_.cellType == IntConstantNoDataCellType))
+
+    val Raster(multibandTile, extent) = cube
+      .toSpatial()
+      .crop(projectedPolygons.extent.extent)
+      .stitch()
+
+    val band = multibandTile.band(0)
+    val rasterExtent = RasterExtent(extent, band.cols, band.rows)
+
+    // overlapping tiles were merged: the AOI is fully covered by both GeoTiffs, including the seam
+    assertFalse(band.toArray().exists(v => isNoData(v)), "expected no NODATA in AOI")
+    assertTrue(band.toArray().forall(_ >= 13), "expected no fill values in AOI")
+
+    val (seamCol, _) = rasterExtent.mapToGrid(610240.0, extent.center.y)
+    for {
+      col <- seamCol - 1 to seamCol
+      row <- 0 until band.rows
+    } assertTrue(isData(band.get(col, row)), s"expected data at seam ($col, $row)")
+
     writeToNetCDFAndCompare(
       projectedPolygons,
       dataCubeParameters,
       bands = new util.ArrayList(util.Collections.singletonList("L2A-B02-P10")),
       pyramidFactory,
-      outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC.nc",
-      referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testMultibandNoNoDataCOGViaSTAC.nc",
+      outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC_$loadPerProduct.nc",
+      referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testMultibandNoNoDataCOGViaSTAC.nc",
+    )
+  }
+
+  @Test
+  def testDEMRegression(@TempDir outDir: Path): Unit = {
+    /* detect regressions in the context of https://github.com/Open-EO/openeo-geotrellis-extensions/issues/805 */
+
+    val openSearchClient = new FixedFeaturesOpenSearchClient
+
+    val in = Source.fromInputStream(
+      Thread.currentThread().getContextClassLoader.getResourceAsStream("org/openeo/geotrellis/layers/dem.geojson")
+    )
+
+    val (featureCollection, _) =
+      try STACFeatureCollection.parse(in.mkString, toS3URL = false)
+      finally in.close()
+
+    featureCollection.features.foreach(openSearchClient.addFeature)
+
+    val bandNames = new util.ArrayList(util.Collections.singletonList("DEM"))
+    val resolution = 0.000277777777778
+
+    val pyramidFactory = new PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = "https://stac.openeo.vito.be",
+      openSearchLinkTitles = bandNames,
+      rootPath = null,
+      maxSpatialResolution = CellSize(resolution, resolution),
+    )
+
+    val projectedPolygons = ProjectedPolygons.fromExtent(Extent(5.5, 50.5, 6.5, 51.5), "EPSG:4326")
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
+
+    writeToNetCDFAndCompare(
+      projectedPolygons,
+      dataCubeParameters,
+      bands = bandNames,
+      pyramidFactory,
+      outLocation = f"$outDir/testDEMRegression.nc",
+      referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testDEMRegression.nc",
     )
   }
 
@@ -1852,29 +1909,25 @@ class FileLayerProviderTest extends RasterMatchers {
     val bands: util.ArrayList[String] = new util.ArrayList[String]()
     bands.add("precipitation-flux")
 
-    val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testSinglebandCOGViaSTACResampled.nc"
+    val referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testSinglebandCOGViaSTACResampled.nc"
     writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory,
       f"$outDir/testSinglebandCOGViaSTACResampled.nc", referenceFile)
   }
 
   private def writeToNetCDFAndCompare(polygonAOI: ProjectedPolygons, dataCubeParameters: DataCubeParameters, bands: util.ArrayList[String], factory: PyramidFactory, outLocation: String, referenceFile: String): Unit = {
-    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+    val Seq((_, cube)): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+    cube.cache()
+
     val opts = new NetCDFOptions()
     opts.setBandNames(bands)
-    NetCDFRDDWriter.saveSingleNetCDFGeneric(cube.head._2, outLocation, opts)
+    NetCDFRDDWriter.saveSingleNetCDFGeneric(cube, outLocation, opts)
 
     val actualFile = NetcdfFile.open(outLocation)
     val refFile = NetcdfFile.open(referenceFile)
 
     val formatter = new Formatter()
     val areEqual = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile, new ObjFilter {
-      override def attCheckOk(v: Variable, att: Attribute): Boolean = {
-        if( v == null && att.getShortName == "_NCProperties") {
-          return false
-        }else{
-          return true
-        }
-      }
+      override def attCheckOk(v: Variable, att: Attribute): Boolean = v != null || att.getShortName != "_NCProperties"
     })
 
     assertTrue(areEqual, s"netCDF files are not equal:\n$formatter")

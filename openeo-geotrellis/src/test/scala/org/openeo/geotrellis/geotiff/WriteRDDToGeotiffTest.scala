@@ -3,7 +3,7 @@ package org.openeo.geotrellis.geotiff
 import better.files.File
 import better.files.File.apply
 import cats.data.NonEmptyList
-import geotrellis.layer.{CRSWorldExtent, FloatingLayoutScheme, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
+import geotrellis.layer.{CRSWorldExtent, FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{BigTiff, GeoTiff, MultibandGeoTiff, Tiff, TiffType, Tiled}
@@ -11,7 +11,7 @@ import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
 import geotrellis.raster.resample.Min
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{BitCellType, ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, ColorMaps, IntArrayTile, IntConstantTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, UByteCellType, isData}
+import geotrellis.raster.{ArrayTile, BitCellType, ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, ColorMaps, DoubleUserDefinedNoDataCellType, IntArrayTile, IntConstantTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, UByteUserDefinedNoDataCellType, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
@@ -21,10 +21,11 @@ import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assert
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.{Arguments, MethodSource}
-import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
+import org.junit.jupiter.params.provider.{Arguments, MethodSource, ValueSource}
+import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithLocalTestdata
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.stac.{Asset, Item}
+import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.nio.file.{Files, Path, Paths}
@@ -66,6 +67,13 @@ object WriteRDDToGeotiffTest{
     Arguments.of(false, Tiff),
     Arguments.of(true, BigTiff),
   )
+
+  private def allAssets(items: util.List[Item]): Iterable[Asset] = {
+    for {
+      item <- items.asScala
+      asset <- item.assets.asScala.values
+    } yield asset
+  }
 }
 
 class WriteRDDToGeotiffTest extends RasterMatchers {
@@ -267,8 +275,8 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     saveRDD(tileLayerRDD.withContext { _.repartition(layoutCols * layoutRows) }, 1, filename)
 
     val tiff = GeoTiff.readSingleband(filename)
-    // BitCellType should have been converted to UByteCellType
-    assertEquals(UByteCellType, tiff.cellType, s"Expected UByteCellType but got ${tiff.cellType}")
+    // BitCellType should have been converted to uint8ud255
+    assertEquals(UByteUserDefinedNoDataCellType(255.toByte), tiff.cellType)
     // Values should be preserved: 1s and 0s
     val output = tiff.raster.tile
     assertArrayEquals(bitTile.toArray(), output.toArray())
@@ -357,6 +365,23 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val croppedOutput = result.band(0).toArrayTile()
     assertArrayEquals(croppedReference.tile.toBytes(),croppedOutput.toBytes())
 
+  }
+
+  @Test
+  def testRetainNoDataTile(): Unit ={
+    val layoutCols = 8
+    val layoutRows = 4
+
+    val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
+    val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256,256.toByte)
+
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
+    val emptyRdd: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext{_.map{case(key,tile) => (key,new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,tile.bandCount)) }}
+    val (_,_,processedRdd) = preProcess(emptyRdd, None, retainNoDataTiles = true)
+    val (_,_,processedRddFiltered) = preProcess(emptyRdd, None, retainNoDataTiles = false)
+    val count = processedRdd.count()
+    assertEquals(layoutCols*layoutRows,count)
+    assertEquals(0,processedRddFiltered.count())
   }
 
 
@@ -709,7 +734,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   def testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBandOverview_ALL(): Unit = {
     val layoutCols = 18
     val layoutRows = 14
-    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
+    val (layer, _) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
     val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBandOverview/")
     new Directory(outDir.toFile).deepList().foreach(_.delete())
@@ -723,7 +748,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     options.setOverview("ALL")
     val tiles = saveRDDTemporalAllowAssetPerBandInternal(layer, outDir.toString, formatOptions = options)
 
-    val expectedPaths = List(
+    val expectedPaths = Seq(
       outDir + "/openEO_2017-01-02Z_B01.tif",
       outDir + "/openEO_2017-01-02Z_B02.tif",
       outDir + "/openEO_2017-01-02Z_B03.tif",
@@ -732,12 +757,15 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       outDir + "/openEO_2017-01-03Z_B03.tif",
     )
 
-    val assets = tiles.asScala.map { case item => item.assets}.toSet
-    val paths = assets.foldLeft(List[String]())((temp,asset) => asset.asScala.values.toList.map(_.path)++temp) //assets.flatMap(asset => asset.)
-    for (path <- paths){
-      assertTrue(expectedPaths.contains(path))
+    val assets = allAssets(tiles)
+
+    val actualPaths = assets.map(_.path).toSeq.sorted
+    assertEquals(expectedPaths, actualPaths)
+
+    for (asset <- assets) {
+      assertEquals("int8", asset.dataType)
+      assertEquals(-128, asset.nodata.byteValue())
     }
-    assertEquals(6,paths.size)
 
     for (path <- expectedPaths) {
       val tile = GeoTiff.readMultiband(path)
@@ -757,7 +785,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   def testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBandOverview_AUTO(): Unit = {
     val layoutCols = 18
     val layoutRows = 14
-    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
+    val (layer, _) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
     val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBandOverview/")
     new Directory(outDir.toFile).deepList().foreach(_.delete())
@@ -771,7 +799,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     options.setOverview("AUTO")
     val tiles = saveRDDTemporalAllowAssetPerBand(layer, outDir.toString, formatOptions = options)
 
-    val expectedPaths = List(
+    val expectedPaths = Seq(
       outDir + "/openEO_2017-01-02Z_B01.tif",
       outDir + "/openEO_2017-01-02Z_B02.tif",
       outDir + "/openEO_2017-01-02Z_B03.tif",
@@ -780,12 +808,15 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       outDir + "/openEO_2017-01-03Z_B03.tif",
     )
 
-    val assets = tiles.asScala.map { case item => item.assets}.toSet
-    val paths = assets.foldLeft(List[String]())((temp,asset) => asset.asScala.values.toList.map(_.path)++temp) //assets.flatMap(asset => asset.)
-    for (path <- paths){
-      assertTrue(expectedPaths.contains(path))
+    val assets = allAssets(tiles)
+
+    val actualPaths = assets.map(_.path).toSeq.sorted
+    assertEquals(expectedPaths, actualPaths)
+
+    for (asset <- assets) {
+      assertEquals("int8", asset.dataType)
+      assertEquals(-128, asset.nodata.byteValue())
     }
-    assertEquals(6,paths.size)
 
     for (path <- expectedPaths) {
       val tile = GeoTiff.readMultiband(path)
@@ -883,8 +914,8 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val layoutCols = 8
     val layoutRows = 4
 
-    val intImage = LayerFixtures.createTextImage(layoutCols * 256, layoutRows * 256)
-    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+    val byteImage = LayerFixtures.createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(byteImage, layoutCols * 256, layoutRows * 256)
 
     val date = ZonedDateTime.now()
 
@@ -906,16 +937,24 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     new Directory(outDir.toFile).deleteRecursively()
     Files.createDirectories(outDir)
 
-    val ret = saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
-      DeflateCompression(BEST_COMPRESSION))
-    assertTrue(ret.get(0).datetime.contains("T"))
+    val items = saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
+      DeflateCompression(BEST_COMPRESSION), new GTiffOptions)
+
+    val assets = allAssets(items)
+
+    for (asset <- assets) {
+      assertEquals("int8", asset.dataType)
+      assertEquals(-128, asset.nodata.byteValue())
+    }
+
+    assertTrue(items.get(0).datetime.contains("T"))
   }
 
   @Test
   def testSaveSamplesWithOptions(@TempDir outDir: Path): Unit = {
     val layoutCols = 8
     val layoutRows = 4
-    val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
+    val (imageTile: ByteArrayTile, _: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
 
     val date = ZonedDateTime.of(LocalDate.of(2023, 4, 5), MIDNIGHT, UTC)
 
@@ -937,27 +976,32 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     gtiffOptions.setOverview("ALL")
     gtiffOptions.setTileSize(128)
 
-    val tiles = saveSamples(tileLayerRDD, outDir + "/", tiltedRectangle, sampleNames,
+    val items = saveSamples(tileLayerRDD, outDir + "/", tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION),gtiffOptions)
 
-    val expectedPaths = List(
+    val expectedPaths = Seq(
       outDir + "/openEO_2023-04-05Z_0-testName.tif",
       outDir + "/openEO_2023-04-06Z_0-testName.tif",
       outDir + "/openEO_2023-04-07Z_0-testName.tif",
     )
-    val paths = tiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet
 
-    for (path <- paths){
-      assertTrue(expectedPaths.contains(path))
-    }
-    assertEquals(3,paths.size)
+    val assets = allAssets(items)
+
+    val actualPaths = assets.map(_.path).toSeq.sorted
+
+    assertEquals(expectedPaths, actualPaths)
 
     for (path <- expectedPaths) {
       val tile = GeoTiff.readMultiband(path)
       assertEquals(0,tile.overviews.size) // too small for overviews
     }
 
-    assertTrue(tiles.get(0).datetime.contains("T"))
+    for (asset <- assets) {
+      assertEquals("int8", asset.dataType)
+      assertEquals(-128, asset.nodata.byteValue())
+    }
+
+    assertTrue(items.get(0).datetime.contains("T"))
   }
 
   @Test
@@ -989,8 +1033,8 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     new Directory(outDir.toFile).deleteRecursively()
     Files.createDirectories(outDir)
 
-    saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
-      DeflateCompression(BEST_COMPRESSION))
+    val items = saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
+      DeflateCompression(BEST_COMPRESSION), new GTiffOptions)
 
     val paths = Files.list(outDir).iterator().asScala.toArray // 1 date, 1 polygon
     val geoTiffPath = paths.find(_.toString.endsWith(".tif")).get
@@ -1024,6 +1068,13 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     }
 
     assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
+
+    val assets = allAssets(items)
+
+    for (asset <- assets) {
+      assertEquals("int8", asset.dataType)
+      assertEquals(-128, asset.nodata.byteValue())
+    }
   }
 
   @Test
@@ -1050,17 +1101,15 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val tiles = saveSamplesSpatial(tileLayerRDD, outDir + "/", tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION),gtiffOptions)
 
-    val expectedPaths = List(
+    val expectedPaths = Seq(
       outDir + "/openEO_0-testName.tif",
       outDir + "/openEO_1-testName.tif"
 
     )
-    val paths = tiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet
+    val assets = allAssets(tiles)
 
-    for (path <- paths){
-      assertTrue(expectedPaths.contains(path))
-    }
-    assertEquals(expectedPaths.size, paths.size)
+    val actualPaths = assets.map(_.path).toSeq.sorted
+    assertEquals(expectedPaths, actualPaths)
 
     for (path <- expectedPaths) {
       val tile = GeoTiff.readMultiband(path)
@@ -1070,6 +1119,11 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     assertEquals(Extent(108.8684210526, -17.0178704513, 114.7815789474, -11.9889230829), tiles.get(0).bbox)
     assertEquals(Extent(108.8684210526, -15.0178704513, 114.7815789474, -9.9889230829), tiles.get(1).bbox)
+
+    for (asset <- assets) {
+      assertEquals("int8", asset.dataType)
+      assertEquals(-128, asset.nodata.byteValue())
+    }
   }
 
   @Test
@@ -1077,8 +1131,8 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val layoutCols = 8
     val layoutRows = 4
 
-    val intImage = LayerFixtures.createTextImage(layoutCols * 256, layoutRows * 256)
-    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+    val byteImage = LayerFixtures.createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(byteImage, layoutCols * 256, layoutRows * 256)
 
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(MultibandTile(Seq(imageTile)), TileLayout(layoutCols, layoutRows, 256, 256))(WriteRDDToGeotiffTest.sc)
@@ -1096,8 +1150,8 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     new Directory(outDir.toFile).deleteRecursively()
     Files.createDirectories(outDir)
 
-    saveSamplesSpatial(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
-      DeflateCompression(BEST_COMPRESSION))
+    val items = saveSamplesSpatial(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
+      DeflateCompression(BEST_COMPRESSION), new GTiffOptions)
 
     val paths = Files.list(outDir).iterator().asScala.toArray // 1 date, 1 polygon
     val geoTiffPath = paths.find(_.toString.endsWith(".tif")).get
@@ -1131,6 +1185,13 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     }
 
     assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
+
+    val assets = allAssets(items)
+
+    for (asset <- assets) {
+      assertEquals("int8", asset.dataType)
+      assertEquals(-128, asset.nodata.byteValue())
+    }
   }
 
 
@@ -1138,7 +1199,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
   def testAvoidCroppingAwayNoData(): Unit = {
 
     val layerProvider = FileLayerProvider(
-      loadFeaturesWithArtifactoryMock("/org/openeo/geotrellis/testAvoidCroppingAwayNoData.json"),
+      loadFeaturesWithLocalTestdata("/org/openeo/geotrellis/testAvoidCroppingAwayNoData.json"),
       "GLOBAL-MOSAICS",
       openSearchLinkTitles = NonEmptyList.of("VV"),
       rootPath = "/eodata/Global-Mosaics/Sentinel-1",
@@ -1185,7 +1246,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     options.setOverview("ALL")
     options.setTileSize(128)
-    saveStitched(filtered.withContext {
+    val item = saveStitched(filtered.withContext {
       _.repartition(layoutCols * layoutRows)
     }, filename, cropBounds, DeflateCompression(6), formatOptions = options)
 
@@ -1200,6 +1261,227 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     assertEquals(128,tile.overviews(2).tile.rows)
     assertEquals(112,tile.overviews(3).tile.cols)
     assertEquals(64,tile.overviews(3).tile.rows)
+
+    val assets = item.assets.asScala.values
+
+    for (asset <- assets) {
+      assertEquals("int8", asset.dataType)
+      assertEquals(-128, asset.nodata.byteValue())
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = Array(true, false))
+  def testMetadataSaveRddAllowAssetPerBand(separateAssetPerBand: Boolean, @TempDir tempDir: Path): Unit = {
+    def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true, retainTiles:Boolean = true, cropBounds: Option[Extent] = None): Unit = {
+      val worldExtent = Extent(-180.0, -90.0, 180.0, 90.0)
+      val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 1, extentOpt = Some(worldExtent))
+      val spatialLayer = layer.toSpatial()
+      val outputFile = tempDir.resolve("tiffStat.tif")
+      val formatOptions = new GTiffOptions
+      formatOptions.setAddBandStatistics(addStatistics)
+      formatOptions.setSeparateAssetPerBand(separateAssetPerBand)
+      formatOptions.addBandTag(0, "DESCRIPTION", "B02")
+      formatOptions.addBandTag(1, "DESCRIPTION", "B03")
+      formatOptions.addBandTag(2, "DESCRIPTION", "B04")
+      formatOptions.setRetainNoDataTiles(retainTiles)
+      val extent = cropBounds.getOrElse(layer.metadata.extent)
+      val items = saveRDDAllowAssetPerBand(spatialLayer,3, outputFile.toString, 6, Some(extent), formatOptions)
+
+      val (assetCount, bandCount, assetName) = if (separateAssetPerBand) (3,1,"B03") else (1,3,"openEO")
+
+      assertEquals(1, items.size())
+      items.forEach(item => {
+        val assets = item.assets
+        assertEquals(assetCount, assets.size())
+        val metadata = assets.get(assetName).metadata
+        assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
+        assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
+        val bbox = Array[Double](extent.xmin, extent.ymin, extent.xmax, extent.ymax)
+        assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.01)
+        val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
+        assertEquals(bandCount, bands.size())
+        bands.forEach(band => {
+          assertTrue(band.containsKey("name"))
+          assertEquals(addStatistics, band.containsKey("statistics"))
+          val statistics = band.getOrDefault("statistics", null).asInstanceOf[util.HashMap[String, Number]]
+          assertEquals(expectedStatistics, statistics)
+        })
+
+      })
+    }
+    val arrayDim = 512
+
+    Seq(true,false).foreach { retainTiles =>
+      val arrayTile0 = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
+      testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0, "stddev", 14.142135623730951)), retainTiles = retainTiles)
+      val arrayTile1 = IntArrayTile(Array.fill(arrayDim * arrayDim)(256), arrayDim, arrayDim, noDataValue = 256)
+      val imageTile1 = arrayTile1.convert(DoubleUserDefinedNoDataCellType(256)).mutable
+      testStatistics(arrayTile = imageTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)), retainTiles = retainTiles)
+      val arrayTile2 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
+      testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0, "stddev", 10)), retainTiles = retainTiles)
+      testStatistics(arrayTile = arrayTile0, addStatistics = false, retainTiles = retainTiles)
+
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = Array(true, false))
+  def testMetadataSaveRddTemporalAllowAssetPerBand(separateAssetPerBand: Boolean, @TempDir tempDir: Path): Unit = {
+    def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true, retainTiles:Boolean = true, cropBounds:Option[Extent] = None): Unit = {
+      val worldExtent = Extent(-180.0, -90.0, 180.0, 90.0)
+      val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 1, extentOpt = Some(worldExtent))
+
+      val outputFile = tempDir.resolve("tiffStat.tif")
+
+      val options = new GTiffOptions()
+      options.setAddBandStatistics(addStatistics)
+      options.setSeparateAssetPerBand(separateAssetPerBand)
+      options.setRetainNoDataTiles(retainTiles)
+      options.addBandTag(0, "DESCRIPTION", "B02")
+      options.addBandTag(1, "DESCRIPTION", "B03")
+      options.addBandTag(2, "DESCRIPTION", "B04")
+      val items = saveRDDTemporalAllowAssetPerBandInternal(layer, outputFile.toString, cropBounds = cropBounds, formatOptions = options)
+
+      val (assetCount, bandCount, assetName) = if (separateAssetPerBand) (3,1,"B03") else (1,3,"openEO")
+
+      assertEquals(1, items.size())
+      items.forEach(item => {
+        val assets = item.assets
+        assertEquals(assetCount, assets.size())
+        val metadata = assets.get(assetName).metadata
+        assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
+        assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
+        val extent = cropBounds.getOrElse(layer.metadata.extent)
+        val bbox = Array[Double](extent.xmin, extent.ymin, extent.xmax, extent.ymax)
+        assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.01)
+        val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
+        assertEquals(bandCount, bands.size())
+        bands.forEach(band => {
+          assertTrue(band.containsKey("name"))
+          assertEquals(addStatistics, band.containsKey("statistics"))
+          val statistics = band.getOrDefault("statistics", null).asInstanceOf[util.HashMap[String, Number]]
+          assertEquals(expectedStatistics, statistics)
+        })
+
+      })
+    }
+
+    val arrayDim = 512
+    Seq(true,false).foreach { retainTiles =>
+      val arrayTile0 = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
+      testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0, "stddev", 14.142135623730951)), retainTiles = retainTiles)
+      val arrayTile1 = IntArrayTile(Array.fill(arrayDim * arrayDim)(256), arrayDim, arrayDim, noDataValue = 256)
+      val imageTile1 = arrayTile1.convert(DoubleUserDefinedNoDataCellType(256)).mutable
+      testStatistics(arrayTile = imageTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)), retainTiles = retainTiles)
+      val arrayTile2 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
+      val imageTile2 = arrayTile2.convert(DoubleUserDefinedNoDataCellType(256)).mutable
+      testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0, "stddev", 10)), retainTiles = retainTiles)
+      testStatistics(arrayTile = imageTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0, "stddev", 10)), retainTiles = retainTiles)
+      testStatistics(arrayTile = arrayTile0, addStatistics = false, retainTiles = retainTiles)
+
+
+
+
+      val cropCols = 300
+      val cropRows = 200
+      val unalignedCrop = Extent(-180.0, 90.0 - cropRows * 180.0 / arrayDim, -180.0 + cropCols * 360.0 / arrayDim, 90.0)
+      def unaligned(noDataLeftHalf: Boolean): ArrayTile = IntArrayTile(
+        Array.tabulate(arrayDim * arrayDim) { i =>
+          val col = i % arrayDim
+          val row = i / arrayDim
+          if (col >= cropCols || row >= cropRows) 999          // outside crop: must be ignored
+          else if (noDataLeftHalf && col < cropCols / 2) 256   // NoData
+          else if (row < cropRows / 2) 10
+          else 30
+        }, arrayDim, arrayDim, noDataValue = 256)
+
+      // fully valid inside crop: padding must not lower valid_percent or raise maximum
+      testStatistics(arrayTile = unaligned(noDataLeftHalf = false),
+        expectedStatistics = new util.HashMap[String, Any](util.Map.of(
+          "valid_percent", 100, "minimum", 10.0, "maximum", 30.0, "mean", 20.0, "stddev", 10)),
+        expectedShape = Array(cropRows, cropCols), cropBounds = Some(unalignedCrop))
+
+      // half NoData inside crop: total must be 300*200, not tile-padded
+      testStatistics(arrayTile = unaligned(noDataLeftHalf = true),
+        expectedStatistics = new util.HashMap[String, Any](util.Map.of(
+          "valid_percent", 50, "minimum", 10.0, "maximum", 30.0, "mean", 20.0, "stddev", 10)),
+        expectedShape = Array(cropRows, cropCols), cropBounds = Some(unalignedCrop))
+    }
+
+  }
+
+  @Test
+  def testMetadataSaveSamples(@TempDir tempDir: Path): Unit = {
+    val polygon0 = MultiPolygon(
+      Polygon(
+        (-180.0, -90.0),
+        (-180.0, 90.0),
+        (180.0 , 90.0),
+        (180.0 , -90.0),
+        (-180.0, -90.0),
+      ),
+    )
+    def testStatistics(arrayTile: ArrayTile, expectedStatistics: util.HashMap[String, Any] = null, expectedShape: Array[Int] = Array(512, 512), addStatistics: Boolean = true, polygon: MultiPolygon = polygon0, retainTiles:Boolean = true): Unit = {
+      val rdd = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 1, extentOpt= Some(polygon0.extent))
+      val outputFile = "/testMetadataSaveSamples.tiff"
+      val formatOptions = new GTiffOptions
+      formatOptions.setAddBandStatistics(addStatistics)
+      formatOptions.setSeparateAssetPerBand(true)
+      formatOptions.addBandTag(0, "DESCRIPTION", "B02")
+      formatOptions.addBandTag(1, "DESCRIPTION", "B03")
+      formatOptions.addBandTag(2, "DESCRIPTION", "B04")
+      formatOptions.setRetainNoDataTiles(retainTiles)
+
+      val polygons = ProjectedPolygons(polygon, CRS.fromEpsgCode(4326))
+      val sampleNames = polygons.polygons.indices.map(_.toString).asJava
+
+      val items = saveSamples(rdd, tempDir + "/", polygons, sampleNames, DeflateCompression(BEST_COMPRESSION),formatOptions)
+
+      assertEquals(1, items.size())
+      items.forEach(item => {
+        val assets = item.assets
+        assertEquals(1, assets.size())
+        val metadata = assets.get("openEO").metadata
+        assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
+        assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
+        val resultExtent = polygon.extent
+        val bbox = Array[Double](resultExtent.xmin, resultExtent.ymin, resultExtent.xmax, resultExtent.ymax)
+        assertArrayEquals(bbox, metadata.get("proj:bbox").asInstanceOf[Array[Double]], 0.01)
+        val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
+        assertEquals(3, bands.size())
+        bands.forEach(band => {
+          assertTrue(band.containsKey("name"))
+          assertEquals(addStatistics, band.containsKey("statistics"))
+          val statistics = band.getOrDefault("statistics", null).asInstanceOf[util.HashMap[String, Number]]
+          assertEquals(expectedStatistics, statistics)
+        })
+
+      })
+    }
+    val polygon1 = MultiPolygon(
+      Polygon(
+        (-18.0, 30.0),
+        (-18.0, 60.0),
+        (18.0, 60.0),
+        (18.0, 30.0),
+        (-18.0, 30.0),
+      ),
+    )
+
+    val arrayDim = 512
+    Seq(true,false).foreach { retainTiles =>
+      val arrayTile0 = IntArrayTile(Array.fill(arrayDim * arrayDim / 4)(0) ++ Array.fill(arrayDim * arrayDim / 2)(30) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
+      testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "minimum", 0.0, "maximum", 30.0, "mean", 20.0, "stddev", 14.142135623730951)), retainTiles = retainTiles)
+      val arrayTile1 = IntArrayTile(Array.fill(arrayDim * arrayDim)(256), arrayDim, arrayDim, noDataValue = 256)
+      val imageTile1 = arrayTile1.convert(DoubleUserDefinedNoDataCellType(256)).mutable
+      testStatistics(arrayTile = imageTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)), retainTiles = retainTiles)
+      val arrayTile2 = IntArrayTile(Array.fill(arrayDim * arrayDim / 2)(256) ++ Array.fill(arrayDim * arrayDim / 8)(30) ++ Array.fill(arrayDim * arrayDim / 8)(10) ++ Array.fill(arrayDim * arrayDim / 4)(256), arrayDim, arrayDim, noDataValue = 256)
+      testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "minimum", 10.0, "maximum", 30.0, "mean", 20.0, "stddev", 10)), retainTiles = retainTiles)
+      testStatistics(arrayTile = arrayTile0, addStatistics = false, retainTiles = retainTiles)
+      testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "minimum", 0.0, "maximum", 30.0, "mean", 15.0, "stddev", 15.0)), polygon = polygon1, expectedShape = Array(86, 52), retainTiles = retainTiles)
+      testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)), polygon = polygon1, expectedShape = Array(86, 52), retainTiles = retainTiles)
+    }
   }
 
   @ParameterizedTest

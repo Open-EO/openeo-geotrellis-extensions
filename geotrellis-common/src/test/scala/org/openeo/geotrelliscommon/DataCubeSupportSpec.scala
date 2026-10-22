@@ -4,7 +4,7 @@ import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, Spac
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, TileLayout, UByteConstantNoDataCellType}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.{Disabled, Test}
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
@@ -57,6 +57,36 @@ class DataCubeSupportSpec {
     assertEquals(0,newMetadata.bounds.get.minKey.col)
 
   }
+
+  @Test
+  def optimizeChunkSizeNotBelow128():Unit ={
+    val metadata512 = TileLayerMetadata(UByteConstantNoDataCellType,LayoutDefinition(Extent(646660.0, 5676230.0, 651780.0, 5681350.0),TileLayout(1,1,512,512)),Extent(646668.7622376741, 5681108.99671377, 646917.3273239338, 5681335.60711388),CRS.fromEpsgCode(32631),KeyBounds(SpaceTimeKey(0,0,1588809600000L),SpaceTimeKey(0,0,1588809600000L)))
+    val parameters = new DataCubeParameters
+    parameters.setLayoutScheme("FloatingLayoutScheme")
+    val metadata256 = DatacubeSupport.optimizeChunkSize(metadata512, Array(MultiPolygon()), Some(parameters), 1).get
+    assertEquals(256,metadata256.tileCols)
+    val metadata128 = DatacubeSupport.optimizeChunkSize(metadata256, Array(MultiPolygon()), Some(parameters), 1).get
+    assertEquals(128,metadata128.tileCols)
+    assertEquals(0,metadata128.bounds.get.maxKey.col)
+    assertEquals(0,metadata128.bounds.get.maxKey.row)
+    assertEquals(0,metadata128.bounds.get.minKey.row)
+    assertEquals(0,metadata128.bounds.get.minKey.col)
+    // smaller tiles change the content of the result (pixels outside the geometry, fully masked dates)
+    assertTrue(DatacubeSupport.optimizeChunkSize(metadata128, Array(MultiPolygon()), Some(parameters), 1).isEmpty)
+  }
+
+  @Test
+  def optimizeChunkSizeKeepsTilesLargerThanPixelBuffer():Unit ={
+    val metadata512 = TileLayerMetadata(UByteConstantNoDataCellType,LayoutDefinition(Extent(646660.0, 5676230.0, 651780.0, 5681350.0),TileLayout(1,1,512,512)),Extent(646668.7622376741, 5681108.99671377, 646917.3273239338, 5681335.60711388),CRS.fromEpsgCode(32631),KeyBounds(SpaceTimeKey(0,0,1588809600000L),SpaceTimeKey(0,0,1588809600000L)))
+    val parameters = new DataCubeParameters
+    parameters.setLayoutScheme("FloatingLayoutScheme")
+    // e.g. apply_kernel with a 301x301 kernel
+    parameters.setPixelBuffer(150.5, 150.5)
+    val metadata256 = DatacubeSupport.optimizeChunkSize(metadata512, Array(MultiPolygon()), Some(parameters), 1).get
+    assertEquals(256,metadata256.tileCols)
+    assertTrue(DatacubeSupport.optimizeChunkSize(metadata256, Array(MultiPolygon()), Some(parameters), 1).isEmpty)
+  }
+
 
   @Test
   def optimizeReduction(): Unit = {

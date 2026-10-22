@@ -10,21 +10,17 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.testkit.TileLayerRDDBuilders.defaultCRS
 import geotrellis.vector._
-import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.layers.{FileLayerProvider, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
-import org.openeo.opensearch.OpenSearchClient
-import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureBuilder, FeatureCollection}
-import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
+import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
 import spire.math.UShort
 
 import java.awt.image.DataBufferByte
-import java.io.File
-import java.net.{URI, URL}
+import java.net.URL
 import java.nio.file.Paths
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
@@ -33,7 +29,6 @@ import java.time.{LocalDate, ZonedDateTime}
 import java.util
 import java.util.Collections
 import java.util.Collections.singletonList
-import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
 import scala.io.{BufferedSource, Source}
 import scala.reflect.ClassTag
@@ -1438,7 +1433,7 @@ object LayerFixtures {
     )
   }
 
-  lazy val b04RasterSource =GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/S2_B04_timeseries.tiff")
+  lazy val b04RasterSource = GeoTiffRasterSource("../testdata/org/openeo/geotrellis/LayerFixtures/S2_B04_timeseries.tiff")
 
   lazy val b04Raster = {
     b04RasterSource.read().get
@@ -1476,6 +1471,65 @@ object LayerFixtures {
           val bytes = Array.fill[Byte](cols * rows / 8)(0)
           rand.nextBytes(bytes)
           BitArrayTile.apply(bytes, cols, rows)
+        case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
+      }
+      (
+        v.withNoData(Some(32767)),
+        date
+      )
+    }).toArray
+
+    implicit val sc = SparkContext.getOrCreate()
+
+    val layout = LayoutDefinition(RasterExtent(extent, cols, rows), 64, 64)
+    val rdd = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(timeSeries,layout.tileLayout,timeSeries(0)._1.cellType)
+
+    new ContextRDD(rdd.mapValues(t => MultibandTile(t)),rdd.metadata.copy(layout= rdd.metadata.layout.copy(extent=extent),extent = extent,crs=crs))
+  }
+
+  /**
+   * Builds a multi-date [[MultibandTileLayerRDD]] whose per-date content is fully
+   * predictable, unlike [[randomNoiseLayer]] which uses random noise.
+   *
+   * Each date is assigned one [[org.openeo.geotrellis.testutil.stac.RasterPattern]]
+   * (see `patterns`), reusing the exact pixel-value formulas from
+   * [[org.openeo.geotrellis.testutil.stac.StacTestGenerator]]. Because the value of
+   * every pixel, for every date, is a known deterministic function of (col, row,
+   * pattern), tests can compute the exact expected outcome of temporal aggregations
+   * (e.g. a per-pixel median) instead of only checking coarse statistics.
+   *
+   * Values are scaled from the StacTestGenerator's native [0, 10000] range into
+   * [20, 120], matching the value range historically used by [[randomNoiseLayer]].
+   */
+  def patternedTemporalLayer(pixelType: PixelType = PixelType.Byte,
+                             extent: Extent = ProjectedExtent(defaultExtent,LatLng).reproject(CRS.fromEpsgCode(32631)),
+                             crs: CRS = CRS.fromEpsgCode(32631),
+                             dates: List[ZonedDateTime],
+                             patterns: List[org.openeo.geotrellis.testutil.stac.RasterPattern],
+                             cols:Int = 256, rows:Int = 256
+                            ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    require(dates.size == patterns.size, "patternedTemporalLayer needs exactly one pattern per date")
+
+    // Native pattern value range is [0, 10000]; rescale to [20, 120].
+    def valueAt(col: Int, row: Int, pattern: org.openeo.geotrellis.testutil.stac.RasterPattern): Double =
+      20.0 + org.openeo.geotrellis.testutil.stac.StacTestGenerator.patternValue(col, row, cols, rows, pattern) / 100.0
+
+    val timeSeries: Array[(Tile, ZonedDateTime)] = dates.zip(patterns).map({ case (date, pattern) =>
+      val v: Tile = pixelType match {
+        case PixelType.Double => DoubleArrayTile.apply((for (row <- 0 until rows; col <- 0 until cols) yield valueAt(col, row, pattern)).toArray, cols, rows)
+        case PixelType.Float => FloatArrayTile.apply((for (row <- 0 until rows; col <- 0 until cols) yield valueAt(col, row, pattern).toFloat).toArray, cols, rows)
+        case PixelType.Int => IntArrayTile.apply((for (row <- 0 until rows; col <- 0 until cols) yield math.round(valueAt(col, row, pattern)).toInt).toArray, cols, rows)
+        case PixelType.Short => ShortArrayTile.apply((for (row <- 0 until rows; col <- 0 until cols) yield math.round(valueAt(col, row, pattern)).toShort).toArray, cols, rows)
+        case PixelType.Byte => ByteArrayTile.apply((for (row <- 0 until rows; col <- 0 until cols) yield math.round(valueAt(col, row, pattern)).toByte).toArray, cols, rows)
+        case PixelType.Bit =>
+          // No fractional values in a bit tile: threshold the pattern at its midpoint (5000).
+          val bytes = Array.fill[Byte](cols * rows / 8)(0)
+          val bitTile = BitArrayTile.apply(bytes, cols, rows)
+          for (row <- 0 until rows; col <- 0 until cols) {
+            val bit = if (org.openeo.geotrellis.testutil.stac.StacTestGenerator.patternValue(col, row, cols, rows, pattern) >= 5000.0) 1 else 0
+            bitTile.set(col, row, bit)
+          }
+          bitTile
         case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
       }
       (
@@ -1534,110 +1588,19 @@ object LayerFixtures {
     new ContextRDD(cube.partitionBy(partitioner),cube.metadata)
   }
 
-  def loadFeaturesWithArtifactoryMock(jsonPath: String): OpenSearchClient = {
+  def loadFeaturesWithLocalTestdata(jsonPath: String): OpenSearchClient = {
     val jsonPathFull = getClass.getResource(jsonPath)
     val fileSource = Source.fromURL(jsonPathFull)
     var txt = try fileSource.mkString
     finally fileSource.close()
-    val basePath = new File(jsonPathFull.getFile).getParent
-    // Use artifactory to avoid heavy git repo
-    val basePathArtifactory = "https://artifactory.vgt.vito.be/artifactory/testdata-public"
-
-    /*
-    To upload new files;
-    - mount /eodata
-    - change openeo-opensearch-client to use fs instead of s3
-    - run this Python script, and copy the printed paths here:
-root = Path("/tmp/eodata/")
-l = set(filter(lambda p: p.is_file(), root.rglob("*.*")))
-l = {f for f in l if os.stat(f).st_size > 0}
-l = set(map(lambda p: os.path.relpath(p, root), l))
-for p in l:
-    cmd = f'curl -uUSERNAME:PASS -T {root / p} "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/{p}"'
-    print(cmd)
-    code = os.system(cmd)
-    if code != 0:
-        raise Exception("Failed: " + cmd)
-print("\n")
-for p in l:
-    print(f'"/eodata/{p}",')
-     */
-
-    val artifactoryPaths = Set(
-      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/MTD_TL.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/IMG_DATA/R10m/T31UGS_20230117T104259_B04_10m.jp2",
-      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/MTD_TL.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
-      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R20m/T31UFS_20230405T105031_SCL_20m.jp2",
-      // for testMissingS2:
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/GRANULE/L2A_T03WWT_A036821_20240324T230529/IMG_DATA/R20m/T03WWT_20240324T230529_SCL_20m.jp2",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/GRANULE/L2A_T03WWT_A036821_20240324T230529/MTD_TL.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWU_20240324T234241.SAFE/GRANULE/L2A_T03WWU_A036821_20240324T230529/IMG_DATA/R20m/T03WWU_20240324T230529_SCL_20m.jp2",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWU_20240324T234241.SAFE/GRANULE/L2A_T03WWU_A036821_20240324T230529/MTD_TL.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWU_20240324T234241.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWU_20240324T234241.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241.SAFE/GRANULE/L2A_T03WXT_A036821_20240324T230529/IMG_DATA/R20m/T03WXT_20240324T230529_SCL_20m.jp2",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241.SAFE/GRANULE/L2A_T03WXT_A036821_20240324T230529/MTD_TL.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXU_20240324T234241.SAFE/GRANULE/L2A_T03WXU_A036821_20240324T230529/IMG_DATA/R20m/T03WXU_20240324T230529_SCL_20m.jp2",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXU_20240324T234241.SAFE/GRANULE/L2A_T03WXU_A036821_20240324T230529/MTD_TL.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXU_20240324T234241.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXU_20240324T234241.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDC_20240324T234241.SAFE/GRANULE/L2A_T04WDC_A036821_20240324T230529/IMG_DATA/R20m/T04WDC_20240324T230529_SCL_20m.jp2",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDC_20240324T234241.SAFE/GRANULE/L2A_T04WDC_A036821_20240324T230529/MTD_TL.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDC_20240324T234241.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDC_20240324T234241.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/GRANULE/L2A_T04WDD_A036821_20240324T230529/IMG_DATA/R20m/T04WDD_20240324T230529_SCL_20m.jp2",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/GRANULE/L2A_T04WDD_A036821_20240324T230529/MTD_TL.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/MTD_MSIL2A.xml",
-      // testMissingS2DateLine
-      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T01WCU_20240402T001958.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T01WCU_20240402T001958.SAFE/MTD_MSIL1C.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/GRANULE/L2A_T60WWD_A036936_20240402T000609/IMG_DATA/R20m/T60WWD_20240402T000609_SCL_20m.jp2",
-      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T60WWD_20240402T001958.SAFE/MTD_MSIL1C.xml",
-      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T60WWD_20240402T001958.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/GRANULE/L2A_T01WCU_A036936_20240402T000609/IMG_DATA/R20m/T01WCU_20240402T000609_SCL_20m.jp2",
-      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/manifest.safe",
-      // testAntimerideanArtifacts:
-      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WCS_0_0/VV.tif",
-      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WDS_0_0/VV.tif",
-      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WCT_0_0/VV.tif",
-      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_0_0/VV.tif",
-      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWC_0_0/VV.tif",
-      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWC_1_0/VV.tif",
-      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_1_0/VV.tif",
-      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WDT_0_0/VV.tif",
-      // testAvoidCroppingAwayNoData:
-      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/01/01/Sentinel-1_IW_mosaic_2020_M01_43XDB_0_0/VV.tif",
-    )
+    val testdataPath = Paths.get("../testdata").toAbsolutePath.normalize.toString
 
     val matches = "\"(/eodata/.*?)\"".r.findAllIn(txt).toList
     for (m <- matches) {
       val pathFromJson = m.substring(1, m.length - 1)
-
-      for (artifactoryPath <- artifactoryPaths) {
-        if (artifactoryPath.startsWith(pathFromJson)) {
-          txt = txt.replace('"' + pathFromJson + '"', '"' + basePath + pathFromJson + '"')
-
-          // Only download when needed for current test:
-          val jp2File = new File(basePath, artifactoryPath)
-          if (!jp2File.exists()) {
-            println("Copy from artifactory to: " + jp2File)
-            FileUtils.copyURLToFile(new URL(basePathArtifactory + artifactoryPath), jp2File)
-          }
-
-        }
+      val localPath = Paths.get(testdataPath + pathFromJson).normalize
+      if (java.nio.file.Files.exists(localPath)) {
+        txt = txt.replace('"' + pathFromJson + '"', '"' + localPath.toString + '"')
       }
     }
 
@@ -1669,7 +1632,7 @@ for p in l:
                    bandNames: util.List[String],
                     dataCubeParameters: DataCubeParameters = new DataCubeParameters,
                    ): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val client = loadFeaturesWithArtifactoryMock(jsonPath)
+    val client = loadFeaturesWithLocalTestdata(jsonPath)
     //    val client = CreodiasClient() // More difficult to capture a nodata piece
 
     val localFromDate = localDate
@@ -1709,8 +1672,8 @@ for p in l:
 
   def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent , crs:CRS = LatLng) = {
 
-    val intImage = createTextImage(layoutCols * 256, layoutRows * 256)
-    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+    val byteImage = createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(byteImage, layoutCols * 256, layoutRows * 256)
 
     val secondBand = imageTile.map { x => if (x >= 5) 10 else 100 }
     val thirdBand = imageTile.map { x => if (x >= 5) 50 else 200 }
@@ -1770,8 +1733,11 @@ for p in l:
     ContextRDD(temporal, temporalMetadata)
   }
 
-  def aSpacetimeTileLayerRddArrayTile(arrayTile: ArrayTile, layoutCols: Int, layoutRows: Int, nbDates:Int = 2, crs:CRS=LatLng): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
-    val filtered: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(arrayTile, arrayTile, arrayTile), TileLayout(layoutCols, layoutRows, arrayTile.cols/layoutCols, arrayTile.rows/layoutRows), crs)
+  def aSpacetimeTileLayerRddArrayTile(arrayTile: ArrayTile, layoutCols: Int, layoutRows: Int, nbDates:Int = 2, crs:CRS=LatLng, extentOpt: Option[Extent] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    val extent =  extentOpt.getOrElse(crs.worldExtent)
+    val layout = TileLayout(layoutCols, layoutRows, arrayTile.cols/layoutCols, arrayTile.rows/layoutRows)
+    val tile = MultibandTile(arrayTile, arrayTile, arrayTile)
+    val filtered: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, Raster(tile, extent), layout, crs)
     val startDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
     val temporal = filtered.flatMap(tuple => {
       (1 to nbDates).map(index => (SpaceTimeKey(tuple._1, TemporalKey( startDate.plusDays(index) )), tuple._2))
@@ -1931,7 +1897,7 @@ for p in l:
         .withNominalDate("2020-01-01T00:00:00Z")
         .withBBox(22.4224844035807, 45.950836422259, 22.557151965576, 46.0446922710336)
         .addLink(
-          href = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/LCFM_LSF-ANNUAL_V100_2020_34TFR_001_L2A-BANDS.tif",
+          href = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/LCFM_LSF-ANNUAL_V100_2020_34TFR_001_L2A-BANDS.tif",
           title = "Sentinel-2_AnnualFeatures",
           bandNames,
         )
@@ -1947,7 +1913,7 @@ for p in l:
         .withNominalDate("2020-01-01T00:00:00Z")
         .withBBox(22.2903879775156, 45.9525572152198, 22.4248477757042, 46.046265455836)
         .addLink(
-          href = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/LCFM_LSF-ANNUAL_V100_2020_34TFR_000_L2A-BANDS.tif",
+          href = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/LCFM_LSF-ANNUAL_V100_2020_34TFR_000_L2A-BANDS.tif",
           title = "Sentinel-2_AnnualFeatures",
           bandNames,
         )

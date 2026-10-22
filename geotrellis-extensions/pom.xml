@@ -64,7 +64,27 @@
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
+            <artifactId>snap-integration</artifactId>
+            <version>${project.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.locationtech.geotrellis</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openeo</groupId>
             <artifactId>openeo-geotrellis-healpix</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>sar-terrain-correction</artifactId>
             <version>${project.version}</version>
         </dependency>
 
@@ -175,7 +195,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.6.1</version>
+                <version>3.6.2</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -186,6 +206,9 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <artifactSet>
                                 <includes>
+                                    <include>org.esa.snap:*</include>
+                                    <include>org.geotools:*</include>
+                                    <include>Jama:*</include>
                                     <include>org.openeo:*</include>
                                 </includes>
                             </artifactSet>

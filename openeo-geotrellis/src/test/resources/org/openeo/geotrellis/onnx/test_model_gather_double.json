@@ -36,10 +36,10 @@
     "mlm:output": [
       {
         "name": "output",
-        "description": "Sum of bands",
+        "description": "Switch bands",
         "data_type": "float64",
-        "shape": [1, 256, 256],
-        "dim_order": ["bands", "height", "width"]
+        "shape": [1, 2, 256, 256],
+        "dim_order": ["batch", "bands", "height", "width"]
       }
     ]
   },

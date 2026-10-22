@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.layers.raster_source
 
-import breeze.numerics.log
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile}
