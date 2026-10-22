@@ -236,16 +236,20 @@ object NetCDFRDDWriter {
       }
     }
     val gridBounds = preProcessResult._1
-    val zonedDates: Seq[ZonedDateTime] =
-      dates.map { offset =>
-        temporalResolution match {
-          case TemporalResolution.days => fixedTimeOffset.plusDays(offset.toLong)
-          case TemporalResolution.seconds => fixedTimeOffset.plusSeconds(offset.toLong)
-        }
+    val zonedDates: Array[ZonedDateTime] = {
+      if(dates.isEmpty) null
+      else {
+        dates.map { offset =>
+          temporalResolution match {
+            case TemporalResolution.days => fixedTimeOffset.plusDays(offset.toLong)
+            case TemporalResolution.seconds => fixedTimeOffset.plusSeconds(offset.toLong)
+          }
+        }.toArray
       }
+    }
     val bandsStatsisticsMap = bandStatistics.map { case (name, stats) => name -> convertStatsToMap(stats) }
     val assetsMetadata = setupAssetMetadata(bandNames.asScala.toSeq, extent, rdd.metadata.crs, Array(gridBounds.height, gridBounds.width),
-      bandsStatsisticsMap, zonedDates.toArray)
+      bandsStatsisticsMap, zonedDates)
 
     if(dates.nonEmpty) {
       val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
