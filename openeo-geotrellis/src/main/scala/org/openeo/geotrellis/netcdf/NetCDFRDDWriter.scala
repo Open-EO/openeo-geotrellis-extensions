@@ -738,7 +738,7 @@ object NetCDFRDDWriter {
     if (longName != null) netcdfFile.addVariableAttribute(variableName, "long_name", longName)
     if (units != null) netcdfFile.addVariableAttribute(variableName, "units", units)
     if (axis != null) netcdfFile.addVariableAttribute(variableName, "axis", axis)
-    fillValue.foreach(v => netcdfFile.addVariableAttribute(variableName, "_FillValue", v))
+    fillValue.foreach(v => if (v.intValue() != Integer.MIN_VALUE) netcdfFile.addVariableAttribute(variableName, "_FillValue", v))
     if (coordinates != null) netcdfFile.addVariableAttribute(variableName, "coordinates", coordinates)
   }
 
