@@ -1,5 +1,4 @@
-ARG BASE_IMAGE=vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:latest
-FROM ${BASE_IMAGE}
+FROM vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:latest
 RUN dnf search gdal
 RUN dnf upgrade -y gdal-3.12.4 gdal-libs-3.12.4 gdal-devel-3.12.4 gdal-python311-3.12.4 && dnf clean all
 RUN dnf install -y maven java-21-openjdk-devel git dnf-plugins-core

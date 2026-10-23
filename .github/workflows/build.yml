@@ -5,7 +5,8 @@
 #   SENTINELHUB_CLIENT_ID / SENTINELHUB_CLIENT_SECRET    (Jenkins credential "SentinelHubGeodatadev")
 #   DOWNSTREAM_DISPATCH_TOKEN (optional)                 PAT used to trigger the openeo-geopyspark-driver build
 # Optional variables:
-#   BASE_IMAGE           base image for docker/tests_dockerfile
+#   TEST_IMAGE           prebuilt image from docker/tests_dockerfile (its dnf repos are only reachable inside VITO,
+#                        so it is built and pushed to GHCR manually)
 #   TEST_HELPER_IMAGE    process graph test helper image
 #   MAVEN_PACKAGES_URL   GitHub Packages Maven URL used to resolve non-Central dependencies
 #   RUNNER_LABEL         runner to use (Jenkins used VITO nodes with /data, /eodata and hadoop conf mounts)
@@ -37,8 +38,7 @@ permissions:
   packages: write
 
 env:
-  TEST_IMAGE: openeo-geotrellis-test-image:20250921_1
-  BASE_IMAGE: ${{ vars.BASE_IMAGE || 'ghcr.io/open-eo/almalinux9-spark4-py311-openeo:latest' }}
+  TEST_IMAGE: ${{ vars.TEST_IMAGE || 'ghcr.io/open-eo/openeo-geotrellis-test-image:20250921_1' }}
   TEST_HELPER_IMAGE: ${{ vars.TEST_HELPER_IMAGE || 'ghcr.io/open-eo/geotrellis_process_graph_test_helper:latest' }}
   # Name hardcoded in ProcessGraphRunner; the GHCR image is re-tagged to it so tests use the local copy.
   TEST_HELPER_IMAGE_ALIAS: vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper:latest
@@ -98,8 +98,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build test image
-        run: docker build --build-arg BASE_IMAGE="$BASE_IMAGE" -t "$TEST_IMAGE" -f ./docker/tests_dockerfile ./docker
+      - name: Pull test image
+        run: docker pull "$TEST_IMAGE"
 
       - name: Pull process graph test helper
         run: |
@@ -169,8 +169,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build test image
-        run: docker build --build-arg BASE_IMAGE="$BASE_IMAGE" -t "$TEST_IMAGE" -f ./docker/tests_dockerfile ./docker
+      - name: Pull test image
+        run: docker pull "$TEST_IMAGE"
 
       - name: Cache Maven repository
         uses: actions/cache@v4

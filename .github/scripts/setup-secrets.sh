@@ -18,7 +18,7 @@ secrets=(
 )
 
 variables=(
-  "BASE_IMAGE|(optional) test image base, default ghcr.io/open-eo/almalinux9-spark4-py311-openeo:latest"
+  "TEST_IMAGE|(optional) default ghcr.io/open-eo/openeo-geotrellis-test-image:20250921_1"
   "TEST_HELPER_IMAGE|(optional) default ghcr.io/open-eo/geotrellis_process_graph_test_helper:latest"
   "MAVEN_PACKAGES_URL|(optional) default https://maven.pkg.github.com/Open-EO/openeo-geotrellis-extensions"
   "RUNNER_LABEL|(optional) runner label, default ubuntu-latest"
