@@ -1,12 +1,13 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.{Boundable, Bounds, EmptyBounds, KeyBounds, LayoutDefinition, SpatialComponent, SpatialKey, TileLayerMetadata}
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleArrayTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, GridBounds, GridExtent, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, RasterExtent, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, isData, isNoData, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.vector.Extent
 import org.slf4j.LoggerFactory
 import spire.math.Integral
 
+import java.time.ZonedDateTime
 import java.util
 import java.util.Map
 import scala.reflect.{ClassTag, classTag}
@@ -428,16 +429,19 @@ object GeneralUtils {
     bbox.xmin < -180 || bbox.xmax > 180
   }
 
-  def fixBboxLargerThanWorld(bbox: Extent): Extent = {
-    if (crossesAntimeridian(bbox)) {
-      if (bbox.width>360) {
-        cropXDimensionBboxLargerThanWorld(bbox)
+  def fixBboxLargerThanWorld(bbox: Extent, crs: CRS): Extent = {
+    if (crs == LatLng) {
+      if (crossesAntimeridian(bbox)) {
+        if (bbox.width>360) {
+          cropXDimensionBboxLargerThanWorld(bbox)
+        } else {
+          bbox
+        }
       } else {
         bbox
       }
-    } else {
-      bbox
     }
+    else bbox
   }
   // returns an extent that is cropped to the world extent if the input extent is larger than the world extent
   // the bbox has to be CRS EPSG:4326
@@ -540,5 +544,28 @@ object GeneralUtils {
       val stddev = Math.sqrt(powerSum / validCount - Math.pow(sum / validCount, 2))
       new util.HashMap[String, Any](util.Map.of("maximum", max, "minimum", min, "mean", sum / validCount, "stddev", stddev, "valid_percent", validCount.toDouble / totalCount * 100))
     }
+  }
+
+  def setupAssetMetadata(bandNames: Seq[String], bbox: Extent, crs: CRS, shape: Array[Int],
+                         bandStatistics: collection.Map[String, util.HashMap[String, Any]],
+                         dates: Array[ZonedDateTime] = null): util.Map[String, Any] = {
+    val assetMetadata = new util.HashMap[String, Any]()
+    val bands = new util.ArrayList[util.HashMap[String, Any]]()
+    bandNames.foreach(name => {
+      val rasterBand = new util.HashMap[String, Any]()
+      rasterBand.put("name", name)
+      bandStatistics.get(name).foreach(stats => rasterBand.put("statistics", stats))
+      bands.add(rasterBand)
+    })
+    if (!bands.isEmpty) assetMetadata.put("bands", bands)
+
+    val croppedBbox = fixBboxLargerThanWorld(bbox, crs)
+    assetMetadata.put("proj:bbox", Array(croppedBbox.xmin, croppedBbox.ymin, croppedBbox.xmax, croppedBbox.ymax))
+    crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
+    assetMetadata.put("proj:shape", shape)
+    if (dates != null) {
+      assetMetadata.put("time", new util.HashMap[String, Any](util.Map.of("type", "temporal", "extent", Array(dates.head, dates.last), "values", dates)))
+    }
+    assetMetadata
   }
 }
