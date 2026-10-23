@@ -1,0 +1,235 @@
+# GitHub Actions port of the Jenkinsfile.
+#
+# Required secrets:
+#   VITO_DOCKER_USERNAME / VITO_DOCKER_PASSWORD          pull base images from vito-docker.artifactory.vgt.vito.be
+#   ARTIFACTORY_USERNAME / ARTIFACTORY_PASSWORD          deploy to artifactory.vgt.vito.be
+#   SAS_ARTIFACTORY_USERNAME / SAS_ARTIFACTORY_PASSWORD  deploy to the SAS Artifactory
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY            (Jenkins credential "SentinelHubBatchS3")
+#   SENTINELHUB_CLIENT_ID / SENTINELHUB_CLIENT_SECRET    (Jenkins credential "SentinelHubGeodatadev")
+#   DOWNSTREAM_DISPATCH_TOKEN (optional)                 PAT used to trigger the openeo-geopyspark-driver build
+# Required variables:
+#   SAS_ARTIFACTORY_URL    base URL of the SAS Artifactory, e.g. https://host/artifactory
+# Optional variables:
+#   RUNNER_LABEL           runner to use (Jenkins used VITO nodes with /data, /eodata and hadoop conf mounts)
+
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: Skip running tests
+        type: boolean
+        default: false
+      skip_sentinelhub_tests:
+        description: Skip running Sentinel Hub tests
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  checks: write
+
+env:
+  TEST_IMAGE: openeo-geotrellis-test-image:20250921_1
+  VITO_ARTIFACTORY_URL: https://artifactory.vgt.vito.be/artifactory
+  MAVEN_PROFILES: default,wmts
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    timeout-minutes: 240
+    outputs:
+      version: ${{ steps.settings.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Determine build settings
+        id: settings
+        run: |
+          revision=$(sed -n 's:.*<revision>\(.*\)</revision>.*:\1:p' pom.xml | head -n1)
+          echo "version=${revision}" >> "$GITHUB_OUTPUT"
+
+          opts=""
+          if [[ "${{ inputs.skip_tests }}" == "true" ]]; then
+            echo "Maven will skip all tests"
+            opts+=" -DskipTests=true -DskipSentinelHubTests=true"
+          elif [[ "${{ inputs.skip_sentinelhub_tests }}" == "true" ]]; then
+            echo "Maven will only skip Sentinel Hub tests"
+            opts+=" -DskipSentinelHubTests=true"
+          else
+            echo "Maven will run all tests"
+          fi
+
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$branch" == "master" || "$branch" == "develop" ]]; then
+            snapshot_repo="libs-snapshot-public"
+            snapshot_repo_sas="openeo-maven-snapshot-local"
+          else
+            snapshot_repo="openeo-branch-builds"
+            snapshot_repo_sas="openeo-branch-builds"
+            opts+=" -Drevision=${branch//\//-}"
+          fi
+
+          {
+            echo "MAVEN_EXTRA_OPTS=${opts}"
+            echo "SNAPSHOT_REPO=${snapshot_repo}"
+            echo "RELEASE_REPO=libs-release-public"
+            echo "SNAPSHOT_REPO_SAS=${snapshot_repo_sas}"
+            echo "RELEASE_REPO_SAS=openeo-maven-release-local"
+            # Only deploy on pushes/manual runs (fork PRs have no secrets).
+            echo "DEPLOY=${{ github.event_name != 'pull_request' }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Log in to VITO docker registry
+        uses: docker/login-action@v3
+        with:
+          registry: vito-docker.artifactory.vgt.vito.be
+          username: ${{ secrets.VITO_DOCKER_USERNAME }}
+          password: ${{ secrets.VITO_DOCKER_PASSWORD }}
+
+      - name: Build test image
+        run: docker build -t "$TEST_IMAGE" -f ./docker/tests_dockerfile ./docker
+
+      - name: Pull process graph test helper
+        run: docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: maven-${{ runner.os }}-
+
+      - name: Write Maven settings
+        run: ./.github/scripts/write-maven-settings.sh
+
+      - name: Build, test and deploy to VITO Artifactory
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SENTINELHUB_CLIENT_ID: ${{ secrets.SENTINELHUB_CLIENT_ID }}
+          SENTINELHUB_CLIENT_SECRET: ${{ secrets.SENTINELHUB_CLIENT_SECRET }}
+          ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USERNAME }}
+          ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
+        run: |
+          goal=install
+          deploy_opts=""
+          if [[ "$DEPLOY" == "true" ]]; then
+            goal=deploy
+            deploy_opts="-DaltSnapshotDeploymentRepository=vito-artifactory::default::${VITO_ARTIFACTORY_URL}/${SNAPSHOT_REPO}"
+            deploy_opts+=" -DaltReleaseDeploymentRepository=vito-artifactory::default::${VITO_ARTIFACTORY_URL}/${RELEASE_REPO}"
+          fi
+          ./.github/scripts/run-in-test-image.sh \
+            mvn -B -s /root/.m2/ci-settings.xml -P "$MAVEN_PROFILES" -U clean "$goal" $MAVEN_EXTRA_OPTS $deploy_opts
+
+      - name: Deploy to SAS Artifactory
+        if: env.DEPLOY == 'true'
+        env:
+          SAS_ARTIFACTORY_URL: ${{ vars.SAS_ARTIFACTORY_URL }}
+          SAS_ARTIFACTORY_USERNAME: ${{ secrets.SAS_ARTIFACTORY_USERNAME }}
+          SAS_ARTIFACTORY_PASSWORD: ${{ secrets.SAS_ARTIFACTORY_PASSWORD }}
+        run: |
+          ./.github/scripts/run-in-test-image.sh \
+            mvn -B -s /root/.m2/ci-settings.xml -P "$MAVEN_PROFILES" -U deploy $MAVEN_EXTRA_OPTS \
+              -DskipTests=true -DskipSentinelHubTests=true \
+              -DaltSnapshotDeploymentRepository=sas-artifactory::default::${SAS_ARTIFACTORY_URL}/${SNAPSHOT_REPO_SAS} \
+              -DaltReleaseDeploymentRepository=sas-artifactory::default::${SAS_ARTIFACTORY_URL}/${RELEASE_REPO_SAS}
+
+      - name: Publish test results
+        if: always() && inputs.skip_tests != true
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: "*/target/*-reports/*.xml"
+          require_tests: false
+
+  release:
+    name: Release
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    # Add required reviewers to this environment to replicate the Jenkins "Release build?" input step.
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Determine release version
+        run: |
+          release_version="${{ needs.build.outputs.version }}"
+          release_version="${release_version%-SNAPSHOT}"
+          echo "RELEASE_VERSION=${release_version}" >> "$GITHUB_ENV"
+          echo "Releasing version ${release_version}"
+
+      - name: Log in to VITO docker registry
+        uses: docker/login-action@v3
+        with:
+          registry: vito-docker.artifactory.vgt.vito.be
+          username: ${{ secrets.VITO_DOCKER_USERNAME }}
+          password: ${{ secrets.VITO_DOCKER_PASSWORD }}
+
+      - name: Build test image
+        run: docker build -t "$TEST_IMAGE" -f ./docker/tests_dockerfile ./docker
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: maven-${{ runner.os }}-
+
+      - name: Write Maven settings
+        run: ./.github/scripts/write-maven-settings.sh
+
+      - name: Use release dependencies
+        run: |
+          ./.github/scripts/run-in-test-image.sh \
+            mvn -B -s /root/.m2/ci-settings.xml versions:use-releases -DgenerateBackupPoms=false -DfailIfNotReplaced=true
+
+      - name: Build and deploy release
+        env:
+          ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USERNAME }}
+          ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
+          SAS_ARTIFACTORY_URL: ${{ vars.SAS_ARTIFACTORY_URL }}
+          SAS_ARTIFACTORY_USERNAME: ${{ secrets.SAS_ARTIFACTORY_USERNAME }}
+          SAS_ARTIFACTORY_PASSWORD: ${{ secrets.SAS_ARTIFACTORY_PASSWORD }}
+        run: |
+          common="-B -s /root/.m2/ci-settings.xml -P $MAVEN_PROFILES -U -Drevision=${RELEASE_VERSION} -DskipTests=true -DskipSentinelHubTests=true"
+          ./.github/scripts/run-in-test-image.sh \
+            mvn $common clean deploy \
+              -DaltReleaseDeploymentRepository=vito-artifactory::default::${VITO_ARTIFACTORY_URL}/libs-release-public
+          ./.github/scripts/run-in-test-image.sh \
+            mvn $common deploy \
+              -DaltReleaseDeploymentRepository=sas-artifactory::default::${SAS_ARTIFACTORY_URL}/openeo-maven-release-local
+
+  trigger-downstream:
+    name: Trigger geopyspark driver build
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch openeo-geopyspark-driver build
+        env:
+          GH_TOKEN: ${{ secrets.DOWNSTREAM_DISPATCH_TOKEN }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "DOWNSTREAM_DISPATCH_TOKEN not configured, skipping."
+            exit 0
+          fi
+          gh api repos/Open-EO/openeo-geopyspark-driver/dispatches \
+            -f event_type=openeo-geotrellis-extensions-updated \
+            -f "client_payload[ref]=${GITHUB_REF_NAME}" \
+            -f "client_payload[sha]=${GITHUB_SHA}"
