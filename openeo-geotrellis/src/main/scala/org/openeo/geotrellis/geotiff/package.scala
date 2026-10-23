@@ -7,11 +7,11 @@ import geotrellis.raster
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.crop._
 import geotrellis.raster.io.geotiff._
-import geotrellis.raster.io.geotiff.compression.{Compression, Compressor, DeflateCompression, NoCompression, Predictor, ZStdCompression}
+import geotrellis.raster.io.geotiff.compression._
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
-import geotrellis.raster.{ArrayTile, BitCellType, CellSize, CellType, DoubleCells, FloatCells, GridBounds, GridExtent, IntCells, MultibandTile, Raster, RasterExtent, ShortCells, Tile, TileLayout, UByteUserDefinedNoDataCellType, UByteConstantTile, UShortCells, ubyteNODATA}
+import geotrellis.raster.{ArrayTile, BitCellType, CellSize, CellType, GridBounds, MultibandTile, Raster, RasterExtent, Tile, TileLayout, UByteConstantTile, UByteUserDefinedNoDataCellType, ubyteNODATA}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.util._
@@ -22,7 +22,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.apache.spark.{Partitioner, SparkContext, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{Stats, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, gridBoundsFor, safeConvert, toExtent}
+import org.openeo.geotrellis.GeneralUtils.{getClass, _}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.{Asset, Item, STACItem}
@@ -31,8 +31,8 @@ import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
-import java.nio.file.{Files, Path, Paths}
 import java.io.{EOFException, IOException, RandomAccessFile}
+import java.nio.file.{Files, Path, Paths}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util
@@ -617,14 +617,18 @@ package object geotiff {
      */
     var gridBounds = gridBoundsFor(re, cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
     val croppedExtent = re.extentFor(gridBounds, clamp = false)
+    val processes = new OpenEOProcesses()
     val filtered =
       if (retainNoDataTiles) rdd
-      else new OpenEOProcesses().filterEmptyTile(rdd)
+      else processes.filterEmptyTile(rdd)
     val preprocessedRdd = {
       if (gridBounds.colMin != 0 || gridBounds.rowMin != 0) {
         logger.info(s"Gridbounds requires reprojection: ${gridBounds}")
         val geotiffLayout: LayoutDefinition = LayoutDefinition(RasterExtent(croppedExtent, re.cellSize), rdd.metadata.tileCols, rdd.metadata.tileRows)
-        val retiledRDD = filtered.reproject(rdd.metadata.crs, geotiffLayout)._2.crop(croppedExtent, Options(force = false))
+        val targetBounds = rdd.metadata.bounds.setSpatialBounds(KeyBounds(geotiffLayout.mapTransform.extentToBounds(croppedExtent)))
+        val partitioner = processes.computePartitionerForBounds(rdd, targetBounds, rdd.metadata.tileCols, rdd.metadata.tileRows)
+        // Same CRS, so no buffering is needed: bufferSize = 0 matches the default reproject behaviour.
+        val retiledRDD = filtered.reproject(rdd.metadata.crs, geotiffLayout, 0, partitioner)._2.crop(croppedExtent, Options(force = false))
 
         gridBounds = gridBoundsFor(retiledRDD.metadata.toRasterExtent(), cropBounds.getOrElse(retiledRDD.metadata.extent), clamp = true)
         retiledRDD
