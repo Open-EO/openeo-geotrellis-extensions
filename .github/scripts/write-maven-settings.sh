@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
-# Writes a Maven settings file with Artifactory credentials resolved from environment variables at runtime.
+# Writes a Maven settings file that resolves and deploys via GitHub Packages instead of VITO Artifactory.
+# The VITO repositories declared in pom.xml (artifactory-release/artifactory-snapshot) are mirrored to GitHub Packages.
+# Credentials are resolved from GITHUB_ACTOR/GITHUB_TOKEN at runtime.
 set -euo pipefail
 
+: "${MAVEN_PACKAGES_URL:?MAVEN_PACKAGES_URL must be set}"
+
 mkdir -p "$HOME/.m2"
-cat > "$HOME/.m2/ci-settings.xml" <<'EOF'
+cat > "$HOME/.m2/ci-settings.xml" <<EOF
 <settings>
   <servers>
     <server>
-      <id>vito-artifactory</id>
-      <username>${env.ARTIFACTORY_USERNAME}</username>
-      <password>${env.ARTIFACTORY_PASSWORD}</password>
-    </server>
-    <server>
-      <id>sas-artifactory</id>
-      <username>${env.SAS_ARTIFACTORY_USERNAME}</username>
-      <password>${env.SAS_ARTIFACTORY_PASSWORD}</password>
+      <id>github</id>
+      <username>\${env.GITHUB_ACTOR}</username>
+      <password>\${env.GITHUB_TOKEN}</password>
     </server>
   </servers>
+  <mirrors>
+    <mirror>
+      <id>github</id>
+      <name>GitHub Packages</name>
+      <mirrorOf>artifactory-release,artifactory-snapshot</mirrorOf>
+      <url>${MAVEN_PACKAGES_URL}</url>
+    </mirror>
+  </mirrors>
 </settings>
 EOF
