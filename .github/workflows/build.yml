@@ -79,6 +79,9 @@ jobs:
           elif [[ "${{ inputs.skip_sentinelhub_tests }}" == "true" ]]; then
             echo "Maven will only skip Sentinel Hub tests"
             opts+=" -DskipSentinelHubTests=true"
+          elif [[ -z "$SENTINELHUB_CLIENT_ID" || -z "$SENTINELHUB_CLIENT_SECRET" ]]; then
+            echo "::warning::SENTINELHUB_CLIENT_ID/SENTINELHUB_CLIENT_SECRET secrets not set, Maven will skip Sentinel Hub tests"
+            opts+=" -DskipSentinelHubTests=true"
           else
             echo "Maven will run all tests"
           fi
@@ -94,6 +97,9 @@ jobs:
             # Only deploy on pushes/manual runs, not on pull requests.
             echo "DEPLOY=${{ github.event_name != 'pull_request' }}"
           } >> "$GITHUB_ENV"
+        env:
+          SENTINELHUB_CLIENT_ID: ${{ secrets.SENTINELHUB_CLIENT_ID }}
+          SENTINELHUB_CLIENT_SECRET: ${{ secrets.SENTINELHUB_CLIENT_SECRET }}
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
