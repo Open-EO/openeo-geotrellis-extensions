@@ -25,7 +25,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext, SparkEnv, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, extentMerged, safeConvert}
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
@@ -1609,19 +1609,25 @@ class OpenEOProcesses extends Serializable {
   private def computeRegridPartitioner[K: SpatialComponent: ClassTag](
       datacube: MultibandTileLayerRDD[K], targetCols: Int, targetRows: Int,
       overlapX: Int = 0, overlapY: Int = 0): Option[Partitioner] = {
-    val bandCount = DatacubeSupport.maybeBandLabels(datacube).map(_.size).getOrElse(DEFAULT_BAND_COUNT)
-    // Use the full buffered tile size (including overlap) for memory estimation
-    val effectiveCols = targetCols + 2 * overlapX
-    val effectiveRows = targetRows + 2 * overlapY
-    val indexReduction = DatacubeSupport.computeReductionForTileSize(
-      effectiveCols, effectiveRows, datacube.metadata.cellType.bits, bandCount)
-
     val md = datacube.metadata
     val ld = md.getComponent[LayoutDefinition]
     val oldW = ld.tileLayout.tileCols
     val oldH = ld.tileLayout.tileRows
 
     val newBounds = RegridFixed.computeNewBounds(md.bounds, oldW, oldH, targetCols, targetRows)
+    // Use the full buffered tile size (including overlap) for memory estimation
+    computePartitionerForBounds(datacube, newBounds, targetCols + 2 * overlapX, targetRows + 2 * overlapY)
+  }
+
+  /**
+   * Creates a SpacePartitioner for the given target key bounds, with an index reduction based on the
+   * (target) tile size, cell type and band count of the datacube.
+   */
+  private[geotrellis] def computePartitionerForBounds[K: SpatialComponent: ClassTag](
+      datacube: MultibandTileLayerRDD[K], newBounds: Bounds[K], tileCols: Int, tileRows: Int): Option[Partitioner] = {
+    val bandCount = DatacubeSupport.maybeBandLabels(datacube).map(_.size).getOrElse(DEFAULT_BAND_COUNT)
+    val indexReduction = DatacubeSupport.computeReductionForTileSize(
+      tileCols, tileRows, datacube.metadata.cellType.bits, bandCount)
 
     newBounds match {
       case KeyBounds(newMinKey, newMaxKey) =>
