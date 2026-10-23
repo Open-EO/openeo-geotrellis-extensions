@@ -24,5 +24,26 @@ cat > "$HOME/.m2/ci-settings.xml" <<EOF
       <url>${MAVEN_PACKAGES_URL}</url>
     </mirror>
   </mirrors>
+  <profiles>
+    <profile>
+      <!-- Artifacts that VITO Artifactory proxied from public repositories not declared in the poms -->
+      <id>public-repositories</id>
+      <repositories>
+        <repository>
+          <id>osgeo</id>
+          <url>https://repo.osgeo.org/repository/release/</url>
+          <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+        <repository>
+          <id>snap-repo-public</id>
+          <url>https://nexus.snap-ci.ovh/repository/snap-maven-public/</url>
+          <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+      </repositories>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>public-repositories</activeProfile>
+  </activeProfiles>
 </settings>
 EOF
