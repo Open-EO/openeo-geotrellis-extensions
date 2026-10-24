@@ -177,7 +177,7 @@ jobs:
           release_version="${release_version%-SNAPSHOT}"
           echo "RELEASE_VERSION=${release_version}" >> "$GITHUB_ENV"
           geotrellis_version=$(sed -n 's:.*<geotrellis.version>\(.*\)</geotrellis.version>.*:\1:p' pom.xml | head -n1)
-          echo "GEOTRELLIS_VERSION=${geotrellis_version//+/-}" >> "$GITHUB_ENV"
+          sed -i "s|<geotrellis\.version>[^<]*</geotrellis\.version>|<geotrellis.version>${geotrellis_version//+/-}</geotrellis.version>|" pom.xml
           echo "Releasing version ${release_version}"
 
       - name: Log in to GitHub Container Registry
@@ -216,7 +216,7 @@ jobs:
         run: |
           ./.github/scripts/run-in-test-image.sh \
             mvn -B -s /root/.m2/ci-settings.xml -P "$MAVEN_PROFILES" -U clean deploy \
-              -Drevision="${RELEASE_VERSION}" -Dgeotrellis.version="${GEOTRELLIS_VERSION}" -DskipTests=true -DskipSentinelHubTests=true \
+              -Drevision="${RELEASE_VERSION}" -DskipTests=true -DskipSentinelHubTests=true \
               -DaltDeploymentRepository="${MAVEN_DEPLOY_REPO}"
 
   trigger-downstream:
