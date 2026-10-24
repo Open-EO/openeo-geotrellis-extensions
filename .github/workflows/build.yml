@@ -72,7 +72,7 @@ jobs:
           opts=""
           # GitHub Packages can't serve Maven versions containing '+', so the copies there use '-' instead.
           geotrellis_version=$(sed -n 's:.*<geotrellis.version>\(.*\)</geotrellis.version>.*:\1:p' pom.xml | head -n1)
-          opts+=" -Dgeotrellis.version=${geotrellis_version//+/-}"
+          sed -i "s|<geotrellis\.version>[^<]*</geotrellis\.version>|<geotrellis.version>${geotrellis_version//+/-}</geotrellis.version>|" pom.xml
           if [[ "${{ inputs.skip_tests }}" == "true" ]]; then
             echo "Maven will skip all tests"
             opts+=" -DskipTests=true -DskipSentinelHubTests=true"
