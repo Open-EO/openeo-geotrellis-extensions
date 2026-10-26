@@ -1,4 +1,9 @@
-FROM vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:latest
+ARG BASE_IMAGE=vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:latest
+FROM ${BASE_IMAGE}
+ARG USE_OFFICIAL_REPOS=false
+USER root
+COPY use_official_repos.sh /tmp/use_official_repos.sh
+RUN if [ "$USE_OFFICIAL_REPOS" = "true" ]; then sh /tmp/use_official_repos.sh; fi && rm /tmp/use_official_repos.sh
 RUN dnf search gdal
 RUN dnf upgrade -y gdal-3.12.4 gdal-libs-3.12.4 gdal-devel-3.12.4 gdal-python311-3.12.4 && dnf clean all
 RUN dnf install -y maven java-21-openjdk-devel git dnf-plugins-core
