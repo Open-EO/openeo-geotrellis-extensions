@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `org.openeo.geotrellis.geotiff.PyramidFactory` (`from_disk`, `from_s3`, `from_uris`) and `MultibandCompositeRasterSource`: no longer used by the Python driver ([Open-EO/openeo-geopyspark-driver#1885](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1885)).
 - `AgEra5FileLayerProvider`: unused; AgERA5 is loaded through `FileLayerProvider` with `Agera5SearchClient`.
 - `MultibandCompositeRasterSource` was merged back into `BandCompositeRasterSource`, which now also preserves all its settings (attributes, predefined extent, `readFullTile`, ...) across `resample`/`convert`/`reproject`.
+- Remove `DerivedFromDocumentWriter` ([Open-EO/openeo-geopyspark-driver#1490](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1490))
 
 ### Fixed
 
