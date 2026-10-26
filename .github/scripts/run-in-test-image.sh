@@ -17,8 +17,7 @@ docker run --rm \
   -e JAVA_HOME=/usr/lib/jvm/java-21-openjdk \
   -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
   -e SENTINELHUB_CLIENT_ID -e SENTINELHUB_CLIENT_SECRET \
-  -e ARTIFACTORY_USERNAME -e ARTIFACTORY_PASSWORD \
-  -e SAS_ARTIFACTORY_USERNAME -e SAS_ARTIFACTORY_PASSWORD \
+  -e GITHUB_ACTOR -e GITHUB_TOKEN \
   --entrypoint "" \
   "$TEST_IMAGE" \
   bash -c 'git config --global --add safe.directory "$PWD" && exec "$@"' bash "$@" || status=$?
