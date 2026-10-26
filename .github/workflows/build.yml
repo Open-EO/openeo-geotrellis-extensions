@@ -146,6 +146,16 @@ jobs:
           ./.github/scripts/run-in-test-image.sh \
             mvn -B -s /root/.m2/ci-settings.xml -P "$MAVEN_PROFILES" -U clean "$goal" $MAVEN_EXTRA_OPTS $deploy_opts
 
+      - name: Upload JARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: jars
+          path: |
+            */target/*.jar
+            !*/target/original-*.jar
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Publish test results
         if: always() && inputs.skip_tests != true
         uses: mikepenz/action-junit-report@v5
@@ -217,6 +227,36 @@ jobs:
             mvn -B -s /root/.m2/ci-settings.xml -P "$MAVEN_PROFILES" -U clean deploy \
               -Drevision="${RELEASE_VERSION}" -Dgeotrellis.version="${GEOTRELLIS_VERSION}" -DskipTests=true -DskipSentinelHubTests=true \
               -DaltDeploymentRepository="${MAVEN_DEPLOY_REPO}"
+
+  release-develop:
+    name: Tag and release develop build
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download JARs
+        uses: actions/download-artifact@v4
+        with:
+          name: jars
+          path: jars
+
+      - name: Create tag and GitHub prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          tag="v${VERSION}-$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
+          echo "Creating release ${tag} for ${GITHUB_SHA}"
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$tag" \
+            --notes "Automated build of \`develop\` at ${GITHUB_SHA} (version ${VERSION}, run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})." \
+            --prerelease \
+            --latest=false \
+            $(find jars -name '*.jar')
 
   trigger-downstream:
     name: Trigger geopyspark driver build
