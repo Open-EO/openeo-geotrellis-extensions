@@ -15,6 +15,7 @@ name: Build
 on:
   push:
     branches: ["**"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -54,6 +55,14 @@ jobs:
     outputs:
       version: ${{ steps.settings.outputs.version }}
     steps:
+      - name: Configure Maven repository URLs
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          if [[ -z "$MAVEN_PACKAGES_URL" ]]; then
+            echo "MAVEN_PACKAGES_URL=https://maven.pkg.github.com/${owner}/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
+          fi
+          echo "MAVEN_DEPLOY_REPO=github::default::https://maven.pkg.github.com/${owner}/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -166,11 +175,19 @@ jobs:
   release:
     name: Release
     needs: build
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     # Add required reviewers to this environment to replicate the Jenkins "Release build?" input step.
     environment: release
     steps:
+      - name: Configure Maven repository URLs
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          if [[ -z "$MAVEN_PACKAGES_URL" ]]; then
+            echo "MAVEN_PACKAGES_URL=https://maven.pkg.github.com/${owner}/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
+          fi
+          echo "MAVEN_DEPLOY_REPO=github::default::https://maven.pkg.github.com/${owner}/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
