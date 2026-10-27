@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- merge_cubes: the `overlap_resolver` is now evaluated with `OpenEOProcessScriptBuilder` instead of a separate operator mapping, so it behaves exactly like the same process in other callbacks (nodata handling, data types, e.g. `divide` now results in floats).
+
 ### Removed
 
 - `org.openeo.geotrellis.geotiff.PyramidFactory` (`from_disk`, `from_s3`, `from_uris`) and `MultibandCompositeRasterSource`: no longer used by the Python driver ([Open-EO/openeo-geopyspark-driver#1885](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1885)).

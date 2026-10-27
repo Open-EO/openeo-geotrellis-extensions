@@ -187,22 +187,6 @@ class OpenEOProcesses extends Serializable {
 
   import OpenEOProcesses._
 
-
-  val tileBinaryOp: Map[String, LocalTileBinaryOp] = Map(
-    "or" -> Or,
-    "and" -> And,
-    "divide" -> Divide,
-    "max" -> MaxIgnoreNoData,
-    "min" -> MinIgnoreNoData,
-    "multiply" -> Multiply,
-    "product" -> Multiply,
-    "add" -> Add,
-    "sum" -> Add,
-    "subtract" -> Subtract,
-    "xor" -> Xor,
-    "mean" -> MeanIgnoreNoData
-  )
-
   def wrapCube[K](datacube:MultibandTileLayerRDD[K]): OpenEORasterCube[K] = {
     return new OpenEORasterCube[K](datacube,datacube.metadata,new OpenEORasterCubeMetadata(Seq.empty))
   }
@@ -1583,22 +1567,66 @@ class OpenEOProcesses extends Serializable {
   }
 
   private def resolve_merge_overlap[K](joinedRDD: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], operator: String, updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
-    // Pairwise merging of bands.
-    //in theory we should be able to reuse the OpenEOProcessScriptBuilder instead of using a string.
-    //val binaryOp: Seq[Tile] => Seq[Tile] = operator.generateFunction()
-    val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
+    // Pairwise merging of bands, evaluated with the OpenEOProcessScriptBuilder so that the overlap resolver
+    // behaves exactly the same as the same process in other callbacks (nodata handling, data types).
+    val overlapResolver = operatorToScriptBuilder(operator)
+    def binaryOp(left: Tile, right: Tile): Tile =
+      overlapResolver.generateFunction(Map("x" -> Seq(left), "y" -> Seq(right)))(Seq(left, right)).head
+
+    // The resolver can change the cell type (e.g. divide on integers gives floats), so the output cell type is
+    // determined by evaluating it on a single pixel, combined with the input cell type for the non-overlapping tiles.
+    val probe = ArrayTile.empty(updatedMetadata.cellType, 1, 1)
+    val outputCellType = cellTypeUnionWithNoData(updatedMetadata.cellType, binaryOp(probe, probe).cellType)
+
+    def toOutputCellType(tile: MultibandTile): MultibandTile =
+      if (tile.cellType == outputCellType) tile else tile.mapBands((_, t) => safeConvert(t, outputCellType))
 
     new ContextRDD(joinedRDD.mapValues({ case (l, r) =>
-      if (r.isEmpty || r.get.bandCount==0) l.get
-      else if (l.isEmpty || l.get.bandCount==0) r.get
+      if (r.isEmpty || r.get.bandCount==0) toOutputCellType(l.get)
+      else if (l.isEmpty || l.get.bandCount==0) toOutputCellType(r.get)
       else {
         if (l.get.bandCount != r.get.bandCount) {
           throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.get.bandCount, r.get.bandCount))
         }
-        val tile = MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
-        tile
+        MultibandTile(l.get.bands.zip(r.get.bands).map { case (left, right) => safeConvert(binaryOp(left, right), outputCellType) })
       }
-    }), updatedMetadata)
+    }), updatedMetadata.copy(cellType = outputCellType))
+  }
+
+  /**
+   * Builds the overlap resolver of merge_cubes with the [[OpenEOProcessScriptBuilder]], as `operator(x, y)` or
+   * `operator(data = [x, y])` depending on the signature of the process. `x` is the left cube, `y` the right cube.
+   */
+  private def operatorToScriptBuilder(operator: String): OpenEOProcessScriptBuilder = {
+    val xyOperators = Set("add", "subtract", "multiply", "divide", "and", "or", "xor")
+    val dataOperators = Set("sum", "product", "max", "min", "mean")
+    val builder = new OpenEOProcessScriptBuilder
+    val xParam: Object = Map("from_parameter" -> "x").asJava
+    val yParam: Object = Map("from_parameter" -> "y").asJava
+    if (xyOperators.contains(operator)) {
+      val args = Map[String, Object]("x" -> xParam, "y" -> yParam).asJava
+      builder.expressionStart(operator, args)
+      builder.argumentStart("x")
+      builder.fromParameter("x")
+      builder.argumentEnd()
+      builder.argumentStart("y")
+      builder.fromParameter("y")
+      builder.argumentEnd()
+      builder.expressionEnd(operator, args)
+    } else if (dataOperators.contains(operator)) {
+      val args = Map[String, Object]("data" -> Seq(xParam, yParam).asJava).asJava
+      builder.expressionStart(operator, args)
+      builder.arrayStart("data")
+      builder.fromParameter("x")
+      builder.arrayElementDone()
+      builder.fromParameter("y")
+      builder.arrayElementDone()
+      builder.arrayEnd()
+      builder.expressionEnd(operator, args)
+    } else {
+      throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, (xyOperators ++ dataOperators).mkString(", ")))
+    }
+    builder
   }
 
   def remove_overlap(datacube: MultibandTileLayerRDD[SpaceTimeKey], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[SpaceTimeKey] = {
