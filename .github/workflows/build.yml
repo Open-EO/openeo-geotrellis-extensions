@@ -43,7 +43,8 @@ env:
   TEST_HELPER_IMAGE: ${{ vars.TEST_HELPER_IMAGE || 'ghcr.io/open-eo/geotrellis_process_graph_test_helper:latest' }}
   # Name hardcoded in ProcessGraphRunner; the GHCR image is re-tagged to it so tests use the local copy.
   TEST_HELPER_IMAGE_ALIAS: vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper:latest
-  MAVEN_PACKAGES_URL: ${{ vars.MAVEN_PACKAGES_URL }}
+  MAVEN_PACKAGES_URL: ${{ vars.MAVEN_PACKAGES_URL || format('https://maven.pkg.github.com/{0}', github.repository) }}
+  MAVEN_DEPLOY_REPO: github::default::https://maven.pkg.github.com/${{ github.repository }}
   MAVEN_PROFILES: default,wmts
 
 jobs:
@@ -53,6 +54,7 @@ jobs:
     timeout-minutes: 240
     outputs:
       version: ${{ steps.settings.outputs.version }}
+      built_version: ${{ steps.settings.outputs.built_version }}
     steps:
       - name: Configure Maven repository URLs
         run: |
@@ -80,7 +82,7 @@ jobs:
           opts=""
           # GitHub Packages can't serve Maven versions containing '+', so the copies there use '-' instead.
           geotrellis_version=$(sed -n 's:.*<geotrellis.version>\(.*\)</geotrellis.version>.*:\1:p' pom.xml | head -n1)
-          sed -i "s|<geotrellis\.version>[^<]*</geotrellis\.version>|<geotrellis.version>${geotrellis_version//+/-}</geotrellis.version>|" pom.xml
+          opts+=" -Dgeotrellis.version=${geotrellis_version//+/-}"
           if [[ "${{ inputs.skip_tests }}" == "true" ]]; then
             echo "Maven will skip all tests"
             opts+=" -DskipTests=true -DskipSentinelHubTests=true"
@@ -97,8 +99,10 @@ jobs:
           branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           if [[ "$branch" != "master" && "$branch" != "develop" ]]; then
             # SNAPSHOT suffix so branch builds can be redeployed (GitHub Packages rejects overwriting releases).
-            opts+=" -Drevision=${branch//\//-}-SNAPSHOT"
+            revision="${branch//\//-}-SNAPSHOT"
+            opts+=" -Drevision=${revision}"
           fi
+          echo "built_version=${revision}" >> "$GITHUB_OUTPUT"
 
           {
             echo "MAVEN_EXTRA_OPTS=${opts}"
@@ -154,6 +158,16 @@ jobs:
           ./.github/scripts/run-in-test-image.sh \
             mvn -B -s /root/.m2/ci-settings.xml -P "$MAVEN_PROFILES" -U clean "$goal" $MAVEN_EXTRA_OPTS $deploy_opts
 
+      - name: Upload JARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: jars
+          path: |
+            */target/*.jar
+            !*/target/original-*.jar
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Publish test results
         if: always() && inputs.skip_tests != true
         uses: mikepenz/action-junit-report@v5
@@ -192,7 +206,7 @@ jobs:
           release_version="${release_version%-SNAPSHOT}"
           echo "RELEASE_VERSION=${release_version}" >> "$GITHUB_ENV"
           geotrellis_version=$(sed -n 's:.*<geotrellis.version>\(.*\)</geotrellis.version>.*:\1:p' pom.xml | head -n1)
-          sed -i "s|<geotrellis\.version>[^<]*</geotrellis\.version>|<geotrellis.version>${geotrellis_version//+/-}</geotrellis.version>|" pom.xml
+          echo "GEOTRELLIS_VERSION=${geotrellis_version//+/-}" >> "$GITHUB_ENV"
           echo "Releasing version ${release_version}"
 
       - name: Log in to GitHub Container Registry
@@ -231,8 +245,53 @@ jobs:
         run: |
           ./.github/scripts/run-in-test-image.sh \
             mvn -B -s /root/.m2/ci-settings.xml -P "$MAVEN_PROFILES" -U clean deploy \
-              -Drevision="${RELEASE_VERSION}" -DskipTests=true -DskipSentinelHubTests=true \
+              -Drevision="${RELEASE_VERSION}" -Dgeotrellis.version="${GEOTRELLIS_VERSION}" -DskipTests=true -DskipSentinelHubTests=true \
               -DaltDeploymentRepository="${MAVEN_DEPLOY_REPO}"
+
+  github-release:
+    name: Tag and release develop/PR build
+    needs: build
+    # Fork PRs get a read-only GITHUB_TOKEN and cannot create releases.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download JARs
+        uses: actions/download-artifact@v4
+        with:
+          name: jars
+          path: jars
+
+      - name: Create tag and GitHub prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.built_version }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [[ -n "$PR_NUMBER" ]]; then
+            # Tag the PR head commit; the JARs are built from the PR merge commit ${GITHUB_SHA}.
+            target="$PR_HEAD_SHA"
+            tag="v${VERSION}-pr${PR_NUMBER}-$(date -u +%Y%m%d%H%M%S)-${target::7}"
+            notes="Automated build of #${PR_NUMBER} at ${target} (merge commit ${GITHUB_SHA}, version ${VERSION}, run ${run_url})."
+          else
+            target="$GITHUB_SHA"
+            tag="v${VERSION}-$(date -u +%Y%m%d%H%M%S)-${target::7}"
+            notes="Automated build of \`develop\` at ${target} (version ${VERSION}, run ${run_url})."
+          fi
+          echo "Creating release ${tag} for ${target}"
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$target" \
+            --title "$tag" \
+            --notes "$notes" \
+            --prerelease \
+            --latest=false \
+            $(find jars -name '*.jar')
 
   trigger-downstream:
     name: Trigger geopyspark driver build
