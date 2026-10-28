@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Loading metrics now consistently count fractional megapixels (1,000,000 band-pixels), with overflow-safe, thread-safe pixel counts and monotonic timing. The loading-speed gauge still reports the latest completed partition's speed per collection.
 - Support `is_valid` inside raster callbacks, including `reduce_dimension` callbacks ([#901](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/901)).
 - merge_cubes: merging a cube with a temporal dimension with a cube without a temporal dimension well now correctly add nodata bands to honor the expected band count.
 - Raw integral rasters without a NODATA value no longer treat 0 as NODATA; instead, their cell type is widened (e.g. uint16 to int32) to make room for a NODATA value outside of their original range.
