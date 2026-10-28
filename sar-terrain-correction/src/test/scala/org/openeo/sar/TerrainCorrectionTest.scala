@@ -6,19 +6,15 @@ import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.{CellSize, RasterSource}
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions._
-import org.junit.jupiter.api.{Assumptions, Test}
+import org.junit.jupiter.api.condition.EnabledIf
+import org.junit.jupiter.api.{Assumptions, Disabled, Test}
+import org.openeo.geotrelliscommon.TestConditions
 import org.openeo.sar.backend.nativ.NativeBackend
 import org.openeo.sar.metadata.Polarisation
 
 import java.net.URI
 
-/** Smoke test that exercises the full pipeline end-to-end against a real CDSE
- *  STAC item.  Requires S3 credentials for `eodata` bucket and outbound HTTP
- *  to `catalogue.dataspace.copernicus.eu`; gated by the `runOnline` flag below.
- *
- *  AWS_ACCESS_KEY_ID=xxx;AWS_DEFAULT_REGION=default;AWS_ENDPOINT_URL=https://eodata.dataspace.copernicus.eu;AWS_HTTPS=YES;AWS_S3_ENDPOINT=eodata.dataspace.copernicus.eu;AWS_SECRET_ACCESS_KEY=xxx;AWS_VIRTUAL_HOSTING=FALSE
- *
- *  */
+@Disabled("Jenkins has no valid S3 credentials, so this test fails with 403 Forbidden")
 class TerrainCorrectionTest {
 
   private val runOnline = false  // requires CDSE S3 + STAC access
@@ -52,7 +48,7 @@ class TerrainCorrectionTest {
 
   @Test
   def nativeBackendProducesExpectedTile(): Unit = {
-    Assumptions.assumeTrue(runOnline, "online test disabled")
+    Assumptions.assumeTrue(TestConditions.hasS3Credentials, "No S3 credentials, skipping test")
 
     val proc = TerrainCorrectionProcessor.withDemAndGeoid(
       backend      = new NativeBackend(),
@@ -68,7 +64,8 @@ class TerrainCorrectionTest {
 
   @Test
   def nativeBackendMultipleTiles(): Unit = {
-    Assumptions.assumeTrue(runOnline, "online test disabled")
+    Assumptions.assumeTrue(TestConditions.hasEodataData(), "No local /eodata mapped, skipping test")
+    Assumptions.assumeTrue(TestConditions.hasS3Credentials, "No S3 credentials, skipping test")
 
     val proc = TerrainCorrectionProcessor.withDemAndGeoid(
       backend      = new NativeBackend(),
@@ -97,8 +94,36 @@ class TerrainCorrectionTest {
   }
 
   @Test
+  def openScene2018Item(): Unit = {
+    Assumptions.assumeTrue(TestConditions.hasEodataData(), "No local /eodata mapped, skipping test")
+
+    val itemUrl = new URI(
+      "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-1-grd/items/" +
+        "S1A_IW_GRDH_1SDV_20180108T204309_20180108T204334_020068_022338_8AF7_COG"
+    )
+
+    val proc = TerrainCorrectionProcessor.withDemAndGeoid(
+      backend      = new NativeBackend(),
+      demFactory   = demFactory,
+      geoidTiffUri = new URI("file:///home/dsamaey/Downloads/us_nga_egm96_15.tif")
+    )
+
+    val scene = proc.openScene(itemUrl, request.cellSize, request.crs, request.polarisations)
+
+    assertEquals(request.polarisations, scene.polarisations)
+    assertEquals(request.cellSize, scene.cellSize)
+    assertEquals(request.crs, scene.crs)
+    request.polarisations.foreach { pol =>
+      assertTrue(scene.sarSources.contains(pol), s"missing SAR source for $pol")
+      assertTrue(scene.metadata.polarisations.contains(pol), s"missing metadata for $pol")
+    }
+    assertNotNull(scene.demSource)
+  }
+
+  @Test
   def gamma0RtcWithShadowLayoverMask(): Unit = {
-    Assumptions.assumeTrue(runOnline, "online test disabled")
+    Assumptions.assumeTrue(TestConditions.hasEodataData(), "No local /eodata mapped, skipping test")
+    Assumptions.assumeTrue(TestConditions.hasS3Credentials, "No S3 credentials, skipping test")
 
     val gamma0Config = SarProcessingConfig(
       normalization     = BackscatterNormalization.Gamma0RTC,
