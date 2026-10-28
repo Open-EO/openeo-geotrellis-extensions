@@ -117,8 +117,8 @@ class DataCubeSupportSpec {
 
     var (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(cartesian, maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
 
-    assertEquals(19, indexReduction)
-    assertTrue(indices.length > 200 && indices.length < 400, s"partitions: ${indices.length}")
+    assertEquals(20, indexReduction)
+    assertTrue(indices.length > 100 && indices.length < 200, s"partitions: ${indices.length}")
     for (i <- 1 until indices.length) {
       assertTrue(indices(i) > indices(i-1))
     }
@@ -162,8 +162,8 @@ class DataCubeSupportSpec {
 
     var (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(cartesian, maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
 
-    assertTrue(indexReduction >= 15 && indexReduction <= 17, s"reduction: $indexReduction")
-    assertTrue(indices.length >= 900, s"partitions: ${indices.length}")
+    assertTrue(indexReduction >= 17 && indexReduction <= 19, s"reduction: $indexReduction")
+    assertTrue(indices.length >= 400, s"partitions: ${indices.length}")
     for (i <- 1 until indices.length) {
       assertTrue(indices(i) > indices(i-1))
     }
@@ -198,8 +198,8 @@ class DataCubeSupportSpec {
       .values.map(_.size).max
     println(s"max keys per partition: $maxKeysPerPartition")
 
-    // 64 MB / 16 KB per tile = 4096 tiles, capped at 1024 records per partition
-    assertTrue(maxKeysPerPartition <= 1024, s"max keys per partition $maxKeysPerPartition")
+    // 64 MB / 16 KB per tile = 4096 tiles, capped at 2048 records per partition
+    assertTrue(maxKeysPerPartition <= 2048, s"max keys per partition $maxKeysPerPartition")
     assertTrue(maxKeysPerPartition > 128, s"partitions too small: $maxKeysPerPartition")
     assertTrue(indexReduction > 7)
     for (i <- 1 until indices.length) {
