@@ -44,6 +44,7 @@ object ZarrWriter {
     val metadata = rdd.metadata
     val cellType = metadata.cellType
     val (zarrType: DataType,fillValue:Option[Number]) = toZarrType(cellType)
+    logger.info(s"Writing Zarr with bandNames: ${zarrOptions.bandNames.mkString("Array(", ", ", ")")} cellType: $cellType, zarrType: $zarrType, fillValue: $fillValue")
 
     val tileRows = metadata.tileRows
     val tileCols = metadata.tileCols
