@@ -26,7 +26,7 @@ import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext, SparkEnv, TaskContext}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, extentMerged, safeConvert}
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.OpenEOProcess
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
@@ -1532,9 +1532,9 @@ class OpenEOProcesses extends Serializable {
 
   private def mergeCubesGeneric[K: ClassTag
   ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], operator: String, metadata: TileLayerMetadata[K], leftCube: MultibandTileLayerRDD[_], rightCube: MultibandTileLayerRDD[_]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
-    val converted = joined.mapValues { case (l, r) =>
-      (l.map(_.mapBands((_, t) => safeConvert(t, metadata.cellType))), r.map(_.mapBands((_, t) => safeConvert(t, metadata.cellType))))
-    }
+    def convert(tile: MultibandTile): MultibandTile =
+      if (tile.bandCount == 0) tile else tile.mapBands((_, t) => safeConvert(t, metadata.cellType))
+    val converted = joined.mapValues { case (l, r) => (l.map(convert), r.map(convert)) }
     if (operator == null) {
       combine_bands(converted, leftCube, rightCube, metadata)
     } else {
@@ -1574,7 +1574,10 @@ class OpenEOProcesses extends Serializable {
       overlapResolver.generateFunction(Map("x" -> Seq(left), "y" -> Seq(right)))(Seq(left, right)).head
 
     // The resolver can change the cell type (e.g. divide on integers gives floats), so the output cell type is
-    // determined by evaluating it on a single pixel, combined with the input cell type for the non-overlapping tiles.
+    // determined by evaluating it on a 1x1 tile, combined with the input cell type for the non-overlapping tiles.
+    // This relies on the output cell type of the supported operators only depending on the input cell types, not on
+    // the pixel values. OpenEOProcessScriptBuilder.getOutputCellType can't be used instead: it only knows the input
+    // types of the default "data" parameter, not of "x" and "y", and would fall back to float32.
     val probe = ArrayTile.empty(updatedMetadata.cellType, 1, 1)
     val outputCellType = cellTypeUnionWithNoData(updatedMetadata.cellType, binaryOp(probe, probe).cellType)
 
