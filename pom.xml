@@ -260,14 +260,14 @@
 
       <distributionManagement>
               <repository>
-                      <id>artifactory.vgt.vito.be</id>
-                      <name>artifactory.vgt.vito.be-releases</name>
-                      <url>https://artifactory.vgt.vito.be/artifactory/libs-release-public</url>
+                      <id>repo.vito.be</id>
+                      <name>repo.vito.be-releases</name>
+                      <url>https://repo.vito.be/artifactory/libs-release-public</url>
               </repository>
               <snapshotRepository>
                   <id>snapshots</id>
-                  <name>artifactory.vgt.vito.be-snapshots</name>
-                  <url>https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public</url>
+                  <name>repo.vito.be-snapshots</name>
+                  <url>https://repo.vito.be/artifactory/libs-snapshot-public</url>
               </snapshotRepository>
       </distributionManagement>
 
@@ -277,11 +277,11 @@
                 <enabled>false</enabled>
             </snapshots>
             <id>artifactory-release</id>
-            <url>https://artifactory.vgt.vito.be/artifactory/libs-release-public</url>
+            <url>https://repo.vito.be/artifactory/libs-release-public</url>
         </repository>
         <repository>
             <id>artifactory-snapshot</id>
-            <url>https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public</url>
+            <url>https://repo.vito.be/artifactory/libs-snapshot-public</url>
         </repository>
         <repository>
             <snapshots>

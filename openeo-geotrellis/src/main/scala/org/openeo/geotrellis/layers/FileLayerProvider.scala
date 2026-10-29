@@ -84,7 +84,7 @@ object FileLayerProvider {
 
 
   private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
-  private[layers] lazy val megapixelMeter = openTelemetry.meterBuilder("openeo.otel.scala").build().counterBuilder("openeo_load_megapixel").build()
+  private[layers] lazy val megapixelMeter = openTelemetry.meterBuilder("openeo.otel.scala").build().counterBuilder("openeo_load_megapixel").ofDoubles().build()
   private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("openeo.otel.scala").build().gaugeBuilder("openeo_load_megapixel_per_second").build()
 
   private val rasterSourceProviderChain: Seq[RasterSourceProvider] = {
@@ -1224,11 +1224,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     tracker.addInputProducts(
       openSearchCollectionId,
       overlappingRasterSources.map { case (_, feature) => feature.id }.asJava
-    )
-
-    tracker.addAuxiliaryFile(
-      new DerivedFromDocumentWriter(inputFeatures = overlappingRasterSources.map { case (_, feature) => feature }),
-      "application/geo+json",
     )
 
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
