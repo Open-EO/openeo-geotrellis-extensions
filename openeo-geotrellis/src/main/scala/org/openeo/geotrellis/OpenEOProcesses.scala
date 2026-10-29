@@ -13,7 +13,6 @@ import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
-import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
@@ -26,8 +25,6 @@ import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext, SparkEnv, TaskContext}
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
-import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, extentMerged, safeConvert}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.OpenEOProcess
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
