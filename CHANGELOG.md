@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Do not assume a raw data type if `nodata` is absent in STAC. ([#805](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/805))
 - Export cubes of bit cell type to GeoTIFF and netCDF as unsigned bytes with NODATA 255; this information
   is available for exposure in the STAC metadata. ([#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
+- GeoTIFF/NetCDF save_result: reduce task count ([#366](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/366)).
 - `load_collection` for sparse spatial filters: the computed index reduction no longer counts the number of temporal steps twice,
   which resulted in far too small partitions for sparse cubes with many dates. ([#924](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/924))
 
