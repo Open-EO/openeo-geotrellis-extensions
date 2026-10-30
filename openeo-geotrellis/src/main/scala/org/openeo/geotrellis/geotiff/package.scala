@@ -413,8 +413,13 @@ package object geotiff {
           if (statisticsPerBand.contains(bandIndex)) statisticsPerBand.update(bandIndex, combineStats(statisticsPerBand(bandIndex), curStats))
           else statisticsPerBand.update(bandIndex, curStats)
         }
-        statisticsPerBand.map({ case (bandIndex, (min, max, sum, powSum, valid, _)) =>
-          (bandLabels(bandIndex), convertStatsToMap((min, max, sum, powSum, valid, gridBounds.width * gridBounds.height)))})
+        bandLabels.map(bandName => {
+          if (statisticsPerBand.contains(bandLabels.indexOf(bandName))) {
+            (bandName, convertStatsToMap(statisticsPerBand(bandLabels.indexOf(bandName))))
+          } else {
+            (bandName, new util.HashMap[String, Any]())
+          }
+        }).toMap
       } else {
         collection.Map[String, java.util.HashMap[String, Any]]()
       }
