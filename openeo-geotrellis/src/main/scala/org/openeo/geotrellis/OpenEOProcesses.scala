@@ -13,7 +13,6 @@ import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
-import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
@@ -25,8 +24,8 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext, SparkEnv, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, extentMerged, safeConvert}
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MeanIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
+import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.OpenEOProcess
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
@@ -186,22 +185,6 @@ object OpenEOProcesses{
 class OpenEOProcesses extends Serializable {
 
   import OpenEOProcesses._
-
-
-  val tileBinaryOp: Map[String, LocalTileBinaryOp] = Map(
-    "or" -> Or,
-    "and" -> And,
-    "divide" -> Divide,
-    "max" -> MaxIgnoreNoData,
-    "min" -> MinIgnoreNoData,
-    "multiply" -> Multiply,
-    "product" -> Multiply,
-    "add" -> Add,
-    "sum" -> Add,
-    "subtract" -> Subtract,
-    "xor" -> Xor,
-    "mean" -> MeanIgnoreNoData
-  )
 
   def wrapCube[K](datacube:MultibandTileLayerRDD[K]): OpenEORasterCube[K] = {
     return new OpenEORasterCube[K](datacube,datacube.metadata,new OpenEORasterCubeMetadata(Seq.empty))
@@ -1548,9 +1531,9 @@ class OpenEOProcesses extends Serializable {
 
   private def mergeCubesGeneric[K: ClassTag
   ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], operator: String, metadata: TileLayerMetadata[K], leftCube: MultibandTileLayerRDD[_], rightCube: MultibandTileLayerRDD[_]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
-    val converted = joined.mapValues { case (l, r) =>
-      (l.map(_.mapBands((_, t) => safeConvert(t, metadata.cellType))), r.map(_.mapBands((_, t) => safeConvert(t, metadata.cellType))))
-    }
+    def convert(tile: MultibandTile): MultibandTile =
+      if (tile.bandCount == 0) tile else tile.mapBands((_, t) => safeConvert(t, metadata.cellType))
+    val converted = joined.mapValues { case (l, r) => (l.map(convert), r.map(convert)) }
     if (operator == null) {
       combine_bands(converted, leftCube, rightCube, metadata)
     } else {
@@ -1583,22 +1566,69 @@ class OpenEOProcesses extends Serializable {
   }
 
   private def resolve_merge_overlap[K](joinedRDD: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], operator: String, updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
-    // Pairwise merging of bands.
-    //in theory we should be able to reuse the OpenEOProcessScriptBuilder instead of using a string.
-    //val binaryOp: Seq[Tile] => Seq[Tile] = operator.generateFunction()
-    val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
+    // Pairwise merging of bands, evaluated with the OpenEOProcessScriptBuilder so that the overlap resolver
+    // behaves exactly the same as the same process in other callbacks (nodata handling, data types).
+    val overlapResolver = operatorToScriptBuilder(operator)
+    def binaryOp(left: Tile, right: Tile): Tile =
+      overlapResolver.generateFunction(Map("x" -> Seq(left), "y" -> Seq(right)))(Seq(left, right)).head
+
+    // The resolver can change the cell type (e.g. divide on integers gives floats), so the output cell type is
+    // determined by evaluating it on a 1x1 tile, combined with the input cell type for the non-overlapping tiles.
+    // This relies on the output cell type of the supported operators only depending on the input cell types, not on
+    // the pixel values. OpenEOProcessScriptBuilder.getOutputCellType can't be used instead: it only knows the input
+    // types of the default "data" parameter, not of "x" and "y", and would fall back to float32.
+    val probe = ArrayTile.empty(updatedMetadata.cellType, 1, 1)
+    val outputCellType = cellTypeUnionWithNoData(updatedMetadata.cellType, binaryOp(probe, probe).cellType)
+
+    def toOutputCellType(tile: MultibandTile): MultibandTile =
+      if (tile.cellType == outputCellType) tile else tile.mapBands((_, t) => safeConvert(t, outputCellType))
 
     new ContextRDD(joinedRDD.mapValues({ case (l, r) =>
-      if (r.isEmpty || r.get.bandCount==0) l.get
-      else if (l.isEmpty || l.get.bandCount==0) r.get
+      if (r.isEmpty || r.get.bandCount==0) toOutputCellType(l.get)
+      else if (l.isEmpty || l.get.bandCount==0) toOutputCellType(r.get)
       else {
         if (l.get.bandCount != r.get.bandCount) {
           throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.get.bandCount, r.get.bandCount))
         }
-        val tile = MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
-        tile
+        MultibandTile(l.get.bands.zip(r.get.bands).map { case (left, right) => safeConvert(binaryOp(left, right), outputCellType) })
       }
-    }), updatedMetadata)
+    }), updatedMetadata.copy(cellType = outputCellType))
+  }
+
+  /**
+   * Builds the overlap resolver of merge_cubes with the [[OpenEOProcessScriptBuilder]], as `operator(x, y)` or
+   * `operator(data = [x, y])` depending on the signature of the process. `x` is the left cube, `y` the right cube.
+   */
+  private def operatorToScriptBuilder(operator: String): OpenEOProcessScriptBuilder = {
+    val xyOperators = Set("add", "subtract", "multiply", "divide", "and", "or", "xor")
+    val dataOperators = Set("sum", "product", "max", "min", "mean")
+    val builder = new OpenEOProcessScriptBuilder
+    val xParam: Object = Map("from_parameter" -> "x").asJava
+    val yParam: Object = Map("from_parameter" -> "y").asJava
+    if (xyOperators.contains(operator)) {
+      val args = Map[String, Object]("x" -> xParam, "y" -> yParam).asJava
+      builder.expressionStart(operator, args)
+      builder.argumentStart("x")
+      builder.fromParameter("x")
+      builder.argumentEnd()
+      builder.argumentStart("y")
+      builder.fromParameter("y")
+      builder.argumentEnd()
+      builder.expressionEnd(operator, args)
+    } else if (dataOperators.contains(operator)) {
+      val args = Map[String, Object]("data" -> Seq(xParam, yParam).asJava).asJava
+      builder.expressionStart(operator, args)
+      builder.arrayStart("data")
+      builder.fromParameter("x")
+      builder.arrayElementDone()
+      builder.fromParameter("y")
+      builder.arrayElementDone()
+      builder.arrayEnd()
+      builder.expressionEnd(operator, args)
+    } else {
+      throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, (xyOperators ++ dataOperators).mkString(", ")))
+    }
+    builder
   }
 
   def remove_overlap(datacube: MultibandTileLayerRDD[SpaceTimeKey], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[SpaceTimeKey] = {
@@ -1609,19 +1639,25 @@ class OpenEOProcesses extends Serializable {
   private def computeRegridPartitioner[K: SpatialComponent: ClassTag](
       datacube: MultibandTileLayerRDD[K], targetCols: Int, targetRows: Int,
       overlapX: Int = 0, overlapY: Int = 0): Option[Partitioner] = {
-    val bandCount = DatacubeSupport.maybeBandLabels(datacube).map(_.size).getOrElse(DEFAULT_BAND_COUNT)
-    // Use the full buffered tile size (including overlap) for memory estimation
-    val effectiveCols = targetCols + 2 * overlapX
-    val effectiveRows = targetRows + 2 * overlapY
-    val indexReduction = DatacubeSupport.computeReductionForTileSize(
-      effectiveCols, effectiveRows, datacube.metadata.cellType.bits, bandCount)
-
     val md = datacube.metadata
     val ld = md.getComponent[LayoutDefinition]
     val oldW = ld.tileLayout.tileCols
     val oldH = ld.tileLayout.tileRows
 
     val newBounds = RegridFixed.computeNewBounds(md.bounds, oldW, oldH, targetCols, targetRows)
+    // Use the full buffered tile size (including overlap) for memory estimation
+    computePartitionerForBounds(datacube, newBounds, targetCols + 2 * overlapX, targetRows + 2 * overlapY)
+  }
+
+  /**
+   * Creates a SpacePartitioner for the given target key bounds, with an index reduction based on the
+   * (target) tile size, cell type and band count of the datacube.
+   */
+  private[geotrellis] def computePartitionerForBounds[K: SpatialComponent: ClassTag](
+      datacube: MultibandTileLayerRDD[K], newBounds: Bounds[K], tileCols: Int, tileRows: Int): Option[Partitioner] = {
+    val bandCount = DatacubeSupport.maybeBandLabels(datacube).map(_.size).getOrElse(DEFAULT_BAND_COUNT)
+    val indexReduction = DatacubeSupport.computeReductionForTileSize(
+      tileCols, tileRows, datacube.metadata.cellType.bits, bandCount)
 
     newBounds match {
       case KeyBounds(newMinKey, newMaxKey) =>

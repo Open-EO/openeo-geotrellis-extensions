@@ -8,6 +8,26 @@ It is used in combination with https://github.com/Open-EO/openeo-geopyspark-driv
 
 ## Running unit tests
 
+### Test data
+
+Many tests depend on the `testdata` git submodule ([geotrellis-testdata](https://github.com/Open-EO/geotrellis-testdata)),
+which stores its binary files (`.tif`, `.nc`, `.jp2`, ...) with [Git LFS](https://git-lfs.com/).
+Install Git LFS first (e.g. `sudo apt install git-lfs` or `brew install git-lfs`), then:
+
+```bash
+git lfs install                          # once per user, enables the LFS git hooks
+git submodule update --init --recursive  # check out the testdata submodule
+git -C testdata lfs pull                 # make sure the actual LFS files are downloaded
+```
+
+Alternatively, clone with `git clone --recurse-submodules ...`.
+If test files contain small text pointers (`version https://git-lfs.github.com/spec/v1 ...`) instead of real data, 
+Git LFS was not installed when checking out; run `git -C testdata lfs pull` to fix this.
+
+When pulling new commits, keep the submodule in sync with `git submodule update --recursive`.
+
+### Other requirements
+
 While the most important tests can be executed anywhere, without requiring dependencies, there are some exceptions:
 
  * geotrellis-sentinelhub requires environment variables SENTINELHUB_CLIENT_ID and SENTINELHUB_CLIENT_SECRET to be set.

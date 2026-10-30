@@ -11,20 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- merge_cubes: the `overlap_resolver` is now evaluated with `OpenEOProcessScriptBuilder` instead of a separate operator mapping, so it behaves exactly like the same process in other callbacks (nodata handling, data types). Notable behaviour changes:
+  - `sum` now ignores nodata (default `ignore_nodata=true`): if only one cube has a value, that value is returned instead of nodata. `add` still returns nodata if either input is nodata.
+  - `divide` and `mean` now always result in floats (`float32`), also for integer inputs.
+
 ### Removed
 
 - `org.openeo.geotrellis.geotiff.PyramidFactory` (`from_disk`, `from_s3`, `from_uris`) and `MultibandCompositeRasterSource`: no longer used by the Python driver ([Open-EO/openeo-geopyspark-driver#1885](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1885)).
 - `AgEra5FileLayerProvider`: unused; AgERA5 is loaded through `FileLayerProvider` with `Agera5SearchClient`.
 - `MultibandCompositeRasterSource` was merged back into `BandCompositeRasterSource`, which now also preserves all its settings (attributes, predefined extent, `readFullTile`, ...) across `resample`/`convert`/`reproject`.
+- Remove `DerivedFromDocumentWriter` ([Open-EO/openeo-geopyspark-driver#1490](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1490))
 
 ### Fixed
 
+- Loading metrics now consistently count fractional megapixels (1,000,000 band-pixels), with overflow-safe, thread-safe pixel counts and monotonic timing. The loading-speed gauge still reports the latest completed partition's speed per collection.
+- merge_cubes: no longer fails on tiles without bands (e.g. `EmptyMultibandTile`).
 - Support `is_valid` inside raster callbacks, including `reduce_dimension` callbacks ([#901](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/901)).
 - merge_cubes: merging a cube with a temporal dimension with a cube without a temporal dimension well now correctly add nodata bands to honor the expected band count.
 - Raw integral rasters without a NODATA value no longer treat 0 as NODATA; instead, their cell type is widened (e.g. uint16 to int32) to make room for a NODATA value outside of their original range.
   Do not assume a raw data type if `nodata` is absent in STAC. ([#805](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/805))
 - Export cubes of bit cell type to GeoTIFF and netCDF as unsigned bytes with NODATA 255; this information
   is available for exposure in the STAC metadata. ([#863](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/863))
+- GeoTIFF/NetCDF save_result: reduce task count ([#366](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/366)).
+- `load_collection` for sparse spatial filters: the computed index reduction no longer counts the number of temporal steps twice,
+  which resulted in far too small partitions for sparse cubes with many dates. ([#924](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/924))
 
 ## Before 2026-09-30
 
