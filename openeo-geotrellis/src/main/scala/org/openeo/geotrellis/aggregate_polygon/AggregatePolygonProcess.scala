@@ -102,7 +102,7 @@ class AggregatePolygonProcess {
     }
   }
 
-  def aggregateSpatialForGeometry(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[Geometry], crs: CRS, bandCount:Int, outputPath:String): Unit = {
+  def aggregateSpatialForGeometry(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[org.locationtech.jts.geom.Geometry], crs: CRS, bandCount:Int, outputPath:String): Unit = {
     val sc = datacube.sparkContext
 
     // each polygon becomes a feature with a value that's equal to its position in the array
@@ -119,7 +119,7 @@ class AggregatePolygonProcess {
     val combinedRDD = new OpenEOProcesses().leftJoinSpacetimeSpatial(datacube, geometryRDD, leftOuterJoin = false)
 
     val pixelRDD: RDD[Row] = combinedRDD.flatMap {
-      case (key: SpaceTimeKey, (tile: MultibandTile, Some(geoms: Iterable[Feature[Geometry,Int]]))) => {
+      case (key: SpaceTimeKey, (tile: MultibandTile, Some(geoms: Iterable[Feature[org.locationtech.jts.geom.Geometry,Int]]))) => {
         val result: ListBuffer[Row] = ListBuffer()
         val bands = checkTileBandCount(tile.bandCount, bandCount)
 
@@ -129,7 +129,7 @@ class AggregatePolygonProcess {
         val date = java.sql.Timestamp.from(key.time.toInstant)
         val re = RasterExtent(tile, datacube.metadata.keyToExtent(key))
         val bandsValues: Array[Object] = Array.ofDim[Object](bands)
-        for (g: Feature[Geometry, Int] <- geoms) {
+        for (g: Feature[org.locationtech.jts.geom.Geometry, Int] <- geoms) {
           if (tile.cellType.isFloatingPoint) {
             g.geom.foreach(re, options)({ (col: Int, row: Int) =>
               cfor(0)(_ < bands, _ + 1) { band =>
@@ -166,7 +166,7 @@ class AggregatePolygonProcess {
   }
 
   def aggregateSpatialForGeometryWithSpatialCube(scriptBuilder: SparkAggregateScriptBuilder,
-                                                 datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
+                                                 datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[org.locationtech.jts.geom.Geometry],
                                                  crs: CRS, bandCount: Int, outputPath: String): Unit = {
     val sc = datacube.sparkContext
 
@@ -180,7 +180,7 @@ class AggregatePolygonProcess {
     val combinedRDD = datacube.join(geometryRDD)
 
     val pixelRDD: RDD[Row] = combinedRDD.flatMap {
-      case (key: SpatialKey, (tile: MultibandTile, geoms: Iterable[Feature[Geometry, Int]])) =>
+      case (key: SpatialKey, (tile: MultibandTile, geoms: Iterable[Feature[org.locationtech.jts.geom.Geometry, Int]])) =>
         val result: ListBuffer[Row] = ListBuffer()
         val bands = checkTileBandCount(tile.bandCount, bandCount)
 
@@ -188,7 +188,7 @@ class AggregatePolygonProcess {
 
         val re = RasterExtent(tile, datacube.metadata.keyToExtent(key))
         val bandsValues: Array[Object] = Array.ofDim[Object](bands)
-        for (g: Feature[Geometry, Int] <- geoms) {
+        for (g: Feature[org.locationtech.jts.geom.Geometry, Int] <- geoms) {
           if (tile.cellType.isFloatingPoint) {
             g.geom.foreach(re, options)({ (col: Int, row: Int) =>
               cfor(0)(_ < bands, _ + 1) { band =>
