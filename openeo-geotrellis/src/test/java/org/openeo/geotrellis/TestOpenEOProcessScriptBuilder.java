@@ -9,7 +9,6 @@ import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.mllib.tree.RandomForest;
 import org.apache.spark.mllib.tree.model.RandomForestModel;
-import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -196,7 +195,6 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(fillShortArrayTile(3, 3, 50, 60, 70, 80, 0, 0, 0, 0, 0), result.apply(1));
     }
 
-    @NotNull
     private static OpenEOProcessScriptBuilder createMultiply(Number constant) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.defaultDataParameterName_$eq("data");
@@ -1113,7 +1111,6 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
-    @NotNull
     private static OpenEOProcessScriptBuilder buildUnaryProcess(String processName, String argName) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.defaultInputDataType_$eq(FloatConstantNoDataCellType$.MODULE$.toString());
