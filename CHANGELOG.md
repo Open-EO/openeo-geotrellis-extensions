@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - one `zarr.json` per node instead of `.zgroup`/`.zarray`/`.zattrs`; consolidated metadata is inlined in the root `zarr.json` instead of `.zmetadata`.
   - dimensions are stored as `dimension_names` instead of the `_ARRAY_DIMENSIONS` attribute; band arrays are no longer also groups.
   - chunks are stored at `c/[t/]row/col`, little-endian, zstd (level 3) compressed. x/y coordinates are now `float64`.
-  - dropped the `jzarr` dependency.
+  - dropped the `jzarr` dependency; the store is now written with `dev.zarr:zarr-java`.
+  - chunks that only contain the fill value are not written.
   - data arrays carry a `_FillValue` attribute when the cell type defines no-data.
   - time `units` are now CF-compliant (`milliseconds since 1970-01-01T00:00:00Z`).
 

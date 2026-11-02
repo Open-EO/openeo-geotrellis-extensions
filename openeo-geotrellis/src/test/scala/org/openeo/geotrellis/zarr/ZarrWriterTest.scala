@@ -2,6 +2,7 @@ package org.openeo.geotrellis.zarr
 import better.files.File.apply
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.luben.zstd.Zstd
+import dev.zarr.zarrjava.v3.{Array => ZArray}
 import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{BitArrayTile, ByteArrayTile, DoubleArrayTile, FloatArrayTile, IntArrayTile, MultibandTile, ShortArrayTile, Tile, TileLayout, UByteArrayTile, UShortArrayTile}
@@ -55,6 +56,19 @@ class ZarrWriterTest {
     val compressed = Files.readAllBytes(chunkPath)
     Zstd.decompress(compressed, Zstd.getFrameContentSize(compressed).toInt)
   }
+  /** Chunks that only contain the fill value are not written, so a chunk may legitimately be absent. */
+  private def readChunkIfPresent(root: String, relPath: String, index: Int*): Option[Array[Byte]] = {
+    val chunkPath = index.foldLeft(Paths.get(root, relPath, "c"))((p, i) => p.resolve(i.toString))
+    if (Files.exists(chunkPath)) Some(readChunk(root, relPath, index: _*)) else None
+  }
+  /** Reads the full array back with zarr-java and compares it cell by cell with the expected raster. */
+  private def assertRoundTrip(root: String, relPath: String, expected: Tile): Unit = {
+    val array = ZArray.open(Paths.get(root, relPath))
+    val data = array.read()
+    // element-wise getDouble respects unsigned types (get1DJavaArray(DOUBLE) does not)
+    val actual = Array.tabulate(data.getSize.toInt)(i => data.getDouble(i))
+    assertArrayEquals(expected.withNoData(None).toArrayDouble(), actual, 0.0, s"$relPath content differs")
+  }
   private def assertGroup(node: JMap): Unit = {
     assertEquals(3, node.get("zarr_format"))
     assertEquals("group", node.get("node_type"))
@@ -73,7 +87,8 @@ class ZarrWriterTest {
     val codecs = node.get("codecs").asInstanceOf[util.List[JMap]]
     assertEquals(2, codecs.size())
     assertEquals("bytes", codecs.get(0).get("name"))
-    assertEquals("little", map(codecs.get(0), "configuration").get("endian"))
+    val bytesConfig = map(codecs.get(0), "configuration")
+    if (bytesConfig != null) assertEquals("little", bytesConfig.get("endian"))
     assertEquals("zstd", codecs.get(1).get("name"))
     assertEquals(3, map(codecs.get(1), "configuration").get("level"))
     // No V2 leftovers
@@ -135,20 +150,19 @@ class ZarrWriterTest {
       zarr.ZarrWriter.saveZarrGeneric(tileLayerRDD, filename, new ZarrOptions)
       val node = assertArray(readNode(filename, filePrefix), util.Arrays.asList(1024, 2048), util.Arrays.asList(256, 256), util.Arrays.asList("y", "x"))
       assertEquals(expectedType, node.get("data_type"))
-      // raw cell types have no no-data, so no _FillValue
-      assertFalse(map(node, "attributes").containsKey("_FillValue"))
+      // _FillValue is only written when the cell type defines no-data, and then equals fill_value
+      if (multibandTile.cellType.isInstanceOf[geotrellis.raster.NoNoData])
+        assertFalse(map(node, "attributes").containsKey("_FillValue"))
+      else
+        assertEquals(node.get("fill_value"), map(node, "attributes").get("_FillValue"))
       val m = tileLayerRDD.metadata
       assertDataAttributes(node, "EPSG:4326", util.Arrays.asList(1024, 2048),
         util.Arrays.asList(m.extent.xmin, m.extent.ymin, m.extent.xmax, m.extent.ymax), temporal = false)
       assertXY(filename, 1024, 2048)
       for (row <- 0 until layoutRows; col <- 0 until layoutCols) {
-        assertEquals(256 * 256 * bytesPerValue(expectedType), readChunk(filename, filePrefix, row, col).length)
+        readChunkIfPresent(filename, filePrefix, row, col).foreach(c => assertEquals(256 * 256 * bytesPerValue(expectedType), c.length))
       }
-      if (expectedType == "float64") {
-        val expected = tileLayerRDD.lookup(SpatialKey(0, 0)).head.band(0).toArrayDouble()
-        val buf = ByteBuffer.wrap(readChunk(filename, filePrefix, 0, 0)).order(ByteOrder.LITTLE_ENDIAN)
-        assertArrayEquals(expected, Array.fill(256 * 256)(buf.getDouble), 0.0)
-      }
+      assertRoundTrip(filename, filePrefix, multibandTile.band(0))
       assertConsolidated(filename, Set(filePrefix, "x", "y"))
       assertNoV2Files(filename)
     }
@@ -185,8 +199,11 @@ class ZarrWriterTest {
         assertDataAttributes(node, "EPSG:4326", util.Arrays.asList(1024, 2048), expectedBbox, temporal = false)
         val size = bytesPerValue(node.get("data_type").toString)
         for (row <- 0 until layoutRows; col <- 0 until layoutCols) {
-          assertEquals(256 * 256 * size, readChunk(filename, band, row, col).length)
+          readChunkIfPresent(filename, band, row, col).foreach(c => assertEquals(256 * 256 * size, c.length))
         }
+      }
+      Seq("B01" -> tile, "B02" -> secondBand, "B04" -> thirdBand).foreach { case (band, expected) =>
+        assertRoundTrip(filename, band, expected)
       }
       assertXY(filename, 1024, 2048)
       assertConsolidated(filename, Set("B01", "B02", "B04", "x", "y"))
@@ -253,8 +270,8 @@ class ZarrWriterTest {
         val size = bytesPerValue(node.get("data_type").toString)
         val timeIndex = Map(date1.toInstant.toEpochMilli -> 0, date2.toInstant.toEpochMilli -> 1)
         for (key <- dataCubeContextRDD.keys.collect()) {
-          val chunk = readChunk(filename, prefix, timeIndex(key.instant), key.row, key.col)
-          assertEquals(tileRows * tileCols * size, chunk.length)
+          readChunkIfPresent(filename, prefix, timeIndex(key.instant), key.row, key.col)
+            .foreach(chunk => assertEquals(tileRows * tileCols * size, chunk.length))
         }
         assertXY(filename, 256, 256)
         assertConsolidated(filename, Set(prefix, "x", "y", "time"))
