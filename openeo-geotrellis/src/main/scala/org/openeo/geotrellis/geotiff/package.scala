@@ -413,7 +413,7 @@ package object geotiff {
           if (statisticsPerBand.contains(bandIndex)) statisticsPerBand.update(bandIndex, combineStats(statisticsPerBand(bandIndex), curStats))
           else statisticsPerBand.update(bandIndex, curStats)
         }
-        bandLabels.map(bandName => {
+        fo.getBandNames.map(bandName => {
           if (statisticsPerBand.contains(bandLabels.indexOf(bandName))) {
             (bandName, convertStatsToMap(statisticsPerBand(bandLabels.indexOf(bandName))))
           } else {
