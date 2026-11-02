@@ -1,25 +1,24 @@
 package org.openeo.geotrellis.zarr
-
 import better.files.File.apply
-import com.bc.zarr.ZarrUtils
-import com.bc.zarr.storage.FileSystemStore
-import geotrellis.layer.SpaceTimeKey
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.github.luben.zstd.Zstd
+import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{BitArrayTile, ByteArrayTile, DoubleArrayTile, FloatArrayTile, IntArrayTile, MultibandTile, ShortArrayTile, Tile, TileLayout, UByteArrayTile, UShortArrayTile}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.{LayerFixtures, PixelType, zarr}
 import org.slf4j.{Logger, LoggerFactory}
-
-import java.io.InputStreamReader
-import java.nio.file.Path
+import java.nio.file.{Files, Path, Paths}
+import java.nio.{ByteBuffer, ByteOrder}
 import java.time.ZonedDateTime
-
+import java.util
+import scala.jdk.CollectionConverters._
 object ZarrWriterTest{
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[ZarrWriterTest])
 
@@ -36,323 +35,190 @@ object ZarrWriterTest{
     }
     if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)
   }
-
   @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 
 class ZarrWriterTest {
+  private val mapper = new ObjectMapper()
+  private type JMap = util.Map[String, Object]
+  private def readJson(path: Path): JMap = {
+    assertTrue(Files.exists(path), s"$path missing")
+    mapper.readValue(path.toFile, classOf[util.Map[String, Object]])
+  }
+  private def readNode(root: String, relPath: String): JMap =
+    readJson(Paths.get(root, relPath, "zarr.json"))
+  private def map(m: JMap, key: String): JMap = m.get(key).asInstanceOf[JMap]
+  private def readChunk(root: String, relPath: String, index: Int*): Array[Byte] = {
+    val chunkPath = index.foldLeft(Paths.get(root, relPath, "c"))((p, i) => p.resolve(i.toString))
+    assertTrue(Files.exists(chunkPath), s"$chunkPath missing")
+    val compressed = Files.readAllBytes(chunkPath)
+    Zstd.decompress(compressed, Zstd.getFrameContentSize(compressed).toInt)
+  }
+  private def assertGroup(node: JMap): Unit = {
+    assertEquals(3, node.get("zarr_format"))
+    assertEquals("group", node.get("node_type"))
+  }
+  /** Checks the generic Zarr v3 array metadata and returns it. */
+  private def assertArray(node: JMap, shape: util.List[Integer], chunks: util.List[Integer], dims: util.List[String]): JMap = {
+    assertEquals(3, node.get("zarr_format"))
+    assertEquals("array", node.get("node_type"))
+    assertEquals(shape, node.get("shape"))
+    assertEquals("regular", map(node, "chunk_grid").get("name"))
+    assertEquals(chunks, map(map(node, "chunk_grid"), "configuration").get("chunk_shape"))
+    assertEquals("default", map(node, "chunk_key_encoding").get("name"))
+    assertEquals("/", map(map(node, "chunk_key_encoding"), "configuration").get("separator"))
+    assertTrue(node.containsKey("fill_value"))
+    assertEquals(dims, node.get("dimension_names"))
+    val codecs = node.get("codecs").asInstanceOf[util.List[JMap]]
+    assertEquals(2, codecs.size())
+    assertEquals("bytes", codecs.get(0).get("name"))
+    assertEquals("little", map(codecs.get(0), "configuration").get("endian"))
+    assertEquals("zstd", codecs.get(1).get("name"))
+    assertEquals(3, map(codecs.get(1), "configuration").get("level"))
+    // No V2 leftovers
+    assertFalse(map(node, "attributes").containsKey("_ARRAY_DIMENSIONS"))
+    node
+  }
+  private def assertDataAttributes(node: JMap, crsCode: String, expectedShape: util.List[Integer], expectedBbox: util.List[_], temporal: Boolean): Unit = {
+    val attr = map(node, "attributes")
+    val crs = map(attr, "_CRS")
+    assertTrue(crs.containsKey("wkt"))
+    assertEquals(crsCode, crs.get("code"))
+    assertEquals(expectedShape, crs.get("proj:shape"))
+    assertEquals(expectedBbox, crs.get("proj:bbox"))
+    val extent = map(attr, "extent")
+    assertTrue(extent.containsKey("spatial"))
+    assertEquals(temporal, extent.containsKey("temporal"))
+  }
+  private def assertNoV2Files(root: String): Unit = {
+    val stream = Files.walk(Paths.get(root))
+    try {
+      stream.iterator().asScala.foreach { p =>
+        val name = p.getFileName.toString
+        assertFalse(Set(".zarray", ".zattrs", ".zgroup", ".zmetadata").contains(name), s"Unexpected V2 file $p")
+      }
+    } finally stream.close()
+  }
+  private def assertConsolidated(root: String, expectedKeys: Set[String]): Unit = {
+    val rootNode = readNode(root, "")
+    assertGroup(rootNode)
+    val consolidated = map(rootNode, "consolidated_metadata")
+    assertEquals("inline", consolidated.get("kind"))
+    assertEquals(false, consolidated.get("must_understand"))
+    val metadata = map(consolidated, "metadata")
+    assertEquals(expectedKeys, metadata.keySet().asScala.toSet)
+    expectedKeys.foreach { k => assertEquals(readNode(root, k), metadata.get(k)) }
+  }
+  private def assertXY(root: String, rows: Int, cols: Int): Unit = {
+    val x = assertArray(readNode(root, "x"), util.Arrays.asList(cols), util.Arrays.asList(cols), util.Arrays.asList("x"))
+    assertEquals("float64", x.get("data_type"))
+    assertEquals(cols * 8, readChunk(root, "x", 0).length)
+    val y = assertArray(readNode(root, "y"), util.Arrays.asList(rows), util.Arrays.asList(rows), util.Arrays.asList("y"))
+    assertEquals("float64", y.get("data_type"))
+    assertEquals(rows * 8, readChunk(root, "y", 0).length)
+  }
+  private def bytesPerValue(dataType: String): Int = dataType match {
+    case "int8" | "uint8" => 1
+    case "int16" | "uint16" => 2
+    case "int32" | "float32" => 4
+    case "int64" | "float64" => 8
+  }
 
   @Test
   def testWriteSingleBandRDD(@TempDir tempDir: Path): Unit ={
     val layoutCols = 8
     val layoutRows = 4
-
-    def testInput(multibandTile: MultibandTile, filePrefix:String): Unit = {
+    def testInput(multibandTile: MultibandTile, filePrefix:String, expectedType: String): Unit = {
       val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(ZarrWriterTest.sc, multibandTile, TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
-      val zarrOptions = new ZarrOptions
-
       val filename = (tempDir / (filePrefix+".zarr")).toString()
-      zarr.ZarrWriter.saveZarrGeneric(tileLayerRDD, filename, zarrOptions)
-
-      val store = new FileSystemStore(filename, null)
-      val inputStream = store.getInputStream(filePrefix+"/.zattrs")
-      assertTrue(inputStream != null)
-      val attr = ZarrUtils.fromJson(new InputStreamReader(inputStream), classOf[java.util.Map[_, _]])
-      assertTrue(attr.containsKey("_ARRAY_DIMENSIONS"))
-      val dim = attr.get("_ARRAY_DIMENSIONS")
-      assertTrue(dim.isInstanceOf[java.util.ArrayList[String]])
-      assertEquals(2, dim.asInstanceOf[java.util.ArrayList[String]].size())
-      assertTrue(dim.asInstanceOf[java.util.ArrayList[String]].contains("x"))
-      assertTrue(dim.asInstanceOf[java.util.ArrayList[String]].contains("y"))
-      assertTrue(attr.containsKey("_CRS"))
-      val crs = attr.get("_CRS")
-      assertTrue(crs.isInstanceOf[java.util.Map[_, _]])
-      assertTrue(crs.asInstanceOf[java.util.Map[_, _]].containsKey("wkt"))
-      assertTrue(crs.asInstanceOf[java.util.Map[_, _]].containsKey("code"))
-      assertEquals("EPSG:4326", crs.asInstanceOf[java.util.Map[_, _]].get("code"))
-      assertTrue(crs.asInstanceOf[java.util.Map[_, _]].containsKey("proj:shape"))
-      val shape = crs.asInstanceOf[java.util.Map[_, _]].get("proj:shape")
-      assertEquals(java.util.Arrays.asList(1024, 2048), shape)
-      assertTrue(crs.asInstanceOf[java.util.Map[_, _]].containsKey("proj:bbox"))
-      val bbox = crs.asInstanceOf[java.util.Map[_, _]].get("proj:bbox")
-      val expectedBbox = java.util.Arrays.asList(tileLayerRDD.metadata.extent.xmin, tileLayerRDD.metadata.extent.ymin, tileLayerRDD.metadata.extent.xmax, tileLayerRDD.metadata.extent.ymax)
-      assertEquals(expectedBbox, bbox)
-
-      assertTrue(attr.containsKey("extent"))
-      val extent = attr.get("extent")
-      assertTrue(extent.isInstanceOf[java.util.Map[_, _]])
-      assertTrue(extent.asInstanceOf[java.util.Map[_, _]].containsKey("spatial"))
-
-
-      val inputStreamX = store.getInputStream("x/.zattrs")
-      assertTrue(inputStreamX != null)
-      val attrX = ZarrUtils.fromJson(new InputStreamReader(inputStreamX), classOf[java.util.Map[_, _]])
-      assertTrue(attrX.containsKey("_ARRAY_DIMENSIONS"))
-      val dimX = attrX.get("_ARRAY_DIMENSIONS")
-      assertTrue(dimX.isInstanceOf[java.util.ArrayList[String]])
-      assertEquals(1, dimX.asInstanceOf[java.util.ArrayList[String]].size())
-
-      val inputStreamY = store.getInputStream("y/.zattrs")
-      assertTrue(inputStreamY != null)
-      val attrY = ZarrUtils.fromJson(new InputStreamReader(inputStreamY), classOf[java.util.Map[_, _]])
-      assertTrue(attrY.containsKey("_ARRAY_DIMENSIONS"))
-      val dimY = attrY.get("_ARRAY_DIMENSIONS")
-      assertTrue(dimY.isInstanceOf[java.util.ArrayList[String]])
-      assertEquals(1, dimY.asInstanceOf[java.util.ArrayList[String]].size())
-
-      val inputStreamZarray = store.getInputStream(filePrefix+"/.zarray")
-      assertTrue(inputStreamZarray!=null)
-      val zarray = ZarrUtils.fromJson(new InputStreamReader(inputStreamZarray), classOf[java.util.Map[_, _]])
-      assertTrue(zarray.containsKey("shape"))
-      assertEquals(java.util.Arrays.asList(1024,2048),zarray.get("shape"))
-      assertTrue(zarray.containsKey("chunks"))
-
-      val inputStreamZmetadata = store.getInputStream(".zmetadata")
-      assertTrue(inputStreamZmetadata!=null)
-      val zmetadata = ZarrUtils.fromJson(new InputStreamReader(inputStreamZmetadata), classOf[java.util.Map[String, java.util.Map[String,_]]])
-      assertTrue(zmetadata.containsKey("metadata"))
-      val metadata = zmetadata.get("metadata")
-      assertEquals(metadata.size(),8)
-      assertTrue(metadata.containsKey(".zgroup"))
-      assertTrue(metadata.containsKey(filePrefix+"/.zarray"))
-      assertTrue(metadata.containsKey(filePrefix+"/.zattrs"))
-      assertTrue(metadata.containsKey(filePrefix+"/.zgroup"))
-      assertTrue(metadata.containsKey("x/.zarray"))
-      assertTrue(metadata.containsKey("x/.zattrs"))
-      assertTrue(metadata.containsKey("y/.zarray"))
-      assertTrue(metadata.containsKey("y/.zattrs"))
+      zarr.ZarrWriter.saveZarrGeneric(tileLayerRDD, filename, new ZarrOptions)
+      val node = assertArray(readNode(filename, filePrefix), util.Arrays.asList(1024, 2048), util.Arrays.asList(256, 256), util.Arrays.asList("y", "x"))
+      assertEquals(expectedType, node.get("data_type"))
+      // raw cell types have no no-data, so no _FillValue
+      assertFalse(map(node, "attributes").containsKey("_FillValue"))
+      val m = tileLayerRDD.metadata
+      assertDataAttributes(node, "EPSG:4326", util.Arrays.asList(1024, 2048),
+        util.Arrays.asList(m.extent.xmin, m.extent.ymin, m.extent.xmax, m.extent.ymax), temporal = false)
+      assertXY(filename, 1024, 2048)
+      for (row <- 0 until layoutRows; col <- 0 until layoutCols) {
+        assertEquals(256 * 256 * bytesPerValue(expectedType), readChunk(filename, filePrefix, row, col).length)
+      }
+      if (expectedType == "float64") {
+        val expected = tileLayerRDD.lookup(SpatialKey(0, 0)).head.band(0).toArrayDouble()
+        val buf = ByteBuffer.wrap(readChunk(filename, filePrefix, 0, 0)).order(ByteOrder.LITTLE_ENDIAN)
+        assertArrayEquals(expected, Array.fill(256 * 256)(buf.getDouble), 0.0)
+      }
+      assertConsolidated(filename, Set(filePrefix, "x", "y"))
+      assertNoV2Files(filename)
     }
     val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
     val imageTile = BitArrayTile(Array.concat(Array.fill[Byte](layoutCols*layoutRows*4096){0},Array.fill[Byte](layoutCols*layoutRows*4096){1}),layoutCols*256, layoutRows*256)
-    testInput(MultibandTile(imageTile),"bitOut")
-    val imageTile0 = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
-    testInput(MultibandTile(imageTile0),"byteOut")
-    val imageTile1 = UByteArrayTile(intImage,layoutCols*256, layoutRows*256)
-    testInput(MultibandTile(imageTile1),"uByteOut")
-    val imageTile2 = FloatArrayTile(intImage.map(_.toFloat),layoutCols*256, layoutRows*256)
-    testInput(MultibandTile(imageTile2),"floutOut")
-    val imageTile3 = ShortArrayTile(intImage.map(_.toShort),layoutCols*256, layoutRows*256)
-    testInput(MultibandTile(imageTile3),"shortOut")
-    val imageTile4 = UShortArrayTile(intImage.map(_.toShort),layoutCols*256, layoutRows*256)
-    testInput(MultibandTile(imageTile4),"uShortOut")
-    val imageTile5 = DoubleArrayTile(intImage.map(_.toDouble),layoutCols*256, layoutRows*256)
-    testInput(MultibandTile(imageTile5),"doubleOut")
-    val imageTile6 = IntArrayTile(intImage.map(_.toInt),layoutCols*256, layoutRows*256)
-    testInput(MultibandTile(imageTile6),"intOut")
+    testInput(MultibandTile(imageTile),"bitOut", "uint8")
+    testInput(MultibandTile(ByteArrayTile(intImage,layoutCols*256, layoutRows*256)),"byteOut", "int8")
+    testInput(MultibandTile(UByteArrayTile(intImage,layoutCols*256, layoutRows*256)),"uByteOut", "uint8")
+    testInput(MultibandTile(FloatArrayTile(intImage.map(_.toFloat),layoutCols*256, layoutRows*256)),"floutOut", "float32")
+    testInput(MultibandTile(ShortArrayTile(intImage.map(_.toShort),layoutCols*256, layoutRows*256)),"shortOut", "int16")
+    testInput(MultibandTile(UShortArrayTile(intImage.map(_.toShort),layoutCols*256, layoutRows*256)),"uShortOut", "uint16")
+    testInput(MultibandTile(DoubleArrayTile(intImage.map(_.toDouble),layoutCols*256, layoutRows*256)),"doubleOut", "float64")
+    testInput(MultibandTile(IntArrayTile(intImage.map(_.toInt),layoutCols*256, layoutRows*256)),"intOut", "int32")
   }
-
 
   @Test
   def testWriteMultiBandRDD(@TempDir tempDir: Path): Unit ={
     val layoutCols = 8
     val layoutRows = 4
-
     def testInput(tile: Tile, filePrefix:String): Unit = {
-
       val secondBand = tile.map { x => if (x >= 5) 10 else 100 }
       val thirdBand = tile.map { x => if (x >= 5) 50 else 200 }
       val zarrOptions = new ZarrOptions
       zarrOptions.setBands(3, new java.util.ArrayList(java.util.Arrays.asList("B01", "B02", "B04")))
-
       val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(ZarrWriterTest.sc, MultibandTile(tile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
       val filename = (tempDir / (filePrefix+".zarr")).toString()
       zarr.ZarrWriter.saveZarrGeneric(tileLayerRDD.withContext {
         _.repartition(layoutCols * layoutRows)
       }, filename, zarrOptions)
-
-      val expectedBbox = java.util.Arrays.asList(tileLayerRDD.metadata.extent.xmin, tileLayerRDD.metadata.extent.ymin, tileLayerRDD.metadata.extent.xmax, tileLayerRDD.metadata.extent.ymax)
-      val store = new FileSystemStore(filename, null)
-
-      val inputStreamB01 = store.getInputStream("B01/.zattrs")
-      assertTrue(inputStreamB01 != null)
-      val attrB01 = ZarrUtils.fromJson(new InputStreamReader(inputStreamB01), classOf[java.util.Map[_, _]])
-      assertTrue(attrB01.containsKey("_ARRAY_DIMENSIONS"))
-      val dimB01 = attrB01.get("_ARRAY_DIMENSIONS")
-      assertTrue(dimB01.isInstanceOf[java.util.ArrayList[String]])
-      assertEquals(2, dimB01.asInstanceOf[java.util.ArrayList[String]].size())
-      assertTrue(dimB01.asInstanceOf[java.util.ArrayList[String]].contains("x"))
-      assertTrue(dimB01.asInstanceOf[java.util.ArrayList[String]].contains("y"))
-      assertTrue(attrB01.containsKey("_CRS"))
-      val crsB01 = attrB01.get("_CRS")
-      assertTrue(crsB01.isInstanceOf[java.util.Map[_, _]])
-      assertTrue(crsB01.asInstanceOf[java.util.Map[_, _]].containsKey("wkt"))
-      assertTrue(crsB01.asInstanceOf[java.util.Map[_, _]].containsKey("code"))
-      assertEquals("EPSG:4326", crsB01.asInstanceOf[java.util.Map[_, _]].get("code"))
-      assertTrue(crsB01.asInstanceOf[java.util.Map[_, _]].containsKey("proj:shape"))
-      val shapeB01 = crsB01.asInstanceOf[java.util.Map[_, _]].get("proj:shape")
-      assertEquals(java.util.Arrays.asList(1024, 2048), shapeB01)
-      assertTrue(crsB01.asInstanceOf[java.util.Map[_, _]].containsKey("proj:bbox"))
-      val bboxB01 = crsB01.asInstanceOf[java.util.Map[_, _]].get("proj:bbox")
-      assertEquals(expectedBbox, bboxB01)
-      assertTrue(attrB01.containsKey("extent"))
-      val extentB01 = attrB01.get("extent")
-      assertTrue(extentB01.isInstanceOf[java.util.Map[_, _]])
-      assertTrue(extentB01.asInstanceOf[java.util.Map[_, _]].containsKey("spatial"))
-
-      val inputStreamZarrayB1 = store.getInputStream("B01/.zarray")
-      assertTrue(inputStreamZarrayB1 != null)
-      val zarrayB01 = ZarrUtils.fromJson(new InputStreamReader(inputStreamZarrayB1), classOf[java.util.Map[_, _]])
-      assertTrue(zarrayB01.containsKey("shape"))
-      assertEquals(java.util.Arrays.asList(1024, 2048), zarrayB01.get("shape"))
-      assertTrue(zarrayB01.containsKey("chunks"))
-      assertEquals(java.util.Arrays.asList(256, 256), zarrayB01.get("chunks"))
-
-      val inputStreamZgroupB1 = store.getInputStream("B01/.zgroup")
-      assertTrue(inputStreamZgroupB1 != null)
-      val zgroupB01 = ZarrUtils.fromJson(new InputStreamReader(inputStreamZgroupB1), classOf[java.util.Map[_, _]])
-      assertTrue(zgroupB01.containsKey("zarr_format"))
-      assertEquals(2, zgroupB01.get("zarr_format"))
-
-      val inputStreamB02 = store.getInputStream("B02/.zattrs")
-      assertTrue(inputStreamB02 != null)
-      val attrB02 = ZarrUtils.fromJson(new InputStreamReader(inputStreamB02), classOf[java.util.Map[_, _]])
-      assertTrue(attrB02.containsKey("_ARRAY_DIMENSIONS"))
-      val dimB02 = attrB02.get("_ARRAY_DIMENSIONS")
-      assertTrue(dimB02.isInstanceOf[java.util.ArrayList[String]])
-      assertEquals(2, dimB02.asInstanceOf[java.util.ArrayList[String]].size())
-      assertTrue(dimB02.asInstanceOf[java.util.ArrayList[String]].contains("x"))
-      assertTrue(dimB02.asInstanceOf[java.util.ArrayList[String]].contains("y"))
-      assertTrue(attrB02.containsKey("_CRS"))
-      val crsB02 = attrB02.get("_CRS")
-      assertTrue(crsB02.isInstanceOf[java.util.Map[_, _]])
-      assertTrue(crsB02.asInstanceOf[java.util.Map[_, _]].containsKey("wkt"))
-      assertTrue(crsB02.asInstanceOf[java.util.Map[_, _]].containsKey("code"))
-      assertEquals("EPSG:4326", crsB02.asInstanceOf[java.util.Map[_, _]].get("code"))
-      assertTrue(crsB02.asInstanceOf[java.util.Map[_, _]].containsKey("proj:shape"))
-      val shapeB02 = crsB02.asInstanceOf[java.util.Map[_, _]].get("proj:shape")
-      assertEquals(java.util.Arrays.asList(1024, 2048), shapeB02)
-      assertTrue(crsB02.asInstanceOf[java.util.Map[_, _]].containsKey("proj:bbox"))
-      val bboxB02 = crsB02.asInstanceOf[java.util.Map[_, _]].get("proj:bbox")
-      assertEquals(expectedBbox, bboxB02)
-      assertTrue(attrB02.containsKey("extent"))
-      val extentB02 = attrB02.get("extent")
-      assertTrue(extentB02.isInstanceOf[java.util.Map[_, _]])
-      assertTrue(extentB02.asInstanceOf[java.util.Map[_, _]].containsKey("spatial"))
-
-      val inputStreamZarrayB2 = store.getInputStream("B02/.zarray")
-      assertTrue(inputStreamZarrayB2 != null)
-      val zarrayB02 = ZarrUtils.fromJson(new InputStreamReader(inputStreamZarrayB2), classOf[java.util.Map[_, _]])
-      assertTrue(zarrayB02.containsKey("shape"))
-      assertEquals(java.util.Arrays.asList(1024, 2048), zarrayB02.get("shape"))
-      assertTrue(zarrayB02.containsKey("chunks"))
-      assertEquals(java.util.Arrays.asList(256, 256), zarrayB02.get("chunks"))
-
-
-      val inputStreamZgroupB2 = store.getInputStream("B02/.zgroup")
-      assertTrue(inputStreamZgroupB2 != null)
-      val zgroupB02 = ZarrUtils.fromJson(new InputStreamReader(inputStreamZgroupB2), classOf[java.util.Map[_, _]])
-      assertTrue(zgroupB02.containsKey("zarr_format"))
-      assertEquals(2, zgroupB02.get("zarr_format"))
-
-      val inputStreamB04 = store.getInputStream("B04/.zattrs")
-      assertTrue(inputStreamB04 != null)
-      val attrB04 = ZarrUtils.fromJson(new InputStreamReader(inputStreamB04), classOf[java.util.Map[_, _]])
-      assertTrue(attrB04.containsKey("_ARRAY_DIMENSIONS"))
-      val dimB04 = attrB04.get("_ARRAY_DIMENSIONS")
-      assertTrue(dimB04.isInstanceOf[java.util.ArrayList[String]])
-      assertEquals(2, dimB04.asInstanceOf[java.util.ArrayList[String]].size())
-      assertTrue(dimB04.asInstanceOf[java.util.ArrayList[String]].contains("x"))
-      assertTrue(dimB04.asInstanceOf[java.util.ArrayList[String]].contains("y"))
-      assertTrue(attrB04.containsKey("_CRS"))
-      val crsB04 = attrB04.get("_CRS")
-      assertTrue(crsB04.isInstanceOf[java.util.Map[_, _]])
-      assertTrue(crsB04.asInstanceOf[java.util.Map[_, _]].containsKey("wkt"))
-      assertTrue(crsB04.asInstanceOf[java.util.Map[_, _]].containsKey("code"))
-      assertEquals("EPSG:4326", crsB04.asInstanceOf[java.util.Map[_, _]].get("code"))
-      assertTrue(crsB04.asInstanceOf[java.util.Map[_, _]].containsKey("proj:shape"))
-      val shapeB04 = crsB04.asInstanceOf[java.util.Map[_, _]].get("proj:shape")
-      assertEquals(java.util.Arrays.asList(1024, 2048), shapeB04)
-      assertTrue(crsB04.asInstanceOf[java.util.Map[_, _]].containsKey("proj:bbox"))
-      val bboxB04 = crsB04.asInstanceOf[java.util.Map[_, _]].get("proj:bbox")
-      assertEquals(expectedBbox, bboxB04)
-      assertTrue(attrB04.containsKey("extent"))
-      val extentB04 = attrB04.get("extent")
-      assertTrue(extentB04.isInstanceOf[java.util.Map[_, _]])
-      assertTrue(extentB04.asInstanceOf[java.util.Map[_, _]].containsKey("spatial"))
-
-      val inputStreamZarrayB4 = store.getInputStream("B04/.zarray")
-      assertTrue(inputStreamZarrayB4 != null)
-      val zarrayB04 = ZarrUtils.fromJson(new InputStreamReader(inputStreamZarrayB4), classOf[java.util.Map[_, _]])
-      assertTrue(zarrayB04.containsKey("shape"))
-      assertEquals(java.util.Arrays.asList(1024, 2048), zarrayB04.get("shape"))
-      assertTrue(zarrayB04.containsKey("chunks"))
-      assertEquals(java.util.Arrays.asList(256, 256), zarrayB04.get("chunks"))
-
-      val inputStreamZgroupB4 = store.getInputStream("B04/.zgroup")
-      assertTrue(inputStreamZgroupB4 != null)
-      val zgroupB04 = ZarrUtils.fromJson(new InputStreamReader(inputStreamZgroupB4), classOf[java.util.Map[_, _]])
-      assertTrue(zgroupB04.containsKey("zarr_format"))
-      assertEquals(2, zgroupB04.get("zarr_format"))
-
-
-      val inputStreamX = store.getInputStream("x/.zattrs")
-      assertTrue(inputStreamX != null)
-      val attrX = ZarrUtils.fromJson(new InputStreamReader(inputStreamX), classOf[java.util.Map[_, _]])
-      assertTrue(attrX.containsKey("_ARRAY_DIMENSIONS"))
-      val dimX = attrX.get("_ARRAY_DIMENSIONS")
-      assertTrue(dimX.isInstanceOf[java.util.ArrayList[String]])
-      assertEquals(1, dimX.asInstanceOf[java.util.ArrayList[String]].size())
-
-      val inputStreamY = store.getInputStream("y/.zattrs")
-      assertTrue(inputStreamY != null)
-      val attrY = ZarrUtils.fromJson(new InputStreamReader(inputStreamY), classOf[java.util.Map[_, _]])
-      assertTrue(attrY.containsKey("_ARRAY_DIMENSIONS"))
-      val dimY = attrY.get("_ARRAY_DIMENSIONS")
-      assertTrue(dimY.isInstanceOf[java.util.ArrayList[String]])
-      assertEquals(1, dimY.asInstanceOf[java.util.ArrayList[String]].size())
-
-      val inputStreamZgroup = store.getInputStream(".zgroup")
-      assertTrue(inputStreamZgroup!=null)
-      val zgroup = ZarrUtils.fromJson(new InputStreamReader(inputStreamZgroup), classOf[java.util.Map[_, _]])
-      assertTrue(zgroup.containsKey("zarr_format"))
-      assertEquals(2,zgroup.get("zarr_format"))
-
-      val inputStreamZmetadata = store.getInputStream(".zmetadata")
-      assertTrue(inputStreamZmetadata!=null)
-      val zmetadata = ZarrUtils.fromJson(new InputStreamReader(inputStreamZmetadata), classOf[java.util.Map[String, java.util.Map[String,_]]])
-      assertTrue(zmetadata.containsKey("metadata"))
-      val metadata = zmetadata.get("metadata")
-      assertEquals(metadata.size(),14)
-      assertTrue(metadata.containsKey(".zgroup"))
-      assertTrue(metadata.containsKey("B01/.zarray"))
-      assertTrue(metadata.containsKey("B01/.zattrs"))
-      assertTrue(metadata.containsKey("B01/.zgroup"))
-      assertTrue(metadata.containsKey("B02/.zarray"))
-      assertTrue(metadata.containsKey("B02/.zattrs"))
-      assertTrue(metadata.containsKey("B02/.zgroup"))
-      assertTrue(metadata.containsKey("B04/.zarray"))
-      assertTrue(metadata.containsKey("B04/.zattrs"))
-      assertTrue(metadata.containsKey("B04/.zgroup"))
-      assertTrue(metadata.containsKey("x/.zarray"))
-      assertTrue(metadata.containsKey("x/.zattrs"))
-      assertTrue(metadata.containsKey("y/.zarray"))
-      assertTrue(metadata.containsKey("y/.zattrs"))
+      val m = tileLayerRDD.metadata
+      val expectedBbox = util.Arrays.asList(m.extent.xmin, m.extent.ymin, m.extent.xmax, m.extent.ymax)
+      for (band <- Seq("B01", "B02", "B04")) {
+        val node = assertArray(readNode(filename, band), util.Arrays.asList(1024, 2048), util.Arrays.asList(256, 256), util.Arrays.asList("y", "x"))
+        assertDataAttributes(node, "EPSG:4326", util.Arrays.asList(1024, 2048), expectedBbox, temporal = false)
+        val size = bytesPerValue(node.get("data_type").toString)
+        for (row <- 0 until layoutRows; col <- 0 until layoutCols) {
+          assertEquals(256 * 256 * size, readChunk(filename, band, row, col).length)
+        }
+      }
+      assertXY(filename, 1024, 2048)
+      assertConsolidated(filename, Set("B01", "B02", "B04", "x", "y"))
+      assertNoV2Files(filename)
     }
     val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
     val imageTile = BitArrayTile(Array.concat(Array.fill[Byte](layoutCols*layoutRows*4096){0},Array.fill[Byte](layoutCols*layoutRows*4096){1}),layoutCols*256, layoutRows*256)
     testInput(imageTile,"bitOut")
-    val imageTile0 = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
-    testInput(imageTile0,"byteOut")
-    val imageTile1 = UByteArrayTile(intImage,layoutCols*256, layoutRows*256)
-    testInput(imageTile1,"uByteOut")
-    val imageTile2 = FloatArrayTile(intImage.map(_.toFloat),layoutCols*256, layoutRows*256)
-    testInput(imageTile2,"floutOut")
-    val imageTile3 = ShortArrayTile(intImage.map(_.toShort),layoutCols*256, layoutRows*256)
-    testInput(imageTile3,"shortOut")
-    val imageTile4 = UShortArrayTile(intImage.map(_.toShort),layoutCols*256, layoutRows*256)
-    testInput(imageTile4,"uShortOut")
-    val imageTile5 = DoubleArrayTile(intImage.map(_.toDouble),layoutCols*256, layoutRows*256)
-    testInput(imageTile5,"doubleOut")
-    val imageTile6 = IntArrayTile(intImage.map(_.toInt),layoutCols*256, layoutRows*256)
-    testInput(imageTile6,"intOut")
+    testInput(ByteArrayTile(intImage,layoutCols*256, layoutRows*256),"byteOut")
+    testInput(UByteArrayTile(intImage,layoutCols*256, layoutRows*256),"uByteOut")
+    testInput(FloatArrayTile(intImage.map(_.toFloat),layoutCols*256, layoutRows*256),"floutOut")
+    testInput(ShortArrayTile(intImage.map(_.toShort),layoutCols*256, layoutRows*256),"shortOut")
+    testInput(UShortArrayTile(intImage.map(_.toShort),layoutCols*256, layoutRows*256),"uShortOut")
+    testInput(DoubleArrayTile(intImage.map(_.toDouble),layoutCols*256, layoutRows*256),"doubleOut")
+    testInput(IntArrayTile(intImage.map(_.toInt),layoutCols*256, layoutRows*256),"intOut")
+  }
+
+  @Test
+  def testFillValue(@TempDir tempDir: Path): Unit = {
+    val tile = IntArrayTile.fill(1, 512, 512).convert(geotrellis.raster.IntUserDefinedNoDataCellType(-1))
+    val rdd = TileLayerRDDBuilders.createMultibandTileLayerRDD(ZarrWriterTest.sc, MultibandTile(tile), TileLayout(2, 2, 256, 256), LatLng)
+    val filename = (tempDir / "nodata.zarr").toString()
+    zarr.ZarrWriter.saveZarrGeneric(rdd, filename, new ZarrOptions)
+    val node = readNode(filename, "nodata")
+    assertEquals(-1, node.get("fill_value"))
+    assertEquals(-1, map(node, "attributes").get("_FillValue"))
   }
 
   @Test
   def testWriteSpaceTime(@TempDir tempDir:Path):Unit ={
     val date1 = ZonedDateTime.parse("1990-01-02T00:00:00Z")
     val extentTAP3857 = Extent(564389 - 10, 6659413 - 10, 565503 + 10, 6660301 + 10)
-
     for{pixeltype <- List(PixelType.Bit,PixelType.Byte,PixelType.Int,PixelType.Float,PixelType.Short,PixelType.Double)} {
       for {
         date2 <- List(date1.plusDays(2), date1.plusHours(2))
@@ -364,89 +230,35 @@ class ZarrWriterTest {
           crs = CRS.fromName("EPSG:3857"),
           dates = Some(dates)
         )
-        val filename = (tempDir / (pixeltype.toString+"out.zarr")).toString()
-        val zarrOptions = new ZarrOptions
-        zarr.ZarrWriter.saveZarr(dataCubeContextRDD, filename, zarrOptions)
-
-        val store = new FileSystemStore(filename, null)
-        val inputStream = store.getInputStream(pixeltype.toString+"out/.zattrs")
-        assertTrue(inputStream != null)
-        val attr = ZarrUtils.fromJson(new InputStreamReader(inputStream), classOf[java.util.Map[_, _]])
-        assertTrue(attr.containsKey("_ARRAY_DIMENSIONS"))
-        val dim = attr.get("_ARRAY_DIMENSIONS")
-        assertTrue(dim.isInstanceOf[java.util.ArrayList[String]])
-        assertEquals(3, dim.asInstanceOf[java.util.ArrayList[String]].size())
-        assertTrue(dim.asInstanceOf[java.util.ArrayList[String]].contains("x"))
-        assertTrue(dim.asInstanceOf[java.util.ArrayList[String]].contains("y"))
-        assertTrue(dim.asInstanceOf[java.util.ArrayList[String]].contains("time"))
-        assertTrue(attr.containsKey("_CRS"))
-        val crs = attr.get("_CRS")
-        assertTrue(crs.isInstanceOf[java.util.Map[_, _]])
-        assertTrue(crs.asInstanceOf[java.util.Map[_, _]].containsKey("wkt"))
-        assertTrue(crs.asInstanceOf[java.util.Map[_, _]].containsKey("code"))
-        assertEquals("EPSG:3857", crs.asInstanceOf[java.util.Map[_, _]].get("code"))
-        assertTrue(crs.asInstanceOf[java.util.Map[_, _]].containsKey("proj:shape"))
-        val shape = crs.asInstanceOf[java.util.Map[_, _]].get("proj:shape")
-        assertEquals(java.util.Arrays.asList(256, 256), shape)
-        assertTrue(crs.asInstanceOf[java.util.Map[_, _]].containsKey("proj:bbox"))
-        val bbox = crs.asInstanceOf[java.util.Map[_, _]].get("proj:bbox")
-        val expectedBbox = java.util.Arrays.asList(extentTAP3857.xmin, extentTAP3857.ymin, extentTAP3857.xmax, extentTAP3857.ymax)
-        assertEquals(expectedBbox, bbox)
-
-        assertTrue(attr.containsKey("extent"))
-        val extent = attr.get("extent")
-        assertTrue(extent.isInstanceOf[java.util.Map[_, _]])
-        assertTrue(extent.asInstanceOf[java.util.Map[_, _]].containsKey("spatial"))
-        assertTrue(extent.asInstanceOf[java.util.Map[_, _]].containsKey("temporal"))
-
-
-        val inputStreamX = store.getInputStream("x/.zattrs")
-        assertTrue(inputStreamX != null)
-        val attrX = ZarrUtils.fromJson(new InputStreamReader(inputStreamX), classOf[java.util.Map[_, _]])
-        assertTrue(attrX.containsKey("_ARRAY_DIMENSIONS"))
-        val dimX = attrX.get("_ARRAY_DIMENSIONS")
-        assertTrue(dimX.isInstanceOf[java.util.ArrayList[String]])
-        assertEquals(1, dimX.asInstanceOf[java.util.ArrayList[String]].size())
-
-        val inputStreamY = store.getInputStream("y/.zattrs")
-        assertTrue(inputStreamY != null)
-        val attrY = ZarrUtils.fromJson(new InputStreamReader(inputStreamY), classOf[java.util.Map[_, _]])
-        assertTrue(attrY.containsKey("_ARRAY_DIMENSIONS"))
-        val dimY = attrY.get("_ARRAY_DIMENSIONS")
-        assertTrue(dimY.isInstanceOf[java.util.ArrayList[String]])
-        assertEquals(1, dimY.asInstanceOf[java.util.ArrayList[String]].size())
-
-        val inputStreamTime = store.getInputStream("time/.zattrs")
-        assertTrue(inputStreamTime != null)
-        val attrTime = ZarrUtils.fromJson(new InputStreamReader(inputStreamTime), classOf[java.util.Map[_, _]])
-        assertTrue(attrTime.containsKey("_ARRAY_DIMENSIONS"))
-        val dimTime = attrTime.get("_ARRAY_DIMENSIONS")
-        assertTrue(dimTime.isInstanceOf[java.util.ArrayList[String]])
-        assertEquals(1, dimTime.asInstanceOf[java.util.ArrayList[String]].size())
-
-        val inputStreamZarray = store.getInputStream(pixeltype.toString+"out/.zarray")
-        assertTrue(inputStreamZarray != null)
-        val zarray = ZarrUtils.fromJson(new InputStreamReader(inputStreamZarray), classOf[java.util.Map[_, _]])
-        assertTrue(zarray.containsKey("shape"))
-        assertEquals(java.util.Arrays.asList(2, 256, 256), zarray.get("shape"))
-        assertTrue(zarray.containsKey("chunks"))
-
-        val inputStreamZmetadata = store.getInputStream(".zmetadata")
-        assertTrue(inputStreamZmetadata!=null)
-        val zmetadata = ZarrUtils.fromJson(new InputStreamReader(inputStreamZmetadata), classOf[java.util.Map[String, java.util.Map[String,_]]])
-        assertTrue(zmetadata.containsKey("metadata"))
-        val metadata = zmetadata.get("metadata")
-        assertEquals(10,metadata.size())
-        assertTrue(metadata.containsKey(".zgroup"))
-        assertTrue(metadata.containsKey(pixeltype.toString+"out/.zarray"))
-        assertTrue(metadata.containsKey(pixeltype.toString+"out/.zattrs"))
-        assertTrue(metadata.containsKey(pixeltype.toString+"out/.zgroup"))
-        assertTrue(metadata.containsKey("x/.zarray"))
-        assertTrue(metadata.containsKey("x/.zattrs"))
-        assertTrue(metadata.containsKey("y/.zarray"))
-        assertTrue(metadata.containsKey("y/.zattrs"))
-        assertTrue(metadata.containsKey("time/.zarray"))
-        assertTrue(metadata.containsKey("time/.zattrs"))
+        val prefix = pixeltype.toString + "out"
+        val filename = (tempDir / (prefix + ".zarr")).toString()
+        zarr.ZarrWriter.saveZarr(dataCubeContextRDD, filename, new ZarrOptions)
+        val tileRows = dataCubeContextRDD.metadata.tileRows
+        val tileCols = dataCubeContextRDD.metadata.tileCols
+        val node = assertArray(readNode(filename, prefix), util.Arrays.asList(2, 256, 256), util.Arrays.asList(1, tileRows, tileCols),
+          util.Arrays.asList("time", "y", "x"))
+        assertDataAttributes(node, "EPSG:3857", util.Arrays.asList(256, 256),
+          util.Arrays.asList(extentTAP3857.xmin, extentTAP3857.ymin, extentTAP3857.xmax, extentTAP3857.ymax), temporal = true)
+        val time = assertArray(readNode(filename, "time"), util.Arrays.asList(2), util.Arrays.asList(2), util.Arrays.asList("time"))
+        assertEquals("int64", time.get("data_type"))
+        assertTrue(map(time, "attributes").containsKey("units"))
+        assertEquals("milliseconds since 1970-01-01T00:00:00Z", map(time, "attributes").get("units"))
+        // _FillValue is only written when the cell type defines no-data
+        if (map(node, "attributes").containsKey("_FillValue")) {
+          assertEquals(node.get("fill_value"), map(node, "attributes").get("_FillValue"))
+        }
+        val timeBuf = ByteBuffer.wrap(readChunk(filename, "time", 0)).order(ByteOrder.LITTLE_ENDIAN)
+        assertEquals(date1.toInstant.toEpochMilli, timeBuf.getLong)
+        assertEquals(date2.toInstant.toEpochMilli, timeBuf.getLong)
+        val size = bytesPerValue(node.get("data_type").toString)
+        val timeIndex = Map(date1.toInstant.toEpochMilli -> 0, date2.toInstant.toEpochMilli -> 1)
+        for (key <- dataCubeContextRDD.keys.collect()) {
+          val chunk = readChunk(filename, prefix, timeIndex(key.instant), key.row, key.col)
+          assertEquals(tileRows * tileCols * size, chunk.length)
+        }
+        assertXY(filename, 256, 256)
+        assertConsolidated(filename, Set(prefix, "x", "y", "time"))
+        assertNoV2Files(filename)
       }
     }
   }

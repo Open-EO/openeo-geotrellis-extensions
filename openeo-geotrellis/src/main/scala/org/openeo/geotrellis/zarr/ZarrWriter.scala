@@ -1,25 +1,42 @@
 package org.openeo.geotrellis.zarr
 
-import com.bc.zarr.ZarrConstants.{FILENAME_DOT_ZARRAY, FILENAME_DOT_ZATTRS, FILENAME_DOT_ZGROUP, ZARR_FORMAT}
-import com.bc.zarr.chunk.ChunkReaderWriter
-import com.bc.zarr.{CompressorFactory, DataType, ZarrHeader, ZarrUtils}
-import com.bc.zarr.storage.FileSystemStore
+import com.fasterxml.jackson.databind.{ObjectMapper, SerializationFeature}
+import com.github.luben.zstd.Zstd
 import geotrellis.layer.{Boundable, SpaceTimeKey, SpatialComponent, SpatialKey}
-import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, ShortCellType, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, ShortCellType, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.spark.MultibandTileLayerRDD
 import org.apache.spark.storage.StorageLevel
 import org.slf4j.LoggerFactory
-import ucar.ma2.Array.factory
 
-import java.io.OutputStreamWriter
-import java.nio.ByteOrder
-import java.nio.file.Paths
-import java.util.Collections
+import java.nio.file.{Files, Path, Paths}
+import java.nio.{ByteBuffer, ByteOrder}
 import scala.reflect.ClassTag
 
+/**
+ * Writes a datacube as a Zarr v3 store.
+ *
+ * Layout:
+ * {{{
+ *   <store>.zarr/
+ *     zarr.json            ← root group, with inline consolidated metadata
+ *     <band>/              ← one array per band (or a single array named after the store)
+ *       zarr.json
+ *       c/[t/]<row>/<col>  ← one chunk per tile
+ *     x/  y/  [time/]      ← coordinate arrays
+ * }}}
+ *
+ * Chunks are encoded with the "bytes" codec (little-endian) followed by "zstd" (level 3).
+ */
 object ZarrWriter {
 
-  val logger = LoggerFactory.getLogger(ZarrWriter.getClass)
+  private val logger = LoggerFactory.getLogger(ZarrWriter.getClass)
+
+  val ZarrFormat: Int = 3
+  val ZstdLevel: Int = 3
+  val MetadataFileName: String = "zarr.json"
+  private val ChunkKeySeparator = "/"
+
+  private lazy val objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
 
   def saveZarr(rdd:MultibandTileLayerRDD[SpaceTimeKey],path:String, zarrOptions: ZarrOptions):Unit = {
     saveZarrGeneric(rdd,path,zarrOptions)
@@ -32,24 +49,21 @@ object ZarrWriter {
   def saveZarrGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions):Unit= {
     rdd.persist(StorageLevel.MEMORY_AND_DISK)
 
-    val metadataContent = new java.util.HashMap[String,Object]()
-    if (zarrOptions.numberBands > 1) {
-      checkBandNames(zarrOptions.bandNames)
-      for (bandName <- zarrOptions.bandNames){
-        writeFile(path, bandName, FILENAME_DOT_ZGROUP, null, metadataContent)
-      }
-    } else{
-      writeFile(path, getGroupName(path), FILENAME_DOT_ZGROUP, null, metadataContent)
-    }
+    val arrayNames: Array[String] =
+      if (zarrOptions.numberBands > 1) {
+        checkBandNames(zarrOptions.bandNames)
+        zarrOptions.bandNames
+      } else Array(getGroupName(path))
+
+    // relative node path -> node metadata, written inline in the root zarr.json
+    val consolidated = new java.util.TreeMap[String, Object]()
+
     val metadata = rdd.metadata
     val cellType = metadata.cellType
-    val (zarrType: DataType,fillValue:Option[Number]) = toZarrType(cellType)
+    val (zarrType: String, fillValue: Option[Number]) = toZarrType(cellType)
 
     val tileRows = metadata.tileRows
     val tileCols = metadata.tileCols
-    val byteOrder = ByteOrder.BIG_ENDIAN
-    val compressor = CompressorFactory.createDefaultCompressor()
-
 
     val xValues = for (x <- 0 until metadata.cols.toInt) yield metadata.extent.xmin + x * metadata.cellwidth + metadata.cellwidth / 2.0
     val yValues = for (y <- 0 until metadata.rows.toInt) yield metadata.extent.ymax - y * metadata.cellheight - metadata.cellheight / 2.0
@@ -59,163 +73,223 @@ object ZarrWriter {
     val chunkOri = Array[Int](tileRows, tileCols)
     val (timeValues: Map[Long,Int],shape,chunk,hasTemp) = keys match {
       case m: Array[SpaceTimeKey] =>
-        val tempKey = m.map(_.temporalKey.instant)
-        val dist = tempKey.distinct
-        writeVariables(path,"time",dist, metadataContent)
+        val dist = m.map(_.temporalKey.instant).distinct.sorted
+        writeCoordinate(path, "time", dist, consolidated)
         (dist.zipWithIndex.toMap, dist.length+:shapeOri, 1+:chunkOri,true)
       case _ => (Map[Long,Int](),shapeOri,chunkOri, false)
     }
 
-    if (zarrOptions.numberBands > 1) {
-      for (bandName <- zarrOptions.bandNames){
-        writeFile(path, bandName,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp), metadataContent)
-      }
-    } else{
-      writeFile(path, getGroupName(path),FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp), metadataContent)
-    }
-    val zarrHeader = new ZarrHeader(shape, chunk, zarrType.toString, byteOrder, fillValue.getOrElse(0), compressor, ".")
-    if (zarrOptions.numberBands > 1) {
-      for (bandName <- zarrOptions.bandNames){
-        writeFile(path, bandName, FILENAME_DOT_ZARRAY, zarrHeader, metadataContent)
-      }
-    } else{
-      writeFile(path, getGroupName(path), FILENAME_DOT_ZARRAY, zarrHeader, metadataContent)
+    val dataAttributes = new dataAttribute(metadata, zarrOptions, hasTemp)
+    // _FillValue lets xarray mask no-data; only set when the cell type defines no-data
+    val noDataAttributes: Map[String, Object] =
+      fillValue.map(v => Map[String, Object]("_FillValue" -> fillValueJson(zarrType, Some(v)))).getOrElse(Map.empty)
+    val dataArrayMetadata = arrayMetadata(shape, chunk, zarrType, fillValueJson(zarrType, fillValue),
+      dataAttributes, noDataAttributes)
+    for (arrayName <- arrayNames) {
+      writeNodeMetadata(path, arrayName, dataArrayMetadata, consolidated)
     }
 
-    writeVariables(path,"x",xValues.toArray, metadataContent)
-    writeVariables(path,"y",yValues.toArray, metadataContent)
-    writeFile(path,"",FILENAME_DOT_ZGROUP,null, metadataContent)
+    writeCoordinate(path, "x", xValues.toArray, consolidated)
+    writeCoordinate(path, "y", yValues.toArray, consolidated)
 
-
-    rdd.foreach{ case (k, multibandTileLayer) =>
-      writeData(multibandTileLayer,k,path,zarrOptions,tileRows,tileCols,zarrType,fillValue,timeValues)
+    rdd.foreach { case (k, multibandTile) =>
+      writeData(multibandTile, k, path, arrayNames, tileRows, tileCols, cellType, zarrType, timeValues)
     }
 
-    try {
-      val metadata = Collections.singletonMap("metadata",metadataContent)
-      val os = new FileSystemStore(Paths.get(path)).getOutputStream(".zmetadata")
-      val writer = new OutputStreamWriter(os)
-      try ZarrUtils.toJson(metadata, writer, true)
-      finally {
-        if (os != null) os.close()
-        if (writer != null) writer.close()
-      }
-    } catch {
-      case t: Throwable =>
-        logger.error(s"save_result zarr: Failed to write to .zmetadata : ${t.getMessage}", t)
-        throw t
-    }
+    // Root group last, so its consolidated metadata describes a complete store.
+    val consolidatedMetadata = new java.util.LinkedHashMap[String, Object]()
+    consolidatedMetadata.put("kind", "inline")
+    consolidatedMetadata.put("must_understand", java.lang.Boolean.FALSE)
+    consolidatedMetadata.put("metadata", consolidated)
+    val rootMetadata = groupMetadata()
+    rootMetadata.put("consolidated_metadata", consolidatedMetadata)
+    writeJson(Paths.get(path), rootMetadata, MetadataFileName)
   }
 
-  private def toZarrType(cellType: CellType): (DataType, Option[Number])= {
+  private def toZarrType(cellType: CellType): (String, Option[Number])= {
     cellType match {
-      case BitCellType => (DataType.u1,None)
-      case ByteCellType => (DataType.i1,None)
-      case UByteCellType => (DataType.u1,None)
-      case ShortCellType => (DataType.i2,None)
-      case UShortCellType => (DataType.u2,None)
-      case IntCellType => (DataType.i4,None)
-      case FloatCellType => (DataType.f4,None)
-      case DoubleCellType => (DataType.f8,None)
-      case ByteConstantNoDataCellType => (DataType.i1,Some(byteNODATA))
-      case UByteConstantNoDataCellType => (DataType.u1,Some(ubyteNODATA))
-      case ShortConstantNoDataCellType => (DataType.i2,Some(shortNODATA))
-      case UShortConstantNoDataCellType => (DataType.u2,Some(ushortNODATA))
-      case IntConstantNoDataCellType => (DataType.i4,Some(NODATA))
-      case FloatConstantNoDataCellType => (DataType.f4,Some(floatNODATA))
-      case DoubleConstantNoDataCellType => (DataType.f8,Some(doubleNODATA))
-      case ct: ByteUserDefinedNoDataCellType => (DataType.i1,Some(ct.noDataValue))
-      case ct: UByteUserDefinedNoDataCellType => (DataType.u1,Some(ct.widenedNoData.asInt))
-      case ct: ShortUserDefinedNoDataCellType => (DataType.i2,Some(ct.noDataValue))
-      case ct: UShortUserDefinedNoDataCellType => (DataType.u2,Some(ct.widenedNoData.asInt.toShort))
-      case ct: IntUserDefinedNoDataCellType => (DataType.i4,Some(ct.noDataValue))
-      case ct: FloatUserDefinedNoDataCellType => (DataType.f4,Some(ct.noDataValue))
-      case ct: DoubleUserDefinedNoDataCellType => (DataType.f8,Some(ct.noDataValue))
+      case BitCellType => ("uint8",None)
+      case ByteCellType => ("int8",None)
+      case UByteCellType => ("uint8",None)
+      case ShortCellType => ("int16",None)
+      case UShortCellType => ("uint16",None)
+      case IntCellType => ("int32",None)
+      case FloatCellType => ("float32",None)
+      case DoubleCellType => ("float64",None)
+      case ByteConstantNoDataCellType => ("int8",Some(byteNODATA))
+      case UByteConstantNoDataCellType => ("uint8",Some(ubyteNODATA))
+      case ShortConstantNoDataCellType => ("int16",Some(shortNODATA))
+      case UShortConstantNoDataCellType => ("uint16",Some(ushortNODATA))
+      case IntConstantNoDataCellType => ("int32",Some(NODATA))
+      case FloatConstantNoDataCellType => ("float32",Some(floatNODATA))
+      case DoubleConstantNoDataCellType => ("float64",Some(doubleNODATA))
+      case ct: ByteUserDefinedNoDataCellType => ("int8",Some(ct.noDataValue))
+      case ct: UByteUserDefinedNoDataCellType => ("uint8",Some(ct.widenedNoData.asInt))
+      case ct: ShortUserDefinedNoDataCellType => ("int16",Some(ct.noDataValue))
+      case ct: UShortUserDefinedNoDataCellType => ("uint16",Some(ct.widenedNoData.asInt))
+      case ct: IntUserDefinedNoDataCellType => ("int32",Some(ct.noDataValue))
+      case ct: FloatUserDefinedNoDataCellType => ("float32",Some(ct.noDataValue))
+      case ct: DoubleUserDefinedNoDataCellType => ("float64",Some(ct.noDataValue))
+      case ct => throw new IllegalArgumentException(s"save_result zarr: unsupported cell type $ct")
     }
   }
 
-  private def writeFile(rootPath:String,relPath:String, fileName:String, content:Any, metadataContent:java.util.HashMap[String,Object]):Unit = {
-    val toWrite = content match {
-      case attributes: ZarrAttributes => attributes.toMap
-      case zarrHeader: ZarrHeader => zarrHeader
-      case null =>
-        val varMap = new java.util.HashMap[String,Int]()
-        varMap.put(ZARR_FORMAT, 2)
-        varMap
-    }
-    val fileRelPath = Paths.get(relPath).resolve(fileName).toString
-    metadataContent.put(fileRelPath,toWrite)
+  /** Zarr v3 JSON encoding of a fill value: NaN/Infinity are encoded as strings. */
+  private def fillValueJson(zarrType: String, fillValue: Option[Number]): Object = {
+    val value: Number = fillValue.getOrElse(Int.box(0))
+    if (zarrType.startsWith("float")) {
+      val d = value.doubleValue()
+      if (d.isNaN) "NaN"
+      else if (d.isPosInfinity) "Infinity"
+      else if (d.isNegInfinity) "-Infinity"
+      else Double.box(d)
+    } else Long.box(value.longValue())
+  }
+
+  private def byteSize(zarrType: String): Int = zarrType match {
+    case "int8" | "uint8" => 1
+    case "int16" | "uint16" => 2
+    case "int32" | "float32" => 4
+    case "int64" | "float64" => 8
+  }
+
+  private def groupMetadata(): java.util.LinkedHashMap[String, Object] = {
+    val group = new java.util.LinkedHashMap[String, Object]()
+    group.put("zarr_format", Int.box(ZarrFormat))
+    group.put("node_type", "group")
+    group.put("attributes", new java.util.LinkedHashMap[String, Object]())
+    group
+  }
+
+  private def arrayMetadata(shape: Array[Int], chunkShape: Array[Int], zarrType: String, fillValue: Object,
+                            attributes: ZarrAttributes,
+                            extraAttributes: Map[String, Object] = Map.empty): java.util.LinkedHashMap[String, Object] = {
+    val chunkGridConfig = new java.util.LinkedHashMap[String, Object]()
+    chunkGridConfig.put("chunk_shape", chunkShape)
+    val chunkGrid = new java.util.LinkedHashMap[String, Object]()
+    chunkGrid.put("name", "regular")
+    chunkGrid.put("configuration", chunkGridConfig)
+
+    val chunkKeyConfig = new java.util.LinkedHashMap[String, Object]()
+    chunkKeyConfig.put("separator", ChunkKeySeparator)
+    val chunkKeyEncoding = new java.util.LinkedHashMap[String, Object]()
+    chunkKeyEncoding.put("name", "default")
+    chunkKeyEncoding.put("configuration", chunkKeyConfig)
+
+    val bytesConfig = new java.util.LinkedHashMap[String, Object]()
+    bytesConfig.put("endian", "little")
+    val bytesCodec = new java.util.LinkedHashMap[String, Object]()
+    bytesCodec.put("name", "bytes")
+    bytesCodec.put("configuration", bytesConfig)
+
+    val zstdConfig = new java.util.LinkedHashMap[String, Object]()
+    zstdConfig.put("level", Int.box(ZstdLevel))
+    zstdConfig.put("checksum", java.lang.Boolean.FALSE)
+    val zstdCodec = new java.util.LinkedHashMap[String, Object]()
+    zstdCodec.put("name", "zstd")
+    zstdCodec.put("configuration", zstdConfig)
+
+    val array = new java.util.LinkedHashMap[String, Object]()
+    array.put("zarr_format", Int.box(ZarrFormat))
+    array.put("node_type", "array")
+    array.put("shape", shape)
+    array.put("data_type", zarrType)
+    array.put("chunk_grid", chunkGrid)
+    array.put("chunk_key_encoding", chunkKeyEncoding)
+    array.put("fill_value", fillValue)
+    array.put("codecs", java.util.Arrays.asList(bytesCodec, zstdCodec))
+    val attributeMap = new java.util.LinkedHashMap[String, Object](attributes.toMap)
+    extraAttributes.foreach { case (k, v) => attributeMap.put(k, v) }
+    array.put("attributes", attributeMap)
+    array.put("dimension_names", attributes.dimensionNames)
+    array
+  }
+
+  private def writeNodeMetadata(rootPath: String, relPath: String, nodeMetadata: java.util.Map[String, Object],
+                                consolidated: java.util.Map[String, Object]): Unit = {
+    consolidated.put(relPath, nodeMetadata)
+    writeJson(Paths.get(rootPath, relPath), nodeMetadata, MetadataFileName)
+  }
+
+  private def writeJson(dir: Path, content: Object, fileName: String): Unit = {
+    val file = dir.resolve(fileName)
     try {
-      val os = new FileSystemStore(Paths.get(rootPath,relPath)).getOutputStream(fileName)
-      val writer = new OutputStreamWriter(os)
-      try ZarrUtils.toJson(toWrite, writer, true)
-      finally {
-        if (os != null) os.close()
-        if (writer != null) writer.close()
-      }
+      Files.createDirectories(dir)
+      objectMapper.writeValue(file.toFile, content)
     } catch {
       case t: Throwable =>
-        logger.error(s"save_result zarr: Failed to write to ${fileRelPath} : ${t.getMessage}", t)
+        logger.error(s"save_result zarr: Failed to write to $file : ${t.getMessage}", t)
         throw t
     }
   }
 
-  private def writeVariables[T <: AnyVal](path:String, name: String, value:Array[T],metadataContent:java.util.HashMap[String,Object]): Unit = {
-    val variablePath = path + "/" + name
-    writeFile(path, name, FILENAME_DOT_ZATTRS,new variableAttribute(name), metadataContent)
-    val store = new FileSystemStore(Paths.get(variablePath))
-    val compressor = CompressorFactory.createDefaultCompressor()
-    val byteOrder = ByteOrder.BIG_ENDIAN
-    val length = value.length
-    val shape = Array[Int](length)
-    val dataTypeZarr = value match {
-      case _:Array[Long] => DataType.i8
-      case _:Array[Double] => DataType.f4
+  private def writeChunk(arrayDir: Path, chunkIndex: Seq[Int], data: Array[Byte]): Unit = {
+    val chunkFile = chunkIndex.foldLeft(arrayDir.resolve("c"))((p, i) => p.resolve(i.toString))
+    try {
+      Files.createDirectories(chunkFile.getParent)
+      Files.write(chunkFile, Zstd.compress(data, ZstdLevel))
+    } catch {
+      case t: Throwable =>
+        logger.error(s"save_result zarr: Failed to write chunk $chunkFile : ${t.getMessage}", t)
+        throw t
     }
-    val zarHeader = new ZarrHeader(shape, shape, dataTypeZarr.toString, byteOrder, 0, compressor, ".")
-    writeFile(path, name, FILENAME_DOT_ZARRAY, zarHeader, metadataContent)
-    val chunkReaderWriter = ChunkReaderWriter.create(compressor, dataTypeZarr, byteOrder, shape, 0, store)
-    val dataType = ucar.ma2.DataType.getType(value.getClass.getComponentType, false)
-    val source = factory(dataType, shape, value)
-    chunkReaderWriter.write("0", source)
   }
 
-  private def writeData[K: SpatialComponent: Boundable : ClassTag](multibandTileLayer: MultibandTile, k:K, path:String, options: ZarrOptions, tileRows:Int, tileCols:Int, zarrType:DataType, fillValue:Option[Number], timeValues:Map[Long,Int]): Unit = {
-    val spatialKey:SpatialKey = k match {
-      case key: SpatialKey => key
-      case key: SpaceTimeKey => key.spatialKey
+  private def writeCoordinate(path: String, name: String, values: Array[_],
+                              consolidated: java.util.Map[String, Object]): Unit = {
+    val (zarrType, fillValue, bytes) = values match {
+      case longs: Array[Long] =>
+        val buf = ByteBuffer.allocate(longs.length * 8).order(ByteOrder.LITTLE_ENDIAN)
+        longs.foreach(v => buf.putLong(v))
+        ("int64", Long.box(0L): Object, buf.array())
+      case doubles: Array[Double] =>
+        val buf = ByteBuffer.allocate(doubles.length * 8).order(ByteOrder.LITTLE_ENDIAN)
+        doubles.foreach(v => buf.putDouble(v))
+        ("float64", "NaN": Object, buf.array())
+      case other => throw new IllegalArgumentException(s"save_result zarr: unsupported coordinate type ${other.getClass}")
     }
-    val bandCount = multibandTileLayer.bandCount
-    val compressor = CompressorFactory.createDefaultCompressor()
+    val shape = Array(values.length)
+    writeNodeMetadata(path, name, arrayMetadata(shape, shape, zarrType, fillValue, new variableAttribute(name)), consolidated)
+    writeChunk(Paths.get(path, name), Seq(0), bytes)
+  }
 
-    val byteOrder = ByteOrder.BIG_ENDIAN
+  /** Raw (no-data agnostic) little-endian, row-major bytes of a tile. */
+  private def encodeTile(tile: Tile, zarrType: String): Array[Byte] = {
+    val raw = tile.withNoData(None)
+    val buf = ByteBuffer.allocate(raw.cols * raw.rows * byteSize(zarrType)).order(ByteOrder.LITTLE_ENDIAN)
+    zarrType match {
+      case "int8" | "uint8" => raw.foreach { v => buf.put(v.toByte); () }
+      case "int16" | "uint16" => raw.foreach { v => buf.putShort(v.toShort); () }
+      case "int32" => raw.foreach { v => buf.putInt(v); () }
+      case "float32" => raw.foreachDouble { v => buf.putFloat(v.toFloat); () }
+      case "float64" => raw.foreachDouble { v => buf.putDouble(v); () }
+    }
+    buf.array()
+  }
 
-    (0 until bandCount).foreach(nTiles => {
-      val band = multibandTileLayer.band(nTiles)
-      val dataType = ucar.ma2.DataType.getType(band.toArray().getClass.getComponentType, false)
-      val chunkOri = Array[Int](tileRows, tileCols)
-      val indexOri = Array(spatialKey.row, spatialKey.col)
-      val (chunk,index) = k match {
-        case _:SpatialKey => (chunkOri,indexOri)
-        case key:SpaceTimeKey =>
-          val timeIndex= timeValues(key.temporalKey.instant)
-          (1 +: chunkOri, timeIndex +: indexOri)
+  private def writeData[K](multibandTile: MultibandTile, k: K, path: String,
+                           arrayNames: Array[String], tileRows: Int, tileCols: Int,
+                           cellType: CellType, zarrType: String,
+                           timeValues: Map[Long, Int]): Unit = {
+    val (spatialKey, timeIndex) = k match {
+      case key: SpatialKey => (key, None)
+      case key: SpaceTimeKey => (key.spatialKey, Some(timeValues(key.temporalKey.instant)))
+      case other => throw new IllegalArgumentException(s"save_result zarr: unsupported key type ${other.getClass}")
+    }
+    val bandCount = multibandTile.bandCount
+    if (bandCount != arrayNames.length) {
+      throw new Exception(s"save_result zarr: the expected number of band is ${arrayNames.length}, but was $bandCount")
+    }
+    val chunkIndex = timeIndex.toSeq ++ Seq(spatialKey.row, spatialKey.col)
+
+    (0 until bandCount).foreach { b =>
+      val band = multibandTile.band(b)
+      if (band.cols != tileCols || band.rows != tileRows) {
+        throw new Exception(s"save_result zarr: expected tile size ${tileCols}x$tileRows, but was ${band.cols}x${band.rows}")
       }
-      val source = factory(dataType, chunk, band.toArray())
-      val chunkFilename = ZarrUtils.createChunkFilename(index, ".")
-      if (bandCount > 1) {
-        if (bandCount != options.numberBands) throw new Exception(s"save_result zarr: the expected number of band is ${options.numberBands}, but was $bandCount")
-        val bandName = options.bandNames(nTiles)
-        val store = new FileSystemStore(Paths.get(path + "/" + bandName))
-        val chunkReaderWriter = ChunkReaderWriter.create(compressor, zarrType, byteOrder, chunk, fillValue.getOrElse(0), store)
-        chunkReaderWriter.write(chunkFilename, source)
-      } else{
-        val store = new FileSystemStore(Paths.get(path + "/" + getGroupName( path)))
-        val chunkReaderWriter = ChunkReaderWriter.create(compressor, zarrType, byteOrder, chunk, fillValue.getOrElse(0), store)
-        chunkReaderWriter.write(chunkFilename, source)
-      }
-
-    })
+      val converted = if (band.cellType == cellType) band else band.convert(cellType)
+      writeChunk(Paths.get(path, arrayNames(b)), chunkIndex, encodeTile(converted, zarrType))
+    }
   }
 
   private def getGroupName(path:String):String = {
