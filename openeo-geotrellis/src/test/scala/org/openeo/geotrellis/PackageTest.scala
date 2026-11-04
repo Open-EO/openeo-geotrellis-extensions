@@ -39,6 +39,7 @@ object PackageTest {
     arguments(CRS.fromName("EPSG:32632")),
     arguments(CRS.fromName("EPSG:3035")),
     arguments(CRS.fromName("EPSG:31370")), // "Belgian Lambert 72"
+    arguments(CRS.fromName("EPSG:8857")), // "Equal Earth Greenwich"
     arguments(LatLng),
   ))
 
@@ -123,6 +124,7 @@ class PackageTest {
     assertTrue(isExtentValidInCrs(extent, LatLng))
     assertTrue(isExtentValidInCrs(extent, Sinusoidal))
     assertTrue(isExtentValidInCrs(extent, WebMercator))
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:8857"))) // Equal Earth Greenwich
 
     assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601"))) // utm antimeridian
     assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660"))) // utm antimeridian
