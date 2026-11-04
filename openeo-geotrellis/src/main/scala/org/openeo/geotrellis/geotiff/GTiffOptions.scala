@@ -3,20 +3,14 @@ package org.openeo.geotrellis.geotiff
 import java.util
 import geotrellis.raster.io.geotiff.Tags
 import geotrellis.raster.render.{ColorMap, DoubleColorMap, IndexedColorMap}
-import org.slf4j.LoggerFactory
 
 import scala.jdk.CollectionConverters._
 import scala.collection.immutable.SortedMap
 
-object GTiffOptions {
-  private val logger = LoggerFactory.getLogger(GTiffOptions.getClass)
-}
-
 //noinspection ScalaUnusedSymbol
 class GTiffOptions extends Serializable {
-  import GTiffOptions._
 
-  private var _filenamePrefix: Option[String] = None // Example using default prefix: "openEO_2017-01-02Z.tif"
+  var filenamePrefix = "openEO" // Example using default prefix: "openEO_2017-01-02Z.tif"
   var colorMap: Option[ColorMap] = Option.empty
   var filepathPerBand: Option[util.ArrayList[String]] = Option.empty
   var tags: Tags = Tags(SortedMap()(Ordering.by(_.toLowerCase)), List())
@@ -33,10 +27,8 @@ class GTiffOptions extends Serializable {
 
   def setFilenamePrefix(name: String): Unit = {
     assertSafeToUseInFilePath(name)
-    this._filenamePrefix = Some(name)
+    this.filenamePrefix = name
   }
-
-  def filenamePrefix: String = _filenamePrefix.getOrElse("openEO")
 
   def setSeparateAssetPerBand(value: Boolean): Unit = this.separateAssetPerBand = value
 
@@ -207,19 +199,18 @@ class GTiffOptions extends Serializable {
     ois.readObject().asInstanceOf[GTiffOptions]
   }
 
-  def assertNoConflicts(): Unit = filepathPerBand match {
-    case Some(paths) =>
-      _filenamePrefix.foreach { prefix =>
-        logger.warn(s"GTiffOptions: filename_prefix $prefix is ignored because filepath_per_band is set.")
-      }
-
+  def assertNoConflicts(): Unit = {
+    if (filepathPerBand.isDefined) {
       if (!separateAssetPerBand) {
         throw new IllegalArgumentException("filepath_per_band is only supported with separate_asset_per_band.")
       }
-      if (tags.bandCount != paths.size()) {
-        throw new IllegalArgumentException("filepath_per_band size does not match the number of bands. " +
-          s"${tags.bandCount} != ${paths.size()}.")
+      if (filenamePrefix != "openEO") { // Compare with default value
+        throw new IllegalArgumentException("filepath_per_band is not supported with filename_prefix.")
       }
-    case None =>
+      if (tags.bandCount != filepathPerBand.get.size()) {
+        throw new IllegalArgumentException("filepath_per_band size does not match the number of bands. " +
+          s"${tags.bandCount} != ${filepathPerBand.get.size()}.")
+      }
+    }
   }
 }
