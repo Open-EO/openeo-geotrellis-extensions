@@ -119,11 +119,11 @@ package object geotiff {
   def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression, formatOptions: GTiffOptions): Item =
     saveStitched(rdd, path, Some(cropBounds), None, compression, formatOptions)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression, formatOptions: GTiffOptions): JList[Item] =
-    saveStitchedTileGrid(rdd, path, tileGrid, None, None, compression, formatOptions)
+  def saveStitchedTileGrid(rdd: SRDD, targetDirectory: String, tileGrid: String, compression: Compression, formatOptions: GTiffOptions): JList[Item] =
+    saveStitchedTileGrid(rdd, targetDirectory, tileGrid, None, None, compression, formatOptions)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression, formatOptions: GTiffOptions): JList[Item] =
-    saveStitchedTileGrid(rdd, path, tileGrid, Some(cropBounds), None, compression, formatOptions)
+  def saveStitchedTileGrid(rdd: SRDD, targetDirectory: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression, formatOptions: GTiffOptions): JList[Item] =
+    saveStitchedTileGrid(rdd, targetDirectory, tileGrid, Some(cropBounds), None, compression, formatOptions)
 
   def saveRDDTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                       path: String,
@@ -1003,15 +1003,14 @@ package object geotiff {
   }
 
   private def saveStitchedTileGrid(
-                            rdd: SRDD,
-                            path: String,
-                            tileGrid: String,
-                            cropBounds: Option[Map[String, Double]],
-                            cropDimensions: Option[ArrayList[Int]],
-                            compression: Compression,
-                            formatOptions: GTiffOptions,
-                          )
-  : JList[Item] = {
+                                    rdd: SRDD,
+                                    targetDirectory: String,
+                                    tileGrid: String,
+                                    cropBounds: Option[Map[String, Double]],
+                                    cropDimensions: Option[ArrayList[Int]],
+                                    compression: Compression,
+                                    formatOptions: GTiffOptions,
+                                  ): JList[Item] = {
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent, rdd.metadata.crs))
 
     val croppedExtent = cropBounds.map(toExtent)
@@ -1033,20 +1032,18 @@ package object geotiff {
         val filePath = {
           if (TaskContext.get().attemptNumber() > 0) {
             // Each executor writes to a unique folder to avoid conflicts:
-            createExecutorAttemptDirectory(parentDirectory = Path.of(path))
-
+            createExecutorAttemptDirectory(parentDirectory = Path.of(targetDirectory))
           } else {
-            Path.of(path)
+            Path.of(targetDirectory)
           }
-        }
-          .resolve(s"${formatOptions.filenamePrefix}_$tileId.tif").toString
+        }.resolve(s"${formatOptions.filenamePrefix}_$tileId.tif").toString
 
         val (stitchedTiff, metadata) = stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression, formatOptions)
         (stitchedTiff, tileId, extent, metadata)
     }.collect()
     val res = geotiffResults.map {
       case (geoTiffResultObject, tileId, croppedExtent, metadata) =>
-        val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path), geoTiffResultObject)
+        val destinationPath = moveFromExecutorAttemptDirectory(Path.of(targetDirectory), geoTiffResultObject)
         (destinationPath, tileId, croppedExtent, metadata)
     }
 
@@ -1057,7 +1054,7 @@ package object geotiff {
         assets = Collections.singletonMap("openEO", Asset(path, cellType, metadata= assetMetadata)))
     }
 
-    cleanupTemporaryResults(geotiffResults.map(_._1), Path.of(path).getParent.toString)
+    cleanupTemporaryResults(geotiffResults.map(_._1), Path.of(targetDirectory).toString)
 
 
     items.toList.asJava
