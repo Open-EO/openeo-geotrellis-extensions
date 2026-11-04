@@ -29,6 +29,7 @@ object BandCompositeRasterSource {
   private def retryWithBackoff[R](maxAttempts: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
     val retryPolicy = new RetryPolicy[R]
       .handle(classOf[Exception]) // will otherwise retry Error
+      .abortOn(classOf[AbortedException])
       .withMaxAttempts(maxAttempts)
       .withBackoff(1, 16, SECONDS)
       .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) =>
@@ -208,7 +209,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       readBoundsFullTile(bounds)
     } else if (softErrors) {
       // Guard each window separately, retaining its position when a source fails softly.
-      bounds.iterator.flatMap(window => read(window, 0 until bandCount))
+      bounds.iterator.map(window => read(window, 0 until bandCount).getOrElse {
+        throw new IOException(s"load_collection: soft error reading $window from $name cannot be represented as NoData")
+      })
     } else {
       val sourceList = reprojectedSources.toList
       val rastersByBounds = readPlan(0 until bandCount).flatMap { case (sourceIndex, bandsInSource, resultPositions) =>
@@ -265,10 +268,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = requestContext.apply {
-    readPerSource(bands, extent.toString) { (source, bandsInSource) =>
-      readExtent(source, extent, bandsInSource)
-    }.map { singleBandRasters =>
-      Raster(MultibandTile(singleBandRasters.map(raster => safeConvert(raster.tile, cellType))), singleBandRasters.head.extent)
+    extent.intersection(gridExtent.extent).flatMap { overlap =>
+      // Every band must read the same grid window, or per-pixel and constant angle sources disagree on the extent.
+      val alignedExtent = gridExtent.extentFor(gridExtent.gridBoundsFor(overlap, clamp = true))
+      readPerSource(bands, alignedExtent.toString) { (source, bandsInSource) =>
+        readExtent(source, alignedExtent, bandsInSource)
+      }.map { singleBandRasters =>
+        Raster(MultibandTile(singleBandRasters.map(raster => safeConvert(raster.tile, cellType))), alignedExtent)
+      }
     }
   }
 

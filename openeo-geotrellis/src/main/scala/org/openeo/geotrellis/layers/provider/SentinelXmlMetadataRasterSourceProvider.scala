@@ -7,6 +7,7 @@ import org.openeo.geotrellis.layers.raster_source.SentinelAngleRasterSource.{Til
 import org.openeo.geotrellis.layers.raster_source.SentinelXMLMetadataRasterSource.DetectorMaskFormat
 import org.openeo.geotrellis.layers.raster_source.{AngleOutput, IndexedRasterSource, NoDataRasterSource, SentinelAngleRasterSource, SentinelXMLMetadataRasterSource}
 import org.slf4j.{Logger, LoggerFactory}
+import software.amazon.awssdk.core.exception.{AbortedException, SdkException}
 
 import java.io.IOException
 
@@ -73,7 +74,8 @@ class SentinelXmlMetadataRasterSourceProvider extends RasterSourceProvider {
         ),
         0)
     } catch {
-      case e@(_: IOException | _: IllegalArgumentException) if definition.softErrors =>
+      case e: AbortedException => throw e
+      case e@(_: IOException | _: IllegalArgumentException | _: SdkException) if definition.softErrors =>
         logger.warn(s"Ignoring soft error $e", e)
         null // will be turned into a NoDataRasterSource further on
     }
@@ -123,7 +125,8 @@ class SentinelXmlMetadataRasterSourceProvider extends RasterSourceProvider {
   private def loadTileAnglesOrSoftError(path: String, softErrors: Boolean): Option[TileAngles] =
     try Some(loadTileAngles(path))
     catch {
-      case e@(_: IOException | _: IllegalArgumentException) if softErrors =>
+      case e: AbortedException => throw e
+      case e@(_: IOException | _: IllegalArgumentException | _: SdkException) if softErrors =>
         logger.warn(s"Ignoring soft error $e", e)
         None
     }

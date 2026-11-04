@@ -21,6 +21,7 @@ import org.openeo.geotrellis.layers.raster_source._
 import org.openeo.opensearch.OpenSearchResponses
 import org.openeo.opensearch.OpenSearchResponses.Link
 import software.amazon.awssdk.core.exception.AbortedException
+import software.amazon.awssdk.services.s3.model.S3Exception
 import org.xml.sax.SAXParseException
 
 import java.io._
@@ -311,6 +312,21 @@ class SentinelAngleRasterSourceTest {
     })
   }
 
+  @Test
+  def mixedAngleAndMeanExtentReadsUseTheSameGrid(): Unit = {
+    val mean = provided(l2aPath, 0)
+    val sun = provided(l2aPath, 4)
+    val unaligned = Extent(638723, 5644883, 638763, 5644923)
+    val expected = demoGrid.extentFor(demoGrid.gridBoundsFor(unaligned, clamp = true))
+
+    for (sources <- Seq(NonEmptyList.of(mean, sun), NonEmptyList.of(sun, mean))) {
+      val composite = new BandCompositeRasterSource(sources, tileCrs, parallelRead = false)
+      val raster = composite.read(unaligned).get
+      assertEquals(expected, raster.extent)
+      assertEquals(2, raster.tile.bandCount)
+    }
+  }
+
   @ParameterizedTest
   @ValueSource(doubles = Array(10.0, 20.0, 60.0))
   def largeReadsUseBoundedMaskWindows(resolution: Double): Unit = {
@@ -589,17 +605,25 @@ class SentinelAngleRasterSourceTest {
   }
 
   @Test
-  @SetEnvironmentVariable(key = "GDALREAD_MAXRETRIES", value = "1")
+  @SetEnvironmentVariable(key = "GDALREAD_MAXRETRIES", value = "3")
   def maskReadCancellationIsNotASoftError(): Unit = {
     val cancelled = AbortedException.builder().message("cancelled mask read").build()
-    val view = SentinelAngleRasterSource(l2aPath, viewZenith, tileCrs, demoGrid)(_ => throw cancelled)
+    val opens = new AtomicInteger()
+    val view = SentinelAngleRasterSource(l2aPath, viewZenith, tileCrs, demoGrid) { _ =>
+      opens.incrementAndGet()
+      throw cancelled
+    }
     for (sparse <- Seq(false, true)) {
       val composite = new BandCompositeRasterSource(NonEmptyList.of(view), tileCrs,
         parallelRead = false, softErrors = true, readFullTile = true)
       val windows = Seq(GridBounds[Long](0, 0, 7, 7),
         if (sparse) GridBounds[Long](100, 100, 107, 107) else GridBounds[Long](8, 0, 15, 7))
+      opens.set(0)
       assertSame(cancelled, assertThrows(classOf[AbortedException], () => { composite.readBounds(windows).toList; () }))
+      assertEquals(1, opens.get(), "bounds cancellation must not be retried")
+      opens.set(0)
       assertSame(cancelled, assertThrows(classOf[AbortedException], () => { composite.read(demoGrid.extentFor(windows.head)); () }))
+      assertEquals(1, opens.get(), "extent cancellation must not be retried")
     }
   }
 
@@ -720,6 +744,44 @@ class SentinelAngleRasterSourceTest {
         ()
       })
       assertEquals("unreadable mean-angle metadata", error.getMessage)
+    }
+  }
+
+  @Test
+  def s3MetadataFailuresFollowTheProviderSoftErrorPolicy(): Unit = {
+    val provider = new SentinelXmlMetadataRasterSourceProvider {
+      override private[layers] def loadTileAngles(xmlPath: String): TileAngles =
+        throw S3Exception.builder().message("unreadable S3 tile metadata").build()
+    }
+
+    for (index <- 4 to 7) {
+      assertNull(provider.rasterSource(definition(l2aPath, index, softErrors = true)),
+        s"band $index must be unavailable when its S3 metadata cannot be read")
+      assertThrows(classOf[S3Exception], () => {
+        provider.rasterSource(definition(l2aPath, index, softErrors = false))
+        ()
+      })
+    }
+  }
+
+  @Test
+  def s3MeanAngleMetadataFailuresFollowTheProviderSoftErrorPolicy(): Unit = {
+    val provider = new SentinelXmlMetadataRasterSourceProvider {
+      override private[layers] def loadConstantAngleBand(
+          xmlPath: String,
+          bandIndex: Int,
+          targetProjectedExtent: Option[ProjectedExtent],
+          cellSize: Option[CellSize]): SentinelXMLMetadataRasterSource =
+        throw S3Exception.builder().message("unreadable S3 mean-angle metadata").build()
+    }
+
+    for (index <- 0 to 3) {
+      assertNull(provider.rasterSource(definition(l1cPath, index, softErrors = true)),
+        s"mean angle band $index must be unavailable when its S3 metadata cannot be read")
+      assertThrows(classOf[S3Exception], () => {
+        provider.rasterSource(definition(l1cPath, index, softErrors = false))
+        ()
+      })
     }
   }
 

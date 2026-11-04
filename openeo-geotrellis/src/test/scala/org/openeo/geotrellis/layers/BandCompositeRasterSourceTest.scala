@@ -240,6 +240,20 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
     }
   }
 
+  @Test
+  def boundsSoftReadFailuresWithoutNoDataFailInsteadOfDroppingWindows(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val failed = new ValueOffsetRasterSource(physical.convert(UByteCellType), 1.0, 0.0) {
+      override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] =
+        throw new IOException("unreadable raw window")
+    }
+    val composite = new BandCompositeRasterSource(NonEmptyList.of(failed), physical.crs,
+      parallelRead = false, softErrors = true)
+    val bounds = Seq(GridBounds[Long](0, 0, 31, 31), GridBounds[Long](32, 0, 63, 31))
+    val error = assertThrowsJunit(classOf[IOException], () => { composite.readBounds(bounds).toList; () })
+    assertTrue(error.getMessage.contains("cannot be represented as NoData"), error.getMessage)
+  }
+
   @ParameterizedTest
   @ValueSource(booleans = Array(false, true))
   def extentSoftReadFailuresPreserveSelectedBandsAndRawCellTypeBehavior(parallelRead: Boolean): Unit = {
