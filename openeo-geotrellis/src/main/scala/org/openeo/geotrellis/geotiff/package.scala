@@ -1002,7 +1002,7 @@ package object geotiff {
       Collections.singletonMap("openEO", Asset(path, adjusted.cellType, metadata = assetMetadata)))
   }
 
-  def saveStitchedTileGrid(
+  private def saveStitchedTileGrid(
                             rdd: SRDD,
                             path: String,
                             tileGrid: String,
