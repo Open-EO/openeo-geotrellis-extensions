@@ -1014,13 +1014,6 @@ package object geotiff {
   : JList[Item] = {
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent, rdd.metadata.crs))
 
-    def newFilePath(path: String, tileId: String) = {
-      val index = path.lastIndexOf(".")
-      val extension = if (index >= 0) path.substring(index) else ".tiff"
-      val prefix = if (index >= 0) path.substring(0, index) else "openEO"
-      s"$prefix-$tileId$extension"
-    }
-
     val croppedExtent = cropBounds.map(toExtent)
 
     val layout = rdd.metadata.layout
@@ -1040,20 +1033,20 @@ package object geotiff {
         val filePath = {
           if (TaskContext.get().attemptNumber() > 0) {
             // Each executor writes to a unique folder to avoid conflicts:
-            createExecutorAttemptDirectory(Path.of(path).getParent)
+            createExecutorAttemptDirectory(parentDirectory = Path.of(path))
 
           } else {
-            Path.of(path).getParent
+            Path.of(path)
           }
         }
-          .resolve(newFilePath(Path.of(path).getFileName.toString, tileId)).toString
+          .resolve(s"${formatOptions.filenamePrefix}_$tileId.tif").toString
 
         val (stitchedTiff, metadata) = stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression, formatOptions)
         (stitchedTiff, tileId, extent, metadata)
     }.collect()
     val res = geotiffResults.map {
       case (geoTiffResultObject, tileId, croppedExtent, metadata) =>
-        val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
+        val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path), geoTiffResultObject)
         (destinationPath, tileId, croppedExtent, metadata)
     }
 
