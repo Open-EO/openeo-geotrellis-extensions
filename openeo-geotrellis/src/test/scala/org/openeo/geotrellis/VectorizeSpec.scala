@@ -1,12 +1,12 @@
 package org.openeo.geotrellis
 
-import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.crop.Crop
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.raster.{ByteArrayTile, MultibandTile, Raster, ReadingSource}
+import geotrellis.raster.{ByteArrayTile, IntArrayTile, MultibandTile, Raster, ReadingSource, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import io.circe.Json
@@ -86,6 +86,39 @@ class VectorizeSpec {
     assertEquals(Some(0), value)
   }
 
+
+  /**
+   * Polygons crossing (overlapping) tile borders must be merged into a single feature.
+   */
+  @Test
+  def vectorizeMergesPolygonsOverTileBorders(): Unit = {
+    val size = 512
+    val tileSize = 256
+    val tile = IntArrayTile.fill(1, size, size)
+    // Rectangle of value 2 crossing the borders of all four 256x256 tiles.
+    for (c <- 200 until 312; r <- 200 until 312) tile.set(c, r, 2)
+
+    val extent = Extent(500000, 5600000, 500000 + size * 10, 5600000 + size * 10)
+    val tileLayout = TileLayout(size / tileSize, size / tileSize, tileSize, tileSize)
+    val layout = LayoutDefinition(extent, tileLayout)
+    val tiles = tile.split(tileLayout)
+    val keyedTiles = for {
+      row <- 0 until tileLayout.layoutRows
+      col <- 0 until tileLayout.layoutCols
+    } yield (SpatialKey(col, row), MultibandTile(tiles(row * tileLayout.layoutCols + col)): MultibandTile)
+    val metadata = TileLayerMetadata(tile.cellType, layout, extent, CRS.fromEpsgCode(32631),
+      KeyBounds(SpatialKey(0, 0), SpatialKey(tileLayout.layoutCols - 1, tileLayout.layoutRows - 1)))
+    val cube = ContextRDD(VectorizeSpec.sc.parallelize(keyedTiles), metadata)
+
+    val (features, _) = new OpenEOProcesses().vectorize(cube, tileSizeFactor = 1)
+    val allFeatures = features.flatMap(_._2)
+
+    assertTrue(allFeatures.forall(_.geom.isValid), "All polygons should be valid")
+    assertEquals(1, allFeatures.count(_.data == 2), "Value 2 should be a single merged polygon")
+    assertEquals(1, allFeatures.count(_.data == 1), "Value 1 should be a single merged polygon")
+    assertEquals(112 * 112 * 100.0, allFeatures.find(_.data == 2).get.geom.getArea, 1e-3)
+    assertEquals(1, allFeatures.find(_.data == 1).get.geom.getNumInteriorRing)
+  }
 
   /**
    * Test vectorization of a complex real-world raster resulting in ~3000 features.
