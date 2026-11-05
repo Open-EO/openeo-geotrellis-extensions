@@ -512,6 +512,7 @@ package object geotiff {
                                formatOptions: GTiffOptions = new GTiffOptions
                               ): JList[Item] = {
     formatOptions.assertNoConflicts()
+    logger.info(s"save_result:saveRDDAllowAssetPerBand with bandcount=$bandCount cropBounds=$cropBounds, separateAssetPerBand=${formatOptions.separateAssetPerBand}")
     if (formatOptions.separateAssetPerBand) {
       val bandLabels = formatOptions.getBandNames
       val layout = rdd.metadata.layout
@@ -561,7 +562,7 @@ package object geotiff {
             formatOptions.filepathPerBand.get.get(bandIndex)
           ))))
         }
-        val (stitchedTiff, (bandStatistics,(rows,cols), cellType)) = stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, Some(extent), None, compression, fo)
+        val (stitchedTiff, (bandStatistics,(rows,cols), cellType)) = stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, cropBounds, None, compression, fo)
         val assetMetadata = setupAssetMetadata(fo.getBandNames,extent,crs,Array(rows,cols), bandStatistics)
         (stitchedTiff, Collections.singletonList(bandIndex),assetMetadata, cellType)
       }.collect()
@@ -1025,6 +1026,7 @@ package object geotiff {
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
+    logger.info(s"save_result: saveStitchedTileGrid with layout=$layout, crs=$crs, croppedExtent=$croppedExtent, tile grid=$tileGrid")
     val groupedRDD = rdd.flatMap {
       case (key, tile) => features.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
@@ -1089,7 +1091,7 @@ package object geotiff {
     }
 
     val re = raster.rasterExtent
-    val alignedExtent = re.createAlignedGridExtent(geometry.extent).extent
+    val alignedExtent = GeneralUtils.createAlignedGridExtent(re, geometry.extent).extent
 
     val stitched: Raster[MultibandTile] = raster.mask(geometry).crop(alignedExtent)
 
@@ -1224,6 +1226,8 @@ package object geotiff {
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
 
+    logger.info(f"save_result: groupByFeatureAndWriteToTiff with layout=$layout, crs=$crs croppedExtent= $croppedExtent, features=${featuresBC.value.map(_._1).mkString(",")}")
+
     val filenamePrefix = formatOptions.filenamePrefix
     val ret = rdd
       .flatMap { case (key, tile) => featuresBC.value
@@ -1265,6 +1269,7 @@ package object geotiff {
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
+    logger.info(s"save_result: groupByFeatureAndWriteToTiffSpatial with layout= $layout, crs=$crs, cropped extent=$croppedExtent" )
 
     val filenamePrefix = formatOptions.filenamePrefix
     val bandTags = formatOptions.getBandNames
