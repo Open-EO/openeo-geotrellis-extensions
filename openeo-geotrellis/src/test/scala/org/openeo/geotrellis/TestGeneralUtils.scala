@@ -244,6 +244,46 @@ class TestGeneralUtils {
 
 
 
+  /**
+   * Reproduces the one_degree tile grid case of PROBAV_L3_S10_TOC_333M (1/336 degree): the cellheight derived from
+   * the layout extent is slightly larger than 1/336, so GridExtent.createAlignedGridExtent puts the north edge
+   * of N51 at 52.00297 (337 rows). The tolerant variant must yield exactly 336x336 for every degree tile.
+   */
+  @Test
+  def testCreateAlignedGridExtentOneDegreeProbaV(): Unit = {
+    import geotrellis.raster.RasterExtent
+    val re = RasterExtent(Extent(2.0, 49.95238095238095, 5.0476190476190474, 53.0), 1024, 1024)
+    // the floating point noise this test is about
+    assertTrue(re.cellheight > 1.0 / 336)
+    assertEquals(337, re.createAlignedGridExtent(Extent(3.0, 51.0, 4.0, 52.0)).rows)
+
+    for (x <- 2 to 4; y <- 50 to 52) {
+      val target = Extent(x, y, x + 1, y + 1)
+      val aligned = GeneralUtils.createAlignedGridExtent(re, target)
+      assertEquals(336, aligned.cols, s"cols for $target")
+      assertEquals(336, aligned.rows, s"rows for $target")
+      assertEquals(x.toDouble, aligned.extent.xmin, 1e-9)
+      assertEquals(x + 1.0, aligned.extent.xmax, 1e-9)
+      assertEquals(y.toDouble, aligned.extent.ymin, 1e-9)
+      assertEquals(y + 1.0, aligned.extent.ymax, 1e-9)
+    }
+  }
+
+  @Test
+  def testCreateAlignedGridExtentPartialPixels(): Unit = {
+    import geotrellis.raster.RasterExtent
+    val re = RasterExtent(Extent(0, 0, 10, 10), 10, 10)
+    // edges not on grid lines: covering cells are included
+    assertEquals(Extent(1, 1, 4, 9), GeneralUtils.createAlignedGridExtent(re, Extent(1.5, 1.5, 3.5, 8.5)).extent)
+    // edges within tolerance of grid lines are snapped
+    assertEquals(Extent(1, 6, 3, 8), GeneralUtils.createAlignedGridExtent(re, Extent(1 - 1e-6, 6 + 1e-6, 3 + 1e-6, 8 - 1e-6)).extent)
+    // edges just outside tolerance are not snapped
+    assertEquals(Extent(0, 6, 3, 8), GeneralUtils.createAlignedGridExtent(re, Extent(1 - 1e-3, 6, 3, 8)).extent)
+    // equal to the GeoTrellis implementation for exact input
+    val target = Extent(2.3, 4.7, 7.1, 9.2)
+    assertEquals(re.createAlignedGridExtent(target), GeneralUtils.createAlignedGridExtent(re, target))
+  }
+
   @Test
   def testSaveConvert(): Unit = {
     val rows = 8

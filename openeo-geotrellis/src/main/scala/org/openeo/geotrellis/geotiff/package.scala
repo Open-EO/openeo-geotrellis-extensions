@@ -1091,7 +1091,7 @@ package object geotiff {
     }
 
     val re = raster.rasterExtent
-    val alignedExtent = re.createAlignedGridExtent(geometry.extent).extent
+    val alignedExtent = GeneralUtils.createAlignedGridExtent(re, geometry.extent).extent
 
     val stitched: Raster[MultibandTile] = raster.mask(geometry).crop(alignedExtent)
 
