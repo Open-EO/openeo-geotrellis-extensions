@@ -1095,6 +1095,8 @@ package object geotiff {
 
     val stitched: Raster[MultibandTile] = raster.mask(geometry).crop(alignedExtent)
 
+    logger.info(s"save_resul: stitched raster: ${stitched.cols}x${stitched.rows}, extent: ${stitched.extent}, cellType: ${stitched.cellType}, from geometry: ${geometry.toString} and aligned extent: ${alignedExtent.toString}, re = ${re.toString}")
+
     //TODO this additional cropping + resampling might not be needed, as a tile grid already defines a clear cropping
     val adjusted = {
       val cropped =
