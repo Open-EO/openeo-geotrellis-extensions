@@ -1222,7 +1222,7 @@ package object geotiff {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val croppedExtent = cropBounds.map(toExtent)
-    logger.info(f"save_result: groupByFeatureAndWriteToTiff with croppedExtent: $croppedExtent, features: ${featuresBC.value.map(_._1).mkString(", ")}")
+    logger.info(f"save_result: groupByFeatureAndWriteToTiff with croppedExtent: $croppedExtent, features: ${featuresBC.value.mkString(", ")}")
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
