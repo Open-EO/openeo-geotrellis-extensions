@@ -512,6 +512,7 @@ package object geotiff {
                                formatOptions: GTiffOptions = new GTiffOptions
                               ): JList[Item] = {
     formatOptions.assertNoConflicts()
+    logger.info(s"save_result:saveRDDAllowAssetPerBand with cropBounds=$cropBounds, separateAssetPerBand=${formatOptions.separateAssetPerBand}")
     if (formatOptions.separateAssetPerBand) {
       val bandLabels = formatOptions.getBandNames
       val layout = rdd.metadata.layout
@@ -561,7 +562,7 @@ package object geotiff {
             formatOptions.filepathPerBand.get.get(bandIndex)
           ))))
         }
-        val (stitchedTiff, (bandStatistics,(rows,cols), cellType)) = stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, Some(extent), None, compression, fo)
+        val (stitchedTiff, (bandStatistics,(rows,cols), cellType)) = stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, cropBounds, None, compression, fo)
         val assetMetadata = setupAssetMetadata(fo.getBandNames,extent,crs,Array(rows,cols), bandStatistics)
         (stitchedTiff, Collections.singletonList(bandIndex),assetMetadata, cellType)
       }.collect()
@@ -1022,6 +1023,7 @@ package object geotiff {
     }
 
     val croppedExtent = cropBounds.map(toExtent)
+    logger.info(s"save_result: saveStitchedTileGrid with crop bounds $croppedExtent")
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
@@ -1220,6 +1222,7 @@ package object geotiff {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val croppedExtent = cropBounds.map(toExtent)
+    logger.info(f"save_result: groupByFeatureAndWriteToTiff with cropBounds: $cropBounds")
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
@@ -1262,6 +1265,7 @@ package object geotiff {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val croppedExtent = cropBounds.map(toExtent)
+    logger.info("save_result: groupByFeatureAndWriteToTiffSpatial with cropped extent: " + croppedExtent)
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
