@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GeoTIFF/NetCDF save_result: reduce task count ([#366](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/366)).
 - `load_collection` for sparse spatial filters: the computed index reduction no longer counts the number of temporal steps twice,
   which resulted in far too small partitions for sparse cubes with many dates. ([#924](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/924))
+- Fix `tile_grid` option for GeoTIFF output of spatial data cube ([Open-EO/openeo-geopyspark-driver#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
 
 ## Before 2026-09-30
 
