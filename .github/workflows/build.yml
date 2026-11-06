@@ -259,6 +259,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push'
+
       - name: Download JARs
         uses: actions/download-artifact@v4
         with:
@@ -280,8 +283,27 @@ jobs:
             notes="Automated build of #${PR_NUMBER} at ${target} (merge commit ${GITHUB_SHA}, version ${VERSION}, run ${run_url})."
           else
             target="$GITHUB_SHA"
-            tag="v${VERSION}-$(date -u +%Y%m%d%H%M%S)-${target::7}"
+            # Keep one moving snapshot tag per Maven revision; omit 'v' to avoid triggering a release build.
+            tag="$VERSION"
             notes="Automated build of \`develop\` at ${target} (version ${VERSION}, run ${run_url})."
+            git tag --force "$tag" "$target"
+            git push --force origin "refs/tags/${tag}"
+
+            release_id=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+              | jq -r --arg tag "$tag" '.[] | select(.tag_name == $tag) | .id')
+            if [[ -n "$release_id" ]]; then
+              gh release edit "$tag" \
+                --repo "$GITHUB_REPOSITORY" \
+                --title "$tag" \
+                --notes "$notes" \
+                --prerelease \
+                --latest=false
+              gh release upload "$tag" \
+                --repo "$GITHUB_REPOSITORY" \
+                --clobber \
+                $(find jars -name '*.jar')
+              exit 0
+            fi
           fi
           echo "Creating release ${tag} for ${target}"
           gh release create "$tag" \
