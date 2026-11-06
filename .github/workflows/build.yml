@@ -55,6 +55,7 @@ jobs:
     outputs:
       version: ${{ steps.settings.outputs.version }}
       built_version: ${{ steps.settings.outputs.built_version }}
+      package_version: ${{ steps.settings.outputs.package_version }}
     steps:
       - name: Configure Maven repository URLs
         run: |
@@ -78,6 +79,9 @@ jobs:
         run: |
           revision=$(sed -n 's:.*<revision>\(.*\)</revision>.*:\1:p' pom.xml | head -n1)
           echo "version=${revision}" >> "$GITHUB_OUTPUT"
+          package_version="${revision}-$(date -u +%Y%m%d%H%M%S)-${GITHUB_RUN_NUMBER}"
+          echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+          echo "PACKAGE_VERSION=${package_version}" >> "$GITHUB_ENV"
 
           opts=""
           # GitHub Packages can't serve Maven versions containing '+', so the copies there use '-' instead.
@@ -205,6 +209,7 @@ jobs:
           release_version="${{ needs.build.outputs.version }}"
           release_version="${release_version%-SNAPSHOT}"
           echo "RELEASE_VERSION=${release_version}" >> "$GITHUB_ENV"
+          echo "PACKAGE_VERSION=${{ needs.build.outputs.package_version }}" >> "$GITHUB_ENV"
           geotrellis_version=$(sed -n 's:.*<geotrellis.version>\(.*\)</geotrellis.version>.*:\1:p' pom.xml | head -n1)
           echo "GEOTRELLIS_VERSION=${geotrellis_version//+/-}" >> "$GITHUB_ENV"
           echo "Releasing version ${release_version}"
