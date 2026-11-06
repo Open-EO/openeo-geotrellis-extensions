@@ -191,7 +191,7 @@ object OpenEOProcesses{
    * Output is sorted by position (top-to-bottom, then left-to-right), with value as tie-breaker, to obtain stable feature ids.
    */
   private[geotrellis] def mergeVectorizedFeatures(features: Seq[PolygonFeature[Int]]): Seq[PolygonFeature[Int]] = {
-    val merged: Seq[PolygonFeature[Int]] = features.groupBy(_.data).toSeq.flatMap { case (value, feats) =>
+    val merged: IndexedSeq[PolygonFeature[Int]] = features.groupBy(_.data).toIndexedSeq.flatMap { case (value, feats) =>
       val geoms: Seq[Geometry] = feats.map(_.geom)
       val unioned: Geometry =
         try {
