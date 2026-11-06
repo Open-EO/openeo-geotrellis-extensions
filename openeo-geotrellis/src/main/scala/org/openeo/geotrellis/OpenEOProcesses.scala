@@ -798,7 +798,8 @@ class OpenEOProcesses extends Serializable {
     val featuresWithIdGrouped: RDD[(String, Iterable[Seq[PolygonFeature[Int]]])] = featuresWithId.groupByKey()
     // Merge polygons that were split over (overlapping) tiles, this is done on the executors.
     val featuresWithIdGroupedFlat: RDD[(String, Seq[PolygonFeature[Int]])] = featuresWithIdGrouped.mapValues(features => mergeVectorizedFeatures(features.flatten.toIndexedSeq))
-    return (featuresWithIdGroupedFlat.collect(), datacube.metadata.crs)
+    val sortedFeaturesWithIdGroupedFlat = featuresWithIdGroupedFlat.collect().sortBy(_._1)
+    return (sortedFeaturesWithIdGroupedFlat, datacube.metadata.crs)
   }
 
   def featuresToGeojson(features: Array[(String, Seq[PolygonFeature[Int]])], crs: CRS): Json = {
