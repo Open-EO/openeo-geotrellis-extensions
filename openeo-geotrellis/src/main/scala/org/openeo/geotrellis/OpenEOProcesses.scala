@@ -188,10 +188,10 @@ object OpenEOProcesses{
    * Merges vectorized features: all polygons with the same value are unioned (merging polygons that were split
    * over tile borders), invalid results are repaired with JTS GeometryFixer, and the result is split
    * into one feature per polygon again.
-   * Output is sorted by value, then top-to-bottom and left-to-right, to obtain stable feature ids.
+   * Output is sorted by position (top-to-bottom, then left-to-right), with value as tie-breaker, to obtain stable feature ids.
    */
   private[geotrellis] def mergeVectorizedFeatures(features: Seq[PolygonFeature[Int]]): Seq[PolygonFeature[Int]] = {
-    features.groupBy(_.data).toSeq.sortBy(_._1).flatMap { case (value, feats) =>
+    val merged: Seq[PolygonFeature[Int]] = features.groupBy(_.data).toSeq.flatMap { case (value, feats) =>
       val geoms: Seq[Geometry] = feats.map(_.geom)
       val unioned: Geometry =
         try {
@@ -208,14 +208,13 @@ object OpenEOProcesses{
         val polygons = (0 until valid.getNumGeometries)
           .map(valid.getGeometryN)
           .collect { case p: Polygon if !p.isEmpty => p }
-        polygons
-          .sortBy(p => {
-            val env = p.getEnvelopeInternal
-            (-env.getMaxY, env.getMinX)
-          })
-          .map(p => Feature(p, value))
+        polygons.map(p => Feature(p, value))
       }
     }
+    merged.sortBy(f => {
+      val env = f.geom.getEnvelopeInternal
+      (-env.getMaxY, env.getMinX, f.data)
+    })
   }
 }
 
