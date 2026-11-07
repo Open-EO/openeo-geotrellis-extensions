@@ -430,7 +430,7 @@ class OpenEOProcesses extends Serializable {
             // 2. Crop.
             // Take the smallest grid-aligned extent that covers the polygon.
             // Clamp = false: ensures that tiles within the extent that do not exist in the raster show up as NoData.
-            val alignedExtent = raster.rasterExtent.createAlignedGridExtent(polygon.extent).extent
+            val alignedExtent = GeneralUtils.createAlignedGridExtent(raster.rasterExtent, polygon.extent).extent
             val cropOptions = Crop.Options(clamp = false, force = true)
             val croppedRaster: Raster[MultibandTile] = raster.crop(alignedExtent, cropOptions)
             // 3. Finally, mask out the polygon.

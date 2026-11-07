@@ -477,7 +477,7 @@ object NetCDFRDDWriter {
   private def stitchAndCropTiles(tilesForDate: Iterable[(SpatialKey, MultibandTile)], cropExtent: ProjectedExtent, layout: LayoutDefinition) = {
     val raster: Raster[MultibandTile] = ContextSeq(tilesForDate, layout).stitch()
     val re: RasterExtent = raster.rasterExtent
-    val alignedExtent = re.createAlignedGridExtent(cropExtent.extent).extent
+    val alignedExtent = org.openeo.geotrellis.GeneralUtils.createAlignedGridExtent(re, cropExtent.extent).extent
     val sample = raster.crop(alignedExtent)
     sample
   }

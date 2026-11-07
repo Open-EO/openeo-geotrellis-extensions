@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import geotrellis.layer.{Boundable, Bounds, EmptyBounds, KeyBounds, LayoutDefinition, SpatialComponent, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{BitCellType, BitCells, ByteCellType, ByteCells, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, DoubleArrayTile, DoubleCellType, DoubleCells, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatCells, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, GridBounds, GridExtent, IntCellType, IntCells, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, RasterExtent, ShortCellType, ShortCells, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, Tile, TileLayout, UByteCellType, UByteCells, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortCells, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, isData, isNoData, shortNODATA, ubyteNODATA, ushortNODATA}
-import geotrellis.vector.Extent
+import geotrellis.vector.{Extent, Point}
 import org.slf4j.LoggerFactory
 import spire.math.Integral
 
@@ -296,6 +296,61 @@ object GeneralUtils {
       logger.info(s"layoutMerged: layoutLeft=$layoutLeft, layoutRight=$layoutRight, crsLeft=$crsLeft, crsRight=$crsRight, result layout =$result")
       result
     }
+  }
+
+  /**
+   * Tolerance (in fractions of a cell) used to snap extent edges onto grid lines in [[createAlignedGridExtent]].
+   */
+  val gridAlignmentTolerance: Double = 1e-4
+
+  /**
+   * Tolerant variant of `GridExtent.createAlignedGridExtent(targetExtent)`.
+   *
+   * Returns a GridExtent that lines up with the grid's resolution and grid layout, having an origin at the
+   * upper-left corner of the extent. The result is the smallest grid-aligned extent covering ``targetExtent``.
+   *
+   * Unlike the GeoTrellis implementation, edges of ``targetExtent`` that lie on a grid line (up to `tolerance`
+   * of a cell) are snapped onto that line. This prevents floating point noise in the cell size (e.g. 1/336 degree
+   * derived from a layout extent) from adding an extra row/column.
+   */
+  def createAlignedGridExtent[N: Integral](gridExtent: GridExtent[N], targetExtent: Extent,
+                                           tolerance: Double = gridAlignmentTolerance): GridExtent[N] = {
+    createAlignedGridExtent(gridExtent, targetExtent, gridExtent.extent.northWest, tolerance)
+  }
+
+  /**
+   * Tolerant variant of `GridExtent.createAlignedGridExtent(targetExtent, alignmentPoint)`.
+   */
+  def createAlignedGridExtent[N: Integral](gridExtent: GridExtent[N], targetExtent: Extent, alignmentPoint: Point,
+                                           tolerance: Double): GridExtent[N] = {
+    def floorWithTolerance(value: Double): Double = {
+      val roundedValue = math.round(value)
+      if (math.abs(value - roundedValue) < tolerance) roundedValue.toDouble
+      else math.floor(value)
+    }
+
+    def ceilWithTolerance(value: Double): Double = {
+      val roundedValue = math.round(value)
+      if (math.abs(value - roundedValue) < tolerance) roundedValue.toDouble
+      else math.ceil(value)
+    }
+
+    def left(reference: Double, actual: Double, unit: Double): Double = reference + floorWithTolerance((actual - reference) / unit) * unit
+    def right(reference: Double, actual: Double, unit: Double): Double = reference + ceilWithTolerance((actual - reference) / unit) * unit
+
+    val cellwidth = gridExtent.cellwidth
+    val cellheight = gridExtent.cellheight
+    val xmin = left(alignmentPoint.getX, targetExtent.xmin, cellwidth)
+    val xmax = right(alignmentPoint.getX, targetExtent.xmax, cellwidth)
+    val ymin = left(alignmentPoint.getY, targetExtent.ymin, cellheight)
+    val ymax = right(alignmentPoint.getY, targetExtent.ymax, cellheight)
+    val alignedExtent = Extent(xmin, ymin, xmax, ymax)
+    val cols = math.round(alignedExtent.width / cellwidth)
+    val rows = math.round(alignedExtent.height / cellheight)
+    val ncols = Integral[N].fromDouble(cols.toDouble)
+    val nrows = Integral[N].fromDouble(rows.toDouble)
+
+    new GridExtent[N](alignedExtent, cellwidth, cellheight, ncols, nrows)
   }
 
   def gridBoundsFor(re: RasterExtent, subExtent: Extent, clamp: Boolean = true): GridBounds[Int] = {
