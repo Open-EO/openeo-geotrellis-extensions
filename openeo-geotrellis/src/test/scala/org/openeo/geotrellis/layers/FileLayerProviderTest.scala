@@ -1801,6 +1801,7 @@ class FileLayerProviderTest extends RasterMatchers {
     )
   }
 
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test
   def testDEMRegression(@TempDir outDir: Path): Unit = {
     /* detect regressions in the context of https://github.com/Open-EO/openeo-geotrellis-extensions/issues/805 */

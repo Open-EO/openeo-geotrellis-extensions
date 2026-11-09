@@ -70,7 +70,7 @@ class PackageTest {
       val dst = Path.of(p + f"/$i.tif")
       // Limit the amount of parallel jobs to avoid getting over the max retries
       (1 to 4).par.foreach { _ =>
-        writeGeoTiff(refTiff, dst.toString, gtiffOptions = None)
+        writeGeoTiff(refTiff, dst.toString, gtiffOptions = new GTiffOptions)
       }
       assertTrue(Files.exists(dst))
       val refTiff2 = GeoTiff.readMultiband(dst.toString)
@@ -89,7 +89,7 @@ class PackageTest {
     val path = tmp.resolve("zstd.tif")
     val zstdPath = path.toString
     val tiff = refTiff.withCompression(options)
-    writeGeoTiff(tiff, zstdPath, gtiffOptions = None)
+    writeGeoTiff(tiff, zstdPath, gtiffOptions = options)
     val checkZstdTiff = GeoTiff.readMultiband(zstdPath)
     assertEquals(336807, Files.size(path))
     assertEquals(checkZstdTiff.tile.band(0).get(5,7), refTiff.tile.band(0).get(5,7))

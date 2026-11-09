@@ -7,17 +7,22 @@ import scala.sys.env
 
 object TestConditions {
 
+  // Blank values count as missing, e.g. unset secrets in GitHub Actions are passed as empty strings.
+  private def hasEnv(name: String): Boolean = sys.env.get(name).exists(_.trim.nonEmpty)
+
   def hasSentinelHubCredentials: Boolean = {
-    (System.getenv("SENTINELHUB_CLIENT_ID") != null) && (System.getenv("SENTINELHUB_CLIENT_SECRET") != null)
+    hasEnv("SENTINELHUB_CLIENT_ID") && hasEnv("SENTINELHUB_CLIENT_SECRET")
   }
 
   def hasAwsCredentials: Boolean = {
-    (System.getenv("AWS_ACCESS_KEY_ID") != null) && (System.getenv("AWS_SECRET_ACCESS_KEY") != null)
+    hasEnv("AWS_ACCESS_KEY_ID") && hasEnv("AWS_SECRET_ACCESS_KEY")
   }
 
   def hasS3Credentials: Boolean = {
-    (sys.env.getOrElse("SWIFT_ACCESS_KEY_ID", System.getenv("AWS_ACCESS_KEY_ID")) != null) &&
-      (sys.env.getOrElse("SWIFT_SECRET_ACCESS_KEY", System.getenv("AWS_SECRET_ACCESS_KEY")) != null)
+    // Same lookup as CreoS3Utils: SWIFT_* takes precedence over AWS_*.
+    def credential(swift: String, aws: String) = sys.env.getOrElse(swift, sys.env.getOrElse(aws, ""))
+    credential("SWIFT_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID").trim.nonEmpty &&
+      credential("SWIFT_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY").trim.nonEmpty
   }
 
   def hasMTDAData: Boolean = {

@@ -150,21 +150,139 @@ class TestGeneralUtils {
 
   @Test
   def testLayoutMergedNeedsBiggerExtent(): Unit = {
-    val extent1 = Extent(663810.0, 5610650.0, 665090.0, 5611930.0)
-    val tileLayout1 = TileLayout(2, 1, 128, 128)
+    val extent1 = Extent(5, 10, 10, 20)
+    val tileLayout1 = TileLayout(2, 4, 128, 128)
     val layoutDefinition1= LayoutDefinition(extent1, tileLayout1)
-    val extent2 = Extent(663800.0, 5606820.0, 668900.0, 5611940.0)
-    val tileLayout2 = TileLayout(1, 2, 256, 256)
+    val extent2 = Extent(0, 0, 10, 10)
+    val tileLayout2 = TileLayout(1, 1, 256, 256)
     val layoutDefinition2= LayoutDefinition(extent2, tileLayout2)
 
     val crs = CRS.fromEpsgCode(32631)
     val merged = GeneralUtils.layoutMerged(layoutDefinition1, layoutDefinition2, crs, crs)
     assertEquals(layoutDefinition1.cellSize, merged.cellSize)
-    assertEquals(TileLayout(8, 4, 128, 128), merged.tileLayout)
-    assertEquals(Extent(663800.0, 5606820.0, 668920.0, 5611940.0), merged.extent)
+    assertEquals(TileLayout(4, 8, 128, 128), merged.tileLayout)
+    assertEquals(Extent(0, 0, 10, 20), merged.extent)
+  }
+
+  @Test
+  def testBoundsInMergedLayout(): Unit = {
+    import geotrellis.layer.{KeyBounds, SpaceTimeKey}
+    val layoutLeft = LayoutDefinition(Extent(5, 10, 10, 20), TileLayout(2, 4, 128, 128))
+    val layoutRight = LayoutDefinition(Extent(0, 0, 10, 10), TileLayout(1, 1, 256, 256))
+    val crs = CRS.fromEpsgCode(32631)
+    val merged = GeneralUtils.layoutMerged(layoutLeft, layoutRight, crs, crs)
+
+    val leftBounds = KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(1, 3, 2000L))
+    val rightBounds = KeyBounds(SpaceTimeKey(0, 0, 1500L), SpaceTimeKey(0, 0, 3000L))
+
+    val leftInMerged = GeneralUtils.boundsInLayout(leftBounds, layoutLeft, crs, merged, crs)
+    val rightInMerged = GeneralUtils.boundsInLayout(rightBounds, layoutRight, crs, merged, crs)
+
+    // left keys are shifted by 2 columns, time is preserved
+    assertEquals(KeyBounds(SpaceTimeKey(2, 0, 1000L), SpaceTimeKey(3, 3, 2000L)), leftInMerged)
+    // the single right tile covers the bottom half of the merged layout
+    assertEquals(KeyBounds(SpaceTimeKey(0, 4, 1500L), SpaceTimeKey(3, 7, 3000L)), rightInMerged)
+    assertEquals(KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(3, 7, 3000L)), leftInMerged.combine(rightInMerged))
+
+    // unchanged layout keeps the bounds as-is
+    assertEquals(leftBounds, GeneralUtils.boundsInLayout(leftBounds, layoutLeft, crs, layoutLeft, crs))
+  }
+
+  private object MergedMetadataFixture {
+    import geotrellis.layer.{KeyBounds, SpaceTimeKey, SpatialKey, TileLayerMetadata}
+    val crs: CRS = CRS.fromEpsgCode(32631)
+    // left: fine resolution (5/256), right: coarse resolution (10/256)
+    val layoutLeft: LayoutDefinition = LayoutDefinition(Extent(5, 10, 10, 20), TileLayout(2, 4, 128, 128))
+    val layoutRight: LayoutDefinition = LayoutDefinition(Extent(0, 0, 10, 10), TileLayout(1, 1, 256, 256))
+    val left: TileLayerMetadata[SpaceTimeKey] = TileLayerMetadata(ByteConstantNoDataCellType, layoutLeft, layoutLeft.extent, crs,
+      KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(1, 3, 2000L)))
+    val rightSpaceTime: TileLayerMetadata[SpaceTimeKey] = TileLayerMetadata(FloatConstantNoDataCellType, layoutRight, layoutRight.extent, crs,
+      KeyBounds(SpaceTimeKey(0, 0, 1500L), SpaceTimeKey(0, 0, 3000L)))
+    val rightSpatial: TileLayerMetadata[SpatialKey] = TileLayerMetadata(FloatConstantNoDataCellType, layoutRight, layoutRight.extent, crs,
+      KeyBounds(SpatialKey(0, 0), SpatialKey(0, 0)))
+  }
+
+  @Test
+  def testMergedMetadataSameKeyType(): Unit = {
+    import geotrellis.layer.{KeyBounds, SpaceTimeKey}
+    import MergedMetadataFixture._
+    val merged = GeneralUtils.mergedMetadata(left, rightSpaceTime)
+    // non-mergeable fields from the left cube
+    assertEquals(crs, merged.crs)
+    assertEquals(layoutLeft.cellSize, merged.cellSize)
+    assertEquals(128, merged.tileCols)
+    // mergeable fields are the union
+    assertEquals(Extent(0, 0, 10, 20), merged.extent)
+    assertEquals(TileLayout(4, 8, 128, 128), merged.tileLayout)
+    assertEquals(KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(3, 7, 3000L)), merged.bounds)
+    assertEquals(FloatConstantNoDataCellType, merged.cellType)
+  }
+
+  @Test
+  def testMergedMetadataSpaceTimeSpatial(): Unit = {
+    import geotrellis.layer.{KeyBounds, SpaceTimeKey}
+    import MergedMetadataFixture._
+    val merged = GeneralUtils.mergedMetadata(left, rightSpatial)
+    assertEquals(layoutLeft.cellSize, merged.cellSize)
+    assertEquals(Extent(0, 0, 10, 20), merged.extent)
+    // spatial bounds are the union, temporal bounds come from the spacetime cube
+    assertEquals(KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(3, 7, 2000L)), merged.bounds)
+  }
+
+  @Test
+  def testMergedMetadataRightDominant(): Unit = {
+    import geotrellis.layer.{KeyBounds, SpaceTimeKey}
+    import MergedMetadataFixture._
+    val merged = GeneralUtils.mergedMetadata(left, rightSpatial, rightIsDominant = true)
+    // non-mergeable fields from the right cube
+    assertEquals(layoutRight.cellSize, merged.cellSize)
+    assertEquals(256, merged.tileCols)
+    assertEquals(TileLayout(1, 2, 256, 256), merged.tileLayout)
+    assertEquals(Extent(0, 0, 10, 20), merged.extent)
+    assertEquals(KeyBounds(SpaceTimeKey(0, 0, 1000L), SpaceTimeKey(0, 1, 2000L)), merged.bounds)
   }
 
 
+
+  /**
+   * Reproduces the one_degree tile grid case of PROBAV_L3_S10_TOC_333M (1/336 degree): the cellheight derived from
+   * the layout extent is slightly larger than 1/336, so GridExtent.createAlignedGridExtent puts the north edge
+   * of N51 at 52.00297 (337 rows). The tolerant variant must yield exactly 336x336 for every degree tile.
+   */
+  @Test
+  def testCreateAlignedGridExtentOneDegreeProbaV(): Unit = {
+    import geotrellis.raster.RasterExtent
+    val re = RasterExtent(Extent(2.0, 49.95238095238095, 5.0476190476190474, 53.0), 1024, 1024)
+    // the floating point noise this test is about
+    assertTrue(re.cellheight > 1.0 / 336)
+    assertEquals(337, re.createAlignedGridExtent(Extent(3.0, 51.0, 4.0, 52.0)).rows)
+
+    for (x <- 2 to 4; y <- 50 to 52) {
+      val target = Extent(x, y, x + 1, y + 1)
+      val aligned = GeneralUtils.createAlignedGridExtent(re, target)
+      assertEquals(336, aligned.cols, s"cols for $target")
+      assertEquals(336, aligned.rows, s"rows for $target")
+      assertEquals(x.toDouble, aligned.extent.xmin, 1e-9)
+      assertEquals(x + 1.0, aligned.extent.xmax, 1e-9)
+      assertEquals(y.toDouble, aligned.extent.ymin, 1e-9)
+      assertEquals(y + 1.0, aligned.extent.ymax, 1e-9)
+    }
+  }
+
+  @Test
+  def testCreateAlignedGridExtentPartialPixels(): Unit = {
+    import geotrellis.raster.RasterExtent
+    val re = RasterExtent(Extent(0, 0, 10, 10), 10, 10)
+    // edges not on grid lines: covering cells are included
+    assertEquals(Extent(1, 1, 4, 9), GeneralUtils.createAlignedGridExtent(re, Extent(1.5, 1.5, 3.5, 8.5)).extent)
+    // edges within tolerance of grid lines are snapped
+    assertEquals(Extent(1, 6, 3, 8), GeneralUtils.createAlignedGridExtent(re, Extent(1 - 1e-6, 6 + 1e-6, 3 + 1e-6, 8 - 1e-6)).extent)
+    // edges just outside tolerance are not snapped
+    assertEquals(Extent(0, 6, 3, 8), GeneralUtils.createAlignedGridExtent(re, Extent(1 - 1e-3, 6, 3, 8)).extent)
+    // equal to the GeoTrellis implementation for exact input
+    val target = Extent(2.3, 4.7, 7.1, 9.2)
+    assertEquals(re.createAlignedGridExtent(target), GeneralUtils.createAlignedGridExtent(re, target))
+  }
 
   @Test
   def testSaveConvert(): Unit = {

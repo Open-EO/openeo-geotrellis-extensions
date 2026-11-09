@@ -16,6 +16,7 @@ import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory
 import org.openeo.geotrellis.layers.{FileLayerProvider, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
+import org.openeo.opensearch.backends.STACClient
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
 import spire.math.UShort
 
@@ -231,8 +232,23 @@ object LayerFixtures {
     val parameters = new DataCubeParameters
     parameters.layoutScheme = "FloatingLayoutScheme"
     parameters.globalExtent = Some(ProjectedExtent(polygons.extent, CRS.fromName(crs)))
-    new file.PyramidFactory(OpenSearchClient.apply(new URL(opensearchEndpoint), false, "oscars"), "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2", NonEmptyList.of("FAPAR_10M").toList.asJava, null, CellSize(10, 10))
-      .datacube_seq(ProjectedPolygons(polygons, crs), from_date, to_date, util.Collections.emptyMap[String, Any](), "", parameters).head._2
+    // STAC features lack a CRS (unlike the former oscars ones); derive it from the MGRS tile so that overlapping
+    // same-day products are all retained by the tile overlap resolution
+    val mgrsTile = """_(\d{2})([C-X])[A-Z]{2}_""".r
+    val stacClient = new STACClient(new URL("https://stac.terrascope.be"), false) {
+      override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)],
+                               bbox: ProjectedExtent, attributeValues: collection.Map[String, Any],
+                               correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] =
+        super.getProducts(collectionId, dateRange, bbox, attributeValues, correlationId, processingLevel).map { feature =>
+          feature.crs = feature.crs.orElse(mgrsTile.findFirstMatchIn(feature.id).map { m =>
+            CRS.fromEpsgCode((if (m.group(2).head >= 'N') 32600 else 32700) + m.group(1).toInt)
+          })
+          feature
+        }
+    }
+
+    new file.PyramidFactory(stacClient, "terrascope-s2-fapar-v2", NonEmptyList.of("FAPAR").toList.asJava, null, CellSize(10, 10))
+      .datacube_seq(ProjectedPolygons(polygons, crs), from_date, to_date, util.Collections.singletonMap[String, Any]("gsd", 10), "", parameters).head._2
   }
 
 
@@ -1672,8 +1688,8 @@ object LayerFixtures {
 
   def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent , crs:CRS = LatLng) = {
 
-    val intImage = createTextImage(layoutCols * 256, layoutRows * 256)
-    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+    val byteImage = createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(byteImage, layoutCols * 256, layoutRows * 256)
 
     val secondBand = imageTile.map { x => if (x >= 5) 10 else 100 }
     val thirdBand = imageTile.map { x => if (x >= 5) 50 else 200 }

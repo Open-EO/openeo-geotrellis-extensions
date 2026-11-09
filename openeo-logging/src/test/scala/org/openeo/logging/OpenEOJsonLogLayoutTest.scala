@@ -77,6 +77,7 @@ class OpenEOJsonLogLayoutTest {
       assertEquals(now, logEntry("created").asNumber.map(_.toDouble).get, 1.0)
       assertEquals("OpenEOJsonLogLayoutTest.scala", logEntry("filename").asString.get)
       assertEquals(64, logEntry("lineno").asNumber.flatMap(_.toInt).get) // Line number can change
+      assertEquals("developer", logEntry("audience").asString.get)
       val stackTrace = logEntry("exc_info").asString.get
       assertTrue(stackTrace.contains("java.lang.Exception: It was the blorst of times"))
       assertTrue(stackTrace.contains(getClass.getName))
@@ -84,6 +85,17 @@ class OpenEOJsonLogLayoutTest {
       assertEquals("r-def456", logEntry("req_id").asString.get)
       assertEquals("j-abc123", logEntry("job_id").asString.get)
     } finally in.close()
+  }
+
+  @Test
+  def testUserFacingMarkerSetsAudience(): Unit = {
+    logger.info(JsonLayout.USER, "user-facing log")
+
+    val userLogEntry = Helpers.logEntries(tempLogFile)
+      .find(logEntry => logEntry("message").asString.contains("user-facing log"))
+      .get
+
+    assertEquals("user", userLogEntry("audience").asString.get)
   }
 
   @Test

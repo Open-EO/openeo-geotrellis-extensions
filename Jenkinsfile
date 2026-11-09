@@ -13,7 +13,8 @@ def maven_version            = '3.5.4'
 def node_label               = 'default'
 def wipeout_workspace        = true
 
-def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.6"
+// Built locally from docker/tests_dockerfile in buildIt(), so no registry pull is needed.
+def maven_image              = "openeo-geotrellis-test-image:20261026_1"
 
 
 pipeline {
@@ -128,10 +129,14 @@ pipeline {
     post {
         always {
           script {
-            docker.image(maven_image).inside('-u root --entrypoint=""') {
-              sh """
-                ${utils.setWorkspacePermissions()}
-              """
+            if (sh(script: "docker image inspect ${maven_image} > /dev/null 2>&1", returnStatus: true) == 0) {
+              docker.image(maven_image).inside('-u root --entrypoint=""') {
+                sh """
+                  ${utils.setWorkspacePermissions()}
+                """
+              }
+            } else {
+              echo "Image ${maven_image} not available, skipping workspace permission fix"
             }
           }
         }
@@ -182,27 +187,20 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-21-openjdk" ]
-    def testImage = docker.build("openeo-geotrellis-test-image:20250921_1", "-f ./docker/tests_dockerfile ./docker")
+    def testImage = docker.build(env.MAVEN_IMAGE, "-f ./docker/tests_dockerfile ./docker")
     testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -v /data/projects/OpenEO/automated_test_files/eodata:/eodata:ro -u root' ) {
         withEnv(jdkEnv) {
-            sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
             sh 'current_dir=$(pwd) && git config --global --add safe.directory  $current_dir'
-            def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
-            def snapshotRepo = 'libs-snapshot-public'
-            def releaseRepo = 'libs-release-public'
             def serverSAS = Artifactory.server('artifactory-sas')
             def rtMavenSAS = Artifactory.newMavenBuild()
             def snapshotRepoSAS = 'openeo-maven-snapshot-local'
             def releaseRepoSAS = 'openeo-maven-release-local'
             if (!publishable_branches.contains(env.BRANCH_NAME)) {
-                snapshotRepo = 'openeo-branch-builds'
-                //releaseRepo = 'openeo-branch-builds'
                 rtMaven.opts += " -Drevision=${env.BRANCH_NAME}"
                 snapshotRepoSAS = 'openeo-branch-builds'
                 //releaseRepoSAS = 'openeo-branch-builds'
             }
-            rtMaven.deployer server: server, releaseRepo: releaseRepo, snapshotRepo: snapshotRepo
             rtMaven.tool = maven
             if (skipTests) {
                 print "Maven will skip all tests"
@@ -214,8 +212,6 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
                 print "Maven will run all tests"
             }
 
-            rtMaven.deployer.deployArtifacts = true
-
             rtMavenSAS.deployer server: serverSAS, releaseRepo: releaseRepoSAS, snapshotRepo: snapshotRepoSAS
             rtMavenSAS.tool = maven
             rtMavenSAS.opts = rtMaven.opts + ' -DskipTests=true -DskipSentinelHubTests=true'
@@ -226,13 +222,7 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
                         [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
                         [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
                 ]) {
-                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts -U clean install' + rtMaven.opts
-                    try {
-                        if (rtMaven.deployer.deployArtifacts)
-                            server.publishBuildInfo buildInfo
-                    } catch (e) {
-                        print e.message
-                    }
+                    rtMaven.run pom: 'pom.xml', goals: '-P default,wmts -U clean install' + rtMaven.opts
 
                     buildInfoSAS = rtMavenSAS.run pom: 'pom.xml', goals: '-P default,wmts -U deploy' + rtMavenSAS.opts
                     try {

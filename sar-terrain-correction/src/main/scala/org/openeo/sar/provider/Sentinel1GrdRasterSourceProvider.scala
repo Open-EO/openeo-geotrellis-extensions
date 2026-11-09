@@ -8,11 +8,11 @@ import geotrellis.raster.{CellSize, GridExtent, RasterSource, StringName}
 import geotrellis.vector.Extent
 import org.openeo.geotrellis.layers.provider.{RasterSourceDefinition, RasterSourceProvider}
 import org.openeo.geotrellis.layers.raster_source.IndexedRasterSource
+import org.openeo.sar._
 import org.openeo.sar.backend.nativ.NativeBackend
 import org.openeo.sar.metadata.Polarisation
-import org.openeo.sar.raster.S1GrdRasterSource
-import org.openeo.sar._
 import org.openeo.sar.provider.Sentinel1GrdRasterSourceProvider.{PolPattern, polarisationBandIndex, polarisationOfBandName, requestedPolarisation}
+import org.openeo.sar.raster.S1GrdRasterSource
 import org.slf4j.LoggerFactory
 
 import java.net.URI
@@ -138,8 +138,12 @@ class Sentinel1GrdRasterSourceProvider(
     val collectionId = definition.feature.collectionId
     if (collectionId == null) return false
     val cid = collectionId.toLowerCase
-    (cid.contains("sentinel-1") || cid.contains("sentinel1")) &&
-    (cid.contains("grd") || definition.dataPath.toLowerCase.contains("grd"))
+    val isSentinel1 = cid.contains("sentinel-1") || cid.contains("sentinel1")
+    // Only raw GRD items carry calibration and noise annotations; processed products (e.g. sentinel-1-rtc) do not.
+    val titles = definition.feature.links.flatMap(_.title.map(_.toLowerCase))
+    isSentinel1 &&
+    titles.exists(_.startsWith("schema-calibration")) &&
+    titles.exists(_.startsWith("schema-noise"))
   }
 
   /** Derive the SAFE root URI from the measurement TIFF path:

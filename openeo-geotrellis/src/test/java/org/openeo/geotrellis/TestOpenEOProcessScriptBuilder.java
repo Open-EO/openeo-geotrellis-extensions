@@ -1167,6 +1167,56 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(fillBitArrayTile(3, 3, expected_values), result2.head());
     }
 
+    @DisplayName("Test is_valid with finite numbers, NoData and infinities")
+    @Test
+    public void testIsValid() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("is_valid", dummyMap("x"));
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.expressionEnd("is_valid", dummyMap("x"));
+        assertEquals(BitCellType$.MODULE$, builder.getOutputCellType());
+
+        List<Tile> tiles = Arrays.asList(
+                fillFloatArrayTile(3, 2, 0, -3.5, 4, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY),
+                fillDoubleArrayTile(3, 2, 0, -Double.MAX_VALUE, Double.MAX_VALUE, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY),
+                fillIntArrayTile(3, 2, 0, -3, Integer.MAX_VALUE, IntConstantNoDataCellType.noDataValue(), 4, 5),
+                fillIntArrayTile(3, 2, 0, -3, 4, 1, 5, 6).withNoData(scala.Option.apply(1.0)));
+        Seq<Tile> result = builder.generateFunction().apply(CollectionConverters.asScala(tiles).toSeq());
+
+        assertEquals(tiles.size(), result.size());
+        assertTileEquals(fillBitArrayTile(3, 2, 1, 1, 1, 0, 0, 0), result.apply(0));
+        assertTileEquals(fillBitArrayTile(3, 2, 1, 1, 1, 0, 0, 0), result.apply(1));
+        assertTileEquals(fillBitArrayTile(3, 2, 1, 1, 1, 0, 1, 1), result.apply(2));
+        assertTileEquals(fillBitArrayTile(3, 2, 1, 1, 1, 0, 1, 1), result.apply(3));
+    }
+
+    @DisplayName("Test is_valid composed with array_element in a callback")
+    @Test
+    public void testIsValidArrayElement() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("is_valid", dummyMap("x"));
+        builder.argumentStart("x");
+        Map<String, Object> arguments = Collections.singletonMap("index", 3);
+        builder.expressionStart("array_element", arguments);
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 3);
+        builder.expressionEnd("array_element", arguments);
+        builder.argumentEnd();
+        builder.expressionEnd("is_valid", dummyMap("x"));
+
+        Tile finite = fillFloatArrayTile(3, 1, 1, 2, 3);
+        Tile selected = fillFloatArrayTile(3, 1, 5, Double.NaN, Double.POSITIVE_INFINITY);
+        Seq<Tile> result = builder.generateFunction().apply(
+                CollectionConverters.asScala(Arrays.asList(finite, finite, finite, selected)).toSeq());
+
+        assertEquals(BitCellType$.MODULE$, builder.getOutputCellType());
+        assertEquals(1, result.size());
+        assertTileEquals(fillBitArrayTile(3, 1, 1, 0, 0), result.head());
+    }
+
     @DisplayName("Test array_element process")
     @Test
     public void testArrayElement() {

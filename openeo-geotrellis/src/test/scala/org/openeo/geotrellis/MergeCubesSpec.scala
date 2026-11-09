@@ -404,64 +404,64 @@ class MergeCubesSpec {
     }
   }
 
-//  @Test def testMergeCubeDifferenceExtent_SpatialSpatial(): Unit = {
-//    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
-//    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
-//
-//    val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
-//    val band4 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
-//
-//    val tileLayout1 = TileLayout(2,2,16,16)
-//    val tileLayout2 = TileLayout(1,1,32,32)
-//    val tile1 = MultibandTile(band1,band2)
-//    val tile2 = MultibandTile(band3,band4)
-//
-//    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
-//    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
-//
-//    val cube1: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile1, extent1), tileLayout1, LatLng)
-//    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile2, extent2), tileLayout2, LatLng)
-//
-//    val processes = new OpenEOProcesses()
-//    val merged: MultibandTileLayerRDD[SpatialKey] = processes.mergeSpatialCubes(cube1, cube2, "mean")
-//
-//    assertEquals(merged.metadata.layout, LayoutDefinition(extent1.combine(extent2),TileLayout(3,3,16,16)))
-//    val collected = merged.collect()
-//
-//    for (item: (SpatialKey, MultibandTile) <- merged.collect) {
-//      assertEquals(2, item._2.bandCount)
-//      item match {
-//        case (SpatialKey(0,0), tile) =>
-//          assertEquals(0, tile.band(0).get(0, 0).toByte)
-//          assertEquals(0, tile.band(1).get(0, 0).toByte)
-//        case (SpatialKey(0,1), tile) =>
-//          assertEquals(5, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpatialKey(0,2), tile) =>
-//          assertEquals(5, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpatialKey(1,0), tile) =>
-//          assertEquals(9, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpatialKey(1,1), tile) =>
-//          assertEquals(7, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpatialKey(1,2), tile) =>
-//          assertEquals(5, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpatialKey(2,0), tile) =>
-//          assertEquals(9, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpatialKey(2,1), tile) =>
-//          assertEquals(9, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpatialKey(2,2), tile) =>
-//          assertEquals(0, tile.band(0).get(0, 0).toByte)
-//          assertEquals(0, tile.band(1).get(0, 0).toByte)
-//        case _ => fail("Unexpected spatial key")
-//      }
-//    }
-//  }
+  @Test def testMergeCubeDifferenceExtent_SpatialSpatial(): Unit = {
+    val tilesSize = 16
+    val band1 = ByteArrayTile.fill(5.toByte, tilesSize, tilesSize).withNoData(Some(0.toByte))
+    val band2 = ByteArrayTile.fill(3.toByte, tilesSize, tilesSize).withNoData(Some(0.toByte))
+
+    val band3 = ByteArrayTile.fill(9.toByte, tilesSize, tilesSize).withNoData(Some(0.toByte))
+    val band4 = ByteArrayTile.fill(3.toByte, tilesSize, tilesSize).withNoData(Some(0.toByte))
+
+    val tileLayout1 = TileLayout(2,2,tilesSize/2,tilesSize/2)
+    val tileLayout2 = TileLayout(1,1,tilesSize,tilesSize)
+    val tile1 = MultibandTile(band1,band2)
+    val tile2 = MultibandTile(band3,band4)
+
+    val extent1 = Extent(3.0, 51.0, 4.0, 52.0)
+    val extent2 = Extent(3.5, 51.5, 4.5, 52.5)
+
+    val cube1: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile1, extent1), tileLayout1, LatLng)
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile2, extent2), tileLayout2, LatLng)
+
+    val processes = new OpenEOProcesses()
+    val merged: MultibandTileLayerRDD[SpatialKey] = processes.mergeSpatialCubes(cube1, cube2, "mean")
+
+    assertEquals(LayoutDefinition(extent1.combine(extent2),TileLayout(3,3,tilesSize/2,tilesSize/2)), merged.metadata.layout)
+
+    for (item: (SpatialKey, MultibandTile) <- merged.collect) {
+      assertEquals(2, item._2.bandCount)
+      item match {
+        case (SpatialKey(0,0), tile) =>
+          assertEquals(0, tile.band(0).get(0, 0).toByte)
+          assertEquals(0, tile.band(1).get(0, 0).toByte)
+        case (SpatialKey(0,1), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(0,2), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(1,0), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(1,1), tile) =>
+          assertEquals(7, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(1,2), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(2,0), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(2,1), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpatialKey(2,2), tile) =>
+          assertEquals(0, tile.band(0).get(0, 0).toByte)
+          assertEquals(0, tile.band(1).get(0, 0).toByte)
+        case _ => fail("Unexpected spatial key")
+      }
+    }
+  }
 
 
   @Test def testMergeCubeDifference_SpatialSpaceTime(): Unit = {
@@ -491,61 +491,170 @@ class MergeCubesSpec {
     }
   }
 
-//  @Test def testMergeCubeDifferenceExtent_SpatialSpaceTime(): Unit = {
-//
-//    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
-//    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
-//    val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
-//    val band4 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
-//
-//    val tileLayout1 = TileLayout(2,2,16,16)
-//    val tileLayout2 = TileLayout(1,1,32,32)
-//    val tile1 = MultibandTile(band1,band2)
-//    val tile2 = MultibandTile(band3,band4)
-//
-//    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
-//    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
-//
-//    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"), Some(extent1), tilingFactor = 2)
-//    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile2, extent2), tileLayout2, LatLng)
-//    val processes = new OpenEOProcesses()
-//    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1,cube1.metadata.bounds.get),cube1.metadata), cube2, "mean",swapOperands = false)
-//    val mergedTimes: Array[TemporalKey] = merged.map((p: (SpaceTimeKey, MultibandTile)) => p._1.temporalKey).collect.distinct
-//    assertEquals(2, mergedTimes.length)
-//    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
-//      assertEquals(2, item._2.bandCount)
-//      item match {
-//        case (SpaceTimeKey(0,0,t), tile) =>
-//          assertEquals(0, tile.band(0).get(0, 0).toByte)
-//          assertEquals(0, tile.band(1).get(0, 0).toByte)
-//        case (SpaceTimeKey(0,1,t), tile) =>
-//          assertEquals(5, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(0,2,t), tile) =>
-//          assertEquals(5, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(1,0,t), tile) =>
-//          assertEquals(9, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(1,1,t), tile) =>
-//          assertEquals(7, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(1,2,t), tile) =>
-//          assertEquals(5, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(2,0,t), tile) =>
-//          assertEquals(9, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(2,1,t), tile) =>
-//          assertEquals(9, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(2,2,t), tile) =>
-//          assertEquals(0, tile.band(0).get(0, 0).toByte)
-//          assertEquals(0, tile.band(1).get(0, 0).toByte)
-//        case _ => fail("Unexpected spatial key")
-//      }
-//    }
-//  }
+  private def mergeSpaceTimeSpatialWithDifferentResolution(swapOperands: Boolean) = {
+    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+    // coarser resolution and smaller tiles than the spacetime cube
+    val band3 = ByteArrayTile.fill(9.toByte, 16, 16).withNoData(Some(0.toByte))
+    val band4 = ByteArrayTile.fill(3.toByte, 16, 16).withNoData(Some(0.toByte))
+
+    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
+    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
+
+    val cube1 = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"), Some(extent1), tilingFactor = 2)
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(MultibandTile(band3, band4), extent2), TileLayout(2, 2, 8, 8), LatLng)
+    val processes = new OpenEOProcesses()
+    val merged = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata), cube2, null, swapOperands = swapOperands)
+    (cube1, cube2, merged)
+  }
+
+  private def assertCellSizeEquals(expected: CellSize, actual: CellSize): Unit = {
+    assertEquals(expected.width, actual.width, 1e-9)
+    assertEquals(expected.height, actual.height, 1e-9)
+  }
+
+  private def assertMetadataCoversBothCubes(merged: MultibandTileLayerRDD[SpaceTimeKey], extents: Extent*): Unit = {
+    val md = merged.metadata
+    extents.foreach(e => assertTrue(md.extent.contains(e), s"merged extent ${md.extent} should contain $e"))
+    extents.foreach(e => assertTrue(md.layout.extent.contains(e), s"merged layout extent ${md.layout.extent} should contain $e"))
+    val kb = md.bounds.get
+    assertTrue(kb.minKey.col >= 0 && kb.minKey.row >= 0)
+    assertTrue(kb.maxKey.col < md.layout.layoutCols && kb.maxKey.row < md.layout.layoutRows)
+    // spatial bounds cover the union of both cubes
+    val expectedSpatial = md.layout.mapTransform.extentToBounds(extents.reduce(_ combine _).buffer(-md.cellwidth / 4))
+    assertEquals(expectedSpatial.colMin, kb.minKey.col)
+    assertEquals(expectedSpatial.rowMin, kb.minKey.row)
+    assertEquals(expectedSpatial.colMax, kb.maxKey.col)
+    assertEquals(expectedSpatial.rowMax, kb.maxKey.row)
+    // all keys of the data are within the bounds
+    merged.keys.collect().foreach(k => assertTrue(kb.includes(k), s"key $k not in bounds $kb"))
+  }
+
+  @Test def testMergeSpaceTimeSpatialMetadataIsUnion_spacetimeDominant(): Unit = {
+    val (cube1, cube2, merged) = mergeSpaceTimeSpatialWithDifferentResolution(swapOperands = false)
+    assertEquals(cube1.metadata.crs, merged.metadata.crs)
+    assertCellSizeEquals(cube1.metadata.cellSize, merged.metadata.cellSize)
+    assertEquals(cube1.metadata.tileCols, merged.metadata.tileCols)
+    assertEquals(cube1.metadata.bounds.get.minKey.instant, merged.metadata.bounds.get.minKey.instant)
+    assertEquals(cube1.metadata.bounds.get.maxKey.instant, merged.metadata.bounds.get.maxKey.instant)
+    assertMetadataCoversBothCubes(merged, cube1.metadata.extent, cube2.metadata.extent)
+    assertEquals(4, merged.first()._2.bandCount)
+  }
+
+  @Test def testMergeSpaceTimeSpatialMetadataIsUnion_spatialDominant(): Unit = {
+    val (cube1, cube2, merged) = mergeSpaceTimeSpatialWithDifferentResolution(swapOperands = true)
+    // the spatial cube was the left operand: it determines the grid
+    assertEquals(cube2.metadata.crs, merged.metadata.crs)
+    assertCellSizeEquals(cube2.metadata.cellSize, merged.metadata.cellSize)
+    assertEquals(cube2.metadata.tileCols, merged.metadata.tileCols)
+    // the temporal dimension still comes from the spacetime cube
+    assertEquals(cube1.metadata.bounds.get.minKey.instant, merged.metadata.bounds.get.minKey.instant)
+    assertEquals(cube1.metadata.bounds.get.maxKey.instant, merged.metadata.bounds.get.maxKey.instant)
+    assertMetadataCoversBothCubes(merged, cube1.metadata.extent, cube2.metadata.extent)
+    val tiles = merged.collect()
+    assertEquals(2, tiles.map(_._1.temporalKey).distinct.length)
+    tiles.foreach { case (_, tile) =>
+      assertEquals(4, tile.bandCount)
+      assertEquals(cube2.metadata.tileCols, tile.cols)
+    }
+  }
+
+  @Test def testMergeCubeDifferenceExtent_SpatialSpaceTime(): Unit = {
+
+    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band4 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+
+    val tileLayout1 = TileLayout(2,2,16,16)
+    val tileLayout2 = TileLayout(1,1,32,32)
+    val tile1 = MultibandTile(band1,band2)
+    val tile2 = MultibandTile(band3,band4)
+
+    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
+    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
+
+    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"), Some(extent1), tilingFactor = 2)
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(tile2, extent2), tileLayout2, LatLng)
+    val processes = new OpenEOProcesses()
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1,cube1.metadata.bounds.get),cube1.metadata), cube2, "mean",swapOperands = false)
+    val mergedTimes: Array[TemporalKey] = merged.map((p: (SpaceTimeKey, MultibandTile)) => p._1.temporalKey).collect.distinct
+    assertEquals(2, mergedTimes.length)
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
+      assertEquals(2, item._2.bandCount)
+      item match {
+        case (SpaceTimeKey(0,0,t), tile) =>
+          assertEquals(0, tile.band(0).get(0, 0).toByte)
+          assertEquals(0, tile.band(1).get(0, 0).toByte)
+        case (SpaceTimeKey(0,1,t), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(0,2,t), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(1,0,t), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(1,1,t), tile) =>
+          assertEquals(7, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(1,2,t), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(2,0,t), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(2,1,t), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(2,2,t), tile) =>
+          assertEquals(0, tile.band(0).get(0, 0).toByte)
+          assertEquals(0, tile.band(1).get(0, 0).toByte)
+        case _ => fail("Unexpected spatial key")
+      }
+    }
+  }
+
+  @Test
+  def testMergeSpaceTimeSpatialKeepsRightOnlyTiles(): Unit = {
+    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band4 = ByteArrayTile.fill(4.toByte, 32, 32).withNoData(Some(0.toByte))
+    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
+    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
+    val dates = Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+
+    val cube1 = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), dates, Some(extent1), tilingFactor = 2)
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, Raster(MultibandTile(band3, band4), extent2), TileLayout(1, 1, 32, 32), LatLng)
+    val processes = new OpenEOProcesses()
+    val leftCube = ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata)
+
+    val rightOnlyKeys = Set(SpatialKey(1, 0), SpatialKey(2, 0), SpatialKey(2, 1))
+
+    // band concatenation
+    val merged = processes.mergeCubes_SpaceTime_Spatial(leftCube, cube2, null, swapOperands = false)
+    val tiles = merged.collect()
+    assertTrue(rightOnlyKeys.subsetOf(tiles.map(_._1.spatialKey).toSet))
+    assertEquals(dates.size, tiles.map(_._1.temporalKey).distinct.length)
+    assertTrue(merged.partitioner.isDefined)
+    for ((key, tile) <- tiles if rightOnlyKeys.contains(key.spatialKey)) {
+      assertEquals(4, tile.bandCount)
+      assertTrue(isNoData(tile.band(0).get(0, 0)))
+      assertTrue(isNoData(tile.band(1).get(0, 0)))
+      assertEquals(9, tile.band(2).get(0, 0))
+      assertEquals(4, tile.band(3).get(0, 0))
+    }
+    tiles.foreach { case (key, _) => assertTrue(merged.metadata.bounds.get.includes(key)) }
+
+    // overlap resolver: right-only tiles keep the right values
+    val resolved = processes.mergeCubes_SpaceTime_Spatial(leftCube, cube2, "mean", swapOperands = false).collect()
+    assertEquals(rightOnlyKeys.size * dates.size, resolved.count { case (key, _) => rightOnlyKeys.contains(key.spatialKey) })
+    for ((key, tile) <- resolved if rightOnlyKeys.contains(key.spatialKey)) {
+      assertEquals(9, tile.band(0).get(0, 0))
+      assertEquals(4, tile.band(1).get(0, 0))
+    }
+  }
 
   @Test def testMergeCubeDifferenceCRS_SpatialSpaceTime(): Unit = {
     val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
@@ -882,54 +991,54 @@ class MergeCubesSpec {
     }
   }
 
-//  @Test def testMergeCubeDifferenceExtentSpaceTimeSpaceTime(): Unit = {
-//    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
-//    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
-//    val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
-//    val band4 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
-//
-//    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
-//    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
-//
-//    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"), Some(extent1), tilingFactor = 2)
-//    val cube2: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band3, band4), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"), Some(extent2), tilingFactor = 2)
-//    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(cube1, cube2, "mean")
-//    val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect.distinct
-//    assertEquals(2, mergedTimes.length)
-//    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
-//      assertEquals(2, item._2.bandCount)
-//      item match {
-//        case (SpaceTimeKey(0,0,t), tile) =>
-//          assertEquals(0, tile.band(0).get(0, 0).toByte)
-//          assertEquals(0, tile.band(1).get(0, 0).toByte)
-//        case (SpaceTimeKey(0,1,t), tile) =>
-//          assertEquals(5, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(0,2,t), tile) =>
-//          assertEquals(5, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(1,0,t), tile) =>
-//          assertEquals(9, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(1,1,t), tile) =>
-//          assertEquals(7, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(1,2,t), tile) =>
-//          assertEquals(5, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(2,0,t), tile) =>
-//          assertEquals(9, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(2,1,t), tile) =>
-//          assertEquals(9, tile.band(0).get(0, 0))
-//          assertEquals(3, tile.band(1).get(0, 0))
-//        case (SpaceTimeKey(2,2,t), tile) =>
-//          assertEquals(0, tile.band(0).get(0, 0).toByte)
-//          assertEquals(0, tile.band(1).get(0, 0).toByte)
-//        case _ => fail("Unexpected spatial key")
-//      }
-//    }
-//  }
+  @Test def testMergeCubeDifferenceExtentSpaceTimeSpaceTime(): Unit = {
+    val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band2 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band3 = ByteArrayTile.fill(9.toByte, 32, 32).withNoData(Some(0.toByte))
+    val band4 = ByteArrayTile.fill(3.toByte, 32, 32).withNoData(Some(0.toByte))
+
+    val extent1 = Extent(3.00, 51.00, 3.10, 51.10)
+    val extent2 = Extent(3.05, 51.05, 3.15, 51.15)
+
+    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"), Some(extent1), tilingFactor = 2)
+    val cube2: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band3, band4), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"), Some(extent2), tilingFactor = 2)
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(cube1, cube2, "mean")
+    val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect.distinct
+    assertEquals(2, mergedTimes.length)
+    for (item: (SpaceTimeKey, MultibandTile) <- merged.collect) {
+      assertEquals(2, item._2.bandCount)
+      item match {
+        case (SpaceTimeKey(0,0,t), tile) =>
+          assertEquals(0, tile.band(0).get(0, 0).toByte)
+          assertEquals(0, tile.band(1).get(0, 0).toByte)
+        case (SpaceTimeKey(0,1,t), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(0,2,t), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(1,0,t), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(1,1,t), tile) =>
+          assertEquals(7, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(1,2,t), tile) =>
+          assertEquals(5, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(2,0,t), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(2,1,t), tile) =>
+          assertEquals(9, tile.band(0).get(0, 0))
+          assertEquals(3, tile.band(1).get(0, 0))
+        case (SpaceTimeKey(2,2,t), tile) =>
+          assertEquals(0, tile.band(0).get(0, 0).toByte)
+          assertEquals(0, tile.band(1).get(0, 0).toByte)
+        case _ => fail("Unexpected spatial key")
+      }
+    }
+  }
 
   @Test def testMergeCubeDifferenceCRS_SpaceTimeSpaceTime(): Unit = {
     val band1 = ByteArrayTile.fill(5.toByte, 32, 32).withNoData(Some(0.toByte))
@@ -1182,6 +1291,134 @@ class MergeCubesSpec {
       assertEquals(localTiles(0)._2, MultibandTile(c1Tiles(0)._2.bands ++ c2Tiles(0)._2.bands))
     } finally {
       sc.removeSparkListener(listener)
+    }
+  }
+
+  @Test def testMergeCubesOverlapDivideGivesFloats(): Unit = {
+    val band1 = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2 = ByteArrayTile.fill(3.toByte, 256, 256)
+    val band3 = ByteArrayTile.fill(5.toByte, 256, 256)
+    val band4 = ByteArrayTile.fill(8.toByte, 256, 256)
+    val cube1 = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val cube2 = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band3, band4), Seq("2020-02-02T00:00:00Z", "2020-03-03T00:00:00Z"))
+
+    val merged = new OpenEOProcesses().mergeCubes(cube1, cube2, "divide")
+
+    assertTrue(merged.metadata.cellType.isFloatingPoint, s"divide should result in floats, got ${merged.metadata.cellType}")
+    for ((key, tile) <- merged.collect()) {
+      assertEquals(merged.metadata.cellType, tile.cellType)
+      key.time.getMonthValue match {
+        case 1 =>
+          assertEquals(2.0, tile.band(0).getDouble(0, 0), 1e-6)
+          assertEquals(3.0, tile.band(1).getDouble(0, 0), 1e-6)
+        case 2 =>
+          assertEquals(0.4, tile.band(0).getDouble(0, 0), 1e-6)
+          assertEquals(0.375, tile.band(1).getDouble(0, 0), 1e-6)
+        case _ =>
+          assertEquals(5.0, tile.band(0).getDouble(0, 0), 1e-6)
+          assertEquals(8.0, tile.band(1).getDouble(0, 0), 1e-6)
+      }
+    }
+  }
+
+  @Test def testMergeCubesOverlapNoDataHandling_SpatialSpatial(): Unit = {
+    val left = ShortArrayTile.fill(10, 16, 16)
+    left.set(0, 0, NODATA)
+    val right = ShortArrayTile.fill(4, 16, 16)
+    right.set(1, 0, NODATA)
+    val cube1 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(left), TileLayout(2, 2, 8, 8))
+    val cube2 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(right), cube1.metadata.tileLayout)
+    val processes = new OpenEOProcesses()
+    val nd = Double.NaN
+
+    // expected values at (0, 0): left nodata, (1, 0): right nodata, (5, 5): both valid (left = 10, right = 4)
+    val expectations = Seq(
+      "add" -> (nd, nd, 14.0),
+      "subtract" -> (nd, nd, 6.0),
+      "divide" -> (nd, nd, 2.5),
+      "sum" -> (4.0, 10.0, 14.0),
+      "max" -> (4.0, 10.0, 10.0),
+      "min" -> (4.0, 10.0, 4.0),
+      "mean" -> (4.0, 10.0, 7.0),
+      "multiply" -> (nd, nd, 40.0),
+      "product" -> (nd, nd, 40.0)
+    )
+
+    for ((operator, (leftNoData, rightNoData, bothValid)) <- expectations) {
+      val mergedTile = processes.mergeSpatialCubes(cube1, cube2, operator).stitch().tile.band(0)
+
+      for (((col, row), expected) <- Seq((0, 0) -> leftNoData, (1, 0) -> rightNoData, (5, 5) -> bothValid)) {
+        val actual = mergedTile.getDouble(col, row)
+        if (expected.isNaN) assertTrue(isNoData(actual), s"$operator: expected nodata at ($col, $row), got $actual")
+        else assertEquals(expected, actual, 1e-6, s"$operator: mismatch at ($col, $row)")
+      }
+    }
+  }
+
+  @Test def testMergeCubesOverlapLogicalOperators_SpatialSpatial(): Unit = {
+    // left is 1 in columns 0-7, right is 1 in rows 0-7, both are 0 elsewhere; left has nodata at (15, 15)
+    val left = ByteArrayTile.empty(16, 16)
+    val right = ByteArrayTile.empty(16, 16)
+    for (col <- 0 until 16; row <- 0 until 16) {
+      left.set(col, row, if (col < 8) 1 else 0)
+      right.set(col, row, if (row < 8) 1 else 0)
+    }
+    left.set(15, 15, NODATA)
+    val cube1 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(left), TileLayout(2, 2, 8, 8))
+    val cube2 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(right), cube1.metadata.tileLayout)
+    val processes = new OpenEOProcesses()
+
+    // expected values at (0, 0): 1/1, (0, 8): 1/0, (8, 0): 0/1, (8, 8): 0/0, (15, 15): nodata/0
+    val expectations = Seq(
+      "and" -> Seq(1, 0, 0, 0, NODATA),
+      "or" -> Seq(1, 1, 1, 0, NODATA),
+      "xor" -> Seq(0, 1, 1, 0, NODATA)
+    )
+    val pixels = Seq((0, 0), (0, 8), (8, 0), (8, 8), (15, 15))
+
+    for ((operator, expectedValues) <- expectations) {
+      val mergedTile = processes.mergeSpatialCubes(cube1, cube2, operator).stitch().tile.band(0)
+      for (((col, row), expected) <- pixels.zip(expectedValues)) {
+        assertEquals(expected, mergedTile.get(col, row), s"$operator: mismatch at ($col, $row)")
+      }
+    }
+  }
+
+  @Test def testMergeCubesOverlapMissingAndEmptyTiles_SpatialSpatial(): Unit = {
+    val cube1 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(ShortArrayTile.fill(10, 16, 16)), TileLayout(2, 2, 8, 8))
+    val fullCube2 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(ShortArrayTile.fill(4, 16, 16)), cube1.metadata.tileLayout)
+    // right cube: tile (0, 0) has no bands, tile (1, 1) is missing
+    val cube2 = ContextRDD(
+      fullCube2
+        .filter { case (key, _) => key != SpatialKey(1, 1) }
+        .map { case (key, tile) => if (key == SpatialKey(0, 0)) (key, new EmptyMultibandTile(tile.cols, tile.rows, tile.cellType): MultibandTile) else (key, tile) },
+      fullCube2.metadata)
+
+    val merged = new OpenEOProcesses().mergeSpatialCubes(cube1, cube2, "divide")
+
+    assertTrue(merged.metadata.cellType.isFloatingPoint, s"divide should result in floats, got ${merged.metadata.cellType}")
+    val tiles = merged.collect().toMap
+    assertEquals(4, tiles.size)
+    for ((key, tile) <- tiles) {
+      assertEquals(merged.metadata.cellType, tile.cellType, s"cell type of tile $key")
+      assertEquals(1, tile.bandCount)
+      val expected = if (key == SpatialKey(0, 0) || key == SpatialKey(1, 1)) 10.0 else 2.5
+      assertEquals(expected, tile.band(0).getDouble(0, 0), 1e-6, s"value of tile $key")
+    }
+  }
+
+  @Test def testMergeCubesOverlap_SpaceTimeSpatialSwapped(): Unit = {
+    val band1 = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band3 = ByteArrayTile.fill(5.toByte, 256, 256)
+    val cube1 = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band1), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val cube2 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(band3), cube1.metadata.tileLayout)
+
+    val processes = new OpenEOProcesses()
+    val merged = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata), cube2, "subtract", swapOperands = true)
+    assertEquals(2, merged.count())
+    for ((_, tile) <- merged.collect()) {
+      // swapped: x is the spatial cube
+      assertEquals(3, tile.band(0).get(0, 0))
     }
   }
 

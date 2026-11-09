@@ -4,7 +4,7 @@ import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, Spac
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, TileLayout, UByteConstantNoDataCellType}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.{Disabled, Test}
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
@@ -117,8 +117,8 @@ class DataCubeSupportSpec {
 
     var (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(cartesian, maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
 
-    assertEquals(17, indexReduction)
-    assertEquals(924,indices.length)
+    assertEquals(20, indexReduction)
+    assertTrue(indices.length > 100 && indices.length < 200, s"partitions: ${indices.length}")
     for (i <- 1 until indices.length) {
       assertTrue(indices(i) > indices(i-1))
     }
@@ -162,15 +162,50 @@ class DataCubeSupportSpec {
 
     var (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(cartesian, maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
 
-    assertTrue(indexReduction <=15)
-    assertTrue(indexReduction > 11)
-    assertTrue(indices.length>=924)
+    assertTrue(indexReduction >= 17 && indexReduction <= 19, s"reduction: $indexReduction")
+    assertTrue(indices.length >= 400, s"partitions: ${indices.length}")
     for (i <- 1 until indices.length) {
       assertTrue(indices(i) > indices(i-1))
     }
 
   }
 
+  //avoid artifactory dependency
+  //@Test
+  def optimizeReductionSentinel2ParcelsBelgium(): Unit = {
+    val crs = CRS.fromEpsgCode(32631)
+    val layout = LayoutDefinition(Extent(467580.0, 5613200.0, 699260.0, 5707920.0), TileLayout(181, 74, 128, 128))
+
+    val json = scala.io.Source.fromURL("https://artifactory.vgt.vito.be/artifactory/auxdata-public/parcels/test_10000.geojson", "UTF-8").mkString
+    val polygons = geotrellis.vector.io.json.GeoJson.parse[geotrellis.vector.io.json.JsonFeatureCollection](json).getAllPolygons()
+
+    val spatialKeys: Seq[SpatialKey] = polygons
+      .flatMap(p => layout.mapTransform.keysForGeometry(geotrellis.vector.reproject.Reproject(p, LatLng, crs)))
+      .distinct
+
+    // ~68 acquisition dates between 2026-03-02 and 2026-09-29
+    val start = ZonedDateTime.parse("2026-03-02T00:00:00Z")
+    val dates = (0 until 68).map(i => start.plusDays(i * 211L / 67))
+    val keys = for { date <- dates; k <- spatialKeys } yield SpaceTimeKey(k.col, k.row, date)
+
+    println(s"spatial keys: ${spatialKeys.size}, spacetime keys: ${keys.size}")
+
+    val (indexReduction, indices) = DatacubeSupport.optimalReductionForSparseKeys(keys, 64, 128 * 128, 8, 1)
+    println(s"indexReduction: $indexReduction, partitions: ${indices.length}")
+
+    val maxKeysPerPartition = keys
+      .groupBy(k => SparseSpaceTimePartitioner.toIndex(k, indexReduction))
+      .values.map(_.size).max
+    println(s"max keys per partition: $maxKeysPerPartition")
+
+    // 64 MB / 16 KB per tile = 4096 tiles, capped at 2048 records per partition
+    assertTrue(maxKeysPerPartition <= 2048, s"max keys per partition $maxKeysPerPartition")
+    assertTrue(maxKeysPerPartition > 128, s"partitions too small: $maxKeysPerPartition")
+    assertTrue(indexReduction > 7)
+    for (i <- 1 until indices.length) {
+      assertTrue(indices(i) > indices(i - 1))
+    }
+  }
 
   @Test
   def optimizeReductionFewKeys(): Unit = {

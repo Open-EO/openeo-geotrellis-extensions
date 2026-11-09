@@ -2,7 +2,7 @@ package org.openeo.geotrellis.netcdf
 
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer._
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.CRS
 import geotrellis.raster
 import geotrellis.raster._
 import geotrellis.spark.MultibandTileLayerRDD
@@ -14,7 +14,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkContext, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert, statsDouble, statsInt}
+import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert, setupAssetMetadata}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.geotiff.preProcess
 import org.openeo.geotrellis.stac.{Asset, Item}
@@ -84,66 +84,18 @@ object NetCDFRDDWriter {
   }
 
   def saveSingleNetCDFSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
-                       path: String,
-                       bandNames: ArrayList[String],
-                       dimensionNames: java.util.Map[String,String],
-                       attributes: java.util.Map[String,String],
-                       bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
-                       zLevel:Int,
-                      ): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel, addBandStatistics=false)
-  }
-
-  def saveSingleNetCDFSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
                                path: String,
                                options:NetCDFOptions,
                              ): java.util.List[Item] = {
-    saveSingleNetCDFSpatial(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics)
-  }
-
-  def saveSingleNetCDFSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
-                              path: String,
-                              bandNames: ArrayList[String],
-                              dimensionNames: java.util.Map[String,String],
-                              attributes: java.util.Map[String,String],
-                              bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
-                              zLevel:Int,
-                              addBandsStatistics: Boolean,
-                             ): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel, addBandsStatistics)
+    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
   }
 
   def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String],
-                  bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
-                  zLevel:Int,
-                 ): java.util.List[Item] = {
-
-    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel, addBandStatistics = false)
+                       path: String,
+                       options:NetCDFOptions,
+                      ): java.util.List[Item] = {
+    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
   }
-
-  def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String],
-                  bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
-                  zLevel:Int,
-                  addBandsStatistics: Boolean,
-                 ): java.util.List[Item] = {
-
-    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel, addBandsStatistics)
-  }
-
-    def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                         path: String,
-                         options:NetCDFOptions,
-                        ): java.util.List[Item] = {
-      saveSingleNetCDF(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,options.zLevel, options.addBandStatistics)
-    }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[Item] = {
     saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
@@ -199,10 +151,17 @@ object NetCDFRDDWriter {
       }
     val bandStatistics = collection.mutable.Map[String,(Double,Double,Double,Double,Int,Int)]() // min, max, sum, sum of the power, valid data count, total data count
     var netcdfFile: NetcdfFileWriter = null
-    val cellType = cachedRDD.map(_._2.cellType).fold(BitCellType)((x,y)=> {
-      // check https://github.com/locationtech/geotrellis/issues/3597 for fixed geotrellis union
-      cellTypeUnion(x,y)
-    })
+    val cellType = {
+      val unionCellType = cachedRDD.map(_._2.cellType).fold(BitCellType)((x,y)=> {
+        // check https://github.com/locationtech/geotrellis/issues/3597 for fixed geotrellis union
+        cellTypeUnion(x,y)
+      })
+
+      safeBitCellType(unionCellType)
+    }
+
+    val (netcdfType: DataType, nodata: Option[Number]) = netCdfDataType(cellType)
+
     for(tuple <- cachedRDD.toLocalIterator){
 
       val timeDimIndex =
@@ -235,7 +194,7 @@ object NetCDFRDDWriter {
 
 
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, actualBandNames, preProcessedRdd.metadata.crs, cellType, dimensionNames, temporalResolution, attributes, bandsMetadata, zLevel, writeTimeDimension = dates.nonEmpty)
+        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, actualBandNames, preProcessedRdd.metadata.crs, netcdfType, nodata, dimensionNames, temporalResolution, attributes, bandsMetadata, zLevel, writeTimeDimension = dates.nonEmpty)
       }
 
 
@@ -255,9 +214,7 @@ object NetCDFRDDWriter {
             val variable = actualBandNames.get(bandIndex)
 
             var tile = multibandTile.band(bandIndex)
-            if (tile.cellType != cellType) {
-              tile = safeConvert(tile, cellType)
-            }
+            tile = safeConvert(tile, cellType)
 
             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
               tile = tile.crop(rasterExtent.cols-gridExtent.colMin,rasterExtent.rows-gridExtent.rowMin,raster.CropOptions(force=true))
@@ -265,12 +222,10 @@ object NetCDFRDDWriter {
             }
             if (addBandStatistics) bandsStatistics(tile, bandStatistics, variable)
             try{
-              writeTile(variable, origin, tile, netcdfFile)
-            }catch {
-              case t: IOException => {
-                logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"),t)
-              }
-              case t: Throwable =>  throw t
+              writeTile(variable, origin, tile, netcdfType, netcdfFile)
+            } catch {
+              case e: IOException =>
+                logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"), e)
             }
           }
         }
@@ -280,7 +235,22 @@ object NetCDFRDDWriter {
         netcdfFile.flush()
       }
     }
-    val assetsMetadata = setupAssetMetadata(rdd.metadata, dates, bandNames, preProcessResult._1, extent, addBandStatistics, bandStatistics)
+    val gridBounds = preProcessResult._1
+    val zonedDates: Array[ZonedDateTime] = {
+      if(dates.isEmpty) null
+      else {
+        dates.map { offset =>
+          temporalResolution match {
+            case TemporalResolution.days => fixedTimeOffset.plusDays(offset.toLong)
+            case TemporalResolution.seconds => fixedTimeOffset.plusSeconds(offset.toLong)
+          }
+        }.toArray
+      }
+    }
+    val bandsStatsisticsMap = bandStatistics.map { case (name, stats) => name -> convertStatsToMap(stats) }
+    val assetsMetadata = setupAssetMetadata(bandNames.asScala.toSeq, extent, rdd.metadata.crs, Array(gridBounds.height, gridBounds.width),
+      bandsStatsisticsMap, zonedDates)
+
     if(dates.nonEmpty) {
       val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
       writeTime(timeDimName, netcdfFile, dates)
@@ -309,15 +279,20 @@ object NetCDFRDDWriter {
         path
       }
 
-    val croppedBbox =
-      if (rdd.metadata.crs == LatLng) fixBboxLargerThanWorld(cropBounds.getOrElse(extent))
-      else cropBounds.getOrElse(extent)
+    val croppedBbox = fixBboxLargerThanWorld(cropBounds.getOrElse(extent), rdd.metadata.crs)
     val item = Item(id = UUID.randomUUID().toString, bbox = croppedBbox, datetime = null,
-      assets = Collections.singletonMap("openEO", Asset(finalPath,metadata = assetsMetadata)))
+      assets = Collections.singletonMap("openEO", Asset(finalPath, cellType = cellType, metadata = assetsMetadata)))
 
     Collections.singletonList(item)
   }
 
+  private def safeBitCellType(cellType: CellType): CellType = cellType match {
+    case BitCellType =>
+      val safeCellType = UByteUserDefinedNoDataCellType(255.toByte)
+      logger.debug(s"converting $cellType to $safeCellType")
+      safeCellType
+    case _ => cellType
+  }
 
   private def cacheAndRepartition[K](rdd: MultibandTileLayerRDD[K]) = {
     val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
@@ -342,7 +317,8 @@ object NetCDFRDDWriter {
     shuffledRDD
   }
 
-  private def writeTile(variable: String, origin: Array[Int], tile: Tile, netcdfFile: NetcdfFileWriter) = {
+  private def writeTile(variable: String, origin: Array[Int], tile: Tile, netcdfType: DataType, netcdfFile: NetcdfFileWriter) = {
+    // assumes tile is already converted to cellType/netcdfType
     val cols = tile.cols
     val rows = tile.rows
 
@@ -351,83 +327,17 @@ object NetCDFRDDWriter {
     val shape = if(origin.length==3) scala.Array[Int](1, rows, cols) else scala.Array[Int]( rows, cols)
     val bandArray =
       geotrellisArrayTile match {
-        case t: BitArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape, t.convert(UByteUserDefinedNoDataCellType(255.byteValue())).asInstanceOf[UByteArrayTile].array)
-        case t: ByteArrayTile => ucar.ma2.Array.factory(DataType.BYTE, shape, t.array)
-        case t: UByteArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape, t.array)
-        case t: ShortArrayTile => ucar.ma2.Array.factory(DataType.SHORT, shape, t.array)
-        case t: UShortArrayTile => ucar.ma2.Array.factory(DataType.USHORT, shape, t.array)
-        case t: IntArrayTile => ucar.ma2.Array.factory(DataType.INT, shape, t.array)
-        case t: FloatArrayTile => ucar.ma2.Array.factory(DataType.FLOAT, shape, t.array)
-        case t: DoubleArrayTile => ucar.ma2.Array.factory(DataType.DOUBLE, shape, t.array)
+        case t: BitArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: ByteArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: UByteArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: ShortArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: UShortArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: IntArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: FloatArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
+        case t: DoubleArrayTile => ucar.ma2.Array.factory(netcdfType, shape, t.array)
       }
 
     netcdfFile.write(variable, origin, bandArray)
-  }
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons: ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                 ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, bandsMetadata = null)
-
-  // Overload to avoid: "multiple overloaded alternatives of method saveSamples define default arguments"
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  filenamePrefix: Option[String],
-                  ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, bandsMetadata = null, filenamePrefix)
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  filenamePrefix: Option[String],
-                  addBandsStatistics:Boolean
-                 ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, bandsMetadata = null, addBandsStatistics = addBandsStatistics, filenamePrefix)
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons: ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String, String],
-                  attributes: java.util.Map[String, String],
-                 ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames, attributes, bandsMetadata = null, None)
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons: ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String, String],
-                  attributes: java.util.Map[String, String],
-                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
-                 ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames, attributes, bandsMetadata, None)
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String],
-                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
-                  filenamePrefix: Option[String],
-                 ): java.util.List[Item] = {
-    val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
-    val features = sampleNames.asScala.toSeq.zip(reprojected.polygons)
-    logger.info(s"Using metadata: ${rdd.metadata}.")
-    logger.info(s"Using features: ${features}.")
-    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, addBandsStatistics = false, filenamePrefix)
   }
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -438,41 +348,11 @@ object NetCDFRDDWriter {
                   filenamePrefix: Option[String],
                  ): java.util.List[Item] = {
     if (options.bandNames.isEmpty) logger.error("Couldn't find bandNames in options. It cannot be empty")
-    saveSamples(rdd, path, polygons, sampleNames, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix, options.retainNoDataTiles)
-  }
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String],
-                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
-                  addBandsStatistics: Boolean,
-                  filenamePrefix: Option[String],
-                  retainNoDataTiles: Boolean = false
-                 ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toSeq.zip(reprojected.polygons)
     logger.info(s"Using metadata: ${rdd.metadata}.")
     logger.info(s"Using features: ${features}.")
-    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, addBandsStatistics, filenamePrefix, retainNoDataTiles)
-  }
-
-  def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
-                  path: String,
-                  polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String],
-                  dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String],
-                  bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
-                  filenamePrefix: Option[String] = None,
-                 ): java.util.List[Item] = {
-    val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
-    val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes, bandsMetadata, addBandsStatistics = false, filenamePrefix)
+    groupByFeatureAndWriteToNetCDF(rdd, features, path, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix, options.retainNoDataTiles)
   }
 
   def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
@@ -483,23 +363,9 @@ object NetCDFRDDWriter {
                          filenamePrefix: Option[String],
                         ): java.util.List[Item] = {
     if (options.bandNames.isEmpty) logger.error("Couldn't find bandNames in options. It cannot be empty")
-    saveSamplesSpatial(rdd,path,polygons,sampleNames,options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix)
-  }
-
-  def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
-                         path: String,
-                         polygons:ProjectedPolygons,
-                         sampleNames: ArrayList[String],
-                         bandNames: ArrayList[String],
-                         dimensionNames: java.util.Map[String,String],
-                         attributes: java.util.Map[String,String],
-                         bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
-                         addBandsStatistics: Boolean,
-                         filenamePrefix: Option[String],
-                        ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes, bandsMetadata, addBandsStatistics, filenamePrefix)
+    groupByFeatureAndWriteToNetCDFSpatial(rdd, features, path, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix)
   }
 
   private def groupByFeatureAndWriteToNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: Seq[(String, Geometry)],
@@ -524,10 +390,15 @@ object NetCDFRDDWriter {
         val sorted = tiles.toSeq.sortBy { case (instant, _, _) => instant }
         val dates = sorted.map { case (instant, _, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
         logger.info(s"Writing $name with dates $dates.")
-        val extent = sorted.head._2.extent
-        val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2), dates=dates, bandNames,addBandsStats = addBandsStatistics)
+
+        val rasters = sorted.map(_._2)
+        val bandStatistics = statisticsFromRaster(rasters, bandNames, addBandsStatistics)
+        val assetsMetadata = setupAssetMetadata(bandNames.asScala.toSeq, rasters.head.extent, crs, Array(rasters.head.rows, rasters.head.cols), bandStatistics, dates.toArray)
+
+        val cellType = safeBitCellType(rdd.metadata.cellType)
+
         val assetPath = try{
-          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
+          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata, cellType)
         }catch {
           case t: IOException => {
             if(TaskContext.get().attemptNumber()<2){
@@ -543,11 +414,9 @@ object NetCDFRDDWriter {
 
         }
 
-        val croppedBbox =
-          if (crs == LatLng) fixBboxLargerThanWorld(tiles.head._3)
-          else tiles.head._3
+        val croppedBbox = fixBboxLargerThanWorld(tiles.head._3, crs)
         Item(id = UUID.randomUUID().toString, datetime = null , bbox = croppedBbox,
-          assets = Collections.singletonMap("openEO", Asset(path = assetPath,metadata = assetsMetadata)))
+          assets = Collections.singletonMap("openEO", Asset(path = assetPath, cellType = cellType, metadata = assetsMetadata)))
       }.collect()
       .toList.asJava
   }
@@ -608,7 +477,7 @@ object NetCDFRDDWriter {
   private def stitchAndCropTiles(tilesForDate: Iterable[(SpatialKey, MultibandTile)], cropExtent: ProjectedExtent, layout: LayoutDefinition) = {
     val raster: Raster[MultibandTile] = ContextSeq(tilesForDate, layout).stitch()
     val re: RasterExtent = raster.rasterExtent
-    val alignedExtent = re.createAlignedGridExtent(cropExtent.extent).extent
+    val alignedExtent = org.openeo.geotrellis.GeneralUtils.createAlignedGridExtent(re, cropExtent.extent).extent
     val sample = raster.crop(alignedExtent)
     sample
   }
@@ -629,17 +498,20 @@ object NetCDFRDDWriter {
       .map { case ((name, extent), tiles) =>
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
-        val assetMetadata = setupAssetMetadata(rdd.metadata, Seq(sample), dates=null, bandNames, addBandsStatistics)
+        val rasters = Seq(sample)
+
+        val bandStatistics = statisticsFromRaster(rasters, bandNames, addBandsStatistics)
+        val assetMetadata = setupAssetMetadata(bandNames.asScala.toSeq, rasters.head.extent, crs, Array(rasters.head.rows, rasters.head.cols), bandStatistics)
+        val cellType = safeBitCellType(rdd.metadata.cellType)
+
         val assetPath = try {
-          writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
+          writeToDisk(rasters, dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata, cellType)
         } catch {
           case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
-        val bbox =
-          if (crs == LatLng) fixBboxLargerThanWorld(extent.extent)
-          else extent.extent
+        val bbox = fixBboxLargerThanWorld(extent.extent, crs)
         Item(id = UUID.randomUUID().toString, datetime = null, bbox = bbox,
-          assets = Collections.singletonMap("openEO", Asset(assetPath, metadata = assetMetadata)))
+          assets = Collections.singletonMap("openEO", Asset(assetPath, cellType = cellType, metadata = assetMetadata)))
       }.collect()
       .toList.asJava
   }
@@ -666,7 +538,8 @@ object NetCDFRDDWriter {
                   bandNames: ArrayList[String],
                   crs:CRS, dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String],
-                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]]): String = {
+                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
+                  cellType: CellType): String = {
     val areas = rasters.map(raster => raster.extent.area)
     logger.info(s"Writing ${rasters.size} rasters to disk. Areas: ${areas.mkString(",")}")
     val maxExtent:Extent = rasters.map(_._2).reduce((a, b) => a.union(b).extent)
@@ -684,6 +557,7 @@ object NetCDFRDDWriter {
       aRaster = aRasterOption.get
     }
     val rasterExtent: RasterExtent = aRaster.rasterExtent
+    val (netcdfType: DataType, nodata: Option[Number]) = netCdfDataType(cellType)
 
     val intermediatePath =
     if (path.startsWith("s3:/")) {
@@ -698,12 +572,12 @@ object NetCDFRDDWriter {
         Duration.between(fixedTimeOffset, time).getSeconds % secondsPerDay != 0
     }) TemporalResolution.days else TemporalResolution.seconds
 
-    val netcdfFile: NetcdfFileWriter = setupNetCDF(intermediatePath, rasterExtent, dates, bandNames, crs, aRaster.cellType, dimensionNames, temporalResolution, attributes, bandsMetadata, writeTimeDimension = dates != null)
+    val netcdfFile: NetcdfFileWriter = setupNetCDF(intermediatePath, rasterExtent, dates, bandNames, crs, netcdfType, nodata, dimensionNames, temporalResolution, attributes, bandsMetadata, writeTimeDimension = dates != null)
     try{
 
       for (bandIndex <- bandNames.asScala.indices) {
         for (i <- equalRasters.indices) {
-          writeTile(bandNames.get(bandIndex),  if(dates!=null)  scala.Array(i , 0, 0) else scala.Array( 0, 0), equalRasters(i).tile.band(bandIndex), netcdfFile)
+          writeTile(bandNames.get(bandIndex),  if(dates!=null)  scala.Array(i , 0, 0) else scala.Array( 0, 0), equalRasters(i).tile.band(bandIndex).convert(cellType), netcdfType, netcdfFile)
         }
         netcdfFile.flush()
       }
@@ -716,7 +590,6 @@ object NetCDFRDDWriter {
     }else{
       path
     }
-
   }
 
   private def uploadToS3(objectStoragePath: String, localPath: String):String = {
@@ -733,14 +606,14 @@ object NetCDFRDDWriter {
   }
 
   private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
-                                  bandNames: util.List[String], crs: CRS, cellType: CellType,
+                                  bandNames: util.List[String], crs: CRS, netcdfType: DataType, nodata: Option[Number],
                                   dimensionNames: java.util.Map[String, String],
                                   temporalResolution: TemporalResolution.Value,
                                   attributes: java.util.Map[String, String],
                                   bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                   zLevel: Int = 6, writeTimeDimension: Boolean = true) = {
 
-    logger.info(s"Writing netCDF to $path with bands $bandNames, $cellType, $crs, $rasterExtent, $dimensionNames, attributes $attributes, bands metadata $bandsMetadata, zLevel $zLevel")
+    logger.info(s"Writing netCDF to $path with bands $bandNames, $netcdfType, $nodata, $crs, $rasterExtent, $dimensionNames, attributes $attributes, bands metadata $bandsMetadata, zLevel $zLevel")
     val theChunking = new OpenEOChunking(zLevel)
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, theChunking)
 
@@ -807,13 +680,9 @@ object NetCDFRDDWriter {
     bandDimension.add(yDimension)
     bandDimension.add(xDimension)
 
-    val (netcdfType:DataType,nodata:Option[Number]) = getNoDataValue(cellType)
-
-
-
     for (bandName <- bandNames.asScala) {
       val varName = bandName.replace("/","_")
-      addNetcdfVariable(netcdfFile, bandDimension, varName, netcdfType, null, varName, "", null, nodata.getOrElse(0), null)
+      addNetcdfVariable(netcdfFile, bandDimension, varName, netcdfType, null, varName, "", null, Some(nodata.getOrElse(0)), null)
       if (bandsMetadata!=null) addNetcdfBandsMetadata(netcdfFile,varName,bandsMetadata.getOrDefault(bandName, java.util.Collections.emptyMap[String,String]()))
       netcdfFile.addVariableAttribute(varName, "grid_mapping", "crs")
       if(rasterExtent.cols>256 && rasterExtent.rows>256){
@@ -863,23 +732,13 @@ object NetCDFRDDWriter {
   import java.io.IOException
   import java.util
 
-  private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String): Unit = {
-    netcdfFile.addVariable(variableName, dataType, dimensions)
-    netcdfFile.addVariableAttribute(variableName, "standard_name", standardName)
-    netcdfFile.addVariableAttribute(variableName, "long_name", longName)
-    netcdfFile.addVariableAttribute(variableName, "units", units)
-    if(axis !=null) {
-      netcdfFile.addVariableAttribute(variableName, "axis", axis)
-    }
-  }
-
-  private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String, fillValue: Number, coordinates: String): Unit = {
+  private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String, fillValue: Option[Number] = None, coordinates: String = null): Unit = {
     netcdfFile.addVariable(variableName, dataType, dimensions)
     if (standardName != null) netcdfFile.addVariableAttribute(variableName, "standard_name", standardName)
     if (longName != null) netcdfFile.addVariableAttribute(variableName, "long_name", longName)
     if (units != null) netcdfFile.addVariableAttribute(variableName, "units", units)
     if (axis != null) netcdfFile.addVariableAttribute(variableName, "axis", axis)
-    if (fillValue.intValue() != Integer.MIN_VALUE) netcdfFile.addVariableAttribute(variableName, "_FillValue", fillValue) // warning: will silently omit variable if value doesn't fit
+    fillValue.foreach(v => if (v.intValue() != Integer.MIN_VALUE) netcdfFile.addVariableAttribute(variableName, "_FillValue", v))
     if (coordinates != null) netcdfFile.addVariableAttribute(variableName, "coordinates", coordinates)
   }
 
@@ -888,40 +747,12 @@ object NetCDFRDDWriter {
     if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"add_offset",bandsMetadata.get("OFFSET").toFloat)
   }
 
-  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], dates: List[Int], bandNames: ArrayList[String], gridBounds: GridBounds[Int], bbox: Extent, addBandStats: Boolean, bandStatistics:scala.collection.mutable.Map[String,(Double,Double,Double,Double,Int,Int)]): java.util.Map[String, Any] = {
-    val assetMetadata = if (dates.nonEmpty) {
-      new util.HashMap[String,Any](util.Map.of("time", new util.HashMap[String,Any](util.Map.of("type", "temporal", "extent",Array(dates.head, dates.last), "values", dates.toArray))))
-    } else new java.util.HashMap[String,Any]()
-    val bands = new util.ArrayList[util.Map[String,Any]]()
-    bandNames.forEach(name => {
-      val rasterBands = new java.util.HashMap[String,Any]()
-      rasterBands.put("name", name)
-      if (addBandStats) rasterBands.put("statistics", convertStatsToMap(bandStatistics(name)))
-      bands.add(rasterBands)
-    })
-    assetMetadata.put("bands", bands)
-    val croppedBbox =
-      if (metadata.crs == LatLng) fixBboxLargerThanWorld(bbox)
-      else bbox
-    assetMetadata.put("proj:bbox", Array(croppedBbox.xmin, croppedBbox.ymin, croppedBbox.xmax, croppedBbox.ymax))
-    metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
-    assetMetadata.put("proj:shape", Array(gridBounds.height, gridBounds.width))
-    assetMetadata
-  }
-
-  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], rasters: Seq[Raster[MultibandTile]], dates: Seq[ZonedDateTime], bandNames: ArrayList[String], addBandsStats: Boolean): util.Map[String, Any] = {
-    val assetMetadata = new util.HashMap[String,Any]()
-    if (dates != null) {
-      assetMetadata.put("time", Map("type" -> "temporal", "extent" -> Array(dates.head, dates.last), "values" -> dates.toArray))
-    } else new util.HashMap[String,Any]()
-    assetMetadata.put("bands", bandMetadata(rasters, bandNames, addBandsStats))
-    val bbox =
-      if (metadata.crs == LatLng) fixBboxLargerThanWorld(rasters.head.extent)
-      else rasters.head.extent
-    assetMetadata.put("proj:bbox",Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
-    metadata.crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
-    assetMetadata.put("proj:shape", Array(rasters.head.rows, rasters.head.cols))
-    assetMetadata
+  private def statisticsFromRaster(rasters: Seq[Raster[MultibandTile]], bandNames: ArrayList[String], addBandsStats: Boolean): Map[String, util.HashMap[String, Any]] = {
+    if (addBandsStats) {
+      bandNames.asScala.zipWithIndex.map { case (name, bandId) =>
+        name -> convertStatsToMap(rasters.map(raster => computeStatsTile(raster.tile.band(bandId))).reduce(combineStats))
+      }.toMap
+    } else Map.empty
   }
 
   private def bandsStatistics(tile:Tile, bandStat:collection.mutable.Map[String,(Stats)], bandName:String): Unit = {
@@ -932,47 +763,31 @@ object NetCDFRDDWriter {
     bandStat.update(bandName,result)
   }
 
-  private def bandMetadata(rasters:Seq[Raster[MultibandTile]], bandNames: ArrayList[String], addBandsStats:Boolean): java.util.ArrayList[java.util.HashMap[String,Any]] = {
-    val metadata = new java.util.ArrayList[java.util.HashMap[String,Any]]()
-    for (bandId <- 0 until bandNames.size()){
-      val bands = new java.util.HashMap[String,Any]()
-      bands.put("name",bandNames.get(bandId))
-      if (addBandsStats) {
-        val bandStatistics = rasters.map(raster => computeStatsTile(raster.tile.band(bandId)))
-        val combinedStats = bandStatistics.reduce { (accumulated, temporary) => combineStats(accumulated, temporary) }
-        bands.put("statistics", convertStatsToMap(combinedStats))
-      }
-      metadata.add(bands)
-    }
-    metadata
-  }
-
-  private def getNoDataValue(cellType: CellType): (DataType,Option[Number]) = {
+  private def netCdfDataType(cellType: CellType): (DataType, Option[Number]) =
     cellType match {
-      case BitCellType => (DataType.UBYTE,None)
-      case ByteCellType => (DataType.BYTE,None)
-      case UByteCellType => (DataType.UBYTE,None)
-      case ShortCellType => (DataType.SHORT,None)
-      case UShortCellType => (DataType.USHORT,None)
-      case IntCellType => (DataType.INT,None)
-      case FloatCellType => (DataType.FLOAT,None)
-      case DoubleCellType => (DataType.DOUBLE,None)
-      case ByteConstantNoDataCellType => (DataType.BYTE,Some(byteNODATA))
-      case UByteConstantNoDataCellType => (DataType.UBYTE,Some(ubyteNODATA))
-      case ShortConstantNoDataCellType => (DataType.SHORT,Some(shortNODATA))
-      case UShortConstantNoDataCellType => (DataType.USHORT,Some(ushortNODATA))
-      case IntConstantNoDataCellType => (DataType.INT,Some(NODATA))
-      case FloatConstantNoDataCellType => (DataType.FLOAT,Some(floatNODATA))
-      case DoubleConstantNoDataCellType => (DataType.DOUBLE,Some(doubleNODATA))
-      case ct: ByteUserDefinedNoDataCellType => (DataType.BYTE,Some(ct.noDataValue))
-      case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE,Some(ct.widenedNoData.asInt))
-      case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT,Some(ct.noDataValue))
-      case ct: UShortUserDefinedNoDataCellType => (DataType.USHORT,Some(ct.widenedNoData.asInt.toShort))
-      case ct: IntUserDefinedNoDataCellType => (DataType.INT,Some(ct.widenedNoData.asInt))
-      case ct: FloatUserDefinedNoDataCellType => (DataType.FLOAT,Some(ct.noDataValue))
-      case ct: DoubleUserDefinedNoDataCellType => (DataType.DOUBLE,Some(ct.noDataValue))
+      case BitCellType => (DataType.UBYTE, None)
+      case ByteCellType => (DataType.BYTE, None)
+      case UByteCellType => (DataType.UBYTE, None)
+      case ShortCellType => (DataType.SHORT, None)
+      case UShortCellType => (DataType.USHORT, None)
+      case IntCellType => (DataType.INT, None)
+      case FloatCellType => (DataType.FLOAT, None)
+      case DoubleCellType => (DataType.DOUBLE, None)
+      case ByteConstantNoDataCellType => (DataType.BYTE, Some(byteNODATA))
+      case UByteConstantNoDataCellType => (DataType.UBYTE, Some(ubyteNODATA))
+      case ShortConstantNoDataCellType => (DataType.SHORT, Some(shortNODATA))
+      case UShortConstantNoDataCellType => (DataType.USHORT, Some(ushortNODATA))
+      case IntConstantNoDataCellType => (DataType.INT, Some(NODATA))
+      case FloatConstantNoDataCellType => (DataType.FLOAT, Some(floatNODATA))
+      case DoubleConstantNoDataCellType => (DataType.DOUBLE, Some(doubleNODATA))
+      case ct: ByteUserDefinedNoDataCellType => (DataType.BYTE, Some(ct.noDataValue))
+      case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE, Some(ct.widenedNoData.asInt))
+      case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT, Some(ct.noDataValue))
+      case ct: UShortUserDefinedNoDataCellType => (DataType.USHORT, Some(ct.widenedNoData.asInt.toShort))
+      case ct: IntUserDefinedNoDataCellType => (DataType.INT, Some(ct.widenedNoData.asInt))
+      case ct: FloatUserDefinedNoDataCellType => (DataType.FLOAT, Some(ct.noDataValue))
+      case ct: DoubleUserDefinedNoDataCellType => (DataType.DOUBLE, Some(ct.noDataValue))
     }
-  }
 
   @throws[IOException]
   @throws[InvalidRangeException]

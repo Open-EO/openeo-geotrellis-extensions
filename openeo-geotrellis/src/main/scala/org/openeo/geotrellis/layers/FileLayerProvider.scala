@@ -84,7 +84,7 @@ object FileLayerProvider {
 
 
   private lazy val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
-  private[layers] lazy val megapixelMeter = openTelemetry.meterBuilder("openeo.otel.scala").build().counterBuilder("openeo_load_megapixel").build()
+  private[layers] lazy val megapixelMeter = openTelemetry.meterBuilder("openeo.otel.scala").build().counterBuilder("openeo_load_megapixel").ofDoubles().build()
   private[layers] lazy val megapixelPerSecondMeter = openTelemetry.meterBuilder("openeo.otel.scala").build().gaugeBuilder("openeo_load_megapixel_per_second").build()
 
   private val rasterSourceProviderChain: Seq[RasterSourceProvider] = {
@@ -945,10 +945,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         if(link.nodata.isEmpty && (link.title.contains("SCENECLASSIFICATION") || link.title.contains("SCL"))) Some(0.0)
         else link.nodata
 
-      val cellTypeSTAC = if (dataType.isDefined){
-        Some(ConvertTargetCellType(dataType.get.withNoData(nodata)))
+      val cellTypeSTAC = (dataType, nodata) match {
+        case (Some(dt), Some(nd)) =>
+          // explicit "nodata": null means no nodata (https://github.com/radiantearth/stac-spec/issues/1401)
+          Some(ConvertTargetCellType(dt.withNoData(Option(nd))))
+        case (Some(dt), None) =>
+          logger.warn(s"STAC item ${feature.id} asset ${link.href} specifies data_type $dt but no nodata value; retaining file data type")
+          None
+        case _ => None
       }
-      else None
 
       //special case handling for data that does not declare nodata properly
       val targetCellType = link.title match {
@@ -1219,11 +1224,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     tracker.addInputProducts(
       openSearchCollectionId,
       overlappingRasterSources.map { case (_, feature) => feature.id }.asJava
-    )
-
-    tracker.addAuxiliaryFile(
-      new DerivedFromDocumentWriter(inputFeatures = overlappingRasterSources.map { case (_, feature) => feature }),
-      "application/geo+json",
     )
 
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
