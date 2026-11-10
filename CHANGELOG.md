@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Sentinel-2 tile metadata (`MTD_TL.xml`): per-pixel angle bands `granule_metadata##4` to `##7`, for sun azimuth and zenith and for the B05 viewing azimuth and zenith. Viewing angles come from the grid of the detector that observed each pixel, found with the B05 detector mask. Values are calculated at each output pixel centre. The tile-mean bands `##0` to `##3` are unchanged. Products with GML detector masks (before processing baseline 04.00) get NoData viewing bands. See [docs/sentinel2-angle-bands.md](docs/sentinel2-angle-bands.md) ([#916](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/916)).
+
 ### Changed
 
 - merge_cubes: the `overlap_resolver` is now evaluated with `OpenEOProcessScriptBuilder` instead of a separate operator mapping, so it behaves exactly like the same process in other callbacks (nodata handling, data types). Notable behaviour changes:
@@ -38,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `load_collection` for sparse spatial filters: the computed index reduction no longer counts the number of temporal steps twice,
   which resulted in far too small partitions for sparse cubes with many dates. ([#924](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/924))
 
+- Sentinel-2 angle bands: missing, malformed or unreadable `MTD_TL.xml` metadata and detector masks now follow the soft-error policy for both tile-mean and per-pixel bands, preserving healthy selected assets and using float32/NaN NoData. Strict reads still fail, cancellation still propagates, and extent-based composite reads preserve healthy bands ([#916](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/916)).
+
+- Sentinel-2 angle-only requests with absent or failed metadata now use float32/NaN placeholders and fall back to the target layout when no feature grid exists; those placeholders follow the normal all-NoData tile policy ([#916](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/916)).
+
+- Sentinel-2 per-pixel angles: GeoTIFF/JP2 imagery shares the angle bands' feature grid, temporary read buffers are bounded to 256 × 256 target pixels, and parsed tile metadata is cached per XML path ([#916](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/916)).
+
 ## Before 2026-09-30
 
 - Fixed potential bug in merge of spacetime to spatial data cube, which could have effect when Spark does partial stage recomputes.
@@ -63,7 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Upgrade Geotrellis library to 3.8.0+9-dbaac792-SNAPSHOT. This may impact code using kernels (e.g. in SCL dilation masks) in a positive way (more accurate).
   Cfr. Geotrellis [changelog](https://github.com/locationtech/geotrellis/blob/master/CHANGELOG.md)
-- aggregate_temporal: performance improvement for 2 cases. This tries to avoid empty or small partitions, 
+- aggregate_temporal: performance improvement for 2 cases. This tries to avoid empty or small partitions,
   which also results in increased partition sizes, thus has a memory impact. ([#445](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/445))
 - `resample_cube_spatial`: for major resolution increase, rearrange datacube. ([#523](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/523))
 - `load_collection`/`load_stac`: reduce datacube chunck size for small extents ([#523](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/523))
