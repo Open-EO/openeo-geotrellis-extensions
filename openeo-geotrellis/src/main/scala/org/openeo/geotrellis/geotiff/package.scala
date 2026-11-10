@@ -83,12 +83,7 @@ package object geotiff {
       }
       if (options.compressionPredictor > 1) {
         compression = compression.withPredictor(Predictor(t.tile.toGeoTiffTile()))
-        try {
-          MultibandGeoTiff(t.tile.toArrayTile(), t.extent, t.crs, t.tags, GeoTiffOptions(compression), t.overviews)
-        } catch {
-          case e: IndexOutOfBoundsException =>
-            throw new IllegalArgumentException(s"""Compression "${options.compressionMethod}" with predictor ${options.compressionPredictor} is not supported yet; supported are: "deflate" [1] and "zstd" [1, 2, 3] (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/837)""")
-        }
+        MultibandGeoTiff(t.tile.toArrayTile(), t.extent, t.crs, t.tags, GeoTiffOptions(compression), t.overviews)
       } else t
     }
   }
@@ -948,9 +943,16 @@ package object geotiff {
       BandInterleave,
       BandType.forCellType(cellType))
 
+    // Segments were compressed elsewhere, so this compressor only saw the empty segment; Deflate's decompressor
+    // needs the uncompressed size of every segment (all are full tiles) to be able to decode them (#837).
+    val decompressor = compression match {
+      case deflate: DeflateCompression => deflate.createDecompressor(Array.fill(segmentCount)(emptySegment.length))
+      case _ => compressor.createDecompressor()
+    }
+
     val tiffTile: GeoTiffMultibandTile = GeoTiffMultibandTile(
       new ArraySegmentBytes(segments),
-      compressor.createDecompressor(),
+      decompressor,
       segmentLayout,
       compression,
       detectedBandCount.toInt,
