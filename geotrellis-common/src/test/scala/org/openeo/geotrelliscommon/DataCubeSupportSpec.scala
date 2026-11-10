@@ -170,13 +170,12 @@ class DataCubeSupportSpec {
 
   }
 
-  //avoid artifactory dependency
-  //@Test
+  @Test
   def optimizeReductionSentinel2ParcelsBelgium(): Unit = {
     val crs = CRS.fromEpsgCode(32631)
     val layout = LayoutDefinition(Extent(467580.0, 5613200.0, 699260.0, 5707920.0), TileLayout(181, 74, 128, 128))
 
-    val json = scala.io.Source.fromURL("https://artifactory.vgt.vito.be/artifactory/auxdata-public/parcels/test_10000.geojson", "UTF-8").mkString
+    val json = scala.io.Source.fromFile("../testdata/org/openeo/geotrelliscommon/DataCubeSupportSpec/test_10000.geojson", "UTF-8").mkString
     val polygons = geotrellis.vector.io.json.GeoJson.parse[geotrellis.vector.io.json.JsonFeatureCollection](json).getAllPolygons()
 
     val spatialKeys: Seq[SpatialKey] = polygons
