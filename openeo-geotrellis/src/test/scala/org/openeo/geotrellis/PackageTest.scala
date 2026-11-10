@@ -2,8 +2,9 @@ package org.openeo.geotrellis
 
 import geotrellis.proj4.{CRS, LatLng, Sinusoidal, WebMercator}
 import geotrellis.raster.io.geotiff.{GeoTiff, Int16GeoTiffMultibandTile}
+import geotrellis.raster.io.geotiff.tags.codes.CompressionType
 import geotrellis.vector._
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
@@ -96,6 +97,26 @@ class PackageTest {
     assertEquals(50000, checkZstdTiff.tile.asInstanceOf[Int16GeoTiffMultibandTile].decompressor.code)
     assertEquals(2, checkZstdTiff.tile.asInstanceOf[Int16GeoTiffMultibandTile].decompressor.predictorCode)
 
+  }
+
+  @Test
+  def deflateCompressionWithPredictor(@TempDir tmp: Path): Unit = {
+    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/837
+    val refFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference_average.tif")
+    val refTiff = GeoTiff.readMultiband(refFile.getPath)
+    val options: GTiffOptions = new GTiffOptions
+    options.setCompression("deflate", 6, predictor = 2)
+    val deflatePath = tmp.resolve("deflate.tif").toString
+    writeGeoTiff(refTiff.withCompression(options), deflatePath, gtiffOptions = options)
+
+    val checkDeflateTiff = GeoTiff.readMultiband(deflatePath)
+    val decompressor = checkDeflateTiff.tile.asInstanceOf[Int16GeoTiffMultibandTile].decompressor
+    assertEquals(CompressionType.ZLibCoded, decompressor.code)
+    assertEquals(2, decompressor.predictorCode)
+    assertEquals(refTiff.tile.bandCount, checkDeflateTiff.tile.bandCount)
+    for (b <- 0 until refTiff.tile.bandCount) {
+      assertArrayEquals(refTiff.tile.band(b).toArray(), checkDeflateTiff.tile.band(b).toArray())
+    }
   }
 
   @ParameterizedTest
