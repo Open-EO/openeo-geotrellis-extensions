@@ -337,7 +337,8 @@ case class RasterTileLoader() {
     val loadedPartitions = partitionIterator.toParArray.map { case (spaceTimeKey, allRegions) =>
       val tileForRegion = allRegions
         .toSeq
-        .flatMap { case (rasterRegion, sourceName: SourceName) =>
+        .flatMap { case (region, sourceName: SourceName) =>
+          val rasterRegion = withMetadataTracker(region, tracker)
           val result: Option[(MultibandTile, SourceName)] = cloudFilterStrategy match {
 
             case _ =>
@@ -412,11 +413,21 @@ case class RasterTileLoader() {
   }
 
 
+  /**
+   * The tracker passed in is the instance shipped with the task closure: only that one carries the accumulators that
+   * were registered on the driver; BatchJobMetadataTracker.tracker on an executor returns an empty, local instance.
+   */
+  private def withMetadataTracker(region: RasterRegion, tracker: BatchJobMetadataTracker): RasterRegion = region match {
+    case GridBoundsRasterRegion(source: BandCompositeRasterSource, bounds) =>
+      GridBoundsRasterRegion(source.withMetadataTracker(tracker), bounds)
+    case _ => region
+  }
+
   private def loadPartitionBySource(partition: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs: CRS, layout: LayoutDefinition, cellType: CellType) = {
     var totalPixelsPartition = 0L
     val tiles: Iterator[(SpaceTimeKey, (Seq[Int], MultibandTile, SourceName))] = partition.flatMap((tuple: (SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])) => {
       val keys = tuple._2.map(_._2).asJavaCollection
-      val source = tuple._2.head._3.asInstanceOf[GridBoundsRasterRegion].source
+      val source = withMetadataTracker(tuple._2.head._3, tracker).asInstanceOf[GridBoundsRasterRegion].source
       val bounds = tuple._2.map(_._3.asInstanceOf[GridBoundsRasterRegion].bounds).toSeq
       val intersections: Seq[Option[GridBounds[Long]]] = bounds.map(_.intersection(source.dimensions)).toSeq
       // The true, absolute output-band indices for this source group, as computed by BandCompositeRasterSource.groupedBySource.
