@@ -1,0 +1,177 @@
+{
+  "loadcollection1": {
+    "process_id": "load_collection",
+    "arguments": {
+      "id": "SENTINEL2_L2A",
+      "temporal_extent": [
+        "2020-01-01",
+        "2020-01-10"
+      ],
+      "spatial_extent": {
+        "west": 5.0,
+        "south": 51.2,
+        "east": 5.01,
+        "north": 51.21
+      },
+      "bands": [
+        "B04",
+        "B08"
+      ]
+    }
+  },
+  "filterlabels1": {
+    "process_id": "filter_labels",
+    "arguments": {
+      "data": {
+        "from_node": "loadcollection1"
+      },
+      "dimension": "t",
+      "condition": {
+        "process_graph": {
+          "dateshift1": {
+            "process_id": "date_shift",
+            "arguments": {
+              "date": "2020-01-04T00:00:00Z",
+              "unit": "day",
+              "value": 1
+            }
+          },
+          "datebetween1": {
+            "process_id": "date_between",
+            "arguments": {
+              "x": {
+                "from_parameter": "value"
+              },
+              "min": "2020-01-04T00:00:00Z",
+              "max": {
+                "from_node": "dateshift1"
+              }
+            }
+          },
+          "not1": {
+            "process_id": "not",
+            "arguments": {
+              "x": {
+                "from_node": "datebetween1"
+              }
+            }
+          },
+          "dateshift2": {
+            "process_id": "date_shift",
+            "arguments": {
+              "date": "2020-01-05T00:00:00Z",
+              "unit": "day",
+              "value": 1
+            }
+          },
+          "datebetween2": {
+            "process_id": "date_between",
+            "arguments": {
+              "x": {
+                "from_parameter": "value"
+              },
+              "min": "2020-01-05T00:00:00Z",
+              "max": {
+                "from_node": "dateshift2"
+              }
+            }
+          },
+          "not2": {
+            "process_id": "not",
+            "arguments": {
+              "x": {
+                "from_node": "datebetween2"
+              }
+            }
+          },
+          "dateshift3": {
+            "process_id": "date_shift",
+            "arguments": {
+              "date": "2020-01-06T00:00:00Z",
+              "unit": "day",
+              "value": 1
+            }
+          },
+          "datebetween3": {
+            "process_id": "date_between",
+            "arguments": {
+              "x": {
+                "from_parameter": "value"
+              },
+              "min": "2020-01-06T00:00:00Z",
+              "max": {
+                "from_node": "dateshift3"
+              }
+            }
+          },
+          "not3": {
+            "process_id": "not",
+            "arguments": {
+              "x": {
+                "from_node": "datebetween3"
+              }
+            }
+          },
+          "dateshift4": {
+            "process_id": "date_shift",
+            "arguments": {
+              "date": "2020-01-08T00:00:00Z",
+              "unit": "day",
+              "value": 1
+            }
+          },
+          "datebetween4": {
+            "process_id": "date_between",
+            "arguments": {
+              "x": {
+                "from_parameter": "value"
+              },
+              "min": "2020-01-08T00:00:00Z",
+              "max": {
+                "from_node": "dateshift4"
+              }
+            }
+          },
+          "not4": {
+            "process_id": "not",
+            "arguments": {
+              "x": {
+                "from_node": "datebetween4"
+              }
+            }
+          },
+          "all1": {
+            "process_id": "all",
+            "arguments": {
+              "data": [
+                {
+                  "from_node": "not1"
+                },
+                {
+                  "from_node": "not2"
+                },
+                {
+                  "from_node": "not3"
+                },
+                {
+                  "from_node": "not4"
+                }
+              ]
+            },
+            "result": true
+          }
+        }
+      }
+    }
+  },
+  "saveresult1": {
+    "process_id": "save_result",
+    "arguments": {
+      "data": {
+        "from_node": "filterlabels1"
+      },
+      "format": "GTiff"
+    },
+    "result": true
+  }
+}
