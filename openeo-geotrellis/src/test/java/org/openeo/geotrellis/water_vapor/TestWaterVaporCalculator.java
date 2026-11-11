@@ -5,8 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.openeo.geotrellis.icor.CorrectionDescriptor;
 import org.openeo.geotrellis.icor.ICorCorrectionDescriptor;
 import org.openeo.geotrellis.icor.LookupTable;
-import org.openeo.geotrellis.icor.LookupTableIO;
-import org.openeo.geotrellis.icor.Sentinel2Descriptor;
+import org.openeo.geotrellis.icor.TestCorrectionDescriptor;
 
 import geotrellis.layer.SpaceTimeKey;
 import geotrellis.raster.ArrayMultibandTile;
@@ -26,13 +25,6 @@ public class TestWaterVaporCalculator {
 
 	private static LookupTable lut;
 	private static ICorCorrectionDescriptor cd;
-	static { 
-		try {
-			cd=new Sentinel2Descriptor();
-		} catch (Exception e) {
-			e.printStackTrace();
-		} 
-	}
 	private static AbdaWaterVaporCalculator wvc=new AbdaWaterVaporCalculator();
 
 	static final double sza=43.5725342155;
@@ -52,7 +44,8 @@ public class TestWaterVaporCalculator {
 	
 	@BeforeAll
     public static void setup_fields() throws Exception {
-		lut=LookupTableIO.readLUT(cd.getLookupTableURL());
+		cd=TestCorrectionDescriptor.localSentinel2Descriptor();
+		lut=cd.bcLUT;
     }
 
 	@Test
@@ -220,7 +213,7 @@ public class TestWaterVaporCalculator {
     	ArrayMultibandTile mbt=new ArrayMultibandTile(new Tile[]{wvTile,r0Tile,r1Tile,szaTile});
     	SpaceTimeKey stk=new SpaceTimeKey(0, 0, 0); // water vapor is not actually using the spacetimekey
     	
-    	CorrectionDescriptor cd=new Sentinel2Descriptor();
+    	CorrectionDescriptor cd=TestCorrectionDescriptor.localSentinel2Descriptor();
     	
     	Tile result=new CWVProvider().compute(
     		new Tuple2<SpaceTimeKey, MultibandTile>(stk,mbt), 

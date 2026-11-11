@@ -53,7 +53,7 @@ public class LookupTableIO {
 
     
 	public static LookupTable readLUT(String resourceName) throws IOException {
-		if (resourceName.startsWith("http") && resourceName.endsWith(".bin")) {
+		if ((resourceName.startsWith("http") || resourceName.startsWith("file:")) && resourceName.endsWith(".bin")) {
 			return readLUT(URI.create(resourceName).toURL().openStream(),true);
 		}
 		if (LookupTableIO.class.getResourceAsStream(resourceName+".bin")!=null) {
