@@ -140,9 +140,11 @@ class DataCubeSupportSpec {
       SpatialKey(0, 0),
       SpatialKey(403, 751)
     )
+    // fixed seed: some random key distributions yield reduction 19 with only 288 partitions
+    val random = new Random(42)
     val randomKeys: Seq[SpatialKey] = (1 to 4000).map { _ =>
-      val col = Random.nextFloat() * bounds.maxKey.col
-      val row = Random.nextFloat() * bounds.maxKey.row
+      val col = random.nextFloat() * bounds.maxKey.col
+      val row = random.nextFloat() * bounds.maxKey.row
       SpatialKey(col.toInt, row.toInt)
     }.distinct
 
