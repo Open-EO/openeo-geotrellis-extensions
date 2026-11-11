@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- load_collection with a masking cube (mask pushdown) and `retainNoDataTiles`: fully masked tiles are now retained as nodata tiles instead of being dropped, so e.g. `aggregate_temporal_period` no longer skips periods where all observations are masked ([#841](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/841)).
 - GeoTIFF: `deflate` compression combined with a predictor (2 or 3) no longer fails with `IndexOutOfBoundsException` ([#837](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/837)).
 - Loading metrics now consistently count fractional megapixels (1,000,000 band-pixels), with overflow-safe, thread-safe pixel counts and monotonic timing. The loading-speed gauge still reports the latest completed partition's speed per collection.
 - merge_cubes: no longer fails on tiles without bands (e.g. `EmptyMultibandTile`).

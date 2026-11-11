@@ -7,7 +7,7 @@ import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridExtent, RasterExtent, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridExtent, MultibandTile, RasterExtent, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -62,10 +62,14 @@ final case class RasterRegionContext(
   metadata: TileLayerMetadata[SpaceTimeKey],
   maskStrategy: Option[CloudFilterStrategy],
   partitioner: Option[SpacePartitioner[SpaceTimeKey]],
-  sources: Seq[(RasterSource, Feature)]
+  sources: Seq[(RasterSource, Feature)],
+  // keys that were dropped by a masking cube but should be retained as nodata tiles (retainNoDataTiles)
+  maskedOutKeys: Option[RDD[SpaceTimeKey]] = None
 ) {
-  def unpersist(): Unit =
+  def unpersist(): Unit = {
     requiredKeys.unpersist(false)
+    maskedOutKeys.foreach(_.unpersist(false))
+  }
 
   // Py4J-friendly getters.
   def hasMaskStrategy: Boolean = maskStrategy.isDefined
@@ -162,7 +166,14 @@ object FileLayerProvider {
    * @param metadata
    * @return
    */
-  def applySpaceTimeMask(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], metadata: TileLayerMetadata[SpaceTimeKey]): RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = {
+  def applySpaceTimeMask(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], metadata: TileLayerMetadata[SpaceTimeKey]): RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] =
+    applySpaceTimeMaskWithMaskedOutKeys(datacubeParams, requiredSpacetimeKeys, metadata)._1
+
+  /**
+   * Like applySpaceTimeMask, but if retainNoDataTiles is enabled, also returns the keys that were removed because
+   * they are fully masked (or have no mask), so that they can be added back as nodata tiles.
+   */
+  private[layers] def applySpaceTimeMaskWithMaskedOutKeys(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], metadata: TileLayerMetadata[SpaceTimeKey]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], Option[RDD[SpaceTimeKey]]) = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject = datacubeParams.get.maskingCube.get
       requiredSpacetimeKeys.sparkContext.setCallSite("load_collection: filter mask keys")
@@ -183,13 +194,30 @@ object FileLayerProvider {
 
             datacubeParams.get.maskingCube = Some(filtered)
             val result = requiredSpacetimeKeys.join(filtered).map(tuple => (tuple._1, tuple._2._1))
+            val maskedOutKeys =
+              if (datacubeParams.get.retainNoDataTiles) {
+                val validMaskKeys = filtered.mapValues(_ => ())
+                Some(requiredSpacetimeKeys.keys.distinct().map((_, ())).subtractByKey(validMaskKeys).keys)
+              } else None
             requiredSpacetimeKeys.sparkContext.clearCallSite()
-            return result
+            return (result, maskedOutKeys)
           }
         case _ =>
       }
     }
-    return requiredSpacetimeKeys
+    (requiredSpacetimeKeys, None)
+  }
+
+  private[layers] def addNoDataTiles(cube: MultibandTileLayerRDD[SpaceTimeKey], keys: RDD[SpaceTimeKey], bandCount: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val metadata = cube.metadata
+    val (cols, rows, cellType) = (metadata.tileCols, metadata.tileRows, metadata.cellType)
+    val noDataTiles: RDD[(SpaceTimeKey, MultibandTile)] = keys.map(key => (key, new EmptyMultibandTile(cols, rows, cellType, bandCount)))
+    // partitioning both sides identically preserves the partitioner of the union
+    val partitioner = cube.partitioner.getOrElse(SpacePartitioner(metadata.bounds))
+    val partitionedCube = if (cube.partitioner.isDefined) cube else cube.partitionBy(partitioner)
+    val result = ContextRDD(partitionedCube.union(noDataTiles.partitionBy(partitioner)), metadata)
+    result.name = cube.name
+    result
   }
 
   def applySpatialMask[M](datacubeParams: Option[DataCubeParameters], requiredSpatialKeys: RDD[(SpatialKey, M)], metadata: TileLayerMetadata[SpaceTimeKey])(implicit vt: ClassTag[M]): RDD[(SpatialKey, M)] = {
@@ -458,6 +486,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   }
 
   def readKeysToRasterSources(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon], polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy], Seq[(RasterSource, Feature)]) = {
+    val (requiredSpacetimeKeys, metadata, maskStrategy, sources, _) =
+      readKeysToRasterSourcesWithMaskedOutKeys(from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams)
+    (requiredSpacetimeKeys, metadata, maskStrategy, sources)
+  }
+
+  private def readKeysToRasterSourcesWithMaskedOutKeys(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon], polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy], Seq[(RasterSource, Feature)], Option[RDD[SpaceTimeKey]]) = {
     val multiple_polygons_flag = polygons.length > 1
 
     val buffer = math.max(datacubeParams.map(_.pixelBufferX).getOrElse(0.0), datacubeParams.map(_.pixelBufferY).getOrElse(0.0))
@@ -611,7 +645,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t => (SpaceTimeKey(t._1, TemporalKey(t._2.data._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))), t._2))
 
-    requiredSpacetimeKeys = applySpaceTimeMask(datacubeParams, requiredSpacetimeKeys,metadata)
+    val (maskedSpacetimeKeys, maskedOutKeys) = applySpaceTimeMaskWithMaskedOutKeys(datacubeParams, requiredSpacetimeKeys, metadata)
+    requiredSpacetimeKeys = maskedSpacetimeKeys
 
     if (isUTM && datacubeParams.forall(_.resolveTileOverlap)) {
       //only for utm is just a safeguard to limit to Sentinel-1/2 for now
@@ -683,7 +718,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }
     }
 
-    (requiredSpacetimeKeys, metadata, maskStrategy, overlappingRasterSources)
+    (requiredSpacetimeKeys, metadata, maskStrategy, overlappingRasterSources, maskedOutKeys)
   }
 
 
@@ -752,7 +787,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
     )
     try {
-      val cube = RasterTileLoader.loadRasterRegionsToTiles(
+      val loaded = RasterTileLoader.loadRasterRegionsToTiles(
         rasterRegionContext.regions,
         rasterRegionContext.metadata,
         rasterRegionContext.maskStrategy,
@@ -763,6 +798,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         softErrors,
         openSearchCollectionId
       )
+      val cube = rasterRegionContext.maskedOutKeys
+        .map(addNoDataTiles(loaded, _, openSearchLinkTitlesWithBandId.size))
+        .getOrElse(loaded)
       logger.info(
         s"Created cube for $openSearchCollectionId with metadata ${cube.metadata} " +
           s"and partitioner ${cube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}"
@@ -784,8 +822,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     datacubeParams: Option[DataCubeParameters]
   ): RasterRegionContext = {
 
-    val (keys, metadata, maskStrategy, sources) =
-      readKeysToRasterSources(
+    val (keys, metadata, maskStrategy, sources, maskedOutKeysOption) =
+      readKeysToRasterSourcesWithMaskedOutKeys(
         from, to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams
       )
 
@@ -793,13 +831,16 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     requiredKeys.setName(
       s"FileLayerProvider_keys_${openSearchCollectionId}_${from}_${to}"
     )
+    val maskedOutKeys = maskedOutKeysOption.map { k =>
+      k.persist().setName(s"FileLayerProvider_masked_out_keys_${openSearchCollectionId}_${from}_${to}")
+    }
 
     try {
       val partitioner =
         createSpaceTimePartitioner(
           metadata.bounds.get.toSpatial,
           datacubeParams,
-          requiredKeys.keys,
+          maskedOutKeys.map(requiredKeys.keys.union(_)).getOrElse(requiredKeys.keys),
           metadata,
           sources
         )
@@ -819,11 +860,13 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         metadata = metadata,
         maskStrategy = maskStrategy,
         partitioner = partitioner,
-        sources = sources
+        sources = sources,
+        maskedOutKeys = maskedOutKeys
       )
     } catch {
       case e: Throwable =>
         requiredKeys.unpersist(false)
+        maskedOutKeys.foreach(_.unpersist(false))
         throw e
     }
   }
