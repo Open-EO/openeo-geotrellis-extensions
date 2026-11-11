@@ -39,9 +39,7 @@ pipeline {
     stages {
         stage("Trigger geotrellis_process_graph_test_helper container build") {
             when {
-                expression {
-                    ["master", "develop"].contains(env.BRANCH_NAME)
-                }
+                branch 'develop'
             }
             steps {
                 script {
@@ -50,6 +48,12 @@ pipeline {
             }
         }
         stage('Checkout') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    changeRequest()
+                }
+            }
             steps {
                 script {
                     git.checkoutDefault(wipeout_workspace)
@@ -62,6 +66,12 @@ pipeline {
             }
         }
         stage('Build and Test') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    changeRequest()
+                }
+            }
             steps {
                 script {
                     rel_version = getMavenVersion()
