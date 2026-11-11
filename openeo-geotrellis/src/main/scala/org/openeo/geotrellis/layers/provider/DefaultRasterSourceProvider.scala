@@ -3,7 +3,7 @@ package org.openeo.geotrellis.layers.provider
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, RasterExtent, RasterSource, TargetRegion}
+import geotrellis.raster.{CellSize, GridExtent, RasterExtent, RasterSource, TargetRegion}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.layers.FileLayerProvider.vsis3ToS3
 import org.openeo.geotrellis.layers.raster_source.{ResampledRasterSource, WideningGeoTiffReprojectRasterSource, WideningGeoTiffResampleRasterSource}
@@ -19,7 +19,14 @@ class DefaultRasterSourceProvider extends RasterSourceProvider {
     true
   }
 
-  override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
+  override def rasterSource(definition: RasterSourceDefinition): RasterSource = rasterSource(definition, None)
+
+  /** A shared feature grid is required when pixel bounds are reused across imagery and Sentinel angle bands. */
+  private[layers] def rasterSource(definition: RasterSourceDefinition, sharedGrid: Option[GridExtent[Long]]): RasterSource = {
+    val alignment = sharedGrid.map(TargetRegion(_)).getOrElse(definition.alignment)
+    // The native-array shortcut retains the file's grid, so cannot serve shared pixel bounds.
+    val useNativeGrid = definition.noResampleOnRead && sharedGrid.isEmpty
+
     def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
       // When noResampleOnRead is set, we retrieve the actual resolution from the dataPath.
       // Note: This is only supported for S2 dataPaths.
@@ -34,29 +41,31 @@ class DefaultRasterSourceProvider extends RasterSourceProvider {
     if (definition.feature.crs.isDefined && definition.feature.crs.get != null && definition.feature.crs.get.equals(definition.targetExtent.crs)) {
       // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
       if (definition.experimental) {
-        GDALRasterSource(definition.dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(definition.theResolution), resampleMethod = Some(definition.resampleMethod)), targetCellType = definition.targetCellType)
+        GDALRasterSource(definition.dataPath, options = GDALWarpOptions(alignTargetPixels = sharedGrid.isEmpty,
+          cellSize = Some(definition.theResolution), resampleMethod = Some(definition.resampleMethod),
+          te = sharedGrid.map(_.extent), teCRS = sharedGrid.map(_ => definition.targetExtent.crs)), targetCellType = definition.targetCellType)
       } else {
         val geotiffPath = GeoTiffPath(vsis3ToS3(definition.dataPath))
-        if (definition.noResampleOnRead) {
+        if (useNativeGrid) {
           val tiffAlignment = alignmentFromDataPath(definition.dataPath, definition.targetExtent)
           val geotiffRasterSource = GeoTiffRasterSource(geotiffPath, definition.targetCellType)
           new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, definition.theResolution)
         } else {
-          new WideningGeoTiffResampleRasterSource(geotiffPath, definition.alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, definition.targetCellType)
+          new WideningGeoTiffResampleRasterSource(geotiffPath, alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, definition.targetCellType)
         }
       }
     } else {
       if (definition.experimental) {
-        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(definition.theResolution), targetCRS = Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod), te = Some(definition.targetExtent.extent))
+        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(definition.theResolution), targetCRS = Some(definition.targetExtent.crs), resampleMethod = Some(definition.resampleMethod), te = Some(sharedGrid.map(_.extent).getOrElse(definition.targetExtent.extent)))
         GDALRasterSource(definition.dataPath.replace("/vsis3/EODATA/", "/vsis3/eodata/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = definition.targetCellType)
       } else {
         val geotiffPath = GeoTiffPath(vsis3ToS3(definition.dataPath))
-        if (definition.noResampleOnRead) {
+        if (useNativeGrid) {
           val tiffAlignment = alignmentFromDataPath(definition.dataPath, definition.targetExtent)
           val geotiffRasterSource = new WideningGeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, tiffAlignment, definition.resampleMethod, OverviewStrategy.DEFAULT, maybeTargetCellType = definition.targetCellType, errorThreshold = 0)
           new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, definition.theResolution)
         } else {
-          new WideningGeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, definition.alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, maybeTargetCellType = definition.targetCellType, errorThreshold = 0)
+          new WideningGeoTiffReprojectRasterSource(geotiffPath, definition.targetExtent.crs, alignment, definition.resampleMethod, OverviewStrategy.DEFAULT, maybeTargetCellType = definition.targetCellType, errorThreshold = 0)
         }
       }
     }
