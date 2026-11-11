@@ -66,12 +66,18 @@ class TileGridTest {
       .toSpatial()
       .persist(DISK_ONLY)
 
-    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6), new GTiffOptions)
+    def gTiffOptions(filenamePrefix: String): GTiffOptions  = {
+      val options = new GTiffOptions
+      options.filenamePrefix = filenamePrefix
+      options
+    }
+
+    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir.toString, "10km", DeflateCompression(6), gTiffOptions("testSaveStitched"))
     val expectedPaths = Set(
-      outDir + "/testSaveStitched-31UDS_3_4.tiff",
-      outDir + "/testSaveStitched-31UDS_2_4.tiff",
-      outDir + "/testSaveStitched-31UDS_3_5.tiff",
-      outDir + "/testSaveStitched-31UDS_2_5.tiff",
+      s"$outDir/testSaveStitched_31UDS_3_4.tif",
+      s"$outDir/testSaveStitched_31UDS_2_4.tif",
+      s"$outDir/testSaveStitched_31UDS_3_5.tif",
+      s"$outDir/testSaveStitched_31UDS_2_5.tif",
     )
 
     // TODO: check if extents (in the layer CRS) are 10000m wide/high (in UTM)
@@ -85,12 +91,12 @@ class TileGridTest {
     val extent = bbox.reproject(spatialLayer.metadata.crs)
     val cropBounds = Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax).asJava
 
-    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6), new GTiffOptions)
+    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir.toString, "10km", cropBounds, DeflateCompression(6), gTiffOptions("testSaveStitched_cropped"))
     val expectedCroppedPaths = Set(
-      outDir + "/testSaveStitched_cropped-31UDS_3_4.tiff",
-      outDir + "/testSaveStitched_cropped-31UDS_2_4.tiff",
-      outDir + "/testSaveStitched_cropped-31UDS_3_5.tiff",
-      outDir + "/testSaveStitched_cropped-31UDS_2_5.tiff",
+      s"$outDir/testSaveStitched_cropped_31UDS_3_4.tif",
+      s"$outDir/testSaveStitched_cropped_31UDS_2_4.tif",
+      s"$outDir/testSaveStitched_cropped_31UDS_3_5.tif",
+      s"$outDir/testSaveStitched_cropped_31UDS_2_5.tif",
     )
 
     // TODO: also check extents
@@ -113,16 +119,20 @@ class TileGridTest {
       .toSpatial()
       .persist(DISK_ONLY)
 
-    val gtiffOptions = new GTiffOptions
-    gtiffOptions.setTileSize(128)
-    gtiffOptions.setOverview("ALL")
+    def gTiffOptions(filenamePrefix: String): GTiffOptions  = {
+      val options = new GTiffOptions
+      options.setTileSize(128)
+      options.setOverview("ALL")
+      options.filenamePrefix = filenamePrefix
+      options
+    }
 
-    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6), gtiffOptions)
+    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir.toString, "10km", DeflateCompression(6), gTiffOptions("testSaveStitched"))
     val expectedPaths = Set(
-      outDir + "/testSaveStitched-31UDS_3_4.tiff",
-      outDir + "/testSaveStitched-31UDS_2_4.tiff",
-      outDir + "/testSaveStitched-31UDS_3_5.tiff",
-      outDir + "/testSaveStitched-31UDS_2_5.tiff",
+      s"$outDir/testSaveStitched_31UDS_3_4.tif",
+      s"$outDir/testSaveStitched_31UDS_2_4.tif",
+      s"$outDir/testSaveStitched_31UDS_3_5.tif",
+      s"$outDir/testSaveStitched_31UDS_2_5.tif",
     )
     // TODO: check if extents (in the layer CRS) are 10000m wide/high (in UTM)
     Assertions.assertEquals(expectedPaths, tiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet)
@@ -146,12 +156,12 @@ class TileGridTest {
     val extent = bbox.reproject(spatialLayer.metadata.crs)
     val cropBounds = Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax).asJava
 
-    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6), gtiffOptions)
+    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir.toString, "10km", cropBounds, DeflateCompression(6), gTiffOptions("testSaveStitched_cropped"))
     val expectedCroppedPaths = Set(
-      outDir + "/testSaveStitched_cropped-31UDS_3_4.tiff",
-      outDir + "/testSaveStitched_cropped-31UDS_2_4.tiff",
-      outDir + "/testSaveStitched_cropped-31UDS_3_5.tiff",
-      outDir + "/testSaveStitched_cropped-31UDS_2_5.tiff",
+      s"$outDir/testSaveStitched_cropped_31UDS_3_4.tif",
+      s"$outDir/testSaveStitched_cropped_31UDS_2_4.tif",
+      s"$outDir/testSaveStitched_cropped_31UDS_3_5.tif",
+      s"$outDir/testSaveStitched_cropped_31UDS_2_5.tif",
     )
 
     Assertions.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet)

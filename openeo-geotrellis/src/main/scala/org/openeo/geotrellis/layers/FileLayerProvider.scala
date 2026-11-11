@@ -128,6 +128,11 @@ object FileLayerProvider {
   private case class CacheKey(openSearch: OpenSearchClient, openSearchCollectionId: String, rootPath: Path,
                               pathDateExtractor: PathDateExtractor)
 
+  /** All-metadata requests can have no source grid; prefer the item grid and otherwise use the target layout. */
+  private[layers] def metadataFallbackGrid(featureGrid: Option[GridExtent[Long]],
+                                            targetGrid: => GridExtent[Long]): GridExtent[Long] =
+    featureGrid.getOrElse(targetGrid)
+
   def apply(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
             maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
             bandIndices: Seq[Int] = Seq(), correlationId: String = "", experimental: Boolean = false,
@@ -965,19 +970,22 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
-
-    val featureExtentInLayout: Option[GridExtent[Long]] = computeItemExtentInTargetLayout(feature, re, targetExtent, datacubeParams)
-    var predefinedExtent: Option[GridExtent[Long]] = None
     val bandNames = openSearchLinkTitles.toList
-
+    val allBandsMetadata = bandNames.nonEmpty && bandNames.forall(name =>
+      SentinelXmlMetadataRasterSourceProvider.metadataBandNames.contains(name))
+    val featureExtentInLayout: Option[GridExtent[Long]] =
+      computeItemExtentInTargetLayout(feature, re, targetExtent, datacubeParams)
     val byLinkTitle = !fromLoadStac
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
-    // Per-band metadata (scale/offset/cellType overrides) plus the RasterSourceDefinition, computed once
+    // Per-band metadata (scale/offset/cell type overrides) plus the RasterSourceDefinition, computed once
     // per requested band, independently of whether the default per-band strategy or a provider's
     // whole-feature `multibandRasterSource` strategy (see below) ends up being used to open the source(s).
-    case class BandContext(definition: RasterSourceDefinition, pixelValueScale: Double, pixelValueOffset: Double, targetTargetCellType: Option[TargetCellType])
+    // `readerTargetCellType` converts the asset while it is read; `outputTargetCellType` is the type after
+    // applying the pixel value scale/offset.
+    case class BandContext(definition: RasterSourceDefinition, pixelValueScale: Double, pixelValueOffset: Double,
+                           outputTargetCellType: Option[TargetCellType])
 
     def buildBandContext(link: Link, bandIndex: Int, bandName: String): BandContext = {
       val pixelValueScale: Double = link.pixelValueScale.getOrElse(1)
@@ -999,7 +1007,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
 
       //special case handling for data that does not declare nodata properly
-      val targetCellType = link.title match {
+      val readerTargetCellType = link.title match {
         // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
         case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
         case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
@@ -1008,21 +1016,28 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         case _ => cellTypeSTAC
       }
 
-      val targetTargetCellType: Option[TargetCellType] = link.title match {
+      val outputTargetCellType: Option[TargetCellType] = link.title match {
         // Sentinel 2 bands can have negative values now.
         case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
         case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
         case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
         case _ => cellTypeSTAC
       }
-      val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, targetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental, bandName, softErrors)
-      BandContext(definition, pixelValueScale, pixelValueOffset, targetTargetCellType)
+      val definition = RasterSourceDefinition(link, bandIndex, feature, rootPath, readerTargetCellType, targetExtent, featureExtentInLayout, targetResolution, maxSpatialResolution, datacubeParams, experimental, bandName, softErrors)
+      BandContext(definition, pixelValueScale, pixelValueOffset, outputTargetCellType)
     }
 
     val bandContexts: Seq[Option[BandContext]] = resolver.getBandAssets(feature).map {
       case Some((link, bandIndex, bandName)) => Some(buildBandContext(link, bandIndex, bandName))
       case _ => None
     }
+
+    // Pixel bounds are shared across bands, including after per-product grouping. GeoTIFF providers normally
+    // use targetExtent instead of the buffered feature grid used by Sentinel angles and JP2 sources.
+    val perPixelAngleGrid = featureExtentInLayout.filter(_ => bandContexts.flatten.exists { context =>
+      SentinelXmlMetadataRasterSourceProvider.canProcess(context.definition) &&
+        SentinelXmlMetadataRasterSourceProvider.perPixelOutputs.contains(context.definition.bandIndex)
+    })
 
     // Whole-feature strategy: if a single provider in the chain claims *all* present bands, give it a
     // chance to serve them together from one physical source (e.g. all SAR polarisations produced by one
@@ -1037,72 +1052,109 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
     }
 
-    val rasterSources: Seq[Option[(RasterSource, Int)]] = multibandResult match {
-      case Some((provider, source, bandIndicesInSource)) =>
-        if (provider.usePredefinedExtent(bandContexts.flatten.head.definition)) {
-          predefinedExtent = featureExtentInLayout
+    // Each run of consecutive present bands becomes a single selection of the shared source, so that
+    // BandCompositeRasterSource reads (and transforms) those bands together; missing bands break a run.
+    def bandRuns(bandIndicesInSource: Seq[Int]): Seq[Option[Seq[Int]]] = {
+      val remainingBands = bandIndicesInSource.iterator
+      val runs = mutable.ArrayBuffer[Option[mutable.ArrayBuffer[Int]]]()
+      bandContexts.foreach {
+        case None => runs += None
+        case Some(_) => runs.lastOption match {
+          case Some(Some(run)) => run += remainingBands.next()
+          case _ => runs += Some(mutable.ArrayBuffer(remainingBands.next()))
         }
-        // Each run of consecutive present bands becomes a single selection of the shared source, so that
-        // BandCompositeRasterSource reads (and transforms) those bands together; missing bands break a run.
-        val sourceBandIndices = bandIndicesInSource.iterator
-        val runs = mutable.ArrayBuffer[Option[mutable.ArrayBuffer[Int]]]()
-        bandContexts.foreach {
-          case Some(_) => runs.lastOption match {
-            case Some(Some(run)) => run += sourceBandIndices.next()
-            case _ => runs += Some(mutable.ArrayBuffer(sourceBandIndices.next()))
-          }
-          case None => runs += None
-        }
-        runs.toSeq.map(_.map(run => (BandSelectionRasterSource(source, run.toSeq): RasterSource, 0)))
-      case None =>
-        bandContexts.map {
-          case Some(BandContext(definition, pixelValueScale, pixelValueOffset, targetTargetCellType)) =>
-            val bandIndex = definition.bandIndex
-            val providedSource: Option[RasterSource] = rasterSourceProviderChain.find(
-                _.canProcess(definition)
-              ).flatMap(
-                p => {
-                  if (p.usePredefinedExtent(definition)) {
-                    predefinedExtent = featureExtentInLayout
-                  }
-                  Option(p.rasterSource(definition))
-                }
-              )
-            // a provider returning an IndexedRasterSource has already selected the band for this definition
-            val bandAlreadySelected = providedSource.exists(_.isInstanceOf[IndexedRasterSource])
-            val maybeSource: Option[RasterSource] = providedSource
-              .map(ValueOffsetRasterSource.wrapRasterSource(_, pixelValueScale, pixelValueOffset, targetTargetCellType))
-            if (maybeSource.isDefined) {
-              if (bandIndex > 0 && !bandAlreadySelected) {
-                Some((IndexedRasterSource(maybeSource.get, bandIndex), 0))
-              } else {
-                Some(maybeSource.get, 0)
-              }
-            } else {
-              None
-            }
-          case None => None
-        }
+      }
+      runs.toSeq.map(_.map(_.toSeq))
     }
+
+    /**
+     * Opens one band through the first provider that claims it, returning the source and whether that provider
+     * needs the feature grid as its predefined extent.
+     */
+    def perBandSource(context: BandContext): (Option[RasterSource], Boolean) = {
+      val definition = context.definition
+      val provider = rasterSourceProviderChain.find(_.canProcess(definition))
+      val usesPredefinedExtent = provider.exists(_.usePredefinedExtent(definition))
+      val providedSource = provider.flatMap { p =>
+        val source =
+          if (p == DefaultRasterSourceProvider)
+            DefaultRasterSourceProvider.rasterSource(definition, perPixelAngleGrid)
+          else p.rasterSource(definition)
+        Option(source)
+      }
+      // A provider returning an IndexedRasterSource has already selected the band for this definition.
+      val bandAlreadySelected = providedSource.exists(_.isInstanceOf[IndexedRasterSource])
+      val sourceWithValues = providedSource.map(
+        ValueOffsetRasterSource.wrapRasterSource(_, context.pixelValueScale, context.pixelValueOffset, context.outputTargetCellType))
+      val source = sourceWithValues.map { s =>
+        if (definition.bandIndex > 0 && !bandAlreadySelected) IndexedRasterSource(s, definition.bandIndex) else s
+      }
+      (source, usesPredefinedExtent)
+    }
+
+    val sourcesWithExtentPolicy: Seq[(Option[RasterSource], Boolean)] = multibandResult match {
+      case Some((provider, source, bandIndicesInSource)) =>
+        val usesPredefinedExtent = provider.usePredefinedExtent(bandContexts.flatten.head.definition)
+        bandRuns(bandIndicesInSource).map { run =>
+          (run.map(bands => BandSelectionRasterSource(source, bands): RasterSource), usesPredefinedExtent)
+        }
+      case None => bandContexts.map {
+        case Some(context) => perBandSource(context)
+        case None => (None, false)
+      }
+    }
+
+    val rasterSources: Seq[Option[RasterSource]] = sourcesWithExtentPolicy.map(_._1)
+    // Some providers cannot align to the target grid and ask for the feature grid instead (e.g. NetCDF
+    // without UCAR or JPEG without a cloud mask).
+    val predefinedExtent: Option[GridExtent[Long]] =
+      featureExtentInLayout.filter(_ => sourcesWithExtentPolicy.exists(_._2))
 
     if (rasterSources.isEmpty) {
       logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
       None
     } else {
-      lazy val gridExtent = predefinedExtent
+      // A metadata-only request without an item grid and without any usable source has no feature grid to fall
+      // back to; the target layout is the only grid available for its placeholders.
+      val placeholderFeatureGrid =
+        if (allBandsMetadata &&
+          (feature.rasterExtent.isEmpty || feature.crs.isEmpty) &&
+          rasterSources.forall(_.isEmpty))
+          None
+        else featureExtentInLayout
+
+      def placeholderGridExtent: Option[GridExtent[Long]] = predefinedExtent
         .orElse {
           rasterSources.collectFirst {
-            case Some((rasterSource, _)) => rasterSource.gridExtent
+            case Some(rasterSource) => rasterSource.gridExtent
           }
-        }.getOrElse(return None)
+        }
+        .orElse(if (allBandsMetadata)
+          Some(metadataFallbackGrid(placeholderFeatureGrid, re.toGridType[Long]))
+        else None)
+      // Lazy: a fully available feature needs no placeholder grid and must not open an imagery header for it.
+      lazy val gridExtent: GridExtent[Long] = placeholderGridExtent.getOrElse(return None)
 
-      val sources = NonEmptyList.fromListUnsafe(rasterSources.toList)
+      def isMetadataBand(context: Option[BandContext], bandName: String): Boolean =
+        context.exists(c => SentinelXmlMetadataRasterSourceProvider.canProcess(c.definition)) ||
+          SentinelXmlMetadataRasterSourceProvider.metadataBandNames.contains(bandName)
+
+      // Band names come from the request rather than from the resolved asset: a requested metadata band
+      // "granule_metadata##N" resolves to an asset whose band name omits the "##N" suffix.
+      val sources = NonEmptyList.fromListUnsafe(rasterSources.zip(bandContexts).zip(bandNames).toList)
         .map {
-          case Some(rasterSource) => rasterSource
-          case _ => (NoDataRasterSource.instance(gridExtent, targetExtent.crs), 0)
+          case ((Some(rasterSource), _), _) => rasterSource
+          case ((None, context), bandName) if isMetadataBand(context, bandName) =>
+            // A missing metadata asset or soft error must not turn an angle band's placeholder into integer NoData.
+            new NoDataRasterSource(FloatConstantNoDataCellType, gridExtent, targetExtent.crs)
+          case _ => NoDataRasterSource.instance(gridExtent, targetExtent.crs)
         }
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
+
+      def composite(sources: NonEmptyList[RasterSource], readFullTile: Boolean): RasterSource =
+        new BandCompositeRasterSource(sources, targetExtent.crs, attributes, readFullTile = readFullTile,
+          predefinedExtent = predefinedExtent, softErrors = softErrors)
 
       if (byLinkTitle && bandIndices.isEmpty) {
         val actualNumberOfBands = bandContexts.size
@@ -1112,14 +1164,13 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           return None
         }
 
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
+        Some((composite(sources, readFullTile = false), feature))
       } else {
-        // Note: bandIndex is always normalized to 0 here: non-zero band indices (output bands sourced from a
-        // physical multi-band file, e.g. PROBA-V) are already represented via an IndexedRasterSource or
-        // BandSelectionRasterSource wrapper (see above). BandCompositeRasterSource.groupedBySource still regroups
-        // such wrapped bands by their (delegated) physical source name for the "load per product" read optimization.
-        assert(sources.forall { case (_, idx) => idx == 0 }, "expected all band indices to be normalized to 0")
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
+        // Non-zero band indices (output bands sourced from a physical multi-band file, e.g. PROBA-V) are already
+        // represented via an IndexedRasterSource or BandSelectionRasterSource wrapper (see above).
+        // BandCompositeRasterSource.groupedBySource still regroups such wrapped bands by their (delegated)
+        // physical source name for the "load per product" read optimization.
+        Some((composite(sources, readFullTile = datacubeParams.exists(_.loadPerProduct)), feature))
       }
     }
   }

@@ -83,12 +83,7 @@ package object geotiff {
       }
       if (options.compressionPredictor > 1) {
         compression = compression.withPredictor(Predictor(t.tile.toGeoTiffTile()))
-        try {
-          MultibandGeoTiff(t.tile.toArrayTile(), t.extent, t.crs, t.tags, GeoTiffOptions(compression), t.overviews)
-        } catch {
-          case e: IndexOutOfBoundsException =>
-            throw new IllegalArgumentException(s"""Compression "${options.compressionMethod}" with predictor ${options.compressionPredictor} is not supported yet; supported are: "deflate" [1] and "zstd" [1, 2, 3] (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/837)""")
-        }
+        MultibandGeoTiff(t.tile.toArrayTile(), t.extent, t.crs, t.tags, GeoTiffOptions(compression), t.overviews)
       } else t
     }
   }
@@ -119,11 +114,11 @@ package object geotiff {
   def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression, formatOptions: GTiffOptions): Item =
     saveStitched(rdd, path, Some(cropBounds), None, compression, formatOptions)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression, formatOptions: GTiffOptions): JList[Item] =
-    saveStitchedTileGrid(rdd, path, tileGrid, None, None, compression, formatOptions)
+  def saveStitchedTileGrid(rdd: SRDD, targetDirectory: String, tileGrid: String, compression: Compression, formatOptions: GTiffOptions): JList[Item] =
+    saveStitchedTileGrid(rdd, targetDirectory, tileGrid, None, None, compression, formatOptions)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression, formatOptions: GTiffOptions): JList[Item] =
-    saveStitchedTileGrid(rdd, path, tileGrid, Some(cropBounds), None, compression, formatOptions)
+  def saveStitchedTileGrid(rdd: SRDD, targetDirectory: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression, formatOptions: GTiffOptions): JList[Item] =
+    saveStitchedTileGrid(rdd, targetDirectory, tileGrid, Some(cropBounds), None, compression, formatOptions)
 
   def saveRDDTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                       path: String,
@@ -948,9 +943,16 @@ package object geotiff {
       BandInterleave,
       BandType.forCellType(cellType))
 
+    // Segments were compressed elsewhere, so this compressor only saw the empty segment; Deflate's decompressor
+    // needs the uncompressed size of every segment (all are full tiles) to be able to decode them (#837).
+    val decompressor = compression match {
+      case deflate: DeflateCompression => deflate.createDecompressor(Array.fill(segmentCount)(emptySegment.length))
+      case _ => compressor.createDecompressor()
+    }
+
     val tiffTile: GeoTiffMultibandTile = GeoTiffMultibandTile(
       new ArraySegmentBytes(segments),
-      compressor.createDecompressor(),
+      decompressor,
       segmentLayout,
       compression,
       detectedBandCount.toInt,
@@ -1003,24 +1005,16 @@ package object geotiff {
       Collections.singletonMap("openEO", Asset(path, adjusted.cellType, metadata = assetMetadata)))
   }
 
-  def saveStitchedTileGrid(
-                            rdd: SRDD,
-                            path: String,
-                            tileGrid: String,
-                            cropBounds: Option[Map[String, Double]],
-                            cropDimensions: Option[ArrayList[Int]],
-                            compression: Compression,
-                            formatOptions: GTiffOptions,
-                          )
-  : JList[Item] = {
+  private def saveStitchedTileGrid(
+                                    rdd: SRDD,
+                                    targetDirectory: String,
+                                    tileGrid: String,
+                                    cropBounds: Option[Map[String, Double]],
+                                    cropDimensions: Option[ArrayList[Int]],
+                                    compression: Compression,
+                                    formatOptions: GTiffOptions,
+                                  ): JList[Item] = {
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent, rdd.metadata.crs))
-
-    def newFilePath(path: String, tileId: String) = {
-      val index = path.lastIndexOf(".")
-      val extension = if (index >= 0) path.substring(index) else ".tiff"
-      val prefix = if (index >= 0) path.substring(0, index) else "openEO"
-      s"$prefix-$tileId$extension"
-    }
 
     val croppedExtent = cropBounds.map(toExtent)
 
@@ -1042,20 +1036,18 @@ package object geotiff {
         val filePath = {
           if (TaskContext.get().attemptNumber() > 0) {
             // Each executor writes to a unique folder to avoid conflicts:
-            createExecutorAttemptDirectory(Path.of(path).getParent)
-
+            createExecutorAttemptDirectory(parentDirectory = Path.of(targetDirectory))
           } else {
-            Path.of(path).getParent
+            Path.of(targetDirectory)
           }
-        }
-          .resolve(newFilePath(Path.of(path).getFileName.toString, tileId)).toString
+        }.resolve(s"${formatOptions.filenamePrefix}_$tileId.tif").toString
 
         val (stitchedTiff, metadata) = stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression, formatOptions)
         (stitchedTiff, tileId, extent, metadata)
     }.collect()
     val res = geotiffResults.map {
       case (geoTiffResultObject, tileId, croppedExtent, metadata) =>
-        val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
+        val destinationPath = moveFromExecutorAttemptDirectory(Path.of(targetDirectory), geoTiffResultObject)
         (destinationPath, tileId, croppedExtent, metadata)
     }
 
@@ -1066,7 +1058,7 @@ package object geotiff {
         assets = Collections.singletonMap("openEO", Asset(path, cellType, metadata= assetMetadata)))
     }
 
-    cleanupTemporaryResults(geotiffResults.map(_._1), Path.of(path).getParent.toString)
+    cleanupTemporaryResults(geotiffResults.map(_._1), Path.of(targetDirectory).toString)
 
 
     items.toList.asJava
