@@ -19,7 +19,7 @@ object ProcessGraphRunner {
   val defaultSparkMaster = "local[2,2]"
   val localClusterSparkMaster = "local-cluster[2,1,4096]"
 
-  private val dockerImage = "vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper:latest"
+  private val dockerImage = "docker.repo.vito.be/geotrellis_process_graph_test_helper:latest"
 
   /**
    * Checked once per JVM: compares the digest of the image in the registry with the digests of the local copy and
