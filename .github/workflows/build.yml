@@ -3,7 +3,7 @@
 # Secrets:
 #   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY            (Jenkins credential "SentinelHubBatchS3")
 #   SENTINELHUB_CLIENT_ID / SENTINELHUB_CLIENT_SECRET    (Jenkins credential "SentinelHubGeodatadev")
-#   DOWNSTREAM_DISPATCH_TOKEN (optional)                 PAT used to trigger the openeo-geopyspark-driver build
+#   DOWNSTREAM_DISPATCH_TOKEN                            PAT with Actions write access to openeo-geopyspark-driver
 # Optional variables:
 #   BASE_IMAGE           base image for docker/tests_dockerfile
 #   TEST_HELPER_IMAGE    process graph test helper image
@@ -258,14 +258,14 @@ jobs:
     needs: build
     # Fork PRs get a read-only GITHUB_TOKEN and cannot create releases.
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+      ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop') ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
 
       - name: Download JARs
         uses: actions/download-artifact@v4
@@ -320,10 +320,30 @@ jobs:
             --latest=false \
             $(find jars -name '*.jar')
 
+  trigger-downstream-develop:
+    name: Trigger geopyspark driver master CI
+    needs: [build, github-release]
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Dispatch openeo-geopyspark-driver master CI
+        env:
+          GH_TOKEN: ${{ secrets.DOWNSTREAM_DISPATCH_TOKEN }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::DOWNSTREAM_DISPATCH_TOKEN is required to trigger the driver CI."
+            exit 1
+          fi
+          gh api --method POST repos/Open-EO/openeo-geopyspark-driver/actions/workflows/ci.yml/dispatches \
+            -f ref=master
+
   trigger-downstream:
     name: Trigger geopyspark driver build
     needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch openeo-geopyspark-driver build
