@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:latest
+ARG BASE_IMAGE=openeo-docker-local-prod.repo.vito.be/almalinux9-spark4-py311-openeo:latest
 FROM ${BASE_IMAGE}
 ARG USE_OFFICIAL_REPOS=false
 USER root
