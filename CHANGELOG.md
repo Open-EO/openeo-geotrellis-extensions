@@ -20,14 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - merge_cubes: the `overlap_resolver` is now evaluated with `OpenEOProcessScriptBuilder` instead of a separate operator mapping, so it behaves exactly like the same process in other callbacks (nodata handling, data types). Notable behaviour changes:
   - `sum` now ignores nodata (default `ignore_nodata=true`): if only one cube has a value, that value is returned instead of nodata. `add` still returns nodata if either input is nodata.
   - `divide` and `mean` now always result in floats (`float32`), also for integer inputs.
-- save_result zarr: `ZarrWriter` now writes Zarr v3 instead of v2 (breaking for v2-only readers such as zarr-python 2.x):
-  - one `zarr.json` per node instead of `.zgroup`/`.zarray`/`.zattrs`; consolidated metadata is inlined in the root `zarr.json` instead of `.zmetadata`.
-  - dimensions are stored as `dimension_names` instead of the `_ARRAY_DIMENSIONS` attribute; band arrays are no longer also groups.
-  - chunks are stored at `c/[t/]row/col`, little-endian, zstd (level 3) compressed. x/y coordinates are now `float64`.
-  - dropped the `jzarr` dependency; the store is now written with `dev.zarr:zarr-java`.
-  - chunks that only contain the fill value are not written.
-  - data arrays carry a `_FillValue` attribute when the cell type defines no-data.
-  - time `units` are now CF-compliant (`milliseconds since 1970-01-01T00:00:00Z`).
 
 ### Removed
 
