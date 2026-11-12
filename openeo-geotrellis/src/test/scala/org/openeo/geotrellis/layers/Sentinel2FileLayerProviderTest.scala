@@ -26,11 +26,11 @@ import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
-import org.junit.jupiter.params.provider.{Arguments, MethodSource}
+import org.junit.jupiter.params.provider.{Arguments, MethodSource, ValueSource}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
+import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, DataCubeParameters, ResampledTile}
 import org.openeo.opensearch.OpenSearchResponses.{FeatureCollection, Link}
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
@@ -383,6 +383,50 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
 
 
+
+  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
+  @ParameterizedTest
+  @ValueSource(booleans = Array(false, true))
+  def multibandWithSpacetimeMaskRetainsNoDataTiles(loadPerProduct: Boolean): Unit = {
+    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/841
+    val date = ZonedDateTime.of(LocalDate.of(2024, 4, 22), MIDNIGHT, UTC)
+    val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
+    val bands = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")
+
+    val scl = layerProvider("org/openeo/geotrellis/multibandWithSpacetimeMask_features.json", NonEmptyList.of("SCENECLASSIFICATION_20M"), scheme = ZoomedLayoutScheme(WebMercator, 256)).readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    val builder: OpenEOProcessScriptBuilder = new OpenEOProcessScriptBuilder
+    val args: util.Map[String, AnyRef] = dummyMap("x", "y")
+    builder.expressionStart("gte", args)
+    builder.argumentStart("x")
+    builder.argumentEnd()
+    builder.constantArgument("y", 6)
+    builder.expressionEnd("gte", args)
+    val mask = new OpenEOProcesses().mapBands(scl, builder).cache()
+
+    def load(withMask: Boolean, retainNoDataTiles: Boolean): Map[SpaceTimeKey, MultibandTile] = {
+      val parameters = new DataCubeParameters()
+      parameters.loadPerProduct = loadPerProduct
+      parameters.retainNoDataTiles = retainNoDataTiles
+      if (withMask) parameters.maskingCube = Some(mask)
+      val layer = layerProvider("org/openeo/geotrellis/multibandWithSpacetimeMask_features3.json", bands, scheme = ZoomedLayoutScheme(WebMercator, 256))
+        .readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs, sc = sc, zoom = 13, datacubeParams = Some(parameters))
+      assertTrue(layer.partitioner.isDefined)
+      layer.collect().toMap
+    }
+
+    val unmaskedKeys = load(withMask = false, retainNoDataTiles = true).keySet
+    val maskedKeys = load(withMask = true, retainNoDataTiles = false).keySet
+    assertTrue(maskedKeys.size < unmaskedKeys.size, "expected the mask to remove some keys")
+
+    val retained = load(withMask = true, retainNoDataTiles = true)
+    assertEquals(unmaskedKeys, retained.keySet)
+    for (key <- unmaskedKeys -- maskedKeys) {
+      val tile = retained(key)
+      assertTrue(tile.isInstanceOf[EmptyMultibandTile], s"expected EmptyMultibandTile for $key")
+      assertEquals(bands.size, tile.bandCount)
+    }
+    mask.unpersist()
+  }
 
   /**
    *  Simulate 'patch extraction' as performed by WorldCereal.
