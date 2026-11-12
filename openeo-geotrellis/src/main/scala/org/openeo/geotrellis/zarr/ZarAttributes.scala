@@ -10,14 +10,17 @@ import scala.reflect.ClassTag
 
 trait ZarrAttributes extends Serializable {
   def toMap: java.util.Map[String,Object]
+
+  def dimensionNames: Array[String]
 }
 
 class variableAttribute(name:String) extends ZarrAttributes {
+  override def dimensionNames: Array[String] = Array(name)
+
   def toMap:java.util.Map[String,Object] ={
     val varMap = new java.util.HashMap[String,Object]()
-    varMap.put("_ARRAY_DIMENSIONS",Array[String](name))
     if (name=="time"){
-      varMap.put("units","milliseconds since " + TemporalKey(0).time.format(DateTimeFormatter.ofPattern("MM/dd/yyyy - HH:mm:ss")))
+      varMap.put("units", "milliseconds since 1970-01-01T00:00:00Z")
       varMap.put("calendar", "proleptic_gregorian")
     }
     varMap
@@ -30,9 +33,10 @@ class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLay
   private val dimensions: Array[String] = Array("y","x")
   private val hasTemp: Boolean = hasTempDim
 
+  override def dimensionNames: Array[String] = if (hasTemp) "time" +: dimensions else dimensions
+
   def toMap:java.util.HashMap[String,Object] = {
     val attributes = new java.util.HashMap[String,Object]()
-    addDimensions(attributes)
     addCrs(attributes)
     addExtent(attributes)
   }
@@ -47,11 +51,6 @@ class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLay
     attributes
   }
 
-  private def addDimensions(attributes: java.util.HashMap[String,Object]): java.util.HashMap[String,Object] = {
-    val tempDim = if (hasTemp) {"time" +: dimensions} else dimensions
-    attributes.put("_ARRAY_DIMENSIONS", tempDim)
-    attributes
-  }
 
   private def addExtent(attributes: java.util.HashMap[String,Object]): java.util.HashMap[String,Object] = {
     val extent = new java.util.HashMap[String,Object]()
