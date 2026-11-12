@@ -13,22 +13,6 @@ import org.slf4j.LoggerFactory
 import java.nio.file.{Files, Path, Paths}
 import scala.reflect.ClassTag
 
-/**
- * Writes a datacube as a Zarr v3 store, using zarr-java.
- *
- * Layout:
- * {{{
- *   <store>.zarr/
- *     zarr.json            ← root group, with inline consolidated metadata
- *     <band>/              ← one array per band (or a single array named after the store)
- *       zarr.json
- *       c/[t/]<row>/<col>  ← one chunk per tile
- *     x/  y/  [time/]      ← coordinate arrays
- * }}}
- *
- * Chunks are encoded with the "bytes" codec (little-endian) followed by "zstd" (level 3).
- * Chunks that only contain the fill value are not written (allowed by the Zarr spec).
- */
 object ZarrWriter {
 
   private val logger = LoggerFactory.getLogger(ZarrWriter.getClass)

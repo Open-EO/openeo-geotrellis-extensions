@@ -9,10 +9,8 @@ import scala.reflect.ClassTag
 
 
 trait ZarrAttributes extends Serializable {
-  /** User attributes, stored under "attributes" in the Zarr v3 array metadata. */
   def toMap: java.util.Map[String,Object]
 
-  /** Dimension names, stored as "dimension_names" in the Zarr v3 array metadata. */
   def dimensionNames: Array[String]
 }
 
