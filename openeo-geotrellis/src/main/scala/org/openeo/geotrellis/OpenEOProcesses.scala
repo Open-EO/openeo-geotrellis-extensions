@@ -32,6 +32,9 @@ import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, LegacySCLConvolutionFilter, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SCLMaskFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
+import org.locationtech.jts.geom.TopologyException
+import org.locationtech.jts.geom.util.GeometryFixer
+import org.locationtech.jts.operation.union.UnaryUnionOp
 
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -179,6 +182,39 @@ object OpenEOProcesses{
       Option.empty
     }
     keys
+  }
+
+  /**
+   * Merges vectorized features: all polygons with the same value are unioned (merging polygons that were split
+   * over tile borders), invalid results are repaired with JTS GeometryFixer, and the result is split
+   * into one feature per polygon again.
+   * Output is sorted by position (top-to-bottom, then left-to-right), with value as tie-breaker, to obtain stable feature ids.
+   */
+  private[geotrellis] def mergeVectorizedFeatures(features: Seq[PolygonFeature[Int]]): Seq[PolygonFeature[Int]] = {
+    val merged: IndexedSeq[PolygonFeature[Int]] = features.groupBy(_.data).toIndexedSeq.flatMap { case (value, feats) =>
+      val geoms: Seq[Geometry] = feats.map(_.geom)
+      val unioned: Geometry =
+        try {
+          UnaryUnionOp.union(geoms.asJava)
+        } catch {
+          case e: TopologyException =>
+            logger.debug(s"Union of vectorized polygons failed, retrying with fixed geometries: ${e.getMessage}")
+            UnaryUnionOp.union(geoms.map(GeometryFixer.fix).asJava)
+        }
+      if (unioned == null || unioned.isEmpty) {
+        Seq.empty
+      } else {
+        val valid = if (unioned.isValid) unioned else GeometryFixer.fix(unioned)
+        val polygons = (0 until valid.getNumGeometries)
+          .map(valid.getGeometryN)
+          .collect { case p: Polygon if !p.isEmpty => p }
+        polygons.map(p => Feature(p, value))
+      }
+    }
+    merged.sortBy(f => {
+      val env = f.geom.getEnvelopeInternal
+      (-env.getMaxY, env.getMinX, f.data)
+    })
   }
 }
 
@@ -715,25 +751,40 @@ class OpenEOProcesses extends Serializable {
   }
 
   /**
-   * Simple vectorize implementation
-   * Rasters are combined to a max size of 5120, larger rasters are supported, but resulting features will not be merged
+   * Vectorize implementation.
+   * Rasters are retiled into tiles of (256 * tileSizeFactor) pixels with an overlap of `overlap` pixels on each side.
+   * Each tile is vectorized separately, after which polygons with the same value (per date) are unioned,
+   * so that polygons crossing tile borders are merged. The result is split again into one feature per polygon.
    * Only first band is taken into account, other bands are ignored.
    *
    * @param datacube
+   * @param tileSizeFactor tile size in multiples of 256 pixels, by default 4
+   * @param overlap        overlap in pixels between neighbouring tiles, by default 8
    * @return
    */
-  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, Seq[PolygonFeature[Int]])], CRS) = {
+  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K], tileSizeFactor: Int = 4, overlap: Int = 8): (Array[(String, Seq[PolygonFeature[Int]])], CRS) = {
     val layout = datacube.metadata.layout
     val maxExtent = datacube.metadata.extent
-    //naive approach: combine tiles and hope that we don't exceed the max size
-    //if we exceed the max, vectorize will run on separate tiles, and we'll need to merge results
-    val newCols = Math.min(256*20,layout.cols)
-    val newRows = Math.min(256*20,layout.rows)
+    val newCols = Math.min(256L * tileSizeFactor, layout.cols).toInt
+    val newRows = Math.min(256L * tileSizeFactor, layout.rows).toInt
 
-    val singleBandLayer: TileLayerRDD[K] = datacube.withContext(_.mapValues(_.band(0)))
-    val retiled = singleBandLayer.regrid(newCols.intValue(),newRows.intValue())
+    // Only keep the first band before retiling, to reduce shuffle size.
+    val singleBandLayer: MultibandTileLayerRDD[K] = datacube.withContext(_.mapValues(t => MultibandTile(t.band(0))))
+    val retiled = retileGeneric(singleBandLayer, newCols, newRows, overlap, overlap)
+    val mapTransform = retiled.metadata.mapTransform
+    val cellSize = retiled.metadata.cellSize
     // Perform the actual vectorization.
-    val vectorizedValues: RDD[(K, Seq[PolygonFeature[Int]])] = retiled.toRasters.mapValues(_.crop(maxExtent,Crop.Options(force=true,clamp=true)).toVector())
+    val vectorizedValues: RDD[(K, Seq[PolygonFeature[Int]])] = retiled.map { case (key, tile) =>
+      // Retiled tiles include the overlap, so the extent has to be expanded accordingly.
+      val overlapExtent = mapTransform.keyToExtent(key.getComponent[SpatialKey])
+        .expandBy(cellSize.width * overlap, cellSize.height * overlap)
+      val polygons: Seq[PolygonFeature[Int]] =
+        if (overlapExtent.intersects(maxExtent))
+          Raster(tile.band(0), overlapExtent).crop(maxExtent, Crop.Options(force = true, clamp = true)).toVector()
+        else
+          Seq.empty
+      (key, polygons)
+    }
     // We don't require spatial partitioning for features, so we can group by (Time, Band) instead.
     // In the meantime we construct the feature ids as they will appear in the geojson file.
     val featuresWithId: RDD[(String, Seq[PolygonFeature[Int]])] = vectorizedValues.map(kv => {
@@ -744,8 +795,10 @@ class OpenEOProcesses extends Serializable {
       }
     })
     val featuresWithIdGrouped: RDD[(String, Iterable[Seq[PolygonFeature[Int]]])] = featuresWithId.groupByKey()
-    val featuresWithIdGroupedFlat: RDD[(String, Seq[PolygonFeature[Int]])] = featuresWithIdGrouped.mapValues(_.flatten.toIndexedSeq)
-    return (featuresWithIdGroupedFlat.collect(), datacube.metadata.crs)
+    // Merge polygons that were split over (overlapping) tiles, this is done on the executors.
+    val featuresWithIdGroupedFlat: RDD[(String, Seq[PolygonFeature[Int]])] = featuresWithIdGrouped.mapValues(features => mergeVectorizedFeatures(features.flatten.toIndexedSeq))
+    val sortedFeaturesWithIdGroupedFlat = featuresWithIdGroupedFlat.collect().sortBy(_._1)
+    return (sortedFeaturesWithIdGroupedFlat, datacube.metadata.crs)
   }
 
   def featuresToGeojson(features: Array[(String, Seq[PolygonFeature[Int]])], crs: CRS): Json = {
