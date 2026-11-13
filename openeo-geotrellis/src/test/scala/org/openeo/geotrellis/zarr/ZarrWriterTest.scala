@@ -1,16 +1,16 @@
 package org.openeo.geotrellis.zarr
 
 import better.files.File.apply
-import com.bc.zarr.ZarrUtils
+import com.bc.zarr.{ZarrArray, ZarrUtils}
 import com.bc.zarr.storage.FileSystemStore
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{BitArrayTile, ByteArrayTile, DoubleArrayTile, FloatArrayTile, IntArrayTile, MultibandTile, ShortArrayTile, Tile, TileLayout, UByteArrayTile, UShortArrayTile}
+import geotrellis.raster.{BitArrayTile, ByteArrayTile, DoubleArrayTile, FloatArrayTile, FloatConstantNoDataCellType, IntArrayTile, MultibandTile, ShortArrayTile, Tile, TileLayout, UByteArrayTile, UShortArrayTile}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertNull, assertTrue}
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.{LayerFixtures, PixelType, zarr}
@@ -113,11 +113,11 @@ class ZarrWriterTest {
       val zmetadata = ZarrUtils.fromJson(new InputStreamReader(inputStreamZmetadata), classOf[java.util.Map[String, java.util.Map[String,_]]])
       assertTrue(zmetadata.containsKey("metadata"))
       val metadata = zmetadata.get("metadata")
-      assertEquals(metadata.size(),8)
+      assertEquals(metadata.size(),7)
       assertTrue(metadata.containsKey(".zgroup"))
       assertTrue(metadata.containsKey(filePrefix+"/.zarray"))
       assertTrue(metadata.containsKey(filePrefix+"/.zattrs"))
-      assertTrue(metadata.containsKey(filePrefix+"/.zgroup"))
+      assertFalse(metadata.containsKey(filePrefix+"/.zgroup"))
       assertTrue(metadata.containsKey("x/.zarray"))
       assertTrue(metadata.containsKey("x/.zattrs"))
       assertTrue(metadata.containsKey("y/.zarray"))
@@ -198,11 +198,7 @@ class ZarrWriterTest {
       assertTrue(zarrayB01.containsKey("chunks"))
       assertEquals(java.util.Arrays.asList(256, 256), zarrayB01.get("chunks"))
 
-      val inputStreamZgroupB1 = store.getInputStream("B01/.zgroup")
-      assertTrue(inputStreamZgroupB1 != null)
-      val zgroupB01 = ZarrUtils.fromJson(new InputStreamReader(inputStreamZgroupB1), classOf[java.util.Map[_, _]])
-      assertTrue(zgroupB01.containsKey("zarr_format"))
-      assertEquals(2, zgroupB01.get("zarr_format"))
+      assertNull(store.getInputStream("B01/.zgroup"))
 
       val inputStreamB02 = store.getInputStream("B02/.zattrs")
       assertTrue(inputStreamB02 != null)
@@ -238,12 +234,7 @@ class ZarrWriterTest {
       assertTrue(zarrayB02.containsKey("chunks"))
       assertEquals(java.util.Arrays.asList(256, 256), zarrayB02.get("chunks"))
 
-
-      val inputStreamZgroupB2 = store.getInputStream("B02/.zgroup")
-      assertTrue(inputStreamZgroupB2 != null)
-      val zgroupB02 = ZarrUtils.fromJson(new InputStreamReader(inputStreamZgroupB2), classOf[java.util.Map[_, _]])
-      assertTrue(zgroupB02.containsKey("zarr_format"))
-      assertEquals(2, zgroupB02.get("zarr_format"))
+      assertNull(store.getInputStream("B02/.zgroup"))
 
       val inputStreamB04 = store.getInputStream("B04/.zattrs")
       assertTrue(inputStreamB04 != null)
@@ -279,12 +270,7 @@ class ZarrWriterTest {
       assertTrue(zarrayB04.containsKey("chunks"))
       assertEquals(java.util.Arrays.asList(256, 256), zarrayB04.get("chunks"))
 
-      val inputStreamZgroupB4 = store.getInputStream("B04/.zgroup")
-      assertTrue(inputStreamZgroupB4 != null)
-      val zgroupB04 = ZarrUtils.fromJson(new InputStreamReader(inputStreamZgroupB4), classOf[java.util.Map[_, _]])
-      assertTrue(zgroupB04.containsKey("zarr_format"))
-      assertEquals(2, zgroupB04.get("zarr_format"))
-
+      assertNull(store.getInputStream("B04/.zgroup"))
 
       val inputStreamX = store.getInputStream("x/.zattrs")
       assertTrue(inputStreamX != null)
@@ -313,17 +299,17 @@ class ZarrWriterTest {
       val zmetadata = ZarrUtils.fromJson(new InputStreamReader(inputStreamZmetadata), classOf[java.util.Map[String, java.util.Map[String,_]]])
       assertTrue(zmetadata.containsKey("metadata"))
       val metadata = zmetadata.get("metadata")
-      assertEquals(metadata.size(),14)
+      assertEquals(metadata.size(),11)
       assertTrue(metadata.containsKey(".zgroup"))
       assertTrue(metadata.containsKey("B01/.zarray"))
       assertTrue(metadata.containsKey("B01/.zattrs"))
-      assertTrue(metadata.containsKey("B01/.zgroup"))
+      assertFalse(metadata.containsKey("B01/.zgroup"))
       assertTrue(metadata.containsKey("B02/.zarray"))
       assertTrue(metadata.containsKey("B02/.zattrs"))
-      assertTrue(metadata.containsKey("B02/.zgroup"))
+      assertFalse(metadata.containsKey("B02/.zgroup"))
       assertTrue(metadata.containsKey("B04/.zarray"))
       assertTrue(metadata.containsKey("B04/.zattrs"))
-      assertTrue(metadata.containsKey("B04/.zgroup"))
+      assertFalse(metadata.containsKey("B04/.zgroup"))
       assertTrue(metadata.containsKey("x/.zarray"))
       assertTrue(metadata.containsKey("x/.zattrs"))
       assertTrue(metadata.containsKey("y/.zarray"))
@@ -346,6 +332,46 @@ class ZarrWriterTest {
     testInput(imageTile5,"doubleOut")
     val imageTile6 = IntArrayTile(intImage.map(_.toInt),layoutCols*256, layoutRows*256)
     testInput(imageTile6,"intOut")
+  }
+
+  @Test
+  def testWriteFloat32ZeroToOne(@TempDir tempDir: Path): Unit = {
+    val layoutCols = 2
+    val layoutRows = 1
+    val tileSize = 32
+    val cols = layoutCols * tileSize
+    val rows = layoutRows * tileSize
+
+    val rand = new scala.util.Random(42)
+    val values: Array[Float] = Array.fill(cols * rows)(rand.nextFloat())
+    assertTrue(values.forall(v => v >= 0f && v < 1f))
+
+    val tile = FloatArrayTile(values, cols, rows)
+    assertEquals(FloatConstantNoDataCellType, tile.cellType)
+
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(ZarrWriterTest.sc, MultibandTile(tile), TileLayout(layoutCols, layoutRows, tileSize, tileSize), LatLng)
+    assertEquals(FloatConstantNoDataCellType, tileLayerRDD.metadata.cellType)
+
+    val filePrefix = "float01Out"
+    val filename = (tempDir / (filePrefix + ".zarr")).toString()
+    zarr.ZarrWriter.saveZarrGeneric(tileLayerRDD, filename, new ZarrOptions)
+
+    // metadata
+    val store = new FileSystemStore(filename, null)
+    val inputStreamZarray = store.getInputStream(filePrefix + "/.zarray")
+    assertTrue(inputStreamZarray != null)
+    val zarray = ZarrUtils.fromJson(new InputStreamReader(inputStreamZarray), classOf[java.util.Map[_, _]])
+    assertEquals(">f4", zarray.get("dtype"))
+    assertEquals(java.util.Arrays.asList(rows, cols), zarray.get("shape"))
+    assertEquals(java.util.Arrays.asList(tileSize, tileSize), zarray.get("chunks"))
+
+    // read back with jzarr
+    val zarrArray = ZarrArray.open((tempDir / (filePrefix + ".zarr") / filePrefix).toString())
+    assertArrayEquals(Array(rows, cols), zarrArray.getShape)
+    val jzarrValues = zarrArray.read().asInstanceOf[Array[Float]]
+    assertEquals(values.length, jzarrValues.length)
+    assertTrue(jzarrValues.forall(v => v >= 0f && v < 1f), "jzarr: values outside [0, 1)")
+    assertArrayEquals(values, jzarrValues, 1e-6f)
   }
 
   @Test
@@ -436,11 +462,11 @@ class ZarrWriterTest {
         val zmetadata = ZarrUtils.fromJson(new InputStreamReader(inputStreamZmetadata), classOf[java.util.Map[String, java.util.Map[String,_]]])
         assertTrue(zmetadata.containsKey("metadata"))
         val metadata = zmetadata.get("metadata")
-        assertEquals(10,metadata.size())
+        assertEquals(9,metadata.size())
         assertTrue(metadata.containsKey(".zgroup"))
         assertTrue(metadata.containsKey(pixeltype.toString+"out/.zarray"))
         assertTrue(metadata.containsKey(pixeltype.toString+"out/.zattrs"))
-        assertTrue(metadata.containsKey(pixeltype.toString+"out/.zgroup"))
+        assertFalse(metadata.containsKey(pixeltype.toString+"out/.zgroup"))
         assertTrue(metadata.containsKey("x/.zarray"))
         assertTrue(metadata.containsKey("x/.zattrs"))
         assertTrue(metadata.containsKey("y/.zarray"))
