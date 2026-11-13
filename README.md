@@ -8,6 +8,13 @@ It is used in combination with https://github.com/Open-EO/openeo-geopyspark-driv
 
 ## Running unit tests
 
+The build and test environment uses JDK 25 (25.0.3 or later) and Spark 4.3.0.
+Deployments must provide compatible Spark 4.3 and Java 25 runtimes for both
+the driver and executors. The test image installs Spark 4.3 over the base image's
+Spark installation; the external process-graph test helper must separately
+provide compatible Spark and Python dependencies.
+Jenkins release steps require a JDK tool configured as `OpenJDK 25`.
+
 ### Test data
 
 Many tests depend on the `testdata` git submodule ([geotrellis-testdata](https://github.com/Open-EO/geotrellis-testdata)),

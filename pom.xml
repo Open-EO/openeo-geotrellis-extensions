@@ -10,7 +10,9 @@
         <gt-version>32.2</gt-version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
-        <spark.version>4.0.1</spark.version>
+        <spark.version>4.3.0</spark.version>
+        <netty.version>4.2.13.Final</netty.version>
+        <jackson.version>2.21.2</jackson.version>
         <scala.binary.version>2.13</scala.binary.version>
         <scala.version>2.13.18</scala.version>
         <geotrellis.version>3.8.1+26-d994e356-SNAPSHOT</geotrellis.version>
@@ -36,9 +38,11 @@
                 <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-core</artifactId>
-                <version>2.18.2</version>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>

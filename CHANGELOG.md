@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Upgrade Spark to 4.3.0 and the build and test runtime to JDK 25.
 - merge_cubes: the `overlap_resolver` is now evaluated with `OpenEOProcessScriptBuilder` instead of a separate operator mapping, so it behaves exactly like the same process in other callbacks (nodata handling, data types). Notable behaviour changes:
   - `sum` now ignores nodata (default `ignore_nodata=true`): if only one cube has a value, that value is returned instead of nodata. `add` still returns nodata if either input is nodata.
   - `divide` and `mean` now always result in floats (`float32`), also for integer inputs.

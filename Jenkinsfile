@@ -8,7 +8,6 @@ def build_container_image    = (config.build_container_image == true) ?: false
 
 def docker_registry_dev      = config.docker_registry_dev ?: globalDefaults.docker_registry_dev()
 def docker_registry_prod     = config.docker_registry_prod ?: globalDefaults.docker_registry_prod()
-def jdk_version              = 11
 def maven_version            = '3.5.4'
 def node_label               = 'default'
 def wipeout_workspace        = true
@@ -186,7 +185,7 @@ String updateMavenVersion(){
 void buildIt(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop"]
 
-    List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-21-openjdk" ]
+    List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-25-openjdk" ]
     def testImage = docker.build(env.MAVEN_IMAGE, "-f ./docker/tests_dockerfile ./docker")
     testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -v /data/projects/OpenEO/automated_test_files/eodata:/eodata:ro -u root' ) {
         withEnv(jdkEnv) {
@@ -250,7 +249,7 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
 
 void withMavenEnv(List envVars = [], def body) {
     String mvntool = tool name: maven, type: 'hudson.tasks.Maven$MavenInstallation'
-    String jdktool = tool name: "OpenJDK 11 Centos7", type: 'hudson.model.JDK'
+    String jdktool = tool name: "OpenJDK 25", type: 'hudson.model.JDK'
 
     List mvnEnv = ["PATH+MVN=${mvntool}/bin", "PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "MAVEN_HOME=${mvntool}"]
 
