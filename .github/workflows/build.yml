@@ -339,22 +339,3 @@ jobs:
           fi
           gh api --method POST repos/Open-EO/openeo-geopyspark-driver/actions/workflows/ci.yml/dispatches \
             -f ref=master
-
-  trigger-downstream:
-    name: Trigger geopyspark driver build
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch openeo-geopyspark-driver build
-        env:
-          GH_TOKEN: ${{ secrets.DOWNSTREAM_DISPATCH_TOKEN }}
-        run: |
-          if [[ -z "$GH_TOKEN" ]]; then
-            echo "DOWNSTREAM_DISPATCH_TOKEN not configured, skipping."
-            exit 0
-          fi
-          gh api repos/Open-EO/openeo-geopyspark-driver/dispatches \
-            -f event_type=openeo-geotrellis-extensions-updated \
-            -f "client_payload[ref]=${GITHUB_REF_NAME}" \
-            -f "client_payload[sha]=${GITHUB_SHA}"
