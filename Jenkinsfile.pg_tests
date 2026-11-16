@@ -8,7 +8,6 @@ def build_container_image    = (config.build_container_image == true) ?: false
 
 def docker_registry_dev      = config.docker_registry_dev ?: globalDefaults.docker_registry_dev()
 def docker_registry_prod     = config.docker_registry_prod ?: globalDefaults.docker_registry_prod()
-def jdk_version              = 11
 def maven_version            = '3.5.4'
 def node_label               = 'default'
 def wipeout_workspace        = true
@@ -172,7 +171,7 @@ void runProcessGraphTests(){
 
 void withMavenEnv(List envVars = [], def body) {
     String mvntool = tool name: maven, type: 'hudson.tasks.Maven$MavenInstallation'
-    String jdktool = tool name: "OpenJDK 11 Centos7", type: 'hudson.model.JDK'
+    String jdktool = tool name: "OpenJDK 25", type: 'hudson.model.JDK'
 
     List mvnEnv = ["PATH+MVN=${mvntool}/bin", "PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "MAVEN_HOME=${mvntool}"]
 
