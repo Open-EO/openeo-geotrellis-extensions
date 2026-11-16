@@ -248,7 +248,6 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
       override protected def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = this
       override def read(bounds: GridBounds[Long], bands: Seq[Int]) = throw new IOException("read failed")
     }
-    val composite = new BandCompositeRasterSource(NonEmptyList.of(failing), crs = LatLng, parallelRead = false, softErrors = true)
 
     val counted = mutable.Map[String, Long]()
     val tracker = new BatchJobMetadataTracker {
@@ -261,8 +260,10 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
       override def asDict(): java.util.Map[String, Object] = java.util.Collections.emptyMap()
     }
 
+    val composite = new BandCompositeRasterSource(NonEmptyList.of(failing), crs = LatLng, parallelRead = false, softErrors = true, metadataTracker = Some(tracker))
+
     val bounds = GridBounds(0L, 0L, 4L, 4L)
-    assertTrue(composite.withMetadataTracker(tracker).read(bounds, Seq(0)).isEmpty)
+    assertTrue(composite.read(bounds, Seq(0)).isEmpty)
     assertTrue(counted.contains(RasterTileLoader.SOFT_ERROR_MEGAPIXEL_COUNTER))
 
     // without an injected tracker, an unregistered counter (as on an executor) must not fail the read

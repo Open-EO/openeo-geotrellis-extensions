@@ -1060,6 +1060,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
+      val tracker = BatchJobMetadataTracker.tracker("")
 
       if (byLinkTitle && bandIndices.isEmpty) {
         val actualNumberOfBands = bandContexts.size
@@ -1069,14 +1070,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           return None
         }
 
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors, metadataTracker = Some(tracker)), feature))
       } else {
         // Note: bandIndex is always normalized to 0 here: non-zero band indices (output bands sourced from a
         // physical multi-band file, e.g. PROBA-V) are already represented via an IndexedRasterSource or
         // BandSelectionRasterSource wrapper (see above). BandCompositeRasterSource.groupedBySource still regroups
         // such wrapped bands by their (delegated) physical source name for the "load per product" read optimization.
         assert(sources.forall { case (_, idx) => idx == 0 }, "expected all band indices to be normalized to 0")
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct), predefinedExtent = predefinedExtent, metadataTracker = Some(tracker)), feature))
       }
     }
   }

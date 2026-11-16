@@ -38,37 +38,6 @@ object BandCompositeRasterSource {
       .`with`(Collections.singletonList(retryPolicy))
       .get(f _)
   }
-
-  /**
-   * Counters are Spark accumulators: they are registered on the driver and only work on an executor if the tracker
-   * was shipped along with the task closure, so `tracker` should be such a task-scoped instance. Without one (e.g.
-   * when reading outside of RasterTileLoader) this falls back to the global tracker, which only works on the driver.
-   * Failing to count must never fail the read itself.
-   */
-  private def countSoftError(tracker: BatchJobMetadataTracker, megapixels: Long, sourceName: SourceName): Unit =
-    try {
-      Option(tracker).getOrElse(BatchJobMetadataTracker.tracker("")).add(SOFT_ERROR_MEGAPIXEL_COUNTER, megapixels)
-    } catch {
-      case e: Exception => logger.warn(s"load_collection: failed to increment soft error counter for $sourceName - ${e.getMessage}", e)
-    }
-
-  def readBounds(source: RasterSource, bounds: GridBounds[Long], softErrors: Boolean, bands: Seq[Int] = Seq(0),
-                 tracker: BatchJobMetadataTracker = null): Option[Raster[MultibandTile]] = {
-    try {
-      logger.debug(s"reading $bounds from ${source.name}")
-      val raster = source.read(bounds, bands)
-      logger.debug(s"finished reading $bounds from ${source.name}")
-      raster
-    } catch {
-      case e: AbortedException => throw e
-      case e: Exception if softErrors => {
-        countSoftError(tracker, bounds.size * bands.length / (1024 * 1024), source.name)
-        logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
-        None
-      }
-      case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
-    }
-  }
 }
 
 /**
@@ -92,26 +61,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                 val predefinedExtent: Option[GridExtent[Long]] = None,
                                 val parallelRead: Boolean = true,
                                 val softErrors: Boolean = false,
-                                val readFullTile: Boolean = false
+                                val readFullTile: Boolean = false,
+                                val metadataTracker: Option[BatchJobMetadataTracker] = None,
                                ) extends MosaicRasterSource { // TODO: don't inherit?
 
   import BandCompositeRasterSource._
 
   private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "20").toInt
   private val requestContext = RequestContext.get
-
-  // task-scoped, see withMetadataTracker; transient because a serialized copy would carry stale/unregistered counters
-  @transient private var metadataTracker: BatchJobMetadataTracker = _
-
-  /**
-   * Returns a copy that reports its metrics (e.g. soft errors) to `tracker`. Meant to be called within a Spark task,
-   * with the tracker that was captured on the driver (after registering its counters) and shipped with the task.
-   */
-  def withMetadataTracker(tracker: BatchJobMetadataTracker): BandCompositeRasterSource = {
-    val copy = withSources(sources)
-    copy.metadataTracker = tracker
-    copy
-  }
 
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map {
     _.reproject(crs)
@@ -140,6 +97,30 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       resultPositions += resultPosition
     }
     plan.toSeq.map { case (sourceIndex, (bandsInSource, resultPositions)) => (sourceIndex, bandsInSource.toSeq, resultPositions.toSeq) }
+  }
+
+  private def countSoftError(tracker: Option[BatchJobMetadataTracker], megapixels: Long, sourceName: SourceName): Unit =
+    try {
+      tracker.foreach(_.add(SOFT_ERROR_MEGAPIXEL_COUNTER, megapixels))
+    } catch {
+      case e: Exception => logger.warn(s"load_collection: failed to increment soft error counter for $sourceName - ${e.getMessage}", e)
+    }
+
+  private def readBounds(source: RasterSource, bounds: GridBounds[Long], bands: Seq[Int] = Seq(0)): Option[Raster[MultibandTile]] = {
+    try {
+      logger.debug(s"reading $bounds from ${source.name}")
+      val raster = source.read(bounds, bands)
+      logger.debug(s"finished reading $bounds from ${source.name}")
+      raster
+    } catch {
+      case e: AbortedException => throw e
+      case e: Exception if softErrors => {
+        countSoftError(metadataTracker, bounds.size * bands.length / (1024 * 1024), source.name)
+        logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
+        None
+      }
+      case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
+    }
   }
 
   /** Reprojects `rs` to this composite's CRS, retrying and honouring `softErrors` (`None` if it failed softly). */
@@ -247,7 +228,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     val singleBandRasters = readPerSource(bands, bounds.toString) { (rs, bandsInSource) =>
       requestContext.apply {
         retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
-          BandCompositeRasterSource.readBounds(rs, bounds, softErrors, bandsInSource, metadataTracker)
+          readBounds(rs, bounds, bandsInSource)
         }
       }.map { raster =>
         if (raster.tile.bands.forall(_.cellType == rs.cellType)) raster
@@ -297,12 +278,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   // goes through them, and RasterTileLoader relies on the result still being a fully configured composite.
   private def withSources(newSources: NonEmptyList[RasterSource],
                           newCrs: CRS = crs,
-                          newPredefinedExtent: Option[GridExtent[Long]] = predefinedExtent): BandCompositeRasterSource = {
-    val copy = new BandCompositeRasterSource(newSources, newCrs, attributes, newPredefinedExtent,
-      parallelRead = parallelRead, softErrors = softErrors, readFullTile = readFullTile)
-    copy.metadataTracker = metadataTracker
-    copy
-  }
+                          newPredefinedExtent: Option[GridExtent[Long]] = predefinedExtent): BandCompositeRasterSource =
+    new BandCompositeRasterSource(newSources, newCrs, attributes, newPredefinedExtent,
+      parallelRead = parallelRead, softErrors = softErrors, readFullTile = readFullTile, metadataTracker = metadataTracker)
 
   override def resample(
                          resampleTarget: ResampleTarget,
