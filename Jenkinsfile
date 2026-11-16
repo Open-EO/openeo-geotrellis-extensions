@@ -186,7 +186,7 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-25-openjdk" ]
-    def testImage = docker.build(env.MAVEN_IMAGE, "-f ./docker/tests_dockerfile ./docker")
+    def testImage = docker.build(env.MAVEN_IMAGE, "--build-arg USE_OFFICIAL_REPOS=true -f ./docker/tests_dockerfile ./docker")
     testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -v /data/projects/OpenEO/automated_test_files/eodata:/eodata:ro -u root' ) {
         withEnv(jdkEnv) {
             sh 'current_dir=$(pwd) && git config --global --add safe.directory  $current_dir'
