@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.zarr
 
 import better.files.File.apply
-import com.bc.zarr.ZarrUtils
+import com.bc.zarr.{ZarrArray, ZarrUtils}
 import com.bc.zarr.storage.FileSystemStore
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.{CRS, LatLng}
@@ -17,7 +17,7 @@ import org.openeo.geotrellis.{LayerFixtures, PixelType, zarr}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.InputStreamReader
-import java.nio.file.Path
+import java.nio.file.{Path, Paths}
 import java.time.ZonedDateTime
 
 object ZarrWriterTest{
@@ -76,8 +76,7 @@ class ZarrWriterTest {
       assertEquals(java.util.Arrays.asList(1024, 2048), shape)
       assertTrue(crs.asInstanceOf[java.util.Map[_, _]].containsKey("proj:bbox"))
       val bbox = crs.asInstanceOf[java.util.Map[_, _]].get("proj:bbox")
-      val expectedBbox = java.util.Arrays.asList(tileLayerRDD.metadata.extent.xmin, tileLayerRDD.metadata.extent.ymin, tileLayerRDD.metadata.extent.xmax, tileLayerRDD.metadata.extent.ymax)
-      assertEquals(expectedBbox, bbox)
+      assertBboxEquals(tileLayerRDD.metadata.extent, bbox)
 
       assertTrue(attr.containsKey("extent"))
       val extent = attr.get("extent")
@@ -161,7 +160,6 @@ class ZarrWriterTest {
         _.repartition(layoutCols * layoutRows)
       }, filename, zarrOptions)
 
-      val expectedBbox = java.util.Arrays.asList(tileLayerRDD.metadata.extent.xmin, tileLayerRDD.metadata.extent.ymin, tileLayerRDD.metadata.extent.xmax, tileLayerRDD.metadata.extent.ymax)
       val store = new FileSystemStore(filename, null)
 
       val inputStreamB01 = store.getInputStream("B01/.zattrs")
@@ -184,7 +182,7 @@ class ZarrWriterTest {
       assertEquals(java.util.Arrays.asList(1024, 2048), shapeB01)
       assertTrue(crsB01.asInstanceOf[java.util.Map[_, _]].containsKey("proj:bbox"))
       val bboxB01 = crsB01.asInstanceOf[java.util.Map[_, _]].get("proj:bbox")
-      assertEquals(expectedBbox, bboxB01)
+      assertBboxEquals(tileLayerRDD.metadata.extent, bboxB01)
       assertTrue(attrB01.containsKey("extent"))
       val extentB01 = attrB01.get("extent")
       assertTrue(extentB01.isInstanceOf[java.util.Map[_, _]])
@@ -224,7 +222,7 @@ class ZarrWriterTest {
       assertEquals(java.util.Arrays.asList(1024, 2048), shapeB02)
       assertTrue(crsB02.asInstanceOf[java.util.Map[_, _]].containsKey("proj:bbox"))
       val bboxB02 = crsB02.asInstanceOf[java.util.Map[_, _]].get("proj:bbox")
-      assertEquals(expectedBbox, bboxB02)
+      assertBboxEquals(tileLayerRDD.metadata.extent, bboxB02)
       assertTrue(attrB02.containsKey("extent"))
       val extentB02 = attrB02.get("extent")
       assertTrue(extentB02.isInstanceOf[java.util.Map[_, _]])
@@ -265,7 +263,7 @@ class ZarrWriterTest {
       assertEquals(java.util.Arrays.asList(1024, 2048), shapeB04)
       assertTrue(crsB04.asInstanceOf[java.util.Map[_, _]].containsKey("proj:bbox"))
       val bboxB04 = crsB04.asInstanceOf[java.util.Map[_, _]].get("proj:bbox")
-      assertEquals(expectedBbox, bboxB04)
+      assertBboxEquals(tileLayerRDD.metadata.extent, bboxB04)
       assertTrue(attrB04.containsKey("extent"))
       val extentB04 = attrB04.get("extent")
       assertTrue(extentB04.isInstanceOf[java.util.Map[_, _]])
@@ -449,5 +447,60 @@ class ZarrWriterTest {
         assertTrue(metadata.containsKey("time/.zattrs"))
       }
     }
+  }
+
+  @Test
+  def testCropBoundsLabelsMatchData(@TempDir tempDir: Path): Unit = {
+    val cols = 4 * 256
+    val rows = 2 * 256
+    val values = (0 until cols * rows).toArray
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(ZarrWriterTest.sc, MultibandTile(IntArrayTile(values, cols, rows)), TileLayout(4, 2, 256, 256), LatLng)
+    val md = tileLayerRDD.metadata
+    val (cw, ch) = (md.cellwidth, md.cellheight)
+    // crop that does not start on a tile boundary
+    val (colOff, rowOff, width, height) = (7, 9, 300, 200)
+    val crop = Extent(md.extent.xmin + colOff * cw, md.extent.ymax - (rowOff + height) * ch, md.extent.xmin + (colOff + width) * cw, md.extent.ymax - rowOff * ch)
+
+    val options = new ZarrOptions
+    options.setCropBounds(crop)
+    val filename = (tempDir / "cropOut.zarr").toString()
+    zarr.ZarrWriter.saveZarrGeneric(tileLayerRDD, filename, options)
+
+    val data = ZarrArray.open(Paths.get(filename, "cropOut"))
+    assertEquals(java.util.Arrays.asList(height, width), java.util.Arrays.stream(data.getShape).boxed().collect(java.util.stream.Collectors.toList()))
+    val x = ZarrArray.open(Paths.get(filename, "x")).read().asInstanceOf[Array[Double]]
+    val y = ZarrArray.open(Paths.get(filename, "y")).read().asInstanceOf[Array[Double]]
+    assertEquals(width, x.length)
+    assertEquals(height, y.length)
+    assertEquals(crop.xmin + cw / 2, x.head, cw * 1e-6)
+    assertEquals(crop.ymax - ch / 2, y.head, ch * 1e-6)
+
+    val pixels = data.read().asInstanceOf[Array[Int]]
+    assertEquals(values(rowOff * cols + colOff), pixels(0))
+    assertEquals(values((rowOff + height - 1) * cols + colOff + width - 1), pixels(pixels.length - 1))
+
+    val attr = ZarrUtils.fromJson(new InputStreamReader(new FileSystemStore(filename, null).getInputStream("cropOut/.zattrs")), classOf[java.util.Map[_, _]])
+    val crs = attr.get("_CRS").asInstanceOf[java.util.Map[_, _]]
+    assertEquals(java.util.Arrays.asList(height, width), crs.get("proj:shape"))
+    assertBboxEquals(crop, crs.get("proj:bbox"))
+  }
+
+  private def assertBboxEquals(expected: Extent, actual: Any): Unit = {
+    val actualValues = actual.asInstanceOf[java.util.List[Double]].toArray.map(_.asInstanceOf[Double])
+    assertEquals(4, actualValues.length)
+    Seq(expected.xmin, expected.ymin, expected.xmax, expected.ymax).zip(actualValues).foreach { case (e, a) => assertEquals(e, a, 1e-9) }
+  }
+
+  @Test
+  def testTimeIsSorted(@TempDir tempDir: Path): Unit = {
+    val date1 = ZonedDateTime.parse("1990-01-02T00:00:00Z")
+    val dates = List(date1.plusDays(5), date1, date1.plusDays(3))
+    val rdd = LayerFixtures.randomNoiseLayer(PixelType.Float, Extent(564389, 6659413, 565503, 6660301), CRS.fromName("EPSG:3857"), dates = Some(dates))
+    val filename = (tempDir / "sortedOut.zarr").toString()
+    zarr.ZarrWriter.saveZarr(rdd, filename, new ZarrOptions)
+
+    val time = ZarrArray.open(Paths.get(filename, "time")).read().asInstanceOf[Array[Long]]
+    assertEquals(3, time.length)
+    assertEquals(time.sorted.toSeq, time.toSeq)
   }
 }

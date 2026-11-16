@@ -23,6 +23,7 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.apache.spark.{Partitioner, SparkContext, TaskContext}
 import org.openeo.geotrellis.GeneralUtils.{Stats, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, gridBoundsFor, safeConvert, setupAssetMetadata, toExtent}
+import org.openeo.geotrellis.OutputPreprocessing.{preProcess, safeBitCellType}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.{Asset, Item, STACItem}
@@ -60,15 +61,6 @@ package object geotiff {
     "ZSTDDecode:Error in ZSTD_decompressStream()"
   )
   private final val BigTiffSizeThresholdBytes = math.pow(2, 32).toLong
-
-  private def safeBitCellType(cellType: CellType): CellType = cellType match {
-    // BitCellType is not reliably supported in GeoTIFF; convert to UByte to avoid ripple effects
-    case BitCellType =>
-      val safeCellType = UByteUserDefinedNoDataCellType(255.toByte)
-      logger.debug(s"converting $cellType to $safeCellType")
-      safeCellType
-    case _ => cellType
-  }
 
   class MultiBandGeoTiffWithCompression(val t: MultibandGeoTiff) {
 
@@ -601,43 +593,6 @@ package object geotiff {
         CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
       }
     }
-  }
-
-  def preProcess[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], cropBounds: Option[Extent], retainNoDataTiles:Boolean): (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = {
-    val re = rdd.metadata.toRasterExtent()
-    /**
-     * CLAMPING EP-4150
-     * Gridbounds are clamped to the actually available rasterextent, this means that we don't add empty data if somehow a cropping bounds is provided that is larger than the actual datacube.
-     * CroppedExtent needs to match exactly with whatever gridbounds that we got, so there we do not clamp. So even though we clamp when computing gridbounds, it can still have an extent that is larger than rasterextent!!!
-     */
-    var gridBounds = gridBoundsFor(re, cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
-    val croppedExtent = re.extentFor(gridBounds, clamp = false)
-    val processes = new OpenEOProcesses()
-    val filtered =
-      if (retainNoDataTiles) rdd
-      else processes.filterEmptyTile(rdd)
-    val preprocessedRdd = {
-      if (gridBounds.colMin != 0 || gridBounds.rowMin != 0) {
-        logger.info(s"Gridbounds requires reprojection: ${gridBounds}")
-        val geotiffLayout: LayoutDefinition = LayoutDefinition(RasterExtent(croppedExtent, re.cellSize), rdd.metadata.tileCols, rdd.metadata.tileRows)
-        val targetBounds = rdd.metadata.bounds.setSpatialBounds(KeyBounds(geotiffLayout.mapTransform.extentToBounds(croppedExtent)))
-        val partitioner = processes.computePartitionerForBounds(rdd, targetBounds, rdd.metadata.tileCols, rdd.metadata.tileRows)
-        // Same CRS, so no buffering is needed: bufferSize = 0 matches the default reproject behaviour.
-        val retiledRDD = filtered.reproject(rdd.metadata.crs, geotiffLayout, 0, partitioner)._2.crop(croppedExtent, Options(force = false))
-
-        gridBounds = gridBoundsFor(retiledRDD.metadata.toRasterExtent(), cropBounds.getOrElse(retiledRDD.metadata.extent), clamp = true)
-        retiledRDD
-      } else {
-        // Buffering or not keeps the bottom line NaN.
-        // However, buffering could make SentinelHub tiles to become almost empty.
-        filtered.crop(croppedExtent, Options(force = false))
-      }
-    }
-    val tileLayout = rdd.metadata.tileLayout
-    val fullRDD = preprocessedRdd.withContext {
-      _.mapValues[MultibandTile]((mbt: MultibandTile) => mbt.mapBands((i: Int, t: Tile) => raster.CroppedTile(t, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1))))
-    }
-    (gridBounds, croppedExtent, fullRDD)
   }
 
   class PowerOfTwoLocalLayoutScheme extends LayoutScheme {

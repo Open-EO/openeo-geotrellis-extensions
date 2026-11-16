@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `sum` now ignores nodata (default `ignore_nodata=true`): if only one cube has a value, that value is returned instead of nodata. `add` still returns nodata if either input is nodata.
   - `divide` and `mean` now always result in floats (`float32`), also for integer inputs.
 
+### Fixed
+
+- Zarr output: the `x`/`y` coordinates, `proj:bbox`, `proj:shape` and array shape now describe the written data, instead of the requested bbox. Coordinates are stored as float64 and the `time` axis is sorted ([#938](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/938)).
+
 ### Removed
 
 - `org.openeo.geotrellis.geotiff.PyramidFactory` (`from_disk`, `from_s3`, `from_uris`) and `MultibandCompositeRasterSource`: no longer used by the Python driver ([Open-EO/openeo-geopyspark-driver#1885](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1885)).
