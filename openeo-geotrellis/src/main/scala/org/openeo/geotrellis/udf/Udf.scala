@@ -5,7 +5,7 @@ import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, Multiban
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import jep.{DirectNDArray, NDArray, SharedInterpreter}
-import org.apache.spark.{Partitioner, SparkContext, SparkEnv}
+import org.apache.spark.{Partitioner, SparkConf, SparkContext, SparkEnv}
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.logger
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
@@ -231,10 +231,10 @@ object Udf {
    * Soft limit on the memory used by UDFs in the JEP interpreter, see jep_memory_guard.py.
    * Like for regular PySpark workers, the limit is spark.executor.pyspark.memory (MiB if no unit is given).
    */
-  private def udfMemoryLimitBytes(): Long = {
+  private[udf] def udfMemoryLimitBytes(conf: Option[SparkConf] = Option(SparkEnv.get).map(_.conf)): Long = {
     val key = "spark.executor.pyspark.memory"
     try {
-      Option(SparkEnv.get).map(_.conf).filter(_.contains(key)).map(_.getSizeAsMb(key) * 1024L * 1024L).getOrElse(-1L)
+      conf.filter(_.contains(key)).map(_.getSizeAsMb(key) * 1024L * 1024L).getOrElse(-1L)
     } catch {
       case e: Exception =>
         logger.warn(s"Failed to determine $key, not limiting UDF memory: ${e.getMessage}")
@@ -247,41 +247,47 @@ object Udf {
     val memoryLimitBytes = udfMemoryLimitBytes()
     if (memoryLimitBytes > 0) {
       logger.debug(s"Limiting JEP UDF memory to $memoryLimitBytes bytes.")
-      interp.set("_memory_guard_source", memoryGuardSource)
-      interp.exec(
-        s"""import sys
-           |if "$MEMORY_GUARD_MODULE" not in sys.modules:
-           |    import types
-           |    _memory_guard = types.ModuleType("$MEMORY_GUARD_MODULE")
-           |    exec(_memory_guard_source, _memory_guard.__dict__)
-           |    sys.modules.setdefault("$MEMORY_GUARD_MODULE", _memory_guard)
-           |del _memory_guard_source
-           |sys.modules["$MEMORY_GUARD_MODULE"].enter($memoryLimitBytes)
-           |""".stripMargin)
+      enterMemoryGuard(interp, memoryLimitBytes)
     }
   }
 
   private def closeInterpreter(interp: SharedInterpreter): Unit = {
     try {
-      if (udfMemoryLimitBytes() > 0) {
-        // A pending UdfMemoryLimitExceeded can still be raised while leaving, so retry.
-        var attempts = 0
-        var done = false
-        while (!done) {
-          attempts += 1
-          try {
-            interp.exec(s"""import sys; sys.modules["$MEMORY_GUARD_MODULE"].leave()""")
-            done = true
-          } catch {
-            case e: jep.JepException if attempts < 3 =>
-              logger.debug(s"Retrying to leave the UDF memory guard: ${e.getMessage}")
-          }
-        }
-      }
+      if (udfMemoryLimitBytes() > 0) leaveMemoryGuard(interp)
     } catch {
       case e: Exception => logger.warn(s"Failed to leave the UDF memory guard: ${e.getMessage}")
     } finally {
       interp.close()
+    }
+  }
+
+  private[udf] def enterMemoryGuard(interp: SharedInterpreter, memoryLimitBytes: Long): Unit = {
+    interp.set("_memory_guard_source", memoryGuardSource)
+    interp.exec(
+      s"""import sys
+         |if "$MEMORY_GUARD_MODULE" not in sys.modules:
+         |    import types
+         |    _memory_guard = types.ModuleType("$MEMORY_GUARD_MODULE")
+         |    exec(_memory_guard_source, _memory_guard.__dict__)
+         |    sys.modules.setdefault("$MEMORY_GUARD_MODULE", _memory_guard)
+         |del _memory_guard_source
+         |sys.modules["$MEMORY_GUARD_MODULE"].enter($memoryLimitBytes)
+         |""".stripMargin)
+  }
+
+  private[udf] def leaveMemoryGuard(interp: SharedInterpreter): Unit = {
+    // A pending UdfMemoryLimitExceeded can still be raised while leaving, so retry.
+    var attempts = 0
+    var done = false
+    while (!done) {
+      attempts += 1
+      try {
+        interp.exec(s"""import sys; sys.modules["$MEMORY_GUARD_MODULE"].leave()""")
+        done = true
+      } catch {
+        case e: jep.JepException if attempts < 3 =>
+          logger.debug(s"Retrying to leave the UDF memory guard: ${e.getMessage}")
+      }
     }
   }
 
