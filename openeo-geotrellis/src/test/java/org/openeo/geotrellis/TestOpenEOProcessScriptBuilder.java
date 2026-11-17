@@ -182,6 +182,33 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(fillIntArrayTile(3, 3, 30, 30, 30, 30, 30, 30, 30, 30, 30), res);
     }
 
+    @DisplayName("Test sum of boolean tiles gives the count, not xor (openeo-geopyspark-driver#1923)")
+    @Test
+    public void testSumBitTiles() {
+        for (boolean ignoreNoData : Arrays.asList(true, false)) {
+            OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+            Map<String, Object> arguments = new HashMap<>();
+            arguments.put("data", Collections.singletonMap("from_parameter", "data"));
+            arguments.put("ignore_nodata", ignoreNoData);
+            builder.expressionStart("sum", arguments);
+            builder.argumentStart("data");
+            builder.fromParameter("data");
+            builder.argumentEnd();
+            builder.expressionEnd("sum", arguments);
+
+            Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
+            Tile tile1 = fillBitArrayTile(2, 2, 1, 1, 0, 1);
+            Tile tile2 = fillBitArrayTile(2, 2, 1, 0, 0, 1);
+            Tile tile3 = fillBitArrayTile(2, 2, 1, 1, 0, 0);
+            Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile1, tile2, tile3)).toSeq());
+            Tile res = result.apply(0);
+            assertEquals(3, res.get(0, 0));
+            assertEquals(2, res.get(1, 0));
+            assertEquals(0, res.get(0, 1));
+            assertEquals(2, res.get(1, 1));
+        }
+    }
+
     @DisplayName("Test multiband XY constant")
     @Test
     public void testMultiBandMultiplyConstant() {

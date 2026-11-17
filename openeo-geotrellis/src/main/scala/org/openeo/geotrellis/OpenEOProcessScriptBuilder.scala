@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import ai.catboost.CatBoostModel
 import ai.catboost.spark.CatBoostClassificationModel
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
+import geotrellis.raster.{ArrayTile, BitCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.descriptive.rank.Percentile.EstimationType
@@ -544,7 +544,23 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     unaryFunction(argName, (tiles: Seq[Tile]) => tiles.map(operator))
   }
 
-  private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile, dataTypeMode: Option[String]=None): OpenEOProcess = {
+  /**
+   * Arithmetic on BitCellType tiles wraps around (e.g. 1 + 1 = 0), so convert them to an integer type
+   * that is wide enough to hold the reduction of all tiles.
+   */
+  private def widenBitCells(tiles: Seq[Tile]): Seq[Tile] = {
+    if (tiles.exists(_.cellType.bits == 1)) {
+      val widenedCellType =
+        if (tiles.size < Byte.MaxValue) ByteConstantNoDataCellType
+        else if (tiles.size < Short.MaxValue) ShortConstantNoDataCellType
+        else IntConstantNoDataCellType
+      tiles.map(t => if (t.cellType.bits == 1) safeConvert(t, widenedCellType) else t)
+    } else {
+      tiles
+    }
+  }
+
+  private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile, dataTypeMode: Option[String]=None, convertBitCells: Boolean = false): OpenEOProcess = {
     resultingDataType =
       if (typeStack.head.contains(argName) && dataTypeMode == PRESERVE_DATATYPE_MODE) {
         try {
@@ -555,7 +571,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       } else {
         FloatConstantNoDataCellType
       }
-    unaryFunction(argName, (tiles: Seq[Tile]) => Seq(tiles.reduce(operator)))
+    unaryFunction(argName, (tiles: Seq[Tile]) => Seq((if (convertBitCells) widenBitCells(tiles) else tiles).reduce(operator)))
   }
 
   private val PRESERVE_DATATYPE_MODE: Some[String] = Some("preserve")
@@ -1171,8 +1187,8 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           case "xor" if hasXY => xyFunction(Xor.apply, convertBitCells = false)
           case "xor" if hasExpressions => reduceFunction("expressions", Xor.apply) // legacy 0.4 style
           // Mathematical operations
-          case "sum" if hasData && !ignoreNoData => reduceFunction("data", Add.apply)
-          case "sum" if hasData && ignoreNoData => reduceFunction("data", AddIgnoreNodata.apply)
+          case "sum" if hasData && !ignoreNoData => reduceFunction("data", Add.apply, convertBitCells = true)
+          case "sum" if hasData && ignoreNoData => reduceFunction("data", AddIgnoreNodata.apply, convertBitCells = true)
           case "add" if hasXY => xyFunction(Add.apply)
           case "subtract" if hasXY => xyFunction(Subtract.apply)
           case "subtract" if hasData => reduceFunction("data", Subtract.apply) // legacy 0.4 style
