@@ -107,7 +107,8 @@ class Sentinel1GrdRasterSourceProvider(
 
     val scene = sceneCache.get(cacheKey, (_: SceneCacheKey) => {
       val pols = derivePolarisations(definition, requestedPolarisations)
-      logger.info(s"Opening SAR scene $safeRoot, pols=${pols.map(_.code).mkString(",")}, crs=$crs, cellSize=$cellSize")
+      logger.info(s"sar_backscatter: Opening $safeRoot, pols=${pols.map(_.code).mkString(",")}, crs=$crs, cellSize=$cellSize, " +
+        s"coefficient=${effectiveProcessingConfig.normalization}")
 
       stacItemUrl match {
         case Some(url) =>
