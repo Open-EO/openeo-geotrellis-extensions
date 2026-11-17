@@ -100,7 +100,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     plan.toSeq.map { case (sourceIndex, (bandsInSource, resultPositions)) => (sourceIndex, bandsInSource.toSeq, resultPositions.toSeq) }
   }
 
-  private def countSoftError(tracker: Option[BatchJobMetadataTracker], megapixels: Long, sourceName: SourceName): Unit =
+  private def countSoftError(tracker: Option[BatchJobMetadataTracker], megapixels: => Long, sourceName: SourceName): Unit =
     try {
       tracker.foreach(_.add(SOFT_ERROR_MEGAPIXEL_COUNTER, megapixels))
     } catch {
