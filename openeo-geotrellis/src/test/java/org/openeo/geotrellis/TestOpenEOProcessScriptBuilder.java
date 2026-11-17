@@ -19,6 +19,7 @@ import scala.collection.Seq;
 import scala.collection.mutable.Buffer;
 import scala.jdk.javaapi.CollectionConverters;
 
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -2332,6 +2333,70 @@ public class TestOpenEOProcessScriptBuilder {
         Object transformation2 = builder.generateAnyFunction(Collections.singletonMap("value","2022-03-02T00:00:00Z")).apply("2022-03-02T00:00:00Z");
         assertEquals(transformation2,false);
 
+    }
+
+    /**
+     * https://github.com/Open-EO/openeo-geotrellis-extensions/issues/286
+     */
+    @Test
+    public void testAllNotDateBetween() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        builder.expressionStart("all", map1("data", null));
+        builder.arrayStart("data");
+        for (String date : Arrays.asList("2020-01-04", "2020-01-06")) {
+            Map<String, Object> notArgs = map1("x", null);
+            builder.expressionStart("not", notArgs);
+            builder.argumentStart("x");
+                Map<String, Object> args = map3("x", null, "min", date + "T00:00:00Z", "max", null);
+                builder.expressionStart("date_between", args);
+                builder.argumentStart("x");
+                builder.fromParameter("value");
+                builder.argumentEnd();
+                builder.argumentStart("max");
+                    Map<String, Object> dateShiftArgs = map3("unit", "day", "value", 1, "date", date + "T00:00:00Z");
+                    builder.expressionStart("date_shift", dateShiftArgs);
+                    builder.constantArgument("value", 1);
+                    builder.expressionEnd("date_shift", dateShiftArgs);
+                builder.argumentEnd();
+                builder.expressionEnd("date_between", args);
+            builder.argumentEnd();
+            builder.expressionEnd("not", notArgs);
+            builder.arrayElementDone();
+        }
+        builder.arrayEnd();
+        assertEquals("array[boolean,boolean]", builder.typeStack().head().get("data").get());
+        builder.expressionEnd("all", map1("data", null));
+
+        assertAllNotDateBetween(builder, "2020-01-03T00:00:00Z", true);
+        assertAllNotDateBetween(builder, "2020-01-04T10:00:00Z", false);
+        assertAllNotDateBetween(builder, "2020-01-05T12:00:00Z", true);
+        assertAllNotDateBetween(builder, "2020-01-06T00:00:00Z", false);
+    }
+
+    private static void assertAllNotDateBetween(OpenEOProcessScriptBuilder builder, String dateString, boolean expected) {
+        ZonedDateTime date = ZonedDateTime.parse(dateString);
+        Object result = builder.generateAnyFunction(Collections.singletonMap("value", date)).apply(date);
+        assertEquals(expected, result, dateString);
+    }
+
+    @Test
+    public void testNotDateBetween() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> notArgs = map1("x", null);
+        builder.expressionStart("not", notArgs);
+        builder.argumentStart("x");
+            Map<String, Object> args = map3("x", null, "min", "2022-01-01T00:00:00Z", "max", "2022-01-03T00:00:00Z");
+            builder.expressionStart("date_between", args);
+            builder.argumentStart("x");
+            builder.fromParameter("value");
+            builder.argumentEnd();
+            builder.expressionEnd("date_between", args);
+        builder.argumentEnd();
+        builder.expressionEnd("not", notArgs);
+
+        assertEquals(false, builder.generateAnyFunction(Collections.singletonMap("value", "2022-01-02T00:00:00Z")).apply("2022-01-02T00:00:00Z"));
+        assertEquals(true, builder.generateAnyFunction(Collections.singletonMap("value", "2022-03-02T00:00:00Z")).apply("2022-03-02T00:00:00Z"));
     }
 
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData,DataType inputType) {

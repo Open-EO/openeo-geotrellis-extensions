@@ -9,7 +9,7 @@ import geotrellis.raster.resample.{Bilinear, CubicConvolution, ResampleMethod}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, IntConstantNoDataCellType, Raster, RasterExtent, RasterSource, ShortConstantNoDataCellType, isData, isNoData}
+import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, CellSize, CellType, FloatConstantNoDataCellType, IntConstantNoDataCellType, MultibandTile, Raster, RasterExtent, RasterSource, ShortConstantNoDataCellType, isData, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
@@ -1799,6 +1799,64 @@ class FileLayerProviderTest extends RasterMatchers {
       outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC_$loadPerProduct.nc",
       referenceFile = "../testdata/org/openeo/geotrellis/layers/FileLayerProviderTest/testMultibandNoNoDataCOGViaSTAC.nc",
     )
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = Array(false, true))
+  def testMaskingCubeRetainsFullyMaskedKeysAsNoData(loadPerProduct: Boolean): Unit = {
+    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/841
+    val pyramidFactory = LayerFixtures.stacCogNoNoDataCollection
+
+    val projectedPolygons = ProjectedPolygons.fromExtent(
+      Extent(604523.7292174072, 5090697.329131688, 617624.0262746626, 5095117.978413235),
+      "EPSG:32634",
+    )
+
+    def load(mask: Option[MultibandTileLayerRDD[SpaceTimeKey]], retainNoDataTiles: Boolean): MultibandTileLayerRDD[SpaceTimeKey] = {
+      val dataCubeParameters = new DataCubeParameters
+      dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+      dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
+      dataCubeParameters.loadPerProduct = loadPerProduct
+      dataCubeParameters.retainNoDataTiles = retainNoDataTiles
+      dataCubeParameters.maskingCube = mask
+      val Seq((_, cube)) = pyramidFactory.datacube_seq(projectedPolygons, "2020-07-01T00:00:00Z",
+        "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+      cube
+    }
+
+    val unmasked = load(mask = None, retainNoDataTiles = false).cache()
+    val allKeys = unmasked.keys.collect().toSet
+    assertTrue(allKeys.size > 1)
+
+    // mask out half of the keys completely (1 = masked), keep the others fully valid
+    val fullyMaskedKeys = allKeys.toSeq.sortBy(k => (k.col, k.row)).take(allKeys.size / 2).toSet
+    val metadata = unmasked.metadata
+    val maskTiles = allKeys.toSeq.map { key =>
+      val value = if (fullyMaskedKeys.contains(key)) 1 else 0
+      (key, MultibandTile(ByteArrayTile.fill(value.toByte, metadata.tileCols, metadata.tileRows)))
+    }
+    def mask: MultibandTileLayerRDD[SpaceTimeKey] =
+      ContextRDD(sc.parallelize(maskTiles), metadata.copy(cellType = ByteConstantNoDataCellType))
+
+    val withoutRetain = load(Some(mask), retainNoDataTiles = false)
+    assertEquals(allKeys -- fullyMaskedKeys, withoutRetain.keys.collect().toSet)
+
+    val withRetain = load(Some(mask), retainNoDataTiles = true)
+    assertTrue(withRetain.partitioner.isDefined)
+    val retainedTiles = withRetain.collect().toMap
+    assertEquals(allKeys, retainedTiles.keySet)
+    for (key <- fullyMaskedKeys) {
+      val tile = retainedTiles(key)
+      assertTrue(tile.isInstanceOf[EmptyMultibandTile], s"expected EmptyMultibandTile for $key")
+      assertEquals(unmasked.metadata.cellType, tile.cellType)
+      assertEquals(1, tile.bandCount)
+      assertTrue(tile.bands.forall(_.isNoDataTile))
+    }
+    for (key <- allKeys -- fullyMaskedKeys) {
+      assertFalse(retainedTiles(key).isInstanceOf[EmptyMultibandTile], s"expected data for $key")
+    }
+
+    unmasked.unpersist()
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")

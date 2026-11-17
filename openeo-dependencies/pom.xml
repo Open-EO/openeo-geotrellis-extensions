@@ -69,6 +69,10 @@
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
+                    <groupId>io.netty</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
                     <groupId>org.locationtech.geotrellis</groupId>
                     <artifactId>*</artifactId>
                 </exclusion>

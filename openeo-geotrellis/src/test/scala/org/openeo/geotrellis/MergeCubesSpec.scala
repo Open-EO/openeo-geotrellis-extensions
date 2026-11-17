@@ -1294,4 +1294,132 @@ class MergeCubesSpec {
     }
   }
 
+  @Test def testMergeCubesOverlapDivideGivesFloats(): Unit = {
+    val band1 = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2 = ByteArrayTile.fill(3.toByte, 256, 256)
+    val band3 = ByteArrayTile.fill(5.toByte, 256, 256)
+    val band4 = ByteArrayTile.fill(8.toByte, 256, 256)
+    val cube1 = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val cube2 = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band3, band4), Seq("2020-02-02T00:00:00Z", "2020-03-03T00:00:00Z"))
+
+    val merged = new OpenEOProcesses().mergeCubes(cube1, cube2, "divide")
+
+    assertTrue(merged.metadata.cellType.isFloatingPoint, s"divide should result in floats, got ${merged.metadata.cellType}")
+    for ((key, tile) <- merged.collect()) {
+      assertEquals(merged.metadata.cellType, tile.cellType)
+      key.time.getMonthValue match {
+        case 1 =>
+          assertEquals(2.0, tile.band(0).getDouble(0, 0), 1e-6)
+          assertEquals(3.0, tile.band(1).getDouble(0, 0), 1e-6)
+        case 2 =>
+          assertEquals(0.4, tile.band(0).getDouble(0, 0), 1e-6)
+          assertEquals(0.375, tile.band(1).getDouble(0, 0), 1e-6)
+        case _ =>
+          assertEquals(5.0, tile.band(0).getDouble(0, 0), 1e-6)
+          assertEquals(8.0, tile.band(1).getDouble(0, 0), 1e-6)
+      }
+    }
+  }
+
+  @Test def testMergeCubesOverlapNoDataHandling_SpatialSpatial(): Unit = {
+    val left = ShortArrayTile.fill(10, 16, 16)
+    left.set(0, 0, NODATA)
+    val right = ShortArrayTile.fill(4, 16, 16)
+    right.set(1, 0, NODATA)
+    val cube1 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(left), TileLayout(2, 2, 8, 8))
+    val cube2 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(right), cube1.metadata.tileLayout)
+    val processes = new OpenEOProcesses()
+    val nd = Double.NaN
+
+    // expected values at (0, 0): left nodata, (1, 0): right nodata, (5, 5): both valid (left = 10, right = 4)
+    val expectations = Seq(
+      "add" -> (nd, nd, 14.0),
+      "subtract" -> (nd, nd, 6.0),
+      "divide" -> (nd, nd, 2.5),
+      "sum" -> (4.0, 10.0, 14.0),
+      "max" -> (4.0, 10.0, 10.0),
+      "min" -> (4.0, 10.0, 4.0),
+      "mean" -> (4.0, 10.0, 7.0),
+      "multiply" -> (nd, nd, 40.0),
+      "product" -> (nd, nd, 40.0)
+    )
+
+    for ((operator, (leftNoData, rightNoData, bothValid)) <- expectations) {
+      val mergedTile = processes.mergeSpatialCubes(cube1, cube2, operator).stitch().tile.band(0)
+
+      for (((col, row), expected) <- Seq((0, 0) -> leftNoData, (1, 0) -> rightNoData, (5, 5) -> bothValid)) {
+        val actual = mergedTile.getDouble(col, row)
+        if (expected.isNaN) assertTrue(isNoData(actual), s"$operator: expected nodata at ($col, $row), got $actual")
+        else assertEquals(expected, actual, 1e-6, s"$operator: mismatch at ($col, $row)")
+      }
+    }
+  }
+
+  @Test def testMergeCubesOverlapLogicalOperators_SpatialSpatial(): Unit = {
+    // left is 1 in columns 0-7, right is 1 in rows 0-7, both are 0 elsewhere; left has nodata at (15, 15)
+    val left = ByteArrayTile.empty(16, 16)
+    val right = ByteArrayTile.empty(16, 16)
+    for (col <- 0 until 16; row <- 0 until 16) {
+      left.set(col, row, if (col < 8) 1 else 0)
+      right.set(col, row, if (row < 8) 1 else 0)
+    }
+    left.set(15, 15, NODATA)
+    val cube1 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(left), TileLayout(2, 2, 8, 8))
+    val cube2 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(right), cube1.metadata.tileLayout)
+    val processes = new OpenEOProcesses()
+
+    // expected values at (0, 0): 1/1, (0, 8): 1/0, (8, 0): 0/1, (8, 8): 0/0, (15, 15): nodata/0
+    val expectations = Seq(
+      "and" -> Seq(1, 0, 0, 0, NODATA),
+      "or" -> Seq(1, 1, 1, 0, NODATA),
+      "xor" -> Seq(0, 1, 1, 0, NODATA)
+    )
+    val pixels = Seq((0, 0), (0, 8), (8, 0), (8, 8), (15, 15))
+
+    for ((operator, expectedValues) <- expectations) {
+      val mergedTile = processes.mergeSpatialCubes(cube1, cube2, operator).stitch().tile.band(0)
+      for (((col, row), expected) <- pixels.zip(expectedValues)) {
+        assertEquals(expected, mergedTile.get(col, row), s"$operator: mismatch at ($col, $row)")
+      }
+    }
+  }
+
+  @Test def testMergeCubesOverlapMissingAndEmptyTiles_SpatialSpatial(): Unit = {
+    val cube1 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(ShortArrayTile.fill(10, 16, 16)), TileLayout(2, 2, 8, 8))
+    val fullCube2 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(ShortArrayTile.fill(4, 16, 16)), cube1.metadata.tileLayout)
+    // right cube: tile (0, 0) has no bands, tile (1, 1) is missing
+    val cube2 = ContextRDD(
+      fullCube2
+        .filter { case (key, _) => key != SpatialKey(1, 1) }
+        .map { case (key, tile) => if (key == SpatialKey(0, 0)) (key, new EmptyMultibandTile(tile.cols, tile.rows, tile.cellType): MultibandTile) else (key, tile) },
+      fullCube2.metadata)
+
+    val merged = new OpenEOProcesses().mergeSpatialCubes(cube1, cube2, "divide")
+
+    assertTrue(merged.metadata.cellType.isFloatingPoint, s"divide should result in floats, got ${merged.metadata.cellType}")
+    val tiles = merged.collect().toMap
+    assertEquals(4, tiles.size)
+    for ((key, tile) <- tiles) {
+      assertEquals(merged.metadata.cellType, tile.cellType, s"cell type of tile $key")
+      assertEquals(1, tile.bandCount)
+      val expected = if (key == SpatialKey(0, 0) || key == SpatialKey(1, 1)) 10.0 else 2.5
+      assertEquals(expected, tile.band(0).getDouble(0, 0), 1e-6, s"value of tile $key")
+    }
+  }
+
+  @Test def testMergeCubesOverlap_SpaceTimeSpatialSwapped(): Unit = {
+    val band1 = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band3 = ByteArrayTile.fill(5.toByte, 256, 256)
+    val cube1 = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band1), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val cube2 = TileLayerRDDBuilders.createMultibandTileLayerRDD(sc, MultibandTile(band3), cube1.metadata.tileLayout)
+
+    val processes = new OpenEOProcesses()
+    val merged = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata), cube2, "subtract", swapOperands = true)
+    assertEquals(2, merged.count())
+    for ((_, tile) <- merged.collect()) {
+      // swapped: x is the spatial cube
+      assertEquals(3, tile.band(0).get(0, 0))
+    }
+  }
+
 }

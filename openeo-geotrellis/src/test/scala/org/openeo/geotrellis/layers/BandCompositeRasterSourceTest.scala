@@ -2,15 +2,20 @@ package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
 import geotrellis.proj4.{LatLng, WebMercator}
-import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, GridBounds, TargetCellSize}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, GridBounds, MultibandTile, Raster, TargetCellSize, UByteCellType}
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertSame, assertThrows => assertThrowsJunit, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIf
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.layers.raster_source.{BandSelectionRasterSource, IndexedRasterSource, NoDataRasterSource, OpenEoSourcePath, SentinelXMLMetadataRasterSource, ValueOffsetRasterSource}
+import software.amazon.awssdk.core.exception.AbortedException
+
+import java.io.IOException
 
 class BandCompositeRasterSourceTest extends RasterMatchers {
 
@@ -208,6 +213,104 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
     assertTrue(expectedScaled.toArrayDouble().toSeq != expectedOffset.toArrayDouble().toSeq)
     assertEquals(expectedScaled.toArrayDouble().toSeq, result.band(0).toArrayDouble().toSeq)
     assertEquals(expectedOffset.toArrayDouble().toSeq, result.band(1).toArrayDouble().toSeq)
+  }
+
+  @Test
+  def softReadFailuresPreserveSelectedBandCountAndRawCellTypeBehavior(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val bounds = GridBounds(100L, 100L, 131L, 131L)
+    for (cellType <- Seq[CellType](FloatConstantNoDataCellType, UByteCellType)) {
+      val failed = new ValueOffsetRasterSource(physical.convert(cellType), 1.0, 0.0) {
+        override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] =
+          throw new java.io.IOException("unreadable selected bands")
+      }
+      val composite = new BandCompositeRasterSource(
+        NonEmptyList.of(BandSelectionRasterSource(failed, Seq(0, 0)), physical),
+        physical.crs, parallelRead = false, softErrors = true)
+      val result = composite.read(bounds)
+      if (cellType == FloatConstantNoDataCellType) {
+        val tile = result.get.tile
+        assertEquals(3, tile.bandCount)
+        assertTrue(tile.band(0).isNoDataTile && tile.band(1).isNoDataTile)
+        assertEquals(physical.read(bounds).get.tile.band(0).toArrayDouble().toSeq, tile.band(2).toArrayDouble().toSeq)
+      } else {
+        // A raw type cannot encode an empty band: retain the existing None result instead of inventing valid zeroes.
+        assertEquals(None, result)
+      }
+    }
+  }
+
+  @Test
+  def boundsSoftReadFailuresWithoutNoDataFailInsteadOfDroppingWindows(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val failed = new ValueOffsetRasterSource(physical.convert(UByteCellType), 1.0, 0.0) {
+      override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] =
+        throw new IOException("unreadable raw window")
+    }
+    val composite = new BandCompositeRasterSource(NonEmptyList.of(failed), physical.crs,
+      parallelRead = false, softErrors = true)
+    val bounds = Seq(GridBounds[Long](0, 0, 31, 31), GridBounds[Long](32, 0, 63, 31))
+    val error = assertThrowsJunit(classOf[IOException], () => { composite.readBounds(bounds).toList; () })
+    assertTrue(error.getMessage.contains("cannot be represented as NoData"), error.getMessage)
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = Array(false, true))
+  def extentSoftReadFailuresPreserveSelectedBandsAndRawCellTypeBehavior(parallelRead: Boolean): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val bounds = GridBounds(100L, 100L, 131L, 131L)
+    val extent = physical.gridExtent.extentFor(bounds)
+    val expected = physical.read(extent).get
+    for (cellType <- Seq[CellType](FloatConstantNoDataCellType, UByteCellType)) {
+      val failed = new ValueOffsetRasterSource(physical.convert(cellType), 1.0, 0.0) {
+        override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] =
+          throw new IOException("unreadable selected bands by extent")
+      }
+      val composite = new BandCompositeRasterSource(
+        NonEmptyList.of(BandSelectionRasterSource(failed, Seq(0, 0)), physical),
+        physical.crs, parallelRead = parallelRead, softErrors = true)
+      val result = composite.read(extent, Seq(1, 2, 0))
+      if (cellType == FloatConstantNoDataCellType) {
+        val raster = result.get
+        assertEquals(expected.extent, raster.extent)
+        assertEquals((expected.cols, expected.rows, 3), (raster.cols, raster.rows, raster.tile.bandCount))
+        assertEquals(FloatConstantNoDataCellType, raster.tile.cellType)
+        assertTrue(raster.tile.band(0).toArrayDouble().forall(_.isNaN))
+        assertEquals(expected.tile.band(0).toArrayDouble().toSeq, raster.tile.band(1).toArrayDouble().toSeq)
+        assertTrue(raster.tile.band(2).toArrayDouble().forall(_.isNaN))
+      } else {
+        assertEquals(None, result, "raw cell types must not invent valid zeroes for failed bands")
+      }
+    }
+  }
+
+  @Test
+  def extentReadFailuresStillFailInStrictMode(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val failure = new IOException("unreadable extent")
+    val failed = new ValueOffsetRasterSource(physical, 1.0, 0.0) {
+      override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = throw failure
+    }
+    val composite = new BandCompositeRasterSource(NonEmptyList.of(physical, failed), physical.crs,
+      parallelRead = false, softErrors = false)
+    val extent = physical.gridExtent.extentFor(GridBounds(100L, 100L, 131L, 131L))
+    val error = assertThrowsJunit(classOf[IOException], () => { composite.read(extent); () })
+    assertTrue(Iterator.iterate[Throwable](error)(_.getCause).takeWhile(_ != null).exists(_ eq failure))
+  }
+
+  @Test
+  def extentReadCancellationIsNotASoftError(): Unit = {
+    val physical = GeoTiffRasterSource(singleBandGeotiffPath)
+    val cancelled = AbortedException.builder().message("cancelled extent read").build()
+    val failed = new ValueOffsetRasterSource(physical, 1.0, 0.0) {
+      override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = throw cancelled
+    }
+    val extent = physical.gridExtent.extentFor(GridBounds(100L, 100L, 131L, 131L))
+    for (softErrors <- Seq(false, true)) {
+      val composite = new BandCompositeRasterSource(NonEmptyList.of(physical, failed), physical.crs,
+        parallelRead = false, softErrors = softErrors)
+      assertSame(cancelled, assertThrowsJunit(classOf[AbortedException], () => { composite.read(extent); () }))
+    }
   }
 
   @Test

@@ -14,7 +14,7 @@ secrets=(
   "AWS_SECRET_ACCESS_KEY|Jenkins credential 'SentinelHubBatchS3' (secret key)"
   "SENTINELHUB_CLIENT_ID|Jenkins credential 'SentinelHubGeodatadev' (username)"
   "SENTINELHUB_CLIENT_SECRET|Jenkins credential 'SentinelHubGeodatadev' (password)"
-  "DOWNSTREAM_DISPATCH_TOKEN|(optional) PAT with access to Open-EO/openeo-geopyspark-driver"
+  "DOWNSTREAM_DISPATCH_TOKEN|PAT with Actions write access to Open-EO/openeo-geopyspark-driver"
 )
 
 variables=(

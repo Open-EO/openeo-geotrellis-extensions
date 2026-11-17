@@ -2773,7 +2773,11 @@
             "sunAzimuthAngles": "granule_metadata##0",
             "sunZenithAngles": "granule_metadata##1",
             "viewAzimuthMean": "granule_metadata##2",
-            "viewZenithMean": "granule_metadata##3"
+            "viewZenithMean": "granule_metadata##3",
+            "sunAzimuthAnglesPerPixel": "granule_metadata##4",
+            "sunZenithAnglesPerPixel": "granule_metadata##5",
+            "viewAzimuthAnglesPerPixel": "granule_metadata##6",
+            "viewZenithAnglesPerPixel": "granule_metadata##7"
           },
           "property_filter_adaptations": {
             "productType": "drop",
@@ -2906,6 +2910,10 @@
           "sunZenithAngles",
           "viewAzimuthMean",
           "viewZenithMean",
+          "sunAzimuthAnglesPerPixel",
+          "sunZenithAnglesPerPixel",
+          "viewAzimuthAnglesPerPixel",
+          "viewZenithAnglesPerPixel",
           "CLD",
           "SNW"
         ]
@@ -3085,6 +3093,26 @@
           "unit": "deg"
         },
         {
+          "name": "sunAzimuthAnglesPerPixel",
+          "description": "Sun azimuth angle per pixel, clockwise from north, interpolated from the tile metadata grid.",
+          "unit": "deg"
+        },
+        {
+          "name": "sunZenithAnglesPerPixel",
+          "description": "Sun zenith angle per pixel, interpolated from the tile metadata grid.",
+          "unit": "deg"
+        },
+        {
+          "name": "viewAzimuthAnglesPerPixel",
+          "description": "Viewing azimuth angle of band B05 per pixel, clockwise from north, from the grid of the detector that observed the pixel.",
+          "unit": "deg"
+        },
+        {
+          "name": "viewZenithAnglesPerPixel",
+          "description": "Viewing zenith angle of band B05 per pixel, from the grid of the detector that observed the pixel.",
+          "unit": "deg"
+        },
+        {
           "name": "CLD",
           "gsd": 20
         },
@@ -3108,7 +3136,11 @@
             "sunAzimuthAngles": "granule_metadata##0",
             "sunZenithAngles": "granule_metadata##1",
             "viewAzimuthMean": "granule_metadata##2",
-            "viewZenithMean": "granule_metadata##3"
+            "viewZenithMean": "granule_metadata##3",
+            "sunAzimuthAnglesPerPixel": "granule_metadata##4",
+            "sunZenithAnglesPerPixel": "granule_metadata##5",
+            "viewAzimuthAnglesPerPixel": "granule_metadata##6",
+            "viewZenithAnglesPerPixel": "granule_metadata##7"
           },
           "property_filter_adaptations": {
             "productType": "drop",
@@ -3238,7 +3270,11 @@
           "sunAzimuthAngles",
           "sunZenithAngles",
           "viewAzimuthMean",
-          "viewZenithMean"
+          "viewZenithMean",
+          "sunAzimuthAnglesPerPixel",
+          "sunZenithAnglesPerPixel",
+          "viewAzimuthAnglesPerPixel",
+          "viewZenithAnglesPerPixel"
         ]
       }
     },
@@ -3331,6 +3367,22 @@
             "VZA",
             "approximateViewZenith"
           ]
+        },
+        {
+          "name": "sunAzimuthAnglesPerPixel",
+          "description": "Sun azimuth angle per pixel, clockwise from north, interpolated from the tile metadata grid."
+        },
+        {
+          "name": "sunZenithAnglesPerPixel",
+          "description": "Sun zenith angle per pixel, interpolated from the tile metadata grid."
+        },
+        {
+          "name": "viewAzimuthAnglesPerPixel",
+          "description": "Viewing azimuth angle of band B05 per pixel, clockwise from north, from the grid of the detector that observed the pixel."
+        },
+        {
+          "name": "viewZenithAnglesPerPixel",
+          "description": "Viewing zenith angle of band B05 per pixel, from the grid of the detector that observed the pixel."
         }
       ],
       "eo:bands": [
@@ -3503,6 +3555,26 @@
             "VZA",
             "approximateViewZenith"
           ]
+        },
+        {
+          "name": "sunAzimuthAnglesPerPixel",
+          "unit": "deg",
+          "description": "Sun azimuth angle per pixel, clockwise from north, interpolated from the tile metadata grid."
+        },
+        {
+          "name": "sunZenithAnglesPerPixel",
+          "unit": "deg",
+          "description": "Sun zenith angle per pixel, interpolated from the tile metadata grid."
+        },
+        {
+          "name": "viewAzimuthAnglesPerPixel",
+          "unit": "deg",
+          "description": "Viewing azimuth angle of band B05 per pixel, clockwise from north, from the grid of the detector that observed the pixel."
+        },
+        {
+          "name": "viewZenithAnglesPerPixel",
+          "unit": "deg",
+          "description": "Viewing zenith angle of band B05 per pixel, from the grid of the detector that observed the pixel."
         }
       ]
     }

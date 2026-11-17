@@ -99,10 +99,10 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     sampleNames.foreach(sampleNameList.add)
 
     val targetDir = temporaryFolder.toString
+    val formatOptions = new NetCDFOptions
+    formatOptions.setBandNames(new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")))
 
-    val items = NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
-      sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M",
-        "SCENECLASSIFICATION_20M")), Some("prefixTest"))
+    val items = NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31, sampleNameList, formatOptions, Some("prefixTest"))
 
     val assets = allAssets(items)
 
@@ -168,19 +168,18 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 2, 2, nbDates = 5)
       val polygons = ProjectedPolygons(polygon, CRS.fromEpsgCode(4326))
       val sampleNames = polygons.polygons.indices.map(_.toString)
+      val formatOptions = new NetCDFOptions
+      formatOptions.setBandNames(new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")))
+      formatOptions.setAddBandStatistics(addStatistics)
+      formatOptions.setRetainNoDataTiles(retainTiles)
 
       val samples = NetCDFRDDWriter.saveSamples(
         layer,
         "/tmp",
         polygons = polygons,
         sampleNames = new util.ArrayList(sampleNames.asJava),
-        bandNames = new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")),
-        dimensionNames = null,
-        attributes = null,
-        bandsMetadata = null,
-        addBandsStatistics = addStatistics,
+        options = formatOptions,
         filenamePrefix = Some("prefixTest"),
-        retainNoDataTiles = retainTiles
       )
 
       assertEquals(1, samples.size())
@@ -268,9 +267,11 @@ class NetCDFRDDWriterTest extends RasterMatchers {
 
     val targetDir = temporaryFolder.toString
 
-    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSamples(
-      layer, targetDir, polygons, sampleNameList, bandNames
-    ))
+    val formatOptions = new NetCDFOptions
+    formatOptions.setBandNames(bandNames)
+
+    val items = NetCDFRDDWriter.saveSamples(layer, targetDir, polygons, sampleNameList, formatOptions, None)
+    val sampleFilenames: util.List[String] = assetFileNames(items)
 
     val raster1: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(0)}:TOC-B04_10M""").read().get
     val raster2: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(1)}:TOC-B04_10M""").read().get
@@ -323,15 +324,15 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     val sampleNameList = new util.ArrayList[String]()
     sampleNames.foreach(sampleNameList.add)
 
+    val formatOptions = new NetCDFOptions
+    formatOptions.setBandNames(new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")))
+
     val samples = NetCDFRDDWriter.saveSamplesSpatial(
         localLayer,
         "/tmp",
         polygonsUTM31,
         sampleNameList,
-        new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")),
-        null,
-        null,
-        null,
+        formatOptions,
         Some("prefixTest"),
       ).stream()
       .flatMap { item =>
@@ -367,16 +368,15 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       val sampleNames = polygons.polygons.indices.map(_.toString)
       val layer = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, Raster(MultibandTile(imageTile, imageTile, imageTile), extentWorld), TileLayout(imageTile.cols / 256, imageTile.rows / 256, 256, 256), LatLng)
 
+      val formatOptions = new NetCDFOptions
+      formatOptions.setBandNames(new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")))
+      formatOptions.setAddBandStatistics(addStatistics)
       val samples = NetCDFRDDWriter.saveSamplesSpatial(
         layer,
         "/tmp",
         polygons = polygons,
         sampleNames = new util.ArrayList(sampleNames.asJava),
-        bandNames = new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")),
-        dimensionNames = null,
-        attributes = null,
-        bandsMetadata = null,
-        addBandsStatistics = addStatistics,
+        options = formatOptions,
         filenamePrefix = Some("prefixTest"),
       )
 
@@ -446,7 +446,9 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(date, date.plusDays(10), bbox, Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs, 13, sc, datacubeParams = Some(dcParams))
 
 
-    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSingleNetCDF(layer, "/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")), null, null, null, 6))
+    val options = new NetCDFOptions
+    options.setBandNames(new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")))
+    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSingleNetCDF(layer, "/tmp/stitched.nc", options))
     val expectedPaths = util.Collections.singletonList("/tmp/stitched.nc")
 
     assertEquals(expectedPaths, sampleFilenames)
@@ -592,7 +594,9 @@ class NetCDFRDDWriterTest extends RasterMatchers {
 
     val (image, layer) = LayerFixtures.createLayerWithGaps(5, 5)
 
-    val items = NetCDFRDDWriter.saveSingleNetCDFSpatial(layer, "/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")), null, null, null, 6)
+    val options = new NetCDFOptions
+    options.setBandNames(new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")))
+    val items = NetCDFRDDWriter.saveSingleNetCDFSpatial(layer, "/tmp/stitched.nc", options)
     val sampleFilenames: util.List[String] = assetFileNames(items)
     val expectedPaths = util.Collections.singletonList("/tmp/stitched.nc")
 
@@ -623,17 +627,12 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       val worldExtent = Extent(-180.0, -90.0, 180.0, 90.0)
       val layer = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, Raster(MultibandTile(imageTile, imageTile, imageTile),worldExtent), TileLayout(imageTile.cols / 256, imageTile.rows / 256, 256, 256), LatLng)
 
-      val items = NetCDFRDDWriter.saveSingleNetCDFGeneric(layer,
-        "/tmp/stitched.nc",
-        bandNames = new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),
-        dimensionNames = null,
-        attributes = null,
-        bandsMetadata = null,
-        zLevel = 6,
-        addBandStatistics = addStatistics,
-        cropBounds = cropBounds,
-        retainNoDataTiles = retainTiles,
-      )
+      val options = new NetCDFOptions
+      options.setBandNames(new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")))
+      options.setAddBandStatistics(addStatistics)
+      options.cropBounds = cropBounds
+      options.setRetainNoDataTiles(retainTiles)
+      val items = NetCDFRDDWriter.saveSingleNetCDFGeneric(layer, "/tmp/stitched.nc", options)
       assertEquals(1, items.size())
       val item = items.get(0)
       assertEquals(1, item.assets.size())
@@ -721,15 +720,14 @@ class NetCDFRDDWriterTest extends RasterMatchers {
         crs = CRS.fromName("EPSG:3857"),
         dates = Some(dates)
       )
+      val options = new NetCDFOptions
+      options.setBandNames(new util.ArrayList(util.Arrays.asList("band")))
       val items = NetCDFRDDWriter.saveSingleNetCDF(
         dataCubeContextRDD,
         "tmp/testWriteSingleNetCDFMultipleSamplesOnADay_" + date2.toString.replace(":", "_") + ".nc",
-        new util.ArrayList(util.Arrays.asList("band")),
-        null, null, null, 6
+        options
       )
-
       val sampleFilenames: util.List[String] = assetFileNames(items)
-
       val ds = NetcdfDataset.openDataset(sampleFilenames.get(0), true, null)
       // When the samples are in the same day, they should still be separate
       assertEquals(dates.length, ds.findDimension("t").getLength)
@@ -865,16 +863,9 @@ class NetCDFRDDWriterTest extends RasterMatchers {
     def checkCellTypes(cellTypes:Array[CellType], expectedCellType:CellType,fileName:String = ".nc"):Unit = {
       val layer = LayerFixtures.aSpacetimeTileLayerRddWithCellTypes(arrayTile, layoutCols, layoutRows, cellTypes)
       val path = targetDir + "/" + fileName
-      val items = NetCDFRDDWriter.saveSingleNetCDFGeneric(layer,
-        path,
-        bandNames = new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),
-        dimensionNames = null,
-        attributes = null,
-        bandsMetadata = null,
-        zLevel = 6,
-        addBandStatistics = false,
-        cropBounds = None
-      )
+      val options = new NetCDFOptions
+      options.setBandNames(new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")))
+      val items = NetCDFRDDWriter.saveSingleNetCDFGeneric(layer, path, options)
       val rasterSource = GDALRasterSource(s"""NETCDF:"$path":TOC-B04_10M""")
       val Some(multiBandRaster) = rasterSource.read()
       val raster = multiBandRaster.mapTile(_.band(0)) // first timestamp
