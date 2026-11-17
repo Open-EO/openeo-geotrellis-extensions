@@ -705,13 +705,13 @@ class OpenEOProcesses extends Serializable {
   }
 
   def filterEmptyTile[K:ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
-    datacube.withContext(_.filter { case (_, t) =>
-      val emptyTile = t.isInstanceOf[EmptyMultibandTile] || t.bands.forall(_.isNoDataTile)
+    datacube.withContext(_.filter(t => {
+      val emptyTile = t._2.isInstanceOf[EmptyMultibandTile]
       if (emptyTile) {
         logger.debug("Filtering out empty tile")
       }
       !emptyTile
-    })
+    }))
   }
 
   /**
