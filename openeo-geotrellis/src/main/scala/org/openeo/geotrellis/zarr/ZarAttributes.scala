@@ -24,9 +24,8 @@ class variableAttribute(name:String) extends ZarrAttributes {
   }
 }
 
-class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLayerMetadata[K],zarrOptions: ZarrOptions,hasTempDim:Boolean) extends ZarrAttributes {
+class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLayerMetadata[K], bbox: Extent, rows: Int, cols: Int, zarrOptions: ZarrOptions,hasTempDim:Boolean) extends ZarrAttributes {
   private val crs: CRS = metadata.crs
-  private val bbox: Extent = metadata.extent
   private val dimensions: Array[String] = Array("y","x")
   private val hasTemp: Boolean = hasTempDim
 
@@ -42,7 +41,7 @@ class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLay
     if (crs.toWKT().isDefined) crsMap.put("wkt",crs.toWKT().get)
     crsMap.put("code",crs.proj4jCrs.getName)
     crsMap.put("proj:bbox",Array(bbox.xmin,bbox.ymin,bbox.xmax,bbox.ymax))
-    crsMap.put("proj:shape",Array(metadata.rows.toInt,metadata.cols.toInt))
+    crsMap.put("proj:shape",Array(rows,cols))
     attributes.put("_CRS",crsMap)
     attributes
   }

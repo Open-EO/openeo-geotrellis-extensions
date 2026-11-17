@@ -7,8 +7,9 @@ import com.bc.zarr.storage.FileSystemStore
 import geotrellis.layer.{Boundable, SpaceTimeKey, SpatialComponent, SpatialKey}
 import geotrellis.raster.{DoubleArrayTile, FloatArrayTile}
 import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, ShortCellType, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
-import geotrellis.spark.MultibandTileLayerRDD
+import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import org.apache.spark.storage.StorageLevel
+import org.openeo.geotrellis.OutputPreprocessing
 import org.slf4j.LoggerFactory
 import ucar.ma2.Array.factory
 
@@ -29,8 +30,13 @@ object ZarrWriter {
     saveZarrGeneric(rdd,path,zarrOptions)
   }
 
-  def saveZarrGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions):Unit= {
+  def saveZarrGeneric[K: SpatialComponent: Boundable : ClassTag](inputRdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions):Unit= {
+    // Tiles are written by key index, so the layout must start at the (cropped) extent used for the coordinates.
+    val (gridBounds, croppedExtent, preprocessed) = OutputPreprocessing.preProcess(inputRdd, zarrOptions.cropBounds, retainNoDataTiles = true, alignLayoutToCrop = true)
+    val rdd: MultibandTileLayerRDD[K] = ContextRDD(preprocessed, preprocessed.metadata)
     rdd.persist(StorageLevel.MEMORY_AND_DISK)
+    val rows = gridBounds.height
+    val cols = gridBounds.width
 
     val metadataContent = new java.util.HashMap[String,Object]()
     if (zarrOptions.numberBands > 1) {
@@ -47,16 +53,15 @@ object ZarrWriter {
     val compressor = CompressorFactory.createDefaultCompressor()
 
 
-    val xValues = for (x <- 0 until metadata.cols.toInt) yield metadata.extent.xmin + x * metadata.cellwidth + metadata.cellwidth / 2.0
-    val yValues = for (y <- 0 until metadata.rows.toInt) yield metadata.extent.ymax - y * metadata.cellheight - metadata.cellheight / 2.0
+    val (xValues, yValues) = OutputPreprocessing.pixelCenterCoordinates(croppedExtent, metadata.cellwidth, metadata.cellheight, cols, rows)
 
     val keys = rdd.keys.collect()
-    val shapeOri = Array[Int](metadata.rows.toInt, metadata.cols.toInt)
+    val shapeOri = Array[Int](rows, cols)
     val chunkOri = Array[Int](tileRows, tileCols)
     val (timeValues: Map[Long,Int],shape,chunk,hasTemp) = keys match {
       case m: Array[SpaceTimeKey] =>
         val tempKey = m.map(_.temporalKey.instant)
-        val dist = tempKey.distinct
+        val dist = tempKey.distinct.sorted
         writeVariables(path,"time",dist, metadataContent)
         (dist.zipWithIndex.toMap, dist.length+:shapeOri, 1+:chunkOri,true)
       case _ => (Map[Long,Int](),shapeOri,chunkOri, false)
@@ -64,10 +69,10 @@ object ZarrWriter {
 
     if (zarrOptions.numberBands > 1) {
       for (bandName <- zarrOptions.bandNames){
-        writeFile(path, bandName,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp), metadataContent)
+        writeFile(path, bandName,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,croppedExtent,rows,cols,zarrOptions,hasTemp), metadataContent)
       }
     } else{
-      writeFile(path, getGroupName(path),FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp), metadataContent)
+      writeFile(path, getGroupName(path),FILENAME_DOT_ZATTRS, new dataAttribute(metadata,croppedExtent,rows,cols,zarrOptions,hasTemp), metadataContent)
     }
     val zarrHeader = new ZarrHeader(shape, chunk, zarrType.toString, byteOrder, fillValue.getOrElse(0), compressor, ".")
     if (zarrOptions.numberBands > 1) {
@@ -168,7 +173,7 @@ object ZarrWriter {
     val shape = Array[Int](length)
     val dataTypeZarr = value match {
       case _:Array[Long] => DataType.i8
-      case _:Array[Double] => DataType.f4
+      case _:Array[Double] => DataType.f8
     }
     val zarHeader = new ZarrHeader(shape, shape, dataTypeZarr.toString, byteOrder, 0, compressor, ".")
     writeFile(path, name, FILENAME_DOT_ZARRAY, zarHeader, metadataContent)
