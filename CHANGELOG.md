@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Zarr output: the `x`/`y` coordinates, `proj:bbox`, `proj:shape` and array shape now describe the written data, instead of the requested bbox. Coordinates are stored as float64 and the `time` axis is sorted ([#938](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/938)).
 - `sum` of boolean values (e.g. as reducer of `aggregate_temporal_period` on `cube > threshold`) now returns the count of `true` values, instead of the xor ([Open-EO/openeo-geopyspark-driver#1923](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1923)).
+- JEP UDFs: memory is limited to `spark.executor.pyspark.memory` again, with a soft limit instead of `RLIMIT_AS`, which limited the whole executor JVM. Python and numpy allocations are tracked with `tracemalloc`. When their total exceeds the limit, the running UDFs fail with `UdfMemoryLimitExceeded` (a `MemoryError`) ([#389](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/389)).
 
 ### Removed
 
