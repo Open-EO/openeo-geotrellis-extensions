@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `load_collection` for sparse spatial filters: the computed index reduction no longer counts the number of temporal steps twice,
   which resulted in far too small partitions for sparse cubes with many dates. ([#924](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/924))
 - Fix `tile_grid` option for GeoTIFF output of spatial data cube ([Open-EO/openeo-geopyspark-driver#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
+- Fix job failure upon handling soft error: `java.lang.IllegalArgumentException: Counter SoftErrorMegaPixels is not registered.` ([#946](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/946))
 
 - Sentinel-2 angle bands: missing, malformed or unreadable `MTD_TL.xml` metadata and detector masks now follow the soft-error policy for both tile-mean and per-pixel bands, preserving healthy selected assets and using float32/NaN NoData. Strict reads still fail, cancellation still propagates, and extent-based composite reads preserve healthy bands ([#916](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/916)).
 
