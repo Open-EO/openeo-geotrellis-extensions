@@ -265,7 +265,8 @@ case class RasterTileLoader() {
             compositeRasterSource.groupedBySource.map { case (sourceName, outputBandIndices, groupSources) =>
               val subRegion = GridBoundsRasterRegion(
                 new BandCompositeRasterSource(groupSources, compositeRasterSource.crs, compositeRasterSource.attributes,
-                  compositeRasterSource.predefinedExtent, readFullTile = true, softErrors = softErrors),
+                  compositeRasterSource.predefinedExtent, readFullTile = true, softErrors = softErrors,
+                  metadataTracker = compositeRasterSource.metadataTracker),
                 bounds)
               (sourceName, (outputBandIndices, key, subRegion))
             }

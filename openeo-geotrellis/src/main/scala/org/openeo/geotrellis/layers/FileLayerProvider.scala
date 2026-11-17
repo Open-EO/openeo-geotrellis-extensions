@@ -1151,10 +1151,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
+      val tracker = BatchJobMetadataTracker.tracker("")
 
       def composite(sources: NonEmptyList[RasterSource], readFullTile: Boolean): RasterSource =
         new BandCompositeRasterSource(sources, targetExtent.crs, attributes, readFullTile = readFullTile,
-          predefinedExtent = predefinedExtent, softErrors = softErrors)
+          predefinedExtent = predefinedExtent, softErrors = softErrors, metadataTracker = Some(tracker))
 
       if (byLinkTitle && bandIndices.isEmpty) {
         val actualNumberOfBands = bandContexts.size
