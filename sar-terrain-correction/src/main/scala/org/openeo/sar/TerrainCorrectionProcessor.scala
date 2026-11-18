@@ -53,17 +53,27 @@ final class TerrainCorrectionProcessor(
                 demSearchExtentWgs84: Option[Extent] = None): SceneContext = {
 
     val geoidFactory = geoidSourceFactory.getOrElse(throw new IllegalStateException(
-      "A geoid is required for terrain correction: configure a geoid undulation GeoTIFF (e.g. S1_GEOID_TIFF_URI)"))
+      s"sar_backscatter: a geoid is required for terrain correction (item $stacItemUrl): " +
+        "configure a geoid undulation GeoTIFF (e.g. S1_GEOID_TIFF_URI)"))
 
     val assets: StacAssets = StacItemLoader.load(stacItemUrl)
 
     val perPol = polarisations.map { pol =>
       val a = assets.perPol.getOrElse(pol.code,
-        throw new IllegalArgumentException(s"polarisation ${pol.code} not present in STAC item"))
-      S1AnnotationParser.parseProductAnnotation(
+        throw new IllegalArgumentException(s"sar_backscatter: polarisation ${pol.code} not present in item $stacItemUrl"))
+      try S1AnnotationParser.parseProductAnnotation(
         a.productAnnotation, a.measurement, a.calibration, a.noise, pol)
+      catch {
+        case e: Exception => throw new IllegalStateException(
+          s"sar_backscatter: failed to parse the ${pol.code} annotation of item $stacItemUrl: ${e.getMessage}", e)
+      }
     }
-    val meta: S1GrdMetadata = S1AnnotationParser.assemble(perPol)
+    val meta: S1GrdMetadata =
+      try S1AnnotationParser.assemble(perPol)
+      catch {
+        case e: Exception => throw new IllegalStateException(
+          s"sar_backscatter: failed to assemble the metadata of item $stacItemUrl: ${e.getMessage}", e)
+      }
 
     val sarSources: Map[Polarisation, RasterSource] = polarisations.map { pol =>
       pol -> rasterSourceFactory(assets.perPol(pol.code).measurement)
@@ -83,7 +93,7 @@ final class TerrainCorrectionProcessor(
     // The geoid source only needs an extent: the scene's overall box (the factory may be unaware of the antimeridian).
     val geoidSource = Some(geoidFactory(Extent(lonMin, latMin, lonMax, latMax).buffer(0.05)))
 
-    SceneContext(meta, sarSources, demItems, geoidSource, cellSize, crs, polarisations, config)
+    SceneContext(meta, sarSources, demItems, geoidSource, cellSize, crs, polarisations, config, stacItemUrl.toString)
   }
 
   // -------------------------------------------------------------------------
@@ -161,18 +171,18 @@ object TerrainCorrectionProcessor {
    *
    *  DEM items that cannot be read give NaN heights and are counted as a soft error, unless
    *  `config.softErrors` is false, in which case reading fails. */
-  def readDemEllipsoidal(ctx: TileComputeContext): Array[Array[Double]] = {
+  def readDemEllipsoidal(ctx: TileComputeContext): Array[Array[Float]] = {
     val req = ctx.request
     val targetRe = RasterExtent(req.extent, req.cellSize.width, req.cellSize.height, req.cols, req.rows)
     val dem: Tile = try {
       DemReader.read(ctx.demItems, req, targetRe)
     } catch {
       case e: Exception if req.config.softErrors =>
-        logger.warn(s"DEM read failed for AOI ${req.extent}, using NaN heights: ${e.getMessage}", e)
+        logger.warn(s"sar_backscatter: DEM read failed for item ${req.sceneId}, AOI ${req.extent}, using NaN heights: ${e.getMessage}", e)
         countSoftError(req.cols.toLong * req.rows / (1024 * 1024))
-        DoubleArrayTile.fill(Double.NaN, req.cols, req.rows)
+        FloatArrayTile.fill(Float.NaN, req.cols, req.rows)
       case e: Exception =>
-        throw new IllegalStateException(s"DEM read failed for AOI ${req.extent}: ${e.getMessage}", e)
+        throw new IllegalStateException(s"sar_backscatter: DEM read failed for item ${req.sceneId}, AOI ${req.extent}: ${e.getMessage}", e)
     }
 
     val geoid: Option[Tile] = ctx.geoidSource.map { gs =>
@@ -180,14 +190,15 @@ object TerrainCorrectionProcessor {
         .read().get.tile.band(0)
     }
 
-    val out = Array.ofDim[Double](req.rows, req.cols)
+    // Float is precise enough for heights (~1 mm at 8000 m) and halves the memory
+    val out = Array.ofDim[Float](req.rows, req.cols)
     var r = 0
     while (r < req.rows) {
       var c = 0
       while (c < req.cols) {
         val ortho = dem.getDouble(c, r)
         val und   = geoid.map(_.getDouble(c, r)).getOrElse(0.0)
-        out(r)(c) = if (java.lang.Double.isNaN(ortho)) Double.NaN else ortho + und
+        out(r)(c) = if (java.lang.Double.isNaN(ortho)) Float.NaN else (ortho + und).toFloat
         c += 1
       }
       r += 1
@@ -199,7 +210,7 @@ object TerrainCorrectionProcessor {
     try {
       BatchJobMetadataTracker.tracker("").add(SOFT_ERROR_MEGAPIXEL_COUNTER, math.max(1L, megapixels))
     } catch {
-      case e: Exception => logger.warn(s"Failed to increment the soft error counter: ${e.getMessage}", e)
+      case e: Exception => logger.warn(s"sar_backscatter: failed to increment the soft error counter: ${e.getMessage}", e)
     }
 
   /** Map an output (col, row) to (lon, lat) in radians. */

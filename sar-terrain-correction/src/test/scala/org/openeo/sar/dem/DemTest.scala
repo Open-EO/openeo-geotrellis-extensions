@@ -111,7 +111,7 @@ class DemTest {
   @Test
   def unreadableItemIsASoftErrorGivingNaN(): Unit = {
     val dem = TerrainCorrectionProcessor.readDemEllipsoidal(context(request(Extent(0.1, 0.1, 0.2, 0.2)), Seq(unreadable)))
-    assertTrue(dem.forall(_.forall(java.lang.Double.isNaN)))
+    assertTrue(dem.forall(_.forall(java.lang.Float.isNaN)))
   }
 
   @Test

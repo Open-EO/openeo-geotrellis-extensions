@@ -49,7 +49,7 @@ class Sentinel1GrdRasterSourceProvider(
 
   override def canProcess(definition: RasterSourceDefinition): Boolean = {
     val path = definition.dataPath
-    logger.debug(s"Checking if Sentinel1GrdRasterSourceProvider can process $path")
+    logger.debug(s"sar_backscatter: checking if Sentinel1GrdRasterSourceProvider can process $path")
     isS1GrdMeasurementTiff(path) || isS1SafePath(path) || isS1GrdStacItem(definition)
   }
 
@@ -190,7 +190,7 @@ class Sentinel1GrdRasterSourceProvider(
                                     cellSize: CellSize,
                                     crs: CRS): SceneContext = {
     throw new UnsupportedOperationException(
-      s"Cannot open SAR scene from SAFE root without a STAC item URL. " +
+      s"sar_backscatter: cannot open SAR scene from SAFE root without a STAC item URL. " +
       s"Ensure the OpenSearch feature has a selfUrl pointing to the STAC item. " +
       s"SAFE root: $safeRoot")
   }
@@ -222,10 +222,10 @@ object Sentinel1GrdRasterSourceProvider {
   private[provider] def polarisationBandIndex(requested: Option[Polarisation], description: => String,
                                               scenePolarisations: Seq[Polarisation], safeRoot: URI): Int = {
     val pol = requested.getOrElse(throw new IllegalArgumentException(
-      s"Cannot determine the polarisation of $description (scene $safeRoot): neither the path nor the band metadata identify one"))
+      s"sar_backscatter: cannot determine the polarisation of $description (scene $safeRoot): neither the path nor the band metadata identify one"))
     val index = scenePolarisations.indexOf(pol)
     if (index < 0) throw new IllegalStateException(
-      s"Polarisation ${pol.code} of $description is not available in scene $safeRoot " +
+      s"sar_backscatter: polarisation ${pol.code} of $description is not available in scene $safeRoot " +
         s"(pols=${scenePolarisations.map(_.code).mkString(",")})")
     index
   }

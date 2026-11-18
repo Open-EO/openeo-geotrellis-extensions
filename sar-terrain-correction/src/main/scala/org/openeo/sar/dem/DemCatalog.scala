@@ -43,7 +43,7 @@ final class StacDemCatalog(endpoint: URL, collectionId: String, assetKey: String
     cache.get((endpoint.toString, collectionId, assetKey, searchExtentsWgs84), _ => search(searchExtentsWgs84))
 
   private def search(parts: Seq[Extent]): Seq[DemItem] = {
-    logger.info(s"Searching DEM items of collection $collectionId at $endpoint for $parts")
+    logger.info(s"sar_backscatter: searching DEM items of collection $collectionId at $endpoint for $parts")
     val client = new STACClient(endpoint, s3URLS = true)
 
     val found = parts.flatMap { part =>
@@ -55,7 +55,7 @@ final class StacDemCatalog(endpoint: URL, collectionId: String, assetKey: String
       // the opensearch client stores the asset key as the title of the link
       val href = feature.links.find(_.title.contains(assetKey)).map(_.href.toString).getOrElse(
         throw new IllegalStateException(
-          s"DEM item ${feature.id} of collection $collectionId has no asset '$assetKey'; " +
+          s"sar_backscatter: DEM item ${feature.id} of collection $collectionId has no asset '$assetKey'; " +
             s"available: ${feature.links.flatMap(_.title).mkString(", ")}"))
       DemItem(feature.bbox, href)
     }.distinct
@@ -94,7 +94,7 @@ object ElevationModel {
       url match {
         case CollectionUrl(endpoint, collectionId) => new StacDemCatalog(new URI(endpoint).toURL, collectionId, assetKey)
         case _ => throw new IllegalArgumentException(
-          s"Unsupported elevation_model '$model': expected a STAC collection URL " +
+          s"sar_backscatter: unsupported elevation_model '$model': expected a STAC collection URL " +
             s"(https://<host>/<root>/collections/<id>) or '$Copernicus30Alias'")
       }
   }

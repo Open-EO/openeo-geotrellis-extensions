@@ -10,8 +10,8 @@ package org.openeo.sar.metadata
 final class Lut2D(val lines: Array[Int], val pixels: Array[Int],
                   val values: Array[Array[Float]]) {
 
-  require(values.length == lines.length, "row count mismatch")
-  values.foreach(r => require(r.length == pixels.length, "col count mismatch"))
+  require(values.length == lines.length, "sar_backscatter: LUT row count mismatch")
+  values.foreach(r => require(r.length == pixels.length, "sar_backscatter: LUT column count mismatch"))
 
   /** Bilinear sample at fractional (line, pixel) coordinates. */
   def apply(line: Double, pixel: Double): Double = {

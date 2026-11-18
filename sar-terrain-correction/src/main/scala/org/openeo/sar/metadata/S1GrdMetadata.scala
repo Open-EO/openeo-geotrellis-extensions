@@ -11,7 +11,7 @@ object Polarisation {
   case object HV extends Polarisation { val code = "hv" }
   def parse(s: String): Polarisation = s.toLowerCase match {
     case "vv" => VV case "vh" => VH case "hh" => HH case "hv" => HV
-    case other => throw new IllegalArgumentException(s"unknown polarisation $other")
+    case other => throw new IllegalArgumentException(s"sar_backscatter: unknown polarisation $other")
   }
 }
 

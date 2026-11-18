@@ -75,7 +75,9 @@ final case class TileRequest(
   cellSize: CellSize,
   crs: CRS,
   polarisations: Seq[Polarisation],
-  config: SarProcessingConfig = SarProcessingConfig.default
+  config: SarProcessingConfig = SarProcessingConfig.default,
+  /** Identifies the SAR item (STAC item URL) being processed, for log and error messages. */
+  sceneId: String = ""
 ) {
   val cols: Int = math.round(extent.width  / cellSize.width ).toInt
   val rows: Int = math.round(extent.height / cellSize.height).toInt
@@ -102,12 +104,14 @@ final case class SceneContext(
   cellSize: CellSize,
   crs: CRS,
   polarisations: Seq[Polarisation],
-  config: SarProcessingConfig = SarProcessingConfig.default
+  config: SarProcessingConfig = SarProcessingConfig.default,
+  /** Identifies the SAR item (STAC item URL) being processed, for log and error messages. */
+  sceneId: String = ""
 ) {
   /** Build the per-tile context for a given extent without any I/O or parsing. */
   def tileContext(extent: Extent): TileComputeContext =
     TileComputeContext(
-      TileRequest(extent, cellSize, crs, polarisations, config),
+      TileRequest(extent, cellSize, crs, polarisations, config, sceneId),
       metadata, sarSources, demItems, geoidSource
     )
 }

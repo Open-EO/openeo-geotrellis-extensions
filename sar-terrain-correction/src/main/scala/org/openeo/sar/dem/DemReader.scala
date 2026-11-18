@@ -4,7 +4,7 @@ import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.resample.Bilinear
-import geotrellis.raster.{DoubleArrayTile, RasterExtent, RasterSource, TargetRegion, Tile}
+import geotrellis.raster.{FloatArrayTile, RasterExtent, RasterSource, TargetRegion, Tile}
 import org.openeo.sar.TileRequest
 import org.slf4j.LoggerFactory
 
@@ -32,14 +32,14 @@ object DemReader {
    *  the one with the finest resolution wins. */
   def read(items: Seq[DemItem], req: TileRequest, targetRe: RasterExtent): Tile = {
     val tileWgs84 = req.extent.reproject(req.crs, LatLng)
-    val heights = DoubleArrayTile.fill(Double.NaN, req.cols, req.rows)
+    val heights = FloatArrayTile.fill(Float.NaN, req.cols, req.rows)
 
     // Tiles at the antimeridian are searched per side, as items on either side are ~360° apart in LatLng.
     val overlapping = DemGeometry.splitAtAntimeridian(tileWgs84, TileBufferDegrees)
       .flatMap(part => items.filter(_.bboxWgs84.intersects(part)))
       .distinct
 
-    if (overlapping.isEmpty) logger.debug(s"No DEM item overlaps tile ${req.extent} ($tileWgs84): using 0 m")
+    if (overlapping.isEmpty) logger.debug(s"sar_backscatter: no DEM item overlaps tile ${req.extent} ($tileWgs84) of item ${req.sceneId}: using 0 m")
 
     val sources = overlapping.map(item => sourceCache.get(item.href, GeoTiffRasterSource(_): RasterSource))
     val ordered =
