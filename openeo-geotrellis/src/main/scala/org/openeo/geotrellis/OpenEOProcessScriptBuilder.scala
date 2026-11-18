@@ -45,6 +45,24 @@ object OpenEOProcessScriptBuilder{
   type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
   type AnyProcess =  Map[String,Any] => (Any  => Any )
 
+  /**
+   * Arithmetic on BitCellType tiles wraps around (e.g. 1 + 1 = 0), so convert them to an integer type
+   * that is wide enough to hold the reduction of all tiles.
+   * Lives in the companion object so that lambdas using it don't capture the (serializable) builder instance:
+   * that creates a reference cycle which breaks Scala lambda deserialization on executors.
+   */
+  private def widenBitCells(tiles: Seq[Tile]): Seq[Tile] = {
+    if (tiles.exists(_.cellType.bits == 1)) {
+      val widenedCellType =
+        if (tiles.size < Byte.MaxValue) ByteConstantNoDataCellType
+        else if (tiles.size < Short.MaxValue) ShortConstantNoDataCellType
+        else IntConstantNoDataCellType
+      tiles.map(t => if (t.cellType.bits == 1) safeConvert(t, widenedCellType) else t)
+    } else {
+      tiles
+    }
+  }
+
   private def wrapSimpleProcess(operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
     def wrapper(context:Map[String,Any])(tiles: Seq[Tile]): Seq[Tile] = operator(tiles)
     return wrapper
@@ -544,22 +562,6 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     unaryFunction(argName, (tiles: Seq[Tile]) => tiles.map(operator))
   }
 
-  /**
-   * Arithmetic on BitCellType tiles wraps around (e.g. 1 + 1 = 0), so convert them to an integer type
-   * that is wide enough to hold the reduction of all tiles.
-   */
-  private def widenBitCells(tiles: Seq[Tile]): Seq[Tile] = {
-    if (tiles.exists(_.cellType.bits == 1)) {
-      val widenedCellType =
-        if (tiles.size < Byte.MaxValue) ByteConstantNoDataCellType
-        else if (tiles.size < Short.MaxValue) ShortConstantNoDataCellType
-        else IntConstantNoDataCellType
-      tiles.map(t => if (t.cellType.bits == 1) safeConvert(t, widenedCellType) else t)
-    } else {
-      tiles
-    }
-  }
-
   private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile, dataTypeMode: Option[String]=None, convertBitCells: Boolean = false): OpenEOProcess = {
     resultingDataType =
       if (typeStack.head.contains(argName) && dataTypeMode == PRESERVE_DATATYPE_MODE) {
@@ -571,7 +573,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       } else {
         FloatConstantNoDataCellType
       }
-    unaryFunction(argName, (tiles: Seq[Tile]) => Seq((if (convertBitCells) widenBitCells(tiles) else tiles).reduce(operator)))
+    unaryFunction(argName, (tiles: Seq[Tile]) => Seq((if (convertBitCells) OpenEOProcessScriptBuilder.widenBitCells(tiles) else tiles).reduce(operator)))
   }
 
   private val PRESERVE_DATATYPE_MODE: Some[String] = Some("preserve")
