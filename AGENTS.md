@@ -49,6 +49,7 @@ mvn -B -q -o -pl openeo-geotrellis test -Dtest='TestOpenEOProcessScriptBuilder#t
 - Branch from `develop`; never push directly to `develop`. One branch/PR per issue.
 - Add a `CHANGELOG.md` entry under `## Unreleased` (Added/Changed/Fixed/Removed) for user-visible changes, linking the issue. Driver issues are referenced as `Open-EO/openeo-geopyspark-driver#NNNN`.
 - Keep changes surgical; match the existing style of the file (Scala and Java tests coexist under `src/test/scala` and `src/test/java`).
+- If you use `pre-commit`, never run `--all-files` and then `git add -A`: the whitespace/end-of-file fixes in unrelated files (including test reference files such as `ehcek2_reference.json`) get committed and break tests. Only commit files of your change and check `git diff --stat` first.
 - Large binary test inputs go into the `testdata` submodule via Git LFS, not into this repo; bump the submodule pointer in the same PR.
 
 ## Pitfalls
