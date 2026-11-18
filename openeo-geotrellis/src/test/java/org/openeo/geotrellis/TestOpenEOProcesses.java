@@ -211,7 +211,7 @@ public class TestOpenEOProcesses {
         if (partitionerKeys.isDefined()) {
             assertArrayEquals(keys.toArray(),Arrays.stream(partitionerKeys.get()).toArray());
         }
-
+        
         //Partitioner p = compositedCube.partitioner().get();
         //keys.forEach(spaceTimeKey -> System.out.println("p.getPartition(spaceTimeKey) = " + p.getPartition(spaceTimeKey)) );
 

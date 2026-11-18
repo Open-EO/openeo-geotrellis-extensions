@@ -15,3 +15,4 @@ spark-submit \
 	--conf spark.yarn.maxAppAttempts=1 \
 	--class org.openeo.benchmarks.Sentinel2RadiometryBenchmark \
 	target/geotrellis-benchmarks-1.2.0-SNAPSHOT.jar $n_fields $start_date $end_date
+

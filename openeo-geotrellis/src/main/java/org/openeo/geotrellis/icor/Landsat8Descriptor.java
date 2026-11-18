@@ -11,8 +11,8 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	}
 
 	public String getLookupTableURL() {
-		return "https://artifactory.vgt.vito.be/artifactory/auxdata-public/lut/L8_big_disort.bin";
-				//"L8_big_disort";
+		return "https://artifactory.vgt.vito.be/artifactory/auxdata-public/lut/L8_big_disort.bin"; 
+				//"L8_big_disort"; 
 	}
 
     @Override
@@ -32,7 +32,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 			default: throw new IllegalArgumentException("Unsupported band: "+name);
 		}
 	}
-
+    
     // source:
     // official: http://www.gisagmaps.com/landsat-8-sentinel-2-bands/
     // B08 (from Thuillier spectrum): https://bleutner.github.io/RStoolbox/r/2016/01/26/estimating-landsat-8-esun-values
@@ -53,7 +53,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 
     // source:
     // http://www.gisagmaps.com/landsat-8-sentinel-2-bands/
-    //
+    // 
     final static double[] central_wavelengths = {
          442.96, // B01
          482.04, // B02
@@ -104,7 +104,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	}
 
 	/**
-     * @param src: digital number of the top of the atmosphere TOA radiance
+     * @param src: digital number of the top of the atmosphere TOA radiance 
      * @return TOA reflectance  (float 0..1)
 	 */
 	@Override
@@ -115,7 +115,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 //		return reflToRad(src*0.0001, sza, getIrradiance(bandIdx));
 		return reflToRad_with_earthsundistance(src*0.0001, sza, time, getIrradiance(bandIdx));
 	}
-
+    
 	/**
      * @param src: TOA radiance
      * @return: BOA reflectance in digital number
@@ -125,13 +125,13 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
     		String bandName,
     		int bandIdx,
     		ZonedDateTime time,
-    		double src,
-    		double sza,
-    		double vza,
-    		double raa,
-    		double gnd,
-    		double aot,
-    		double cwv,
+    		double src, 
+    		double sza, 
+    		double vza, 
+    		double raa, 
+    		double gnd, 
+    		double aot, 
+    		double cwv, 
     		double ozone,
     		int waterMask)
     {
@@ -146,9 +146,9 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
         // Apply atmoshperic correction on pixel based on an array of parameters from MODTRAN
         final double corrected = correctRadiance( bandIdx, src, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
 		//final double corrected=TOAradiance;
-        return corrected*10000.;
+        return corrected*10000.;    
     }
 
-
-
+	
+	
 }

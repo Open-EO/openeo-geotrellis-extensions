@@ -4,15 +4,15 @@ public abstract class ICorCorrectionDescriptor extends CorrectionDescriptor {
 	/**
 	 * This is the base class for the ICOR-based atmospheric correction.
 	 * correct converts TOA radiance to BOA reflectance -> preScale function should convert digital number to TOA radiance
-	 *
+	 * 
 	 */
-
+	
 	public LookupTable bcLUT;
-
+	
 	public ICorCorrectionDescriptor() throws Exception {
 		bcLUT=LookupTableIO.readLUT(ICorCorrectionDescriptor.this.getLookupTableURL());
 	}
-
+	
 	// extra interface functions specific to ICOR
     public abstract String getLookupTableURL();
 	public abstract double getIrradiance(int iband);

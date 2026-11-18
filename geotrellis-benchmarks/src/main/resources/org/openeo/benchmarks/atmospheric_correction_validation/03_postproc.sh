@@ -10,7 +10,7 @@ mkdir results
 function explode_tif_bands(){
   echo "TIF EXPLODE: $1"
   gdalwarp -te $2 $1 ./results/$1.cut.tif
-  for i in $(gdalinfo ./results/$1.cut.tif | grep Band | grep Block | sed -e 's/ //g;s/Band\(.*\)Block.*/\1/'); do
+  for i in $(gdalinfo ./results/$1.cut.tif | grep Band | grep Block | sed -e 's/ //g;s/Band\(.*\)Block.*/\1/'); do 
     ifile=./results/icor_${1}_${i}.tif
     [ -f $ifile ] && rm $ifile
     gdal_translate -a_srs $crs -co compress=deflate -b $i ./results/$1.cut.tif $ifile
@@ -24,7 +24,7 @@ function explode_jp2_bands(){
   echo "JP2 EXPLODE: $1"
   iband="$(echo $1 | rev | cut -d / -f 2 | rev )_$(echo $1 | sed -E 's/.*(_B0[2348][._]).*/\1/g;s/\./_/g')"
   gdalwarp -te $2 $1 ./results/$iband.cut.tif
-  for i in $(gdalinfo ./results/$iband.cut.tif | grep Band | grep Block | sed -e 's/ //g;s/Band\(.*\)Block.*/\1/'); do
+  for i in $(gdalinfo ./results/$iband.cut.tif | grep Band | grep Block | sed -e 's/ //g;s/Band\(.*\)Block.*/\1/'); do 
     ifile=./results/sen2cor_$i_${iband}.tif
     [ -f $ifile ] && rm $ifile
     gdal_translate -a_srs $crs -co compress=deflate -b $i ./results/$iband.cut.tif $ifile
@@ -35,7 +35,7 @@ function explode_jp2_bands(){
 # $1 file name
 function explode_netcdf_bands(){
   echo "NETCDF EXPLODE: $1"
-  for i in $(gdalinfo $1 | grep SUBDATASET_ | grep _NAME | cut -d = -f 2) ; do
+  for i in $(gdalinfo $1 | grep SUBDATASET_ | grep _NAME | cut -d = -f 2) ; do 
     ifile=./results/openeo_$1_$(echo $i | rev | cut -d : -f 1 | rev).tif
     [ -f $ifile ] && rm $ifile
     gdal_translate -a_srs $crs -co compress=deflate $i $ifile
@@ -79,3 +79,5 @@ done
 for i in $(ls ./sen2cor/L2A/*_B0[2348]_*.jp2) ; do
   explode_jp2_bands $i "$extent"
 done
+
+

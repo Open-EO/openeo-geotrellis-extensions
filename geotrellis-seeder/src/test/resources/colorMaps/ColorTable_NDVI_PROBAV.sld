@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
-<StyledLayerDescriptor version="1.0.0"
- xsi:schemaLocation="http://www.opengis.net/sld StyledLayerDescriptor.xsd"
- xmlns="http://www.opengis.net/sld"
- xmlns:ogc="http://www.opengis.net/ogc"
- xmlns:xlink="http://www.w3.org/1999/xlink"
+<StyledLayerDescriptor version="1.0.0" 
+ xsi:schemaLocation="http://www.opengis.net/sld StyledLayerDescriptor.xsd" 
+ xmlns="http://www.opengis.net/sld" 
+ xmlns:ogc="http://www.opengis.net/ogc" 
+ xmlns:xlink="http://www.w3.org/1999/xlink" 
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <!-- a Named Layer is the basic building block of an SLD document -->
   <NamedLayer>
@@ -27,9 +27,9 @@
                 </GrayChannel>
         	  </ChannelSelection>
               <ColorMap extended="true">
-
-                <ColorMapEntry color="#8c5c08" quantity="0" opacity="0"/>
-                <ColorMapEntry color="#8c5c08" quantity="1" />
+                
+                <ColorMapEntry color="#8c5c08" quantity="0" opacity="0"/>            
+                <ColorMapEntry color="#8c5c08" quantity="1" />            
                 <ColorMapEntry color="#8c5c08" quantity="20" />
                 <ColorMapEntry color="#8e5f08" quantity="21" />
                 <ColorMapEntry color="#906208" quantity="22" />
@@ -257,7 +257,7 @@
                 <ColorMapEntry color="#016400" quantity="244" />
                 <ColorMapEntry color="#006400" quantity="245" />
                 <ColorMapEntry color="#006400" quantity="250" />
-                <ColorMapEntry color="#ffffff" quantity="251" label="nodata" opacity="0"/>
+                <ColorMapEntry color="#ffffff" quantity="251" label="nodata" opacity="0"/>                
                 <ColorMapEntry color="#ffffff" quantity="255" label="nodata" opacity="0"/>
             </ColorMap>
           </RasterSymbolizer>

@@ -174,3 +174,4 @@ object HealpixToGeotrellis {
     ContextRDD(tilesRDD, md)
   }
 }
+

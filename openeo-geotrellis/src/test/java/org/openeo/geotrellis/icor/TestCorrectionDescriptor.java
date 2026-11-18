@@ -84,7 +84,7 @@ public class TestCorrectionDescriptor {
 			assertArrayEquals(new double[]{ps}, new double[]{input.expectedRadiance}, 1.e-6);
 		}
 	}
-
+	
 	@Test
 	public void testCorrectFunction() {
 		for (int i = 0; i < inputs.length; i++) {
@@ -122,7 +122,9 @@ public class TestCorrectionDescriptor {
 		System.out.println("sun-earth distance: "+Double.toString(distance_au));
 		assertArrayEquals(new double[]{distance_au}, new double[]{0.9833099149733568}, 1.e-6);
 	}
-
-
+	
+	
 
 }
+
+

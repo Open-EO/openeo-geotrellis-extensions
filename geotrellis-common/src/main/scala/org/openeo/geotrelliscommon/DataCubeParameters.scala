@@ -155,3 +155,4 @@ class DataCubeParameters extends Serializable {
 }
 
 case class SyntheticDataOverride(cellType: String, udf: Option[String], language: UdfLanguage = UdfLanguage.Python)
+

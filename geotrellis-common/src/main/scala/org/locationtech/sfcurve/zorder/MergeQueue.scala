@@ -15,9 +15,9 @@ import org.locationtech.sfcurve.IndexRange
 class MergeQueue(initialSize: Int = 1) {
   private var array = if(initialSize <= 1) { Array.ofDim[IndexRange](1) } else { Array.ofDim[IndexRange](initialSize) }
   private var _size = 0
-
+ 
   def size = _size
-
+ 
   private def removeElement(i: Int): Unit = {
     if(i < _size - 1) {
       val result = array.clone
@@ -26,7 +26,7 @@ class MergeQueue(initialSize: Int = 1) {
     }
     _size = _size - 1
   }
-
+ 
   private def insertElement(range: IndexRange, i: Int): Unit = {
     ensureSize(_size + 1)
     if(i == _size) {
@@ -40,8 +40,8 @@ class MergeQueue(initialSize: Int = 1) {
     }
     _size += 1
   }
-
-
+ 
+ 
   /** Ensure that the internal array has at least `n` cells. */
   protected def ensureSize(n: Int): Unit = {
     // Use a Long to prevent overflows
@@ -53,7 +53,7 @@ class MergeQueue(initialSize: Int = 1) {
       }
       // Clamp newSize to Int.MaxValue
       if (newSize > Int.MaxValue) newSize = Int.MaxValue
-
+ 
       val newArray: Array[IndexRange] = new Array(newSize.toInt)
       System.arraycopy(array, 0, newArray, 0, _size)
       array = newArray
@@ -61,7 +61,7 @@ class MergeQueue(initialSize: Int = 1) {
   }
 
   val ordering = IndexRange.IndexRangeIsOrdered
-
+ 
   /** Inserts a single range into the priority queue.
    *
    *  @param  range        the element to insert.
@@ -72,10 +72,10 @@ class MergeQueue(initialSize: Int = 1) {
       val i = -(res + 1)
       var (thisStart, thisEnd, contained) = range.tuple
       var removeLeft = false
-
+ 
       var removeRight = false
       var rightRemainder: Option[IndexRange] = None
-
+ 
       // Look at the left range
       if(i != 0) {
         val (prevStart, prevEnd, b) = array(i - 1).tuple
@@ -92,7 +92,7 @@ class MergeQueue(initialSize: Int = 1) {
           }
         }
       }
-
+ 
       // Look at the right range
       if(i < _size  && _size > 0) {
         val (nextStart, nextEnd, b) = array(i).tuple
@@ -113,8 +113,8 @@ class MergeQueue(initialSize: Int = 1) {
           }
         }
       }
-
-      if(removeRight) {
+ 
+      if(removeRight) { 
         if(!removeLeft) {
           array(i) = IndexRange(thisStart, thisEnd, contained)
         } else {
@@ -126,14 +126,14 @@ class MergeQueue(initialSize: Int = 1) {
       } else {
         insertElement(range, i)
       }
-
+      
       rightRemainder match {
         case Some(r) => this += r
         case None =>
       }
     }
   }
-
+ 
   def toSeq: Seq[IndexRange] =
     Seq.tabulate[IndexRange](size)(array.apply)
 }

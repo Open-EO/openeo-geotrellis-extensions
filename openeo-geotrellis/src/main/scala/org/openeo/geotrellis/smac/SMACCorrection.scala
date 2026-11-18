@@ -24,10 +24,10 @@ object SMACCorrection{
   class Coeff(smaccoeffStream:java.io.InputStream) extends Serializable {
 
     val lines: Array[String]={
-
+      
 //      val bufferedSource = Source.fromFile(smac_filename)
       val bufferedSource = Source.fromInputStream(smaccoeffStream)
-
+      
       try{
         bufferedSource.getLines().toArray
       } finally {
@@ -313,8 +313,8 @@ class SMACCorrection extends CorrectionDescriptor(){
   override def preScale(src: Double, sza: Double, time: ZonedDateTime, bandToConvert: Int): Double = {
     src.doubleValue()/10000.0
   }
-
-
+  
+  
   /**
    * This function performs the pixel-wise correction: src is a pixel value belonging to band (as from getBandFromName).
    * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
@@ -375,5 +375,5 @@ class SMACCorrection extends CorrectionDescriptor(){
   			case "B12" =>  12
         case _  => throw new IllegalArgumentException("Unsupported band: "+name)
     }
-
+ 
 }

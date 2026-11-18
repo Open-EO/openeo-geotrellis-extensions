@@ -164,3 +164,4 @@ object DummyOpenSearchClient extends OpenSearchClient {
 
   override def hashCode(): Int = System.identityHashCode(this)
 }
+

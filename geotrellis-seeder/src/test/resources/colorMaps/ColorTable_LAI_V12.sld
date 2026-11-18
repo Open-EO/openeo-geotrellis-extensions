@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
-<StyledLayerDescriptor version="1.0.0"
- xsi:schemaLocation="http://www.opengis.net/sld StyledLayerDescriptor.xsd"
- xmlns="http://www.opengis.net/sld"
- xmlns:ogc="http://www.opengis.net/ogc"
- xmlns:xlink="http://www.w3.org/1999/xlink"
+<StyledLayerDescriptor version="1.0.0" 
+ xsi:schemaLocation="http://www.opengis.net/sld StyledLayerDescriptor.xsd" 
+ xmlns="http://www.opengis.net/sld" 
+ xmlns:ogc="http://www.opengis.net/ogc" 
+ xmlns:xlink="http://www.w3.org/1999/xlink" 
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <!-- a Named Layer is the basic building block of an SLD document -->
   <NamedLayer>
@@ -233,7 +233,7 @@
                 <ColorMapEntry color="#006600" quantity="208" />
                 <ColorMapEntry color="#006500" quantity="209" />
                 <ColorMapEntry color="#006400" quantity="210" />
-                <ColorMapEntry color="#ffffff" quantity="211" label="nodata" opacity="0.0" />
+                <ColorMapEntry color="#ffffff" quantity="211" label="nodata" opacity="0.0" />                
                 <ColorMapEntry color="#ffffff" quantity="255"  label="nodata" opacity="0.0" />
             </ColorMap>
           </RasterSymbolizer>

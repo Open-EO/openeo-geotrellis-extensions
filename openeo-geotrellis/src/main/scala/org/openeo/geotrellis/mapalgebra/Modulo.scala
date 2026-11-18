@@ -17,3 +17,4 @@ object Modulo extends LocalTileBinaryOp {
     if (isNoData(z1) || isNoData(z2)) doubleNODATA
     else z1 % z2
 }
+

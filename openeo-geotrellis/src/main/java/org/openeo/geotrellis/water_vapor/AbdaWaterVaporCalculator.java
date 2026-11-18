@@ -17,7 +17,7 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 		// weights of the reference bands
 	    refWeights[0]=(cd.getCentralWavelength(r1Band) - cd.getCentralWavelength(wvBand)) / (cd.getCentralWavelength(r0Band) + cd.getCentralWavelength(r1Band));
 	    refWeights[1]=(cd.getCentralWavelength(wvBand) - cd.getCentralWavelength(r0Band)) / (cd.getCentralWavelength(r0Band) + cd.getCentralWavelength(r1Band));
-
+	    
 	    // initialize helper buffers
 	    // to avoid always reallocating in a tight loop
 	    wv=cd.bcLUT.getCwv();
@@ -25,7 +25,7 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 	    r0luparams=new double[wv.length];
 	    r1luparams=new double[wv.length];
 	    abda=new double[wv.length];
-
+	 
 	}
 
 	@Override
@@ -42,10 +42,10 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 		double ozone, // ozone [???]
 		double invalid_value
 	) {
-
-		if ((cwv<0.0)||(cwv==invalid_value)||(Double.isNaN(cwv))) return invalid_value;
-		if ((r0<0.0)||(r0==invalid_value)||(Double.isNaN(r0))) return invalid_value;
-		if ((r1<0.0)||(r1==invalid_value)||(Double.isNaN(r1))) return invalid_value;
+		
+		if ((cwv<0.0)||(cwv==invalid_value)||(Double.isNaN(cwv))) return invalid_value; 
+		if ((r0<0.0)||(r0==invalid_value)||(Double.isNaN(r0))) return invalid_value; 
+		if ((r1<0.0)||(r1==invalid_value)||(Double.isNaN(r1))) return invalid_value; 
 
 		double v0=intialValue;
 /*
@@ -57,7 +57,7 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
             abda_model[wv] = (meas - params[measurement_band][0]);
             abda_model[wv] /= (this->reference_weights[0] * (ref_1 - params[reference_bands[0]][0]) + (this->reference_weights[1] * (ref_2 - params[reference_bands[1]][0])));
         }
-*/
+*/		
 		// get interpolated cwv/abda array
 		for (int iwv=0; iwv<wv.length; ++iwv) {
 			double wvParams[]=lut.getInterpolated(wvBand, sza, vza, raa, dem, aot, wv[iwv], ozone);
@@ -72,7 +72,7 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
             r0luparams[iwv]=r0Params[0];
             r1luparams[iwv]=r1Params[0];
 		}
-
+		
 /*
         while (abs(previous_estimate - watervapor) > 0.00001 && watervapor != invalid_value && iteration < max_pixel_iterations)
         {
@@ -96,8 +96,8 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
         	//System.out.println("ITER: "+Double.toString(v0));
         	if (Math.abs(v1-v0)<eps) break;
 		}
-
-/*
+		
+/*        
 		if (watervapor != invalid_value && watervapor >= 0.0 && watervapor <= cwv_max && watervapor>= cwv_min) {
             watervaporlist.push_back(watervapor);
         }
@@ -105,7 +105,7 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 
 		if ((v0<vmin)||(v0>vmax)) return invalid_value;
 
-/*
+/*		
 		String msg=      Double.toString(sza)
 					+" "+Double.toString(vza)
 					+" "+Double.toString(raa)
@@ -119,11 +119,11 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 					+" -> "+Double.toString(v0);
 		System.out.println(msg);
 */
-
+		
 		return v0;
 	}
 
-
+	
     double get_toa_radiance(double reflectance,int water_land, double[] params)
     {
         /*
@@ -149,8 +149,8 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
         double target = (refl * params[3] - (-1.0 * params[0])) / (params[1] + params[2] - params[4] * refl);
         return target;
     }
-
-
+	
+	
 	// TODO: this could be done much faster if cwv would be set to equidistant points when building from calling getInterpolated
 	double interpolate(double xi, double[] x, double[] y) {
 		int idx1=1;
@@ -161,9 +161,9 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 			di=x[idx1]<xi;
 			if (di!=dn) break;
 		}
-		// if there was no change of sign, use the end closer to xi ->
+		// if there was no change of sign, use the end closer to xi -> 
 		// -> out of x range will result in extrapolation based on closest line segment
-		if (idx1==x.length)
+		if (idx1==x.length) 
 			idx1= Math.abs(x[0]-xi)<Math.abs(x[x.length-1]-xi) ? 1 : x.length-1;
 		// interpolate
 		return y[idx1-1]+(xi-x[idx1-1])*(y[idx1]-y[idx1-1])/(x[idx1]-x[idx1-1]);
@@ -177,24 +177,24 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 	final double eps=1.e-5;
 	final double vmin=0.;
 	final double vmax=7.;
-
+	
 	// band indices
 	int wvBand= -1;
 	int r0Band= -1;
 	int r1Band= -1;
-
+	
 	// weights of the reference bands
 	double refWeights[]= {0.,0.};
 
 	// temporary buffers (avoid realloc at every pixel)
 	double wv[];   // cwv - interolated:  cwv values
-    double wvluparams[];   // lut[icwv][0] entries for all cwv-s in the lookup table for the water vapor band
+    double wvluparams[];   // lut[icwv][0] entries for all cwv-s in the lookup table for the water vapor band 
     double r0luparams[];   // lut[icwv][0] entries for all cwv-s in the lookup table for the 0th reference band
     double r1luparams[];   // lut[icwv][0] entries for all cwv-s in the lookup table for the 1st reference band
     double abda[]; // abda model
-
+    
     /// GETTERS/SETTERS ///////////////////////////////////////////////////////////////////////////////////
-
+ 
 	public double getVmin() {
 		return vmin;
 	}
@@ -203,5 +203,6 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 		return vmax;
 	}
 
-
+    
 }
+

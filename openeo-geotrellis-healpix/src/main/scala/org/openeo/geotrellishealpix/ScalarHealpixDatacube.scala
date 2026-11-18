@@ -65,3 +65,4 @@ object ScalarHealpixDatacube {
     ScalarHealpixDatacube(nside, bands, empty)
   }
 }
+

@@ -85,3 +85,4 @@ case class ConstantMultibandRasterSource(id: String, gridExtent: GridExtent[Long
 
   override def toString: String = f"${getClass.getSimpleName}($id, $gridExtent, $crs, $bandValues)"
 }
+

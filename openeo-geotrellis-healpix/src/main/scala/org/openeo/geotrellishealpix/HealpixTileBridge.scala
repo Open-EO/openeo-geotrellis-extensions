@@ -117,3 +117,4 @@ object HealpixTileBridge {
     MultibandTile(resultTiles)
   }
 }
+

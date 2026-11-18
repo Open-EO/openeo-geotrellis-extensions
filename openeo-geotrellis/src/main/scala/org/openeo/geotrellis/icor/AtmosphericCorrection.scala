@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory
 import scala.jdk.CollectionConverters._
 
 class AtmosphericCorrection extends Serializable {
-
+  
   val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
 
     def correct(
@@ -57,7 +57,7 @@ class AtmosphericCorrection extends Serializable {
         case "LANDSAT8"   => new ConstantCWVProvider(0.3)
       }
     }
-
+    
     new ContextRDD(
       datacube.mapPartitions(partition => {
 
@@ -76,7 +76,7 @@ class AtmosphericCorrection extends Serializable {
               {
 
                 def angleTile(index: Int, fallback: Double): Tile = {
-                  if (index >= 0) safeConvert(multibandtile._2.band(index), FloatConstantNoDataCellType)
+                  if (index >= 0) safeConvert(multibandtile._2.band(index), FloatConstantNoDataCellType) 
                   else {
                     if (fallback.isNaN) throw new IllegalArgumentException("Missing angle data.")
                     else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
@@ -85,7 +85,7 @@ class AtmosphericCorrection extends Serializable {
 
                 // Angles assignment priority order:
                 // 1. overrideParam as constant tile if overrideParams not nan
-                // 2. from band
+                // 2. from band 
                 // 3. fallback value
                 val szaIdx = if (overrideParams.get(0).isNaN) findCaseInsensitive(bandIds,List("sza","sunZenithAngles"))  else -1
                 val vzaIdx = if (overrideParams.get(1).isNaN) findCaseInsensitive(bandIds,List("vza","viewZenithMean"))   else -1
@@ -100,17 +100,17 @@ class AtmosphericCorrection extends Serializable {
                 val vzaTile = angleTile(vzaIdx, if (overrideParams.get(1).isNaN) Double.NaN else overrideParams.get(1))
                 val saaTile = angleTile(saaIdx, if (overrideParams.get(2).isNaN) Double.NaN else overrideParams.get(2))
                 val vaaTile = angleTile(vaaIdx, if (overrideParams.get(2).isNaN) Double.NaN else 0.0) // because override provides raa == saa-vaa
-
+                
                 val raaTileDiff = saaTile - vaaTile
                 val raaTile=raaTileDiff.mapDouble(v =>
-                  ( if (v < -180.0) v+360.0 else if ( v > 180.0) v-360.0 else v ).abs
+                  ( if (v < -180.0) v+360.0 else if ( v > 180.0) v-360.0 else v ).abs  
                 )
 
                 val startMillis = System.currentTimeMillis();
 
                 val demTile = if (overrideParams.get(3).isNaN) elevationProvider.compute(multibandtile._1, crs, layoutDefinition)
                               else FloatConstantTile(overrideParams.get(3).toFloat, multibandtile._2.cols, multibandtile._2.rows)
-                val aotTile = if (overrideParams.get(4).isNaN) aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition)
+                val aotTile = if (overrideParams.get(4).isNaN) aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition) 
                               else FloatConstantTile(overrideParams.get(4).toFloat, multibandtile._2.cols, multibandtile._2.rows)
 
 
@@ -129,9 +129,9 @@ class AtmosphericCorrection extends Serializable {
                     safeConvert(aotTile*100,multibandtile._2.cellType).toArrayTile,
                     safeConvert(cwvTile*100,multibandtile._2.cellType).toArrayTile
                   ))
-                else
+                else 
                   result
-
+                
               }
             )
         }
@@ -149,7 +149,7 @@ class AtmosphericCorrection extends Serializable {
     // pre-scale
     val prescaled = multibandtile._2.mapBands((b, tile) => {
       // the idea is that bands containing B01-B19 and B8A are sent for correction, the rest (angles,... etc) returned as-is
-      // note that the descriptor's correct() method can still return the same value for bands that is B**, if those don't need correction
+      // note that the descriptor's correct() method can still return the same value for bands that is B**, if those don't need correction 
       val bandName = bandIds.get(b)
       bandName match {
         case bandPattern(pattern) => {
@@ -161,7 +161,7 @@ class AtmosphericCorrection extends Serializable {
         case _ => safeConvert(tile,FloatConstantNoDataCellType)
       }
     })
-
+    
     // keep cwv last because depends on the others a lot
     val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute((multibandtile._1,prescaled), szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, bandIds, sensorDescriptor)
     else FloatConstantTile(overrideParams.get(5).toFloat, multibandtile._2.cols, multibandtile._2.rows)
@@ -169,7 +169,7 @@ class AtmosphericCorrection extends Serializable {
 //    val result = multibandtile._2.mapBands((b, tile) => {
     val result = prescaled.mapBands((b, tile) => {
       // the idea is that bands containing B01-B19 and B8A are sent for correction, the rest (angles,... etc) returned as-is
-      // note that the descriptor's correct() method can still return the same value for bands that is B**, if those don't need correction
+      // note that the descriptor's correct() method can still return the same value for bands that is B**, if those don't need correction 
       val bandName = bandIds.get(b)
       bandName match {
         case bandPattern(pattern) => {
@@ -196,7 +196,7 @@ class AtmosphericCorrection extends Serializable {
         case _ => safeConvert(tile, multibandtile._2.cellType)
       }
     })
-
+    
     // this is for debug, turn it off in production!
     if (false) {
       val inputt=multibandtile._2.bands ++ Vector( szaTile,vzaTile,raaTile,aotTile,demTile,cwvTile )
@@ -207,10 +207,10 @@ class AtmosphericCorrection extends Serializable {
       for (i <- inputt.indices)  println("IN_("+i.toString+") "+inputn(i)+ ": "+safeConvert(inputt(i), FloatConstantNoDataCellType).resample(1, 1, Average).getDouble(0,0).toString)
       for (i <- resultt.indices) println("OUT("+i.toString+") "+resultn(i)+": "+safeConvert(resultt(i),FloatConstantNoDataCellType).resample(1, 1, Average).getDouble(0,0).toString)
     }
-
+    
     (cwvTile, result)
   }
-
+  
 	def findCaseInsensitive(where: java.util.List[String], what: List[String]) : Int = {
 		var idx : Int = -1
 		for( i:Int <- 0 until where.size()) {
@@ -221,6 +221,6 @@ class AtmosphericCorrection extends Serializable {
 			}
 		}
 		return idx
-	}
-
+	}  
+  
 }
