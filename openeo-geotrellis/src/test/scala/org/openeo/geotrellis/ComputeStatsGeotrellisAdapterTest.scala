@@ -9,8 +9,10 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Polygon, _}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.SparkSession
+import org.openeo.geotrellis.aggregate_polygon.AggregateOutputOptions
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertThrows, assertTrue}
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
@@ -204,6 +206,25 @@ class ComputeStatsGeotrellisAdapterTest() {
       Seq(Seq(10.0, Double.NaN,10.0,10.0,10.0), Seq(10.0, Double.NaN,10.0,10.0,10.0)),
       groupedStats.get(k).get
     ))
+  }
+
+  @Test
+  def compute_average_timeseries_on_datacube_to_parquet(): Unit = {
+    val datacube = buildCubeRdd(ZonedDateTime.parse("2017-01-01T00:00:00Z"), ZonedDateTime.parse("2017-03-10T00:00:00Z"))
+    val outDir = Files.createTempDirectory("parquetoutput").resolve("result").toString
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
+      "mean", datacube, ProjectedPolygons(Seq(polygon1, polygon2), "EPSG:4326"), outDir, "parquet", "file")
+
+    val rows = SparkSession.builder().getOrCreate().read.parquet("file://" + outDir).collect()
+    assertFalse(rows.isEmpty)
+    assertEquals(Set(0, 1), rows.map(_.getAs[Int]("feature_index")).toSet)
+  }
+
+  @Test
+  def unsupported_output_format_is_rejected(): Unit = {
+    assertThrows(classOf[IllegalArgumentException], () => AggregateOutputOptions("/tmp/x", "xml"))
+    assertThrows(classOf[IllegalArgumentException], () => AggregateOutputOptions("/tmp/x", "csv", "ftp"))
   }
 
   @Test
