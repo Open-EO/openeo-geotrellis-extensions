@@ -9,7 +9,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd._
-import org.apache.spark.sql.types._
+import org.apache.spark.sql.types.{DoubleType, IntegerType, StructField, StructType, TimestampType}
 import org.apache.spark.sql.{Column, Row, SaveMode, SparkSession}
 import org.openeo.geotrellis.OpenEOProcesses
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold

@@ -6,10 +6,17 @@ COPY use_official_repos.sh /tmp/use_official_repos.sh
 RUN if [ "$USE_OFFICIAL_REPOS" = "true" ]; then sh /tmp/use_official_repos.sh; fi && rm /tmp/use_official_repos.sh
 RUN dnf search gdal
 RUN dnf upgrade -y gdal-3.12.4 gdal-libs-3.12.4 gdal-devel-3.12.4 gdal-python311-3.12.4 && dnf clean all
-RUN dnf install -y maven java-21-openjdk-devel git dnf-plugins-core
+RUN dnf install -y maven java-25-openjdk-devel git dnf-plugins-core
 RUN dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 RUN dnf install -y docker-ce
-RUN update-alternatives --set javac java-21-openjdk.x86_64
-RUN update-alternatives --set java java-21-openjdk.x86_64
-RUN export JAVA_HOME=$(which java)
+ENV JAVA_HOME=/usr/lib/jvm/java-25-openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+RUN java -version && javac -version
+RUN curl -fsSL --retry 3 https://downloads.apache.org/spark/spark-4.3.0/spark-4.3.0-bin-hadoop3.tgz -o /tmp/spark-4.3.0-bin-hadoop3.tgz \
+    && echo "51a2473d09c74b6b755d3c4158275922fe4fed9c3801d9e48ade6083dc03b45693274020fe0fcf2be2a607a6a828f7159f78609ef913049e98c1882d2d0aab5f  /tmp/spark-4.3.0-bin-hadoop3.tgz" | sha512sum -c - \
+    && tar -xzf /tmp/spark-4.3.0-bin-hadoop3.tgz -C /opt \
+    && rm /tmp/spark-4.3.0-bin-hadoop3.tgz
+ENV SPARK_HOME=/opt/spark-4.3.0-bin-hadoop3
+ENV PATH="${SPARK_HOME}/bin:${PATH}"
+ENV PYTHONPATH="${SPARK_HOME}/python:${SPARK_HOME}/python/lib/py4j-0.10.9.9-src.zip"
 USER jenkins
