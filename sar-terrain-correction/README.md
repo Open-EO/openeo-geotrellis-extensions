@@ -49,5 +49,7 @@ where no item exists (sea, coast) or the DEM has nodata. If items exist but
 cannot be read, the DEM is NaN and the soft error counter is increased, unless
 soft errors are disabled for the load, in which case the read fails.
 
-A geoid is mandatory: `openScene` fails without one (`S1_GEOID_TIFF_URI` for the
-default provider).
+The bundled EGM96 geoid is used by default, including when packaged in a JAR.
+Supply a custom `geoidSourceFactory` to `TerrainCorrectionProcessor` to override it.
+Explicitly passing `None`
+still causes `openScene` to fail: terrain correction requires a geoid.

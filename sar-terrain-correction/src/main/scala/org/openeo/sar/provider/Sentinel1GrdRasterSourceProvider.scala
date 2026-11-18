@@ -234,7 +234,7 @@ object Sentinel1GrdRasterSourceProvider {
     polarisationBandIndex(requestedPolarisation(definition), s"${definition.dataPath} (band ${definition.bandName})",
       scenePolarisations, safeRoot)
 
-  /** Convenience factory: NativeBackend with the given geoid; the DEM follows the `elevation_model` of the
+  /** Convenience factory: NativeBackend with the given geoid, or bundled EGM96 when absent; the DEM follows the `elevation_model` of the
    *  processing config (see [[org.openeo.sar.dem.ElevationModel]]). */
   def withGeoid(
     geoidTiffUri: Option[URI] = None,
@@ -243,6 +243,7 @@ object Sentinel1GrdRasterSourceProvider {
     val processor = new TerrainCorrectionProcessor(
       new NativeBackend,
       geoidTiffUri.map(TerrainCorrectionProcessor.geoidFromTiff)
+        .orElse(Some(TerrainCorrectionProcessor.defaultGeoidSourceFactory))
     )
     new Sentinel1GrdRasterSourceProvider(processor, config)
   }
@@ -253,15 +254,11 @@ object Sentinel1GrdRasterSourceProvider {
  *  `sar_backscatter` (e.g. `COPERNICUS_30`, or a STAC collection URL), no DEM if absent.
  *
  *  Environment variable overrides:
- *    S1_GEOID_TIFF_URI      – URI of a geoid undulation GeoTIFF (mandatory for terrain correction)
  *    S1_NORMALIZATION       – "sigma0" (default) or "gamma0rtc"
  *    S1_SHADOW_LAYOVER_MASK – "true" to add shadow/layover band */
 class DefaultSentinel1GrdRasterSourceProvider
   extends Sentinel1GrdRasterSourceProvider(
-    processor = {
-      val geoidUri = Option(System.getenv("S1_GEOID_TIFF_URI")).map(URI.create)
-      Sentinel1GrdRasterSourceProvider.withGeoid(geoidUri).processor
-    },
+    processor = new TerrainCorrectionProcessor(new NativeBackend),
     processingConfig = {
       val norm = Option(System.getenv("S1_NORMALIZATION")).map(_.toLowerCase) match {
         case Some("gamma0rtc") => BackscatterNormalization.Gamma0RTC

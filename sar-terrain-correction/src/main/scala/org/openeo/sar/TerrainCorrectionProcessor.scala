@@ -5,7 +5,7 @@ import geotrellis.raster._
 import geotrellis.raster.resample.Bilinear
 import geotrellis.vector.Extent
 import org.openeo.geotrellis.layers.RasterTileLoader.SOFT_ERROR_MEGAPIXEL_COUNTER
-import org.openeo.geotrelliscommon.BatchJobMetadataTracker
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, resolveClasspathResource}
 import org.openeo.sar.backend.TerrainCorrectionBackend
 import org.openeo.sar.dem.{DemCatalog, DemGeometry, DemReader, ElevationModel}
 import org.openeo.sar.metadata.{Polarisation, S1AnnotationParser, S1GrdMetadata}
@@ -28,10 +28,12 @@ import java.net.URI
  *           happen here; no XML parsing, no RasterSource construction.
  *
  *  The single-tile helper [[computeTile]] is retained for convenience
- *  (it calls both stages). */
+ *  (it calls both stages).
+ *
+ *  The bundled EGM96 geoid is used by default; callers can supply a custom geoid factory. */
 final class TerrainCorrectionProcessor(
   backend: TerrainCorrectionBackend,
-  geoidSourceFactory: Option[Extent => RasterSource],
+  geoidSourceFactory: Option[Extent => RasterSource] = Some(TerrainCorrectionProcessor.defaultGeoidSourceFactory),
   rasterSourceFactory: URI => RasterSource = TerrainCorrectionProcessor.defaultRasterSourceFactory,
   demCatalogFactory: SarProcessingConfig => DemCatalog = TerrainCorrectionProcessor.defaultDemCatalogFactory
 ) {
@@ -54,7 +56,7 @@ final class TerrainCorrectionProcessor(
 
     val geoidFactory = geoidSourceFactory.getOrElse(throw new IllegalStateException(
       s"sar_backscatter: a geoid is required for terrain correction (item $stacItemUrl): " +
-        "configure a geoid undulation GeoTIFF (e.g. S1_GEOID_TIFF_URI)"))
+        "supply a geoidSourceFactory or use the bundled EGM96 default"))
 
     val assets: StacAssets = StacItemLoader.load(stacItemUrl)
 
@@ -152,6 +154,10 @@ object TerrainCorrectionProcessor {
     _ => rs
   }
 
+  /** Bundled EGM96 undulation grid, resolved lazily from the classpath (including JARs). */
+  lazy val defaultGeoidSourceFactory: Extent => RasterSource =
+    geoidFromTiff(resolveClasspathResource("org/openeo/egm96.tif", getClass.getClassLoader))
+
   /** DEM per the `elevation_model` / `dem_asset` of the processing config. */
   def defaultDemCatalogFactory: SarProcessingConfig => DemCatalog =
     config => ElevationModel.catalog(config.elevationModel, config.demAsset)
@@ -221,6 +227,4 @@ object TerrainCorrectionProcessor {
     (math.toRadians(lon), math.toRadians(lat))
   }
 }
-
-
 

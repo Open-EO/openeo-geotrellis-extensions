@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers.raster_source
 
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile}
+import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile, UShortUserDefinedNoDataCellType}
 import geotrellis.vector.Extent
 import org.openeo.geotrellis.udf.SharedInterpreterFactory
 import org.openeo.geotrelliscommon.UdfLanguage
@@ -73,6 +73,7 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
     cellTypeName match {
       case "byte" | "int8" | "uint8" | "int8raw" | "uint8raw" => ArrayTile(syntheticData(cols, rows, new Array[Byte](rows*cols), 1.toByte), rows, cols)
       case "short" | "int16" | "int16raw" | "uint16raw" => ArrayTile(syntheticData(cols, rows, new Array[Short](rows*cols), 1.toShort), rows, cols)
+      case "int16ud32767" => ArrayTile(syntheticData(cols, rows, new Array[Short](rows*cols), 1.toShort), rows, cols).convert(UShortUserDefinedNoDataCellType(32767))
       case "int" | "int32" => ArrayTile(syntheticData(cols, rows, new Array[Int](rows*cols), 1), rows, cols)
       case "float" | "float32" | "float32raw" => ArrayTile(syntheticData(cols, rows, new Array[Float](rows*cols), 1f), rows, cols)
       case "double" | "float64" => ArrayTile(syntheticData(cols, rows, new Array[Double](rows*cols), 1d), rows, cols)
@@ -105,7 +106,7 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
 
   private def useScala[T <: AnyVal : ClassTag](cols: Int, rows: Int, arr: Array[T]): Array[T] = {
     import scala.tools.nsc.Settings
-    import scala.tools.nsc.interpreter.{IMain, ReplReporter}
+    import scala.tools.nsc.interpreter.IMain
     import scala.tools.nsc.interpreter.shell.ReplReporterImpl
 
     val settings = new Settings
