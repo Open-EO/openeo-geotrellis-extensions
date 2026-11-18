@@ -550,7 +550,7 @@ object GeneralUtils {
     }
     (zmin,zmax,sum,powerSum,validCount,totalCount)
   }
-
+  
   def statsInt(tile:Tile): Stats = {
     var zmin = Int.MaxValue
     var zmax = Int.MinValue

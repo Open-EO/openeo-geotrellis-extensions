@@ -5,7 +5,7 @@
 
 The main openEO concept implemented by this library is the `Raster data cube`, which is a multi-dimensional array of raster data.
 
-This library does not support arbitrary multidimensional cubes, but rather focuses on the type of cubes that are most
+This library does not support arbitrary multidimensional cubes, but rather focuses on the type of cubes that are most 
 commonly encountered in earth observation. The most complex type that we can represent is the 4-dimensional space-time-bands cube.
 
 This cube is mapped to a Geotrellis [`MultibandTileLayerRDD`](https://geotrellis.github.io/scaladocs/latest/geotrellis/spark/index.html#MultibandTileLayerRDD[K]=org.apache.spark.rdd.RDD[(K,geotrellis.raster.MultibandTile)]withgeotrellis.layer.Metadata[geotrellis.layer.TileLayerMetadata[K]])
@@ -15,13 +15,13 @@ For cubes with a temporal dimension, a `SpacetimeKey` is used, while spatial cub
 Geotrellis documents this class and its associated metadata [here](https://geotrellis.readthedocs.io/en/latest/guide/core-concepts.html#layouts-and-tile-layers).
 
 To be able to understand how these cubes work and behave, or how to correctly manipulate them, knowledge of the [Spark RDD concept](https://spark.apache.org/docs/latest/rdd-programming-guide.html)
-is essential. These are distributed datasets that (in production) live on multiple machines in a cluster, allowing openEO
-to effectively scale out computations.
+is essential. These are distributed datasets that (in production) live on multiple machines in a cluster, allowing openEO 
+to effectively scale out computations. 
 
-### Data cube loading: `load_collection` & `load_stac`
+### Data cube loading: `load_collection` & `load_stac` 
 
 Loading large EO datasets into a Spark RDD is complex, mainly due to the variety in data formats, but also because
-IO is often a performance & stability bottleneck. Depending on the characteristics of the underlying storage system, the
+IO is often a performance & stability bottleneck. Depending on the characteristics of the underlying storage system, the 
 optimal loading strategy may also differ, which is why we support multiple code paths.
 
 The main class for loading data from POSIX or Object Storage type of systems is the `FileLayerProvider`.
@@ -40,12 +40,12 @@ This `load_collection` implementation supports a number of features:
 As mentioned, Spark will distribute data cubes over a cluster, into groups of data called `partitions`. A partition needs
 to fit into memory for processing, so the size matters, and Spark is not able to know the optimal partitioning for any given problem.
 
-Depending on procesess that are used, the optimal partitioning scheme can also change: for time series analysis, it would
+Depending on procesess that are used, the optimal partitioning scheme can also change: for time series analysis, it would 
 be optimal to group data for the same location with multiple observations in the same group. For other processes, like `resample_spatial`,
 it may be needed to have information from neighbouring tiles, so a grouping per observation would be more optimal.
 As a rule of thumb it is up to the process to check the partitioner, and change it if needed.
 
-Whenever a partitioner is changed, the data will be shuffled, which is a costly operation. This is why the code often tries
+Whenever a partitioner is changed, the data will be shuffled, which is a costly operation. This is why the code often tries 
 to cleverly avoid this where possible.
 
 #### Sparse partitioners
@@ -75,6 +75,10 @@ Some of this Scala code may be used by multiple openEO process implementations. 
 use the same code.
 
 `OpenEOProcessScriptBuilder` supports openEO processes that operate on arrays of numbers, which are often encountered in
-openEO `child processes`, as explained [here](https://api.openeo.org/#section/Processes/Process-Graphs). This part of the
+openEO `child processes`, as explained [here](https://api.openeo.org/#section/Processes/Process-Graphs). This part of the 
 work is not distributed on Spark, so operates on chunks of data that fit in memory. It does use Geotrellis which generally has
 quite well performing implementations for most basic processes.
+
+
+
+

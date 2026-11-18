@@ -19,7 +19,7 @@ function rescale_if_needed(){
 # $1 wildcard
 # $2 output name
 function find_copy(){
-  if [ "$(ls -1 ${srcdir}/*$1* | wc -l)" -gt "1" ] ; then
+  if [ "$(ls -1 ${srcdir}/*$1* | wc -l)" -gt "1" ] ; then 
     echo "MULTIPLE FILES FOUND FOR: ${srcdir}/*$1*" 1>&2
     for i in $(ls ${srcdir}/*$1* | sort) ; do echo $i 1>&2 ; done
     echo "TAKING FIRST" 1>&2
@@ -33,7 +33,7 @@ cp /data/TERRASCOPE/morpho_v2/process_data/process_data_20191021/sentinel2/Templ
 cp /data/TERRASCOPE/morpho_v2/process_data/process_data_20191021/sentinel2/Templates/LUT/S${mission}_10m.bin ./input_lut_10m.bin
 cp /data/TERRASCOPE/morpho_v2/process_data/process_data_20191021/sentinel2/Templates/LUT/S${mission}_all.bin ./input_lut_all.bin
 
-# input top of atmosphare radiances/reflectances
+# input top of atmosphare radiances/reflectances 
 #  * radiances: all bands at 60m resolution and B02,B03,B04,B08 at 10m
 #  * reflectances: presumably B09,B8A,B11 at 10m
 # TODO: check reflectance bands order and if those are used or not
@@ -62,3 +62,4 @@ rescale_if_needed 60 $(find_copy cloudmask input_cloudmask_60m.tif)
 
 # atmospheric optical thickness
 rescale_if_needed 10 $(find_copy aot input_aot_10m.tif )
+

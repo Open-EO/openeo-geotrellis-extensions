@@ -32,3 +32,4 @@ while true; do
   do_request "$client_id"
   sleep 5
 done
+

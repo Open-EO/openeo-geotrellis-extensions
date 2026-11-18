@@ -19,7 +19,7 @@ public class LookupTableIO {
     	if (in instanceof DataInputStream) { return Integer.reverseBytes(((DataInputStream)in).readInt()); }
     	throw new IOException("Error reading integer.");
     }
-
+    
     private static <T> double[] readDoubleArray(T in) throws IOException { return readDoubleArray(in, -1); }
     private static <T> double[] readDoubleArray(T in, int size) throws IOException {
 		if (size==-1) size=readInt(in);
@@ -33,7 +33,7 @@ public class LookupTableIO {
     		DataInputStream din=(DataInputStream)in;
 			for(int i=0; i<size; i++) data[i]=Double.longBitsToDouble(Long.reverseBytes(din.readLong()));
     	}
-		return data;
+		return data; 
     }
 
     private static <T> int[] readShortArray(T in) throws IOException {
@@ -48,10 +48,10 @@ public class LookupTableIO {
     		DataInputStream din=(DataInputStream)in;
 			for(int i=0; i<size; i++) data[i]=(int)Short.reverseBytes(din.readShort());
     	}
-		return data;
+		return data; 
     }
 
-
+    
 	public static LookupTable readLUT(String resourceName) throws IOException {
 		if ((resourceName.startsWith("http") || resourceName.startsWith("file:")) && resourceName.endsWith(".bin")) {
 			return readLUT(URI.create(resourceName).toURL().openStream(),true);
@@ -70,7 +70,7 @@ public class LookupTableIO {
 		Object in;
 		if (is_binary) { in=new DataInputStream(new BufferedInputStream(inps)); }
 		else           { in=new Scanner(new BufferedInputStream(inps)).useDelimiter(","); }
-
+		
 		// read the header
 		int dim=readInt(in);
         int[] band = readShortArray(in);
@@ -87,9 +87,9 @@ public class LookupTableIO {
         int numberOfEntries = band.length * sza.length * vza.length * raa.length * height.length * aot.length * cwv.length * ozone.length;
         if (is_binary) { readInt(in); } // dummy read in binary, because it also save number of entries
         double[][] values=new double[numberOfEntries][];
-        for (int i=0; i<numberOfEntries; i++)
+        for (int i=0; i<numberOfEntries; i++) 
         	values[i]=readDoubleArray(in,numberOfValues);
-
+        
         // return via ctor
 		return new LookupTable(numberOfValues, dim, band, sza, vza, raa, height, aot, cwv, ozone, values);
 	}

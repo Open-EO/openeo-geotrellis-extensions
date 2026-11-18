@@ -59,3 +59,10 @@ if __name__ == '__main__':
     sentinel2data.download('output_openeo_'+startdate+'.nc',format='netcdf')
 
     print("FINISHED")
+
+
+
+
+
+
+

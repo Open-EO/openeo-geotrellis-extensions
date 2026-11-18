@@ -58,3 +58,5 @@ object MeanResult {
     MeanResult(s, c, t, None, None)
   }
 }
+
+

@@ -106,3 +106,4 @@ object HealpixDatacube {
     case Layout.Packed(cpp)  => PackedHealpixDatacube.empty(spark, nside, bands, cpp)
   }
 }
+

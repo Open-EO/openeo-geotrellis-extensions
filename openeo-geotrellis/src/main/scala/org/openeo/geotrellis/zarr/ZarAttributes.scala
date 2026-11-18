@@ -73,3 +73,4 @@ class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLay
     attributes
   }
 }
+

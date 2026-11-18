@@ -19,3 +19,4 @@ object MinIgnoreNodata extends LocalTileBinaryOp {
     else if ( isNoData(z2)) z1
     else math.min(z1,z2)
 }
+

@@ -190,3 +190,4 @@ class GeoCodingProcess extends Serializable {
   }
 
 }
+

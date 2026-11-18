@@ -37,11 +37,11 @@ public class TestWaterVaporCalculator {
 	static final double r1=11.206167;
 	static final double ozone=0.33;
 	static final double invalid_value=Double.NaN;
-
+	
 	static double rad2refl(double value, int band) {
 		return value;//*Math.PI/(Math.cos(sza*Math.PI/180.)*cd.getIrradiance(band));
 	}
-
+	
 	@BeforeAll
     public static void setup_fields() throws Exception {
 		cd=TestCorrectionDescriptor.localSentinel2Descriptor();
@@ -93,12 +93,12 @@ public class TestWaterVaporCalculator {
 	public void testComputePixelInRange() throws Exception {
 
     	wvc.prepare(cd, "B09", "B8A", "B11");
-		double r=wvc.computePixel(lut,
+		double r=wvc.computePixel(lut, 
 			sza,
 			vza,
 			raa,
-			dem,
-			aot,
+			dem, 
+			aot, 
 			rad2refl(cwv, wvc.wvBand),
 			rad2refl(r0, wvc.r0Band),
 			rad2refl(r1, wvc.r1Band),
@@ -107,12 +107,12 @@ public class TestWaterVaporCalculator {
 		);
 		assertEquals(r,0.43244719821880784,1.e-6);
 
-		r=wvc.computePixel(lut,
+		r=wvc.computePixel(lut, 
 			sza,
 			vza,
 			raa,
-			dem,
-			aot,
+			dem, 
+			aot, 
 			Double.NaN,
 			rad2refl(r0, wvc.r0Band),
 			rad2refl(r1, wvc.r1Band),
@@ -121,12 +121,12 @@ public class TestWaterVaporCalculator {
 		);
 		assertEquals(r,Double.NaN,1.e-6);
 
-		r=wvc.computePixel(lut,
+		r=wvc.computePixel(lut, 
 			sza,
 			vza,
 			raa,
-			dem,
-			aot,
+			dem, 
+			aot, 
 			rad2refl(cwv, wvc.wvBand),
 			Double.NaN,
 			rad2refl(r1, wvc.r1Band),
@@ -135,12 +135,12 @@ public class TestWaterVaporCalculator {
 		);
 		assertEquals(r,Double.NaN,1.e-6);
 
-		r=wvc.computePixel(lut,
+		r=wvc.computePixel(lut, 
 			sza,
 			vza,
 			raa,
-			dem,
-			aot,
+			dem, 
+			aot, 
 			rad2refl(cwv, wvc.wvBand),
 			rad2refl(r0, wvc.r0Band),
 			Double.NaN,
@@ -150,17 +150,17 @@ public class TestWaterVaporCalculator {
 		assertEquals(r,Double.NaN,1.e-6);
 }
 
-
+	
 	@Test
 	public void testComputePixelOutOfRange() throws Exception {
 
     	wvc.prepare(cd, "B09", "B8A", "B11");
-		double r=wvc.computePixel(lut,
+		double r=wvc.computePixel(lut, 
 			sza,
 			vza,
 			raa,
-			dem,
-			aot,
+			dem, 
+			aot, 
 			rad2refl(75., wvc.wvBand),
 			rad2refl(112., wvc.r0Band),
 			rad2refl(11., wvc.r1Band),
@@ -170,12 +170,12 @@ public class TestWaterVaporCalculator {
 		);
 		assertEquals(r,Double.NaN,1.e-6);
 
-		r=wvc.computePixel(lut,
+		r=wvc.computePixel(lut, 
 			sza,
 			vza,
 			raa,
-			dem,
-			aot,
+			dem, 
+			aot, 
 			rad2refl(0.1, wvc.wvBand),
 			rad2refl(5., wvc.r0Band),
 			rad2refl(15., wvc.r1Band),
@@ -185,7 +185,7 @@ public class TestWaterVaporCalculator {
 		assertEquals(r,Double.NaN,1.e-6);
 	}
 
-
+	
     @Test
     public void testCWVProvider() throws Exception {
 
@@ -208,23 +208,23 @@ public class TestWaterVaporCalculator {
         Tile vzaTile = new FloatConstantTile(vza,256,256,(FloatCells)CellType$.MODULE$.fromName("float32raw").withDefaultNoData()).mutable();
         Tile szaTile = new FloatConstantTile(sza,256,256,(FloatCells)CellType$.MODULE$.fromName("float32raw").withDefaultNoData()).mutable();
         Tile raaTile = new FloatConstantTile(raa,256,256,(FloatCells)CellType$.MODULE$.fromName("float32raw").withDefaultNoData()).mutable();
-        Tile demTile = new FloatConstantTile(dem,256,256,(FloatCells)CellType$.MODULE$.fromName("float32raw").withDefaultNoData()).mutable();
-
+        Tile demTile = new FloatConstantTile(dem,256,256,(FloatCells)CellType$.MODULE$.fromName("float32raw").withDefaultNoData()).mutable();    
+        
     	ArrayMultibandTile mbt=new ArrayMultibandTile(new Tile[]{wvTile,r0Tile,r1Tile,szaTile});
     	SpaceTimeKey stk=new SpaceTimeKey(0, 0, 0); // water vapor is not actually using the spacetimekey
-
+    	
     	CorrectionDescriptor cd=TestCorrectionDescriptor.localSentinel2Descriptor();
-
+    	
     	Tile result=new CWVProvider().compute(
-    		new Tuple2<SpaceTimeKey, MultibandTile>(stk,mbt),
-    		szaTile, vzaTile, raaTile,
-    		demTile,
-    		aot,
-    		ozone,
-    		Arrays.asList(new String[] {"B09","_B8A","B11","sunZenithAngles"}),
+    		new Tuple2<SpaceTimeKey, MultibandTile>(stk,mbt), 
+    		szaTile, vzaTile, raaTile, 
+    		demTile, 
+    		aot, 
+    		ozone, 
+    		Arrays.asList(new String[] {"B09","_B8A","B11","sunZenithAngles"}), 
     		cd
     	);
-
+    	
     	double resultAt00=result.getDouble(0, 0);
       	System.out.println(Double.toString(resultAt00));
 		assertEquals(resultAt00,0.4369889795780182,1.e-6);
@@ -232,7 +232,7 @@ public class TestWaterVaporCalculator {
 		double resultAtNN=result.getDouble(255, 255);
 		System.out.println(Double.toString(resultAtNN));
 		assertEquals(resultAtNN,0.4369889795780182,1.e-6);
-
+		
     }
-
+	
 }
