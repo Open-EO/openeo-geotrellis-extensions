@@ -9,16 +9,19 @@ from each tile's metadata file, `MTD_TL.xml`, and configured in the layer catalo
 
 | `N` | Usual band name | Values |
 | --- | --- | --- |
-| 0 | `sunAzimuthAngles` | Tile mean of the sun azimuth: one value per tile |
-| 1 | `sunZenithAngles` | Tile mean of the sun zenith |
+| 0 | `sunAzimuthMean` | Tile mean of the sun azimuth: one value per tile |
+| 1 | `sunZenithMean` | Tile mean of the sun zenith |
 | 2 | `viewAzimuthMean` | Tile mean of the B05 viewing azimuth |
 | 3 | `viewZenithMean` | Tile mean of the B05 viewing zenith |
-| 4 | `sunAzimuthAnglesPerPixel` | Sun azimuth per pixel |
-| 5 | `sunZenithAnglesPerPixel` | Sun zenith per pixel |
-| 6 | `viewAzimuthAnglesPerPixel` | B05 viewing azimuth per pixel, from the detector that observed the pixel |
-| 7 | `viewZenithAnglesPerPixel` | B05 viewing zenith per pixel, from the detector that observed the pixel |
+| 4 | `sunAzimuthAngles` | Sun azimuth per pixel |
+| 5 | `sunZenithAngles` | Sun zenith per pixel |
+| 6 | `viewAzimuthAngles` | B05 viewing azimuth per pixel, from the detector that observed the pixel |
+| 7 | `viewZenithAngles` | B05 viewing zenith per pixel, from the detector that observed the pixel |
 
-Bands 0–3 are unchanged. Use bands 4–7 where the angles matter per pixel, for example for BRDF normalisation:
+Bands 0–3 keep their values. Their names follow the [openEO federation
+conventions](https://docs.openeo.cloud/federation/backends/collections.html#sentinel2-l2a): `*Mean` for tile means,
+`*Angles` for spatially resolved values. Use bands 4–7 where the angles matter per pixel, for example for BRDF
+normalisation:
 across one tile the sun zenith varies by about 1.1–1.3°, the sun azimuth by 1.6–2.8°, and the B05 tile-mean
 viewing zenith is off by 2.4–4.1° (median) and up to 6.7°.
 

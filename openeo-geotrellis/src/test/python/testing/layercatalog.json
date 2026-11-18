@@ -2770,14 +2770,14 @@
             ]
           },
           "granule_metadata_band_map": {
-            "sunAzimuthAngles": "granule_metadata##0",
-            "sunZenithAngles": "granule_metadata##1",
+            "sunAzimuthMean": "granule_metadata##0",
+            "sunZenithMean": "granule_metadata##1",
             "viewAzimuthMean": "granule_metadata##2",
             "viewZenithMean": "granule_metadata##3",
-            "sunAzimuthAnglesPerPixel": "granule_metadata##4",
-            "sunZenithAnglesPerPixel": "granule_metadata##5",
-            "viewAzimuthAnglesPerPixel": "granule_metadata##6",
-            "viewZenithAnglesPerPixel": "granule_metadata##7"
+            "sunAzimuthAngles": "granule_metadata##4",
+            "sunZenithAngles": "granule_metadata##5",
+            "viewAzimuthAngles": "granule_metadata##6",
+            "viewZenithAngles": "granule_metadata##7"
           },
           "property_filter_adaptations": {
             "productType": "drop",
@@ -2906,14 +2906,14 @@
           "WVP",
           "AOT",
           "SCL",
-          "sunAzimuthAngles",
-          "sunZenithAngles",
+          "sunAzimuthMean",
+          "sunZenithMean",
           "viewAzimuthMean",
           "viewZenithMean",
-          "sunAzimuthAnglesPerPixel",
-          "sunZenithAnglesPerPixel",
-          "viewAzimuthAnglesPerPixel",
-          "viewZenithAnglesPerPixel",
+          "sunAzimuthAngles",
+          "sunZenithAngles",
+          "viewAzimuthAngles",
+          "viewZenithAngles",
           "CLD",
           "SNW"
         ]
@@ -3063,10 +3063,27 @@
           "gsd": 20
         },
         {
+          "name": "sunAzimuthMean",
+          "unit": "deg"
+        },
+        {
+          "name": "sunZenithMean",
+          "unit": "deg"
+        },
+        {
+          "name": "viewAzimuthMean",
+          "unit": "deg"
+        },
+        {
+          "name": "viewZenithMean",
+          "unit": "deg"
+        },
+        {
           "name": "sunAzimuthAngles",
           "aliases": [
             "SAA"
           ],
+          "description": "Sun azimuth angle per pixel, clockwise from north, interpolated from the tile metadata grid.",
           "unit": "deg"
         },
         {
@@ -3074,41 +3091,24 @@
           "aliases": [
             "SZA"
           ],
-          "unit": "deg"
-        },
-        {
-          "name": "viewAzimuthMean",
-          "aliases": [
-            "VAA",
-            "approximateViewAzimuth"
-          ],
-          "unit": "deg"
-        },
-        {
-          "name": "viewZenithMean",
-          "aliases": [
-            "VZA",
-            "approximateViewZenith"
-          ],
-          "unit": "deg"
-        },
-        {
-          "name": "sunAzimuthAnglesPerPixel",
-          "description": "Sun azimuth angle per pixel, clockwise from north, interpolated from the tile metadata grid.",
-          "unit": "deg"
-        },
-        {
-          "name": "sunZenithAnglesPerPixel",
           "description": "Sun zenith angle per pixel, interpolated from the tile metadata grid.",
           "unit": "deg"
         },
         {
-          "name": "viewAzimuthAnglesPerPixel",
+          "name": "viewAzimuthAngles",
+          "aliases": [
+            "VAA",
+            "approximateViewAzimuth"
+          ],
           "description": "Viewing azimuth angle of band B05 per pixel, clockwise from north, from the grid of the detector that observed the pixel.",
           "unit": "deg"
         },
         {
-          "name": "viewZenithAnglesPerPixel",
+          "name": "viewZenithAngles",
+          "aliases": [
+            "VZA",
+            "approximateViewZenith"
+          ],
           "description": "Viewing zenith angle of band B05 per pixel, from the grid of the detector that observed the pixel.",
           "unit": "deg"
         },
@@ -3133,14 +3133,14 @@
         "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l1c",
         "load_stac_feature_flags": {
           "granule_metadata_band_map": {
-            "sunAzimuthAngles": "granule_metadata##0",
-            "sunZenithAngles": "granule_metadata##1",
+            "sunAzimuthMean": "granule_metadata##0",
+            "sunZenithMean": "granule_metadata##1",
             "viewAzimuthMean": "granule_metadata##2",
             "viewZenithMean": "granule_metadata##3",
-            "sunAzimuthAnglesPerPixel": "granule_metadata##4",
-            "sunZenithAnglesPerPixel": "granule_metadata##5",
-            "viewAzimuthAnglesPerPixel": "granule_metadata##6",
-            "viewZenithAnglesPerPixel": "granule_metadata##7"
+            "sunAzimuthAngles": "granule_metadata##4",
+            "sunZenithAngles": "granule_metadata##5",
+            "viewAzimuthAngles": "granule_metadata##6",
+            "viewZenithAngles": "granule_metadata##7"
           },
           "property_filter_adaptations": {
             "productType": "drop",
@@ -3267,14 +3267,14 @@
           "B10",
           "B11",
           "B12",
-          "sunAzimuthAngles",
-          "sunZenithAngles",
+          "sunAzimuthMean",
+          "sunZenithMean",
           "viewAzimuthMean",
           "viewZenithMean",
-          "sunAzimuthAnglesPerPixel",
-          "sunZenithAnglesPerPixel",
-          "viewAzimuthAnglesPerPixel",
-          "viewZenithAnglesPerPixel"
+          "sunAzimuthAngles",
+          "sunZenithAngles",
+          "viewAzimuthAngles",
+          "viewZenithAngles"
         ]
       }
     },
@@ -3343,45 +3343,45 @@
           "eo:common_name": "swir22"
         },
         {
+          "name": "sunAzimuthMean"
+        },
+        {
+          "name": "sunZenithMean"
+        },
+        {
+          "name": "viewAzimuthMean"
+        },
+        {
+          "name": "viewZenithMean"
+        },
+        {
           "name": "sunAzimuthAngles",
           "aliases": [
             "SAA"
-          ]
+          ],
+          "description": "Sun azimuth angle per pixel, clockwise from north, interpolated from the tile metadata grid."
         },
         {
           "name": "sunZenithAngles",
           "aliases": [
             "SZA"
-          ]
-        },
-        {
-          "name": "viewAzimuthMean",
-          "aliases": [
-            "VAA",
-            "approximateViewAzimuth"
-          ]
-        },
-        {
-          "name": "viewZenithMean",
-          "aliases": [
-            "VZA",
-            "approximateViewZenith"
-          ]
-        },
-        {
-          "name": "sunAzimuthAnglesPerPixel",
-          "description": "Sun azimuth angle per pixel, clockwise from north, interpolated from the tile metadata grid."
-        },
-        {
-          "name": "sunZenithAnglesPerPixel",
+          ],
           "description": "Sun zenith angle per pixel, interpolated from the tile metadata grid."
         },
         {
-          "name": "viewAzimuthAnglesPerPixel",
+          "name": "viewAzimuthAngles",
+          "aliases": [
+            "VAA",
+            "approximateViewAzimuth"
+          ],
           "description": "Viewing azimuth angle of band B05 per pixel, clockwise from north, from the grid of the detector that observed the pixel."
         },
         {
-          "name": "viewZenithAnglesPerPixel",
+          "name": "viewZenithAngles",
+          "aliases": [
+            "VZA",
+            "approximateViewZenith"
+          ],
           "description": "Viewing zenith angle of band B05 per pixel, from the grid of the detector that observed the pixel."
         }
       ],
@@ -3527,52 +3527,52 @@
           "unit": "1"
         },
         {
-          "name": "sunAzimuthAngles",
-          "unit": "deg",
-          "aliases": [
-            "SAA"
-          ]
+          "name": "sunAzimuthMean",
+          "unit": "deg"
         },
         {
-          "name": "sunZenithAngles",
-          "unit": "deg",
-          "aliases": [
-            "SZA"
-          ]
+          "name": "sunZenithMean",
+          "unit": "deg"
         },
         {
           "name": "viewAzimuthMean",
-          "unit": "deg",
-          "aliases": [
-            "VAA",
-            "approximateViewAzimuth"
-          ]
+          "unit": "deg"
         },
         {
           "name": "viewZenithMean",
-          "unit": "deg",
-          "aliases": [
-            "VZA",
-            "approximateViewZenith"
-          ]
+          "unit": "deg"
         },
         {
-          "name": "sunAzimuthAnglesPerPixel",
+          "name": "sunAzimuthAngles",
+          "aliases": [
+            "SAA"
+          ],
           "unit": "deg",
           "description": "Sun azimuth angle per pixel, clockwise from north, interpolated from the tile metadata grid."
         },
         {
-          "name": "sunZenithAnglesPerPixel",
+          "name": "sunZenithAngles",
+          "aliases": [
+            "SZA"
+          ],
           "unit": "deg",
           "description": "Sun zenith angle per pixel, interpolated from the tile metadata grid."
         },
         {
-          "name": "viewAzimuthAnglesPerPixel",
+          "name": "viewAzimuthAngles",
+          "aliases": [
+            "VAA",
+            "approximateViewAzimuth"
+          ],
           "unit": "deg",
           "description": "Viewing azimuth angle of band B05 per pixel, clockwise from north, from the grid of the detector that observed the pixel."
         },
         {
-          "name": "viewZenithAnglesPerPixel",
+          "name": "viewZenithAngles",
+          "aliases": [
+            "VZA",
+            "approximateViewZenith"
+          ],
           "unit": "deg",
           "description": "Viewing zenith angle of band B05 per pixel, from the grid of the detector that observed the pixel."
         }
