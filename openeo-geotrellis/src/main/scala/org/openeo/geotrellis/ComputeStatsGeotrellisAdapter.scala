@@ -9,7 +9,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
 import org.openeo.geotrellis.aggregate_polygon.intern._
-import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder, intern}
+import org.openeo.geotrellis.aggregate_polygon.{AggregateOutputOptions, AggregatePolygonProcess, SparkAggregateScriptBuilder, intern}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.File
@@ -91,7 +91,10 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   /**
    * Writes means to an UTF-8 encoded JSON file.
    */
-  def compute_generic_timeseries_from_datacube(scriptBuilder:SparkAggregateScriptBuilder, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit = {
+  def compute_generic_timeseries_from_datacube(scriptBuilder:SparkAggregateScriptBuilder, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit =
+    compute_generic_timeseries_from_datacube(scriptBuilder, datacube, polygons, AggregateOutputOptions(output_file))
+
+  def compute_generic_timeseries_from_datacube(scriptBuilder: SparkAggregateScriptBuilder, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, outputOptions: AggregateOutputOptions): Unit = {
     val computeStatsGeotrellis = new AggregatePolygonProcess()
 
     if(polygons.polygons.isEmpty) {
@@ -104,8 +107,19 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     }
 
     val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
-    computeStatsGeotrellis.aggregateSpatialGeneric(scriptBuilder, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
+    computeStatsGeotrellis.aggregateSpatialGeneric(scriptBuilder, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount, outputOptions)
 
+  }
+
+  /**
+   * @param output_format     "csv" or "parquet"
+   * @param output_filesystem "file" (local path) or "distributed" (path/URI on the Spark filesystem, e.g. s3a://...)
+   */
+  def compute_generic_timeseries_from_datacube(reducer: String, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
+                                               output_path: String, output_format: String, output_filesystem: String): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd(reducer, new util.HashMap[String, Object]())
+    compute_generic_timeseries_from_datacube(builder, datacube, polygons, AggregateOutputOptions(output_path, output_format, output_filesystem))
   }
 
   def compute_generic_timeseries_from_datacube(reducer: String, datacube: MultibandTileLayerRDD[SpaceTimeKey],
