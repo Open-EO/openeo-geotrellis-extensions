@@ -244,4 +244,3 @@ object ZarrWriter {
     }
   }
 }
-

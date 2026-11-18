@@ -16,9 +16,9 @@ public abstract class CorrectionDescriptor implements Serializable{
 
 	// parts to reimplement in specialization
 	// -------------------------------------------
-	
+
     public abstract int getBandFromName(String name) throws IllegalArgumentException;
-    
+
     /**
      * This function converts the input digital number to usually top of the atmosphere (TOA) reflectance/radiance (see the documentation of the implementations)
      * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
@@ -42,7 +42,7 @@ public abstract class CorrectionDescriptor implements Serializable{
      * @param raa degree
      * @param gnd km
      * @param aot
-     * @param cwv 
+     * @param cwv
      * @param ozone
      * @param waterMask
      * @return BOA reflectance * 10000 (i.e. in digital number)
@@ -52,19 +52,19 @@ public abstract class CorrectionDescriptor implements Serializable{
 		String bandName,
 		int bandIdx,
 		ZonedDateTime time,
-		double src, 
-		double sza, 
-		double vza, 
-		double raa, 
-		double gnd, 
-		double aot, 
-		double cwv, 
+		double src,
+		double sza,
+		double vza,
+		double raa,
+		double gnd,
+		double aot,
+		double cwv,
 		double ozone,
 		int waterMask
 	);
-	
-	
-	
+
+
+
 	// common corrector code
 	// -------------------------------------------
 
@@ -76,22 +76,22 @@ public abstract class CorrectionDescriptor implements Serializable{
      */
     // This is not used anywhere currently, but might come handy later
     public static double earthSunDistance(ZonedDateTime time){
-        
+
         // JD0 = number of days from 01/01/1950
         final ZonedDateTime D19500101 = LocalDate.of(1950, 1, 1).atStartOfDay(ZoneId.of("UTC"));
         final double JD0 = Duration.between(D19500101, time).toDays() ;
-        
-        final double T = JD0 - 10000.;        
-        
+
+        final double T = JD0 - 10000.;
+
         final double D    = Math.toRadians((11.786 + 12.190749 * T) % 360);
         final double XLP  = Math.toRadians((134.003 + 0.9856 * T) % 360);
-        
+
         // Distance earth-sun [UA]
         final double DUA  = 1 / (1 + (1672.2 * Math.cos(XLP) + 28 * Math.cos(2*XLP) - 0.35 * Math.cos(D)) * 1e-5);
-        
+
         // Distance earth-sun [meter]
         //final double Dm   = 0.14959787e12 * DUA;
-        
+
         return DUA;
     }
 
@@ -102,7 +102,7 @@ public abstract class CorrectionDescriptor implements Serializable{
      * @param time:             Time in millis from epoch
      * @param bandToConvert     Bandnumber
      * @return                  Band in radiance
-     * @throws Exception 
+     * @throws Exception
      */
     // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
     public static double reflToRad(double src, double sza, double solarIrradiance) {
@@ -124,7 +124,7 @@ public abstract class CorrectionDescriptor implements Serializable{
      * @param time:             Time in millis from epoch
      * @param bandToConvert     Bandnumber
      * @return                  Band in radiance
-     * @throws Exception 
+     * @throws Exception
      */
     // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
     public static double reflToRad_with_earthsundistance(double src, double sza, ZonedDateTime time, double solarIrradiance) {
@@ -136,10 +136,9 @@ public abstract class CorrectionDescriptor implements Serializable{
         double cosSzaCoverage = Math.cos(szaInRadCoverage);
 
         double earthsunAU = earthSunDistance(time);
-        
+
         double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI * earthsunAU * earthsunAU);
         return radiance;
     }
-    
-}
 
+}

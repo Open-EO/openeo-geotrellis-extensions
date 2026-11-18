@@ -9,7 +9,7 @@ Sentinel-2 data is pretty well behaved:
 * not sure if bounding boxes follow a convention
 * pixel coordinates are not aligned to 10m, and not to Sentinel-2.
     * Not sure how this works with original data? Perhaps SNAP shifted pixels
-    
+
 ## Alignment strategies
 ZoomedLayoutScheme (LatLon, Webmercator)
 -> always resample/reproject because never aligned with native data
@@ -30,4 +30,4 @@ Given that we can determine:
 Questions:
 - is there impact on target extent larger than original bounds?
 - pixel align to sentinel-2 convention, which is rounded to the CellSize?
-    - gdal can do this without having to specify target extent, but we don't have gdal 3.1 yet.    
+    - gdal can do this without having to specify target extent, but we don't have gdal 3.1 yet.

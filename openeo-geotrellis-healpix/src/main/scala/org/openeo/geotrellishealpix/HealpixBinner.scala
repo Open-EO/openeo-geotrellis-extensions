@@ -143,4 +143,3 @@ object HealpixBinner {
     ScalarHealpixDatacube(raw.nside, newBands, joined)
   }
 }
-

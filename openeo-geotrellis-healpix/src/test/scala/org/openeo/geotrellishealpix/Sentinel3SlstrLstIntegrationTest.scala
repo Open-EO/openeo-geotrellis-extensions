@@ -103,4 +103,3 @@ class Sentinel3SlstrLstIntegrationTest {
     println(s"Output: ${outDir.getAbsolutePath}")
   }
 }
-

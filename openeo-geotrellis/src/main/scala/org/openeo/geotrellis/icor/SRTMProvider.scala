@@ -12,7 +12,7 @@ import geotrellis.vector.Extent
 import org.openeo.geotrellis.GeneralUtils.safeConvert
 
 object SRTMProvider{
-  
+
   def findFiles(basePath:String, tileExtent: Extent, tileCRS:CRS) : List[String] = {
     val projExtent=tileExtent.reproject(tileCRS, CRS.fromName("EPSG:4326"))
     var fileList=ListBuffer[String]()
@@ -27,7 +27,7 @@ object SRTMProvider{
     }
     fileList.toList
   }
-  
+
 }
 
 class SRTMProvider(basePath:String = "/eodata/auxdata/SRTMGL1/dem") extends ElevationProvider {
@@ -52,7 +52,7 @@ class SRTMProvider(basePath:String = "/eodata/auxdata/SRTMGL1/dem") extends Elev
 
     // convert to km and extract the tile
     val mergedTile = safeConvert(mergedRasters.tile.band(0), FloatConstantNoDataCellType).localMultiply(0.001)
-    
+
 //    // write reference test data - don't forget to re-comment when not needed
 //    MultibandGeoTiff( MultibandTile(mergedTile), targetExtent, targetCRS).write("test_srtm_tile_%d_%d.tif".format(key.col,key.row))
 //    println(mergedTile)

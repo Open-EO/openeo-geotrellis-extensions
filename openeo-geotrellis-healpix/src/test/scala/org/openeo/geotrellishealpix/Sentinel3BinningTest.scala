@@ -211,4 +211,3 @@ class Sentinel3BinningTest {
     assertTrue(packed.df.count() <= aggregated.df.count())
   }
 }
-

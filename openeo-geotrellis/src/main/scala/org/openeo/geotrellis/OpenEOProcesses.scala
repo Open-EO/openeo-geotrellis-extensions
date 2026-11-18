@@ -1279,20 +1279,20 @@ class OpenEOProcesses extends Serializable {
     // Outer join: every spacetime key of the left cube is kept, tiles of the right cube at spatial keys without
     // left data are replicated over the timestamps of the left cube.
     val leftJoined = leftJoinSpacetimeSpatial(resampledLeft, resampledRight, leftOuterJoin = true).mapValues { case (l, r) => (Option(l), r) }
-    val joined = withRightOnlyTiles(leftJoined, resampledLeft, resampledRight) 
+    val joined = withRightOnlyTiles(leftJoined, resampledLeft, resampledRight)
     // the left operand of merge_cubes comes first, both for the band order and for the overlap resolver
     if (swapOperands) mergeCubesGeneric(joined.mapValues(_.swap), operator, updatedMetadata, rightCube, leftCube)
     else mergeCubesGeneric(joined, operator, updatedMetadata, leftCube, rightCube)
   }
 
-  /**   
-   * Adds the tiles of the spatial cube `right` at spatial keys where the spacetime cube `left` has no tiles to `joined`,   
-   * replicated over all timestamps of `left`, as (None, Some(right)). Both cubes must be in the same layout.   
-   * Returns `joined` unchanged if there are no such tiles. The partitioner of `joined` is kept.   
+  /**
+   * Adds the tiles of the spatial cube `right` at spatial keys where the spacetime cube `left` has no tiles to `joined`,
+   * replicated over all timestamps of `left`, as (None, Some(right)). Both cubes must be in the same layout.
+   * Returns `joined` unchanged if there are no such tiles. The partitioner of `joined` is kept.
    */
   private def withRightOnlyTiles(
                                   joined: RDD[(SpaceTimeKey, (Option[MultibandTile], Option[MultibandTile]))],
-                                  left: MultibandTileLayerRDD[SpaceTimeKey], 
+                                  left: MultibandTileLayerRDD[SpaceTimeKey],
                                   right: MultibandTileLayerRDD[SpatialKey]
                                 ): RDD[(SpaceTimeKey, (Option[MultibandTile], Option[MultibandTile]))] = {
     val sc = left.sparkContext

@@ -222,6 +222,20 @@ class ComputeStatsGeotrellisAdapterTest() {
   }
 
   @Test
+  def compute_average_timeseries_on_datacube_in_memory(): Unit = {
+    val datacube = buildCubeRdd(ZonedDateTime.parse("2017-01-01T00:00:00Z"), ZonedDateTime.parse("2017-03-10T00:00:00Z"))
+
+    val df = computeStatsGeotrellisAdapter.compute_generic_timeseries_dataframe_from_datacube(
+      "mean", datacube, ProjectedPolygons(Seq(polygon1, polygon2), "EPSG:4326"))
+
+    assertEquals(Seq("date", "feature_index"), df.columns.toSeq.take(2))
+    val rows = df.collect()
+    assertEquals(Set(0, 1), rows.map(_.getAs[Int]("feature_index")).toSet)
+    assertEquals(Set(10.0), rows.flatMap(r => Option(r.get(2)).map(_.asInstanceOf[Double])).toSet)
+    assertEquals(3, rows.map(_.getAs[java.sql.Timestamp]("date")).toSet.size)
+  }
+
+  @Test
   def unsupported_output_format_is_rejected(): Unit = {
     assertThrows(classOf[IllegalArgumentException], () => AggregateOutputOptions("/tmp/x", "xml"))
     assertThrows(classOf[IllegalArgumentException], () => AggregateOutputOptions("/tmp/x", "csv", "ftp"))

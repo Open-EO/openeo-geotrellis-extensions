@@ -13,8 +13,8 @@ package org.locationtech.sfcurve.zorder
 
 /**
  * Represents a rectangle in defined by min and max as two opposing points
- * 
- * @param min: lower-left point 
+ *
+ * @param min: lower-left point
  * @param max: upper-right point
  */
 case class ZRange(min: Long, max: Long) {

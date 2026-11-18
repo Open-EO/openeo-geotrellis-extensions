@@ -19,4 +19,3 @@ object AddIgnoreNodata extends LocalTileBinaryOp {
     else if ( isNoData(z2)) z1
     else z1 + z2
 }
-

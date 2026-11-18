@@ -86,7 +86,7 @@ class Sentinel1CoherencePyramidFactoryTest {
     val openSearchClient = new FixedFeaturesOpenSearchClient
 
     FeatureCollection.parse(
-      """{   
+      """{
         |    "features": [
         |        {
         |            "type": "Feature",

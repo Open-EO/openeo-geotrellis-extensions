@@ -19,4 +19,3 @@ object MaxIgnoreNodata extends LocalTileBinaryOp {
     else if ( isNoData(z2)) z1
     else math.max(z1,z2)
 }
-

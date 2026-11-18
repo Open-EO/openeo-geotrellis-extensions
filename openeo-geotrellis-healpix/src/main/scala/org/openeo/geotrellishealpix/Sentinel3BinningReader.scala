@@ -492,4 +492,3 @@ object Sentinel3BinningReader {
     writer.close()
   }
 }
-

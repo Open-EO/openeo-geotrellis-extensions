@@ -15,9 +15,9 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 	}
 
 	public String getLookupTableURL() {
-		return "https://artifactory.vgt.vito.be/artifactory/auxdata-public/lut/S2B_all.bin"; 
+		return "https://artifactory.vgt.vito.be/artifactory/auxdata-public/lut/S2B_all.bin";
 	}
-   
+
     @Override
     public int getBandFromName(String name) throws IllegalArgumentException {
 		switch(name.toUpperCase()) {
@@ -37,7 +37,7 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 			default: throw new IllegalArgumentException("Unsupported band: "+name);
 		}
 	}
-	
+
     // source:
     // https://oceancolor.gsfc.nasa.gov/docs/rsr/f0.txt
     // http://www.ioccg.org/groups/Thuillier.pdf
@@ -142,14 +142,14 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 	}
 
     /**
-     * @param src: digital number of the top of the atmosphere earth-sun distance corrected reflectance (as naturally delivered in the Sentinel2 L1C jp2-s) 
+     * @param src: digital number of the top of the atmosphere earth-sun distance corrected reflectance (as naturally delivered in the Sentinel2 L1C jp2-s)
      */
  	@Override
 	public double preScale(double src, double sza, ZonedDateTime time, int bandIdx) {
         return reflToRad(src*0.0001, sza, getIrradiance(bandIdx));
 	}
 
-    
+
     /**
      * @param src: TOA radiance
      */
@@ -159,13 +159,13 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 		String bandName,
 		int bandIdx,
 		ZonedDateTime time,
-		double src, 
-		double sza, 
-		double vza, 
-		double raa, 
-		double gnd, 
-		double aot, 
-		double cwv, 
+		double src,
+		double sza,
+		double vza,
+		double raa,
+		double gnd,
+		double aot,
+		double cwv,
 		double ozone,
 		int waterMask)
     {
@@ -175,6 +175,6 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
         return corrected*10000.;
     }
 
-    
-    
+
+
 }

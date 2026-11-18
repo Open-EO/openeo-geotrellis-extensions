@@ -312,7 +312,7 @@ package object geotiff {
           val bandSegmentOffset = bandSegmentCount * (if (formatOptions.separateAssetPerBand) 0 else bandIndex)
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
           val tileToWrite = safeConvert(tile, safeBitCellType(tile.cellType))
-          
+
           val bandStatistics =
             if (formatOptions.addBandStatistics) {
               val validCols = math.min(tileLayout.tileCols, gridBounds.colMin + gridBounds.width  - layoutCol * tileLayout.tileCols)
@@ -324,7 +324,7 @@ package object geotiff {
               )
             }
             else (0.0, 0.0, 0.0, 0.0, 0, 0)
-          
+
           //tiff format seems to require that we provide 'full' tiles
           val bytes = raster.CroppedTile(tileToWrite, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
           val compressedBytes = theCompressor.compress(bytes, 0)
@@ -1068,7 +1068,7 @@ package object geotiff {
     val tileToWrite = adjusted.tile.convert(safeBitCellType(adjusted.tile.cellType))
 
     val bandNames = fo.getBandNames
-    val bandStatistics = 
+    val bandStatistics =
       if (fo.addBandStatistics) {
         val statistics = tileToWrite.bands.map(band => convertStatsToMap(computeStatsTile(band)))
         bandNames.zipWithIndex.map({ case (name, index) =>

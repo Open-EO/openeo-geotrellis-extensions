@@ -19,12 +19,12 @@ class CWVProvider() extends Serializable {
 		}
 		return idx
 	}
-  
-  
+
+
   def compute(
     multibandtile: (SpaceTimeKey, MultibandTile), // where is wv/r0/r1
-    szaTile: Tile, 
-    vzaTile: Tile, 
+    szaTile: Tile,
+    vzaTile: Tile,
     raaTile: Tile,
     elevationTile: Tile,
     aot: Double,
@@ -35,31 +35,31 @@ class CWVProvider() extends Serializable {
 
     // water vapor can only be called from icor correction, because it uses lookup table -> this cast is safe
     val cd=correctionDescriptor.asInstanceOf[ICorCorrectionDescriptor]
-    
+
     val wvBandId="B09"
     val r0BandId="B8A"
     val r1BandId="B11"
-    
+
     //val bp = new FirstInBlockProcessor()
     val bp = new DoubleDownsampledBlockProcessor()
     val wvCalc = new AbdaWaterVaporCalculator()
     wvCalc.prepare(cd,wvBandId,r0BandId,r1BandId)
-            
+
     val wvTile= safeConvert(multibandtile._2.band(findIndexOf(bandIds,wvBandId)), FloatConstantNoDataCellType)
     val r0Tile= safeConvert(multibandtile._2.band(findIndexOf(bandIds,r0BandId)), FloatConstantNoDataCellType)
     val r1Tile= safeConvert(multibandtile._2.band(findIndexOf(bandIds,r1BandId)), FloatConstantNoDataCellType)
-                        
+
     // try to get at least 1 valid value on 60m resolution
-    val mbtresult : Tile = try { 
+    val mbtresult : Tile = try {
       val wvRawResultTile=bp.computeDoubleBlocks(
         MultibandTile(
-          szaTile, 
-          vzaTile, 
+          szaTile,
+          vzaTile,
           raaTile,
-          safeConvert(elevationTile, FloatConstantNoDataCellType), 
-    // AOT overriden                      aotTile.convert(FloatConstantNoDataCellType), 
-          wvTile, 
-          r0Tile, 
+          safeConvert(elevationTile, FloatConstantNoDataCellType),
+    // AOT overriden                      aotTile.convert(FloatConstantNoDataCellType),
+          wvTile,
+          r0Tile,
           r1Tile
         ),
         6, // on 10m base resolution looking for a value on 60m resolution
@@ -73,10 +73,10 @@ class CWVProvider() extends Serializable {
     } catch {
       case e: IllegalArgumentException => wvTile
     }
-    
+
     safeConvert(mbtresult, FloatConstantNoDataCellType)
-   
+
  }
-  
-  
+
+
 }

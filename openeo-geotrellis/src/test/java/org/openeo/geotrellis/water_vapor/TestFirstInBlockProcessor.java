@@ -28,24 +28,24 @@ public class TestFirstInBlockProcessor {
     		80,81,82,  83,84,85,  86,87,88,  89,
 
     		90,91,92,  93,94,95,  96,97,98,  99
-    	}; 
+    	};
 
     	double ref[]=new double[]{
-        		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
-        		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
+        		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,
+        		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,
         		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,
 
         		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0,
-        		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0, 
-        		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0, 
+        		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0,
+        		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0,
 
-        		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
-        		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
-        		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
+        		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0,
+        		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0,
+        		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0,
 
-        		180.0, 180.0, 180.0,                186.0, 186.0, 186.0,                192.0, 192.0, 192.0,                198.0 
-        	};    	
-    	
+        		180.0, 180.0, 180.0,                186.0, 186.0, 186.0,                192.0, 192.0, 192.0,                198.0
+        	};
+
     	Tile t0=new DoubleRawArrayTile(vals,10,10).mutable();
     	Tile t1=new DoubleRawArrayTile(vals,10,10).mutable();
     	Tile t2=new DoubleRawArrayTile(vals,10,10).mutable();
@@ -65,41 +65,41 @@ public class TestFirstInBlockProcessor {
 
     }
 
-    
+
     @Test
     public void testWaterVaporCalculatorAverage() {
 
     	double vals[]=new double[]{
-    		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
-    		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
+    		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,
+    		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,
     		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,
 
     		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0,
-    		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0, 
-    		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0, 
+    		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0,
+    		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0,
 
-    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
-    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
-    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
+    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0,
+    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0,
+    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0,
 
-    		180.0, 180.0, 180.0,                186.0, 186.0, 186.0,                192.0, 192.0, 192.0,                198.0 
-    	};    	
-    	
+    		180.0, 180.0, 180.0,                186.0, 186.0, 186.0,                192.0, 192.0, 192.0,                198.0
+    	};
+
     	double ref[]=new double[]{
-        		127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 
-        		127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 
+        		127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2,
+        		127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2,
         		127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2,
 
         		100.0, 100.0, 100.0,   106.0, 106.0, 106.0,   112.0, 112.0, 112.0,   118.0,
-        		100.0, 100.0, 100.0,   106.0, 106.0, 106.0,   112.0, 112.0, 112.0,   118.0, 
-        		100.0, 100.0, 100.0,   106.0, 106.0, 106.0,   112.0, 112.0, 112.0,   118.0, 
+        		100.0, 100.0, 100.0,   106.0, 106.0, 106.0,   112.0, 112.0, 112.0,   118.0,
+        		100.0, 100.0, 100.0,   106.0, 106.0, 106.0,   112.0, 112.0, 112.0,   118.0,
 
-        		120.0, 120.0, 120.0,   126.0, 126.0, 126.0,   132.0, 132.0, 132.0,   138.0, 
-        		120.0, 120.0, 120.0,   126.0, 126.0, 126.0,   132.0, 132.0, 132.0,   138.0, 
-        		120.0, 120.0, 120.0,   126.0, 126.0, 126.0,   132.0, 132.0, 132.0,   138.0, 
+        		120.0, 120.0, 120.0,   126.0, 126.0, 126.0,   132.0, 132.0, 132.0,   138.0,
+        		120.0, 120.0, 120.0,   126.0, 126.0, 126.0,   132.0, 132.0, 132.0,   138.0,
+        		120.0, 120.0, 120.0,   126.0, 126.0, 126.0,   132.0, 132.0, 132.0,   138.0,
 
-        		180.0, 180.0, 180.0,   186.0, 186.0, 186.0,   192.0, 192.0, 192.0,   198.0 
-        	};    	
+        		180.0, 180.0, 180.0,   186.0, 186.0, 186.0,   192.0, 192.0, 192.0,   198.0
+        	};
 
     	Tile t=new DoubleRawArrayTile(vals,10,10).mutable();
     	Tile at=new FirstInBlockProcessor().replaceNoDataWithAverage(t, Double.NaN);
@@ -107,5 +107,5 @@ public class TestFirstInBlockProcessor {
     	assertArrayEquals( result, ref, 1.e-6);
 
     }
-    
+
 }

@@ -11,18 +11,18 @@ import geotrellis.raster.resample.Average
 import geotrellis.raster.resample.Bilinear
 
 class FirstInBlockProcessor {
-  
+
     def computeDoubleBlocks(mbt: MultibandTile, blockSize: Int, aot: Double, ozone: Double, nodata: Double, lut: LookupTable, f: WaterVaporCalculator): Tile = {
       val ncols=(mbt.band(0).cols.doubleValue()/blockSize.doubleValue()).ceil.intValue()
       val nrows=(mbt.band(0).rows.doubleValue()/blockSize.doubleValue()).ceil.intValue()
-      
+
       val tileLayout= new TileLayout(ncols,nrows,blockSize,blockSize)
       val smbt=mbt.split(tileLayout)
-      
+
       val result_array=smbt.map( multibandTile => {
           var blockValue: Double= nodata
           multibandTile.foreachDouble(pixelArray =>{
-            if ((blockValue == nodata)||(nodata.isNaN()&&(blockValue!=blockValue))) // because NaN==NaN is false  
+            if ((blockValue == nodata)||(nodata.isNaN()&&(blockValue!=blockValue))) // because NaN==NaN is false
               blockValue=f.computePixel(
                 lut,
               	pixelArray(0),
@@ -48,24 +48,24 @@ class FirstInBlockProcessor {
   }
 
   def replaceNoDataWithAverage(t: Tile, nodata: Double): Tile = {
-    
+
     var sum: Double = 0.0
     var count: Double = 0
-    
+
     t.foreachDouble( v => {
       if ((v!=nodata)&&(!v.isNaN())) {
         sum+=v;
         count+=1;
       }
     })
-    
+
     // TODO: fix with global average !!!
     var average=0.0;
-    if (count > 0.0) average=sum/count 
-    
+    if (count > 0.0) average=sum/count
+
     t.mapDouble( v => {
       if ((v==nodata)||(v.isNaN())) average else v
     })
   }
-    
+
 }

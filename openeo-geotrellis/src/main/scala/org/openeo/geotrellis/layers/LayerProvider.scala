@@ -77,5 +77,3 @@ trait LayerProvider {
   def loadMetadata(sc: SparkContext): Option[(ProjectedExtent, Array[ZonedDateTime])]
 
 }
-
-

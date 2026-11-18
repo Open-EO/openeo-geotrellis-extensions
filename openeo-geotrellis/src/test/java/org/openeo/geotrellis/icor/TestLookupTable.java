@@ -21,10 +21,10 @@ public class TestLookupTable {
 //		LookupTable lut=LookupTableIO.readLUT("L8_big_disort");
 //		System.out.println(lut.summarize());
 //	}
-	
-	
+
+
 	// TODO: test binary reader methods in LookupTableIO
-	
+
 //	@Test
 //	public void testLookupTableReadBinary() throws Exception{
 //		LookupTable lut=LookupTableIO.readLUT("lut_s2a");

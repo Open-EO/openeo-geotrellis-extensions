@@ -30,4 +30,3 @@ public @interface OpenEOProcess {
      */
     String returns() default "datacube";
 }
-
