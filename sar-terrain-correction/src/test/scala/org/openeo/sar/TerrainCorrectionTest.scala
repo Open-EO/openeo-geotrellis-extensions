@@ -1,9 +1,8 @@
 package org.openeo.sar
 
 import geotrellis.proj4.CRS
-import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.CellSize
 import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.raster.{CellSize, RasterSource}
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.{Assumptions, Test}
@@ -30,39 +29,37 @@ class TerrainCorrectionTest {
       "S1A_IW_GRDH_1SDV_20260610T172444_20260610T172509_064910_082DFE_F1C5_COG"
   )
 
-  // Output tile: 5 km x 5 km in UTM 31N at 20 m, centred on Brussels.
+  // Output tile in UTM 31N at 10 m near Brussels; spans the 4°E / 51°N boundaries of the 1° DEM tiles.
   private val request = TileRequest(
-    extent        = Extent(595000.0, 5630000.0, 606000.0, 5646000.0),
+    extent        = Extent(560000.0, 5630000.0, 606000.0, 5660000.0),
     cellSize      = CellSize(10.0, 10.0),
     crs           = CRS.fromEpsgCode(32631),
-    polarisations = Seq(Polarisation.VV, Polarisation.VH)
+    polarisations = Seq(Polarisation.VV, Polarisation.VH),
+    config        = SarProcessingConfig(elevationModel = Some("COPERNICUS_30"))
   )
-
-  // Copernicus GLO-30 DEM mosaic on AWS open data; replace with the deployment-
-  // local DEM source. GeoTrellis MosaicRasterSource composes per-tile COGs.
-  private def demFactory(bboxWgs84: Extent): RasterSource =
-    GeoTiffRasterSource(
-      "s3://eodata/auxdata/CopDEM_COG/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E004_00_DEM/Copernicus_DSM_COG_10_N50_00_E004_00_DEM.tif")
 
   @Test
   def tileRequestComputesColsAndRows(): Unit = {
-    assertEquals(1100, request.cols)
-    assertEquals(1600, request.rows)
+    assertEquals(4600, request.cols)
+    assertEquals(3000, request.rows)
   }
 
   @Test
   def nativeBackendProducesExpectedTile(): Unit = {
     Assumptions.assumeTrue(runOnline, "online test disabled")
 
-    val proc = TerrainCorrectionProcessor.withDemAndGeoid(
+    val proc = TerrainCorrectionProcessor.withGeoid(
       backend      = new NativeBackend(),
-      demFactory   = demFactory,
       geoidTiffUri = new URI("file:///home/driesj/code/java/openeo-geotrellis-extensions/sar-terrain-correction/egm96.tif")
     )
     val tile = proc.computeTile(stacItemUrl, request)
     assertEquals(request.config.bandCount(request.polarisations.size), tile.bandCount)
     assertEquals(request.cols, tile.cols)
     assertEquals(request.rows, tile.rows)
+    request.polarisations.indices.foreach { band =>
+      assertTrue(tile.band(band).toArrayDouble().exists(v => !java.lang.Double.isNaN(v)),
+        s"backscatter band $band is fully nodata")
+    }
     GeoTiff(tile, request.extent, request.crs).write("/tmp/terrain-correction-test-10-S1A.tif")
   }
 
@@ -70,14 +67,13 @@ class TerrainCorrectionTest {
   def nativeBackendMultipleTiles(): Unit = {
     Assumptions.assumeTrue(runOnline, "online test disabled")
 
-    val proc = TerrainCorrectionProcessor.withDemAndGeoid(
+    val proc = TerrainCorrectionProcessor.withGeoid(
       backend      = new NativeBackend(),
-      demFactory   = demFactory,
       geoidTiffUri = new URI("file:///home/driesj/code/java/openeo-geotrellis-extensions/sar-terrain-correction/egm96.tif")
     )
 
     // Open scene once (XML parsing, RasterSource construction).
-    val scene = proc.openScene(stacItemUrl, request.cellSize, request.crs, request.polarisations)
+    val scene = proc.openScene(stacItemUrl, request.cellSize, request.crs, request.polarisations, request.config)
 
     // Tile the request extent into a 2x2 grid (four sub-tiles).
     val e = request.extent
@@ -100,15 +96,14 @@ class TerrainCorrectionTest {
   def gamma0RtcWithShadowLayoverMask(): Unit = {
     Assumptions.assumeTrue(runOnline, "online test disabled")
 
-    val gamma0Config = SarProcessingConfig(
+    val gamma0Config = request.config.copy(
       normalization     = BackscatterNormalization.Gamma0RTC,
       shadowLayoverMask = true
     )
     val gamma0Request = request.copy(config = gamma0Config)
 
-    val proc = TerrainCorrectionProcessor.withDemAndGeoid(
+    val proc = TerrainCorrectionProcessor.withGeoid(
       backend      = new NativeBackend(),
-      demFactory   = demFactory,
       geoidTiffUri = new URI("file:///home/driesj/code/java/openeo-geotrellis-extensions/sar-terrain-correction/egm96.tif")
     )
     val tile = proc.computeTile(stacItemUrl, gamma0Request)

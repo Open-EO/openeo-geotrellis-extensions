@@ -24,7 +24,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
   override val name = "native"
 
   override def compute(ctx: TileComputeContext): MultibandTile = {
-    logger.debug(s"sar_backscatter ${ctx.request.extent} ${ctx.request.cellSize}")
+    logger.debug(s"sar_backscatter: item ${ctx.request.sceneId}, ${ctx.request.extent} ${ctx.request.cellSize}")
     val req    = ctx.request
     val meta   = ctx.metadata
     val config = req.config
@@ -34,7 +34,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
       TerrainCorrectionBackend.allocate(req.cols, req.rows, pols.length, config)
 
     // 1. DEM window for the output tile, ellipsoidal heights (metres).
-    val dem: Array[Array[Double]] = TerrainCorrectionProcessor.readDemEllipsoidal(ctx)
+    val dem: Array[Array[Float]] = TerrainCorrectionProcessor.readDemEllipsoidal(ctx)
 
     val doGamma0 = config.normalization == BackscatterNormalization.Gamma0RTC
     val doShadow = config.shadowLayoverMask
@@ -170,7 +170,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
     val gb = GridBounds[Long](winMinPx.toLong, winMinLine.toLong, winMaxPx.toLong, winMaxLine.toLong)
     val sarWindows: Array[Tile] = pols.map { pol =>
       ctx.sarSources(pol).read(gb).getOrElse(
-        throw new IllegalStateException(s"SAR window read failed for ${pol.code}")
+        throw new IllegalStateException(s"sar_backscatter: SAR window read failed for ${pol.code} of item ${ctx.request.sceneId}")
       ).tile.band(0)
     }
     val polMetas = pols.map(meta.polarisations)
@@ -262,7 +262,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
   /** Outward terrain surface normal at grid position (col, row) in ECEF,
    *  derived from centred finite differences of the DEM heights.
    *  At boundary pixels falls back to the ellipsoidal normal. */
-  private def terrainSurfaceNormal(dem: Array[Array[Double]],
+  private def terrainSurfaceNormal(dem: Array[Array[Float]],
                                    lonRadGrid: Array[Double], latRadGrid: Array[Double],
                                    row: Int, col: Int,
                                    rows: Int, cols: Int): Vec3 = {

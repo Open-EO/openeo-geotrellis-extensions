@@ -29,3 +29,25 @@ Spark job that iterates over output tile keys.
 All raster I/O goes through GeoTrellis `RasterSource`, which already supports
 S3 (`s3://...`) and HTTP(S) URLs. No SNAP, no FUSE mount, no SAFE-zip reader
 needed; we read the measurement TIFFs and DEM COGs directly.
+
+## Elevation model
+
+The DEM is selected with `elevation_model` of `sar_backscatter`
+(`SarBackscatterParameters.elevationModel`):
+
+- absent (`null`): the back-end default, `COPERNICUS_30`;
+- the string `"null"`: no DEM, terrain height is 0 m (the geoid is still applied);
+- `COPERNICUS_30`, or the URL of a STAC collection
+  (`https://<host>/<root>/collections/<id>`): the DEM rasters are the items of
+  that collection; `options["dem_asset"]` sets the asset key (default `data`);
+- anything else is rejected.
+
+The collection is searched once per request on the driver (overall extent,
+split at the antimeridian); each tile then reads only the overlapping items,
+mosaicked at the finest resolution with bilinear resampling. Height is 0 m
+where no item exists (sea, coast) or the DEM has nodata. If items exist but
+cannot be read, the DEM is NaN and the soft error counter is increased, unless
+soft errors are disabled for the load, in which case the read fails.
+
+A geoid is mandatory: `openScene` fails without one (`S1_GEOID_TIFF_URI` for the
+default provider).

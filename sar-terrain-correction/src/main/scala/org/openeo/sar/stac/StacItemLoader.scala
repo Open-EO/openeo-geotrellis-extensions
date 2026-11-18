@@ -38,7 +38,7 @@ object StacItemLoader {
       try mapper.readTree(in)
       finally in.close()
     val assets = root.get("assets")
-    require(assets != null, "STAC item has no assets")
+    require(assets != null, s"sar_backscatter: STAC item $itemUri has no assets")
 
     val hrefs: Map[String, URI] = assets.fields().asScala.flatMap { e =>
       Option(e.getValue.get("href")).map(h => e.getKey -> URI.create(h.asText()))
@@ -58,7 +58,7 @@ object StacItemLoader {
       val forPol = hrefs.values.filter(u => polOf(u).contains(pol)).toSeq
       def find(predicate: URI => Boolean, what: String): URI =
         forPol.find(predicate).getOrElse(
-          throw new IllegalStateException(s"missing $what asset for polarisation $pol"))
+          throw new IllegalStateException(s"sar_backscatter: missing $what asset for polarisation $pol in item $itemUri"))
       val measurement = find(u => u.getPath.contains("/measurement/") && u.getPath.endsWith(".tiff"), "measurement")
       val annot       = find(u => u.getPath.contains("/annotation/") &&
                                   !u.getPath.contains("/calibration/") &&
@@ -73,7 +73,7 @@ object StacItemLoader {
     }.toMap
 
     val bboxNode: JsonNode = root.get("bbox")
-    require(bboxNode != null && bboxNode.size() == 4, "STAC item missing bbox")
+    require(bboxNode != null && bboxNode.size() == 4, s"sar_backscatter: STAC item $itemUri missing bbox")
     val bbox = (bboxNode.get(0).asDouble(), bboxNode.get(1).asDouble(),
                 bboxNode.get(2).asDouble(), bboxNode.get(3).asDouble())
 
