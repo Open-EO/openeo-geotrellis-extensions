@@ -261,6 +261,36 @@ class AggregateSpatialTest {
       stats)
   }
 
+  @Test
+  def compute_generic_timeseries_from_spatial_datacube_to_parquet(): Unit = {
+    val from = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val spatialCube = buildCubeRdd(from, to = ZonedDateTime.now()).toSpatial(from)
+    val geometryWkts = Seq(polygon1, polygon2.getCentroid).map(_.toWKT())
+    val outDir = Files.createTempDirectory("spatialparquet").resolve("result").toString
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_spatial_datacube(
+      "mean", spatialCube, geometryWkts.asJava, s"EPSG:${LatLng.epsgCode.get}", outDir, "parquet", "file")
+
+    val df = org.apache.spark.sql.SparkSession.builder().getOrCreate().read.parquet("file://" + outDir)
+    assertEquals(Seq("feature_index"), df.columns.toSeq.take(1))
+    assertEquals(Set(0, 1), df.collect().map(_.getAs[Int]("feature_index")).toSet)
+  }
+
+  @Test
+  def compute_generic_timeseries_from_spatial_datacube_in_memory(): Unit = {
+    val from = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val spatialCube = buildCubeRdd(from, to = ZonedDateTime.now()).toSpatial(from)
+    val geometryWkts = Seq(polygon1, polygon2.getCentroid).map(_.toWKT())
+
+    val df = computeStatsGeotrellisAdapter.compute_generic_timeseries_dataframe_from_spatial_datacube(
+      "mean", spatialCube, geometryWkts.asJava, s"EPSG:${LatLng.epsgCode.get}")
+
+    assertEquals("feature_index", df.columns.head)
+    val rows = df.collect()
+    assertEquals(Set(0, 1), rows.map(_.getAs[Int]("feature_index")).toSet)
+    assertEquals(Set(10.0), rows.flatMap(r => Option(r.get(1)).map(_.asInstanceOf[Double])).toSet)
+  }
+
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
   @Test def computeVectorCube_on_datacube_from_polygons(): Unit = {
     val cube = LayerFixtures.sentinel2B04Layer

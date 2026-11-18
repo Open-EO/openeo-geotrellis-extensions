@@ -227,4 +227,3 @@ object TerrainCorrectionProcessor {
     (math.toRadians(lon), math.toRadians(lat))
   }
 }
-
