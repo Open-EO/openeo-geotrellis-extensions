@@ -76,7 +76,11 @@ class SarBackscatterParameters extends ExtraProcessingParameters {
    *  - `mask` maps to `shadowLayoverMask` (the openEO spec's "data mask" for `sar_backscatter`).
    *  - `localIncidenceAngle` / `ellipsoidIncidenceAngle` map 1:1.
    *
-   * `elevationModel`, `contributingArea`, `noiseRemoval` and `options` are not yet wired into
+   *  - `elevationModel` selects the DEM: a STAC collection URL or `COPERNICUS_30`; `None` means no DEM
+   *    (see [[org.openeo.sar.dem.ElevationModel]]). The `dem_asset` entry of `options` overrides the
+   *    asset key of the DEM raster (default `data`).
+   *
+   * `contributingArea`, `noiseRemoval` and the other `options` are not yet wired into
    * the terrain-correction backend and are currently ignored by this conversion; they remain
    * available on this class for callers/backends that do support them.
    */
@@ -88,6 +92,8 @@ class SarBackscatterParameters extends ExtraProcessingParameters {
         case None                              => base.normalization
       },
       shadowLayoverMask = mask,
+      elevationModel = elevationModel,
+      demAsset = Option(options.get("dem_asset")).map(_.toString).getOrElse(base.demAsset),
       localIncidenceAngle = localIncidenceAngle,
       ellipsoidIncidenceAngle = ellipsoidIncidenceAngle
     )

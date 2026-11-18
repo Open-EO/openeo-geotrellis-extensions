@@ -3,6 +3,7 @@ package org.openeo.sar
 import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, RasterSource}
 import geotrellis.vector.Extent
+import org.openeo.sar.dem.DemItem
 import org.openeo.sar.metadata.{Polarisation, S1GrdMetadata}
 
 /** Selects the backscatter normalization convention for output sigma/gamma bands. */
@@ -31,12 +32,21 @@ object BackscatterNormalization {
  *  @param ellipsoidIncidenceAngle When true, adds an output band with the ellipsoidal
  *                                (look vs. smooth WGS84 ellipsoid normal) incidence angle in
  *                                degrees. Default false.
+ *  @param elevationModel         DEM to use: a STAC collection URL (or an alias such as `COPERNICUS_30`),
+ *                                see [[org.openeo.sar.dem.ElevationModel]]. `None` means no DEM:
+ *                                terrain height is 0 m (orthometric), the geoid is still applied.
+ *  @param demAsset               Asset key of the DEM raster in the elevation model's STAC items.
+ *  @param softErrors             When true (default), an unreadable DEM asset yields a NaN DEM and is counted
+ *                                as a soft error; when false it fails the read immediately.
  */
 final case class SarProcessingConfig(
   normalization: BackscatterNormalization = BackscatterNormalization.Sigma0,
   shadowLayoverMask: Boolean               = false,
   localIncidenceAngle: Boolean             = false,
-  ellipsoidIncidenceAngle: Boolean         = false
+  ellipsoidIncidenceAngle: Boolean         = false,
+  elevationModel: Option[String]           = None,
+  demAsset: String                         = "data",
+  softErrors: Boolean                      = true
 ) {
   /** Total number of output bands for `nPols` polarisations.
    *
@@ -79,12 +89,13 @@ final case class TileRequest(
  *  - `sarSources`: one [[RasterSource]] per polarisation pointing at the full
  *    measurement GeoTIFF.  RasterSources are cheap to keep open and perform
  *    windowed reads on demand.
- *  - `demSource` / `geoidSource`: single scene-wide raster sources; each tile
- *    will read only its own AOI window. */
+ *  - `demItems`: the DEM STAC items (extent + asset href) overlapping the scene; each tile opens
+ *    and reads only the items that overlap its own AOI.
+ *  - `geoidSource`: single scene-wide raster source; each tile reads only its own AOI window. */
 final case class SceneContext(
   metadata: S1GrdMetadata,
   sarSources: Map[Polarisation, RasterSource],
-  demSource: RasterSource,
+  demItems: Seq[DemItem],
   geoidSource: Option[RasterSource],
   /** Shared CRS and cell size for all tiles produced from this scene. */
   cellSize: CellSize,
@@ -96,7 +107,7 @@ final case class SceneContext(
   def tileContext(extent: Extent): TileComputeContext =
     TileComputeContext(
       TileRequest(extent, cellSize, crs, polarisations, config),
-      metadata, sarSources, demSource, geoidSource
+      metadata, sarSources, demItems, geoidSource
     )
 }
 
@@ -107,10 +118,9 @@ final case class TileComputeContext(
   metadata: S1GrdMetadata,
   /** Per-polarisation measurement RasterSource (full scene, in SAR geometry). */
   sarSources: Map[Polarisation, RasterSource],
-  /** DEM RasterSource. Caller is responsible for picking a DEM that covers
-   *  the AOI; the orchestrator will read the AOI window from it and reproject
-   *  to the output CRS at the target cell size. */
-  demSource: RasterSource,
+  /** DEM items overlapping the scene. The orchestrator selects the ones overlapping the AOI,
+   *  mosaics them and reprojects to the output CRS at the target cell size. */
+  demItems: Seq[DemItem],
   /** Geoid undulation RasterSource (e.g. EGM2008), or None to assume DEM is
    *  already ellipsoidal heights. */
   geoidSource: Option[RasterSource]

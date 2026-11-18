@@ -1,15 +1,14 @@
 package org.openeo.sar.backend.nativ
 
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{CellSize, FloatArrayTile, Raster}
-import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.GeoTiff
+import geotrellis.raster.{CellSize, FloatArrayTile, Raster}
 import geotrellis.vector.Extent
-import org.junit.jupiter.api.Assertions.{assertEquals, assertNotNull}
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import org.openeo.sar.backend.TerrainCorrectionBackend
+import org.openeo.sar.dem.DemItem
 import org.openeo.sar.geom.Vec3
-import org.openeo.sar.metadata.{ImageTiming, Lut2D, PolarisationMetadata, Polarisation, S1GrdMetadata, SrgrPoly, SrgrPolyList}
+import org.openeo.sar.metadata._
 import org.openeo.sar.orbit.{OrbitInterpolator, StateVector}
 import org.openeo.sar.{SarProcessingConfig, TileComputeContext, TileRequest}
 
@@ -18,7 +17,7 @@ import java.nio.file.Files
 class NativeBackendTest {
 
   @Test
-  def computeReturnsEmptyTileWhenNoDemPixelsAreValid(): Unit = {
+  def computeReturnsEmptyTileWhenDemCannotBeRead(): Unit = {
     val request = TileRequest(
       extent = Extent(0.0, 0.0, 2.0, 2.0),
       cellSize = CellSize(1.0, 1.0),
@@ -27,15 +26,13 @@ class NativeBackendTest {
       config = SarProcessingConfig(shadowLayoverMask = true)
     )
 
-    val demPath = Files.createTempFile("nan-dem-", ".tif")
-    val demTile = FloatArrayTile.fill(Float.NaN, request.cols, request.rows)
-    GeoTiff(Raster(demTile, request.extent), request.crs).write(demPath.toString, true)
+    val unreadableDem = DemItem(request.extent, "/does/not/exist/dem.tif")
 
     val ctx = TileComputeContext(
       request = request,
       metadata = fakeMetadata,
       sarSources = Map.empty,
-      demSource = GeoTiffRasterSource(demPath.toString),
+      demItems = Seq(unreadableDem),
       geoidSource = None
     )
 
@@ -80,7 +77,7 @@ class NativeBackendTest {
         )
       ),
       sarSources = Map.empty,
-      demSource = GeoTiffRasterSource(demPath.toString),
+      demItems = Seq(DemItem(request.extent, demPath.toString)),
       geoidSource = None
     )
 

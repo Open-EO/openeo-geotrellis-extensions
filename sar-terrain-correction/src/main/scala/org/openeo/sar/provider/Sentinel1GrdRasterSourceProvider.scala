@@ -2,10 +2,8 @@ package org.openeo.sar.provider
 
 import cats.data.NonEmptyList
 import com.github.benmanes.caffeine.cache.Caffeine
-import geotrellis.proj4.CRS
-import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, GridExtent, RasterSource, StringName}
-import geotrellis.vector.Extent
 import org.openeo.geotrellis.layers.provider.{RasterSourceDefinition, RasterSourceProvider}
 import org.openeo.geotrellis.layers.raster_source.IndexedRasterSource
 import org.openeo.sar._
@@ -102,6 +100,7 @@ class Sentinel1GrdRasterSourceProvider(
         .collect { case sarArgs: SarBackscatterParameters => sarArgs }
         .map(_.toSarProcessingConfig(processingConfig))
         .getOrElse(processingConfig)
+        .copy(softErrors = definition.softErrors)
 
     val cacheKey = SceneCacheKey(safeRoot, crs, cellSize, effectiveProcessingConfig)
 
@@ -112,7 +111,9 @@ class Sentinel1GrdRasterSourceProvider(
 
       stacItemUrl match {
         case Some(url) =>
-          processor.openScene(url, cellSize, crs, pols, effectiveProcessingConfig)
+          // All scenes of a load share the target extent: one DEM catalog search serves all of them.
+          val demSearchExtent = definition.targetExtent.reproject(LatLng)
+          processor.openScene(url, cellSize, crs, pols, effectiveProcessingConfig, Some(demSearchExtent))
         case None =>
           openSceneFromSafeRoot(safeRoot, pols, cellSize, crs)
       }
@@ -231,36 +232,23 @@ object Sentinel1GrdRasterSourceProvider {
     polarisationBandIndex(requestedPolarisation(definition), s"${definition.dataPath} (band ${definition.bandName})",
       scenePolarisations, safeRoot)
 
-  /** Convenience factory: NativeBackend + Copernicus DEM (COG via HTTPS). */
-  def withCopernicusDem(
+  /** Convenience factory: NativeBackend with the given geoid; the DEM follows the `elevation_model` of the
+   *  processing config (see [[org.openeo.sar.dem.ElevationModel]]). */
+  def withGeoid(
     geoidTiffUri: Option[URI] = None,
     config: SarProcessingConfig = SarProcessingConfig.default
   ): Sentinel1GrdRasterSourceProvider = {
-    val demFactory: Extent => RasterSource = extent => {
-      val lon0 = math.floor(extent.xmin).toInt
-      val lat0 = math.floor(extent.ymin).toInt
-      val lon1 = math.ceil(extent.xmax).toInt
-      val lat1 = math.ceil(extent.ymax).toInt
-      val urls = for {
-        lat <- lat0 until lat1
-        lon <- lon0 until lon1
-        latStr = f"${if (lat >= 0) "N" else "S"}${math.abs(lat)}%02d"
-        lonStr = f"${if (lon >= 0) "E" else "W"}${math.abs(lon)}%03d"
-        url = s"s3://eodata/auxdata/CopDEM_COG/copernicus-dem-30m/Copernicus_DSM_COG_10_${latStr}_00_${lonStr}_00_DEM/Copernicus_DSM_COG_10_${latStr}_00_${lonStr}_00_DEM.tif"
-      } yield url
-      urls.map(GeoTiffRasterSource(_)).head
-    }
-
-    val processor = geoidTiffUri match {
-      case Some(g) => TerrainCorrectionProcessor.withDemAndGeoid(new NativeBackend, demFactory, g)
-      case None    => new TerrainCorrectionProcessor(new NativeBackend, demFactory)
-    }
+    val processor = new TerrainCorrectionProcessor(
+      new NativeBackend,
+      geoidTiffUri.map(TerrainCorrectionProcessor.geoidFromTiff)
+    )
     new Sentinel1GrdRasterSourceProvider(processor, config)
   }
 }
 
 /** Default no-arg service provider loaded via [[java.util.ServiceLoader]].
- *  Uses [[NativeBackend]] and Copernicus 30 m DEM tiles from CDSE S3.
+ *  Uses [[NativeBackend]]; the DEM is selected per request with the `elevation_model` argument of
+ *  `sar_backscatter` (e.g. `COPERNICUS_30`, or a STAC collection URL), no DEM if absent.
  *
  *  Environment variable overrides:
  *    S1_GEOID_TIFF_URI      – URI of a geoid undulation GeoTIFF (optional)
@@ -270,7 +258,7 @@ class DefaultSentinel1GrdRasterSourceProvider
   extends Sentinel1GrdRasterSourceProvider(
     processor = {
       val geoidUri = Option(System.getenv("S1_GEOID_TIFF_URI")).map(URI.create)
-      Sentinel1GrdRasterSourceProvider.withCopernicusDem(geoidUri).processor
+      Sentinel1GrdRasterSourceProvider.withGeoid(geoidUri).processor
     },
     processingConfig = {
       val norm = Option(System.getenv("S1_NORMALIZATION")).map(_.toLowerCase) match {

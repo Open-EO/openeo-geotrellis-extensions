@@ -4,7 +4,10 @@ import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster._
 import geotrellis.raster.resample.Bilinear
 import geotrellis.vector.Extent
+import org.openeo.geotrellis.layers.RasterTileLoader.SOFT_ERROR_MEGAPIXEL_COUNTER
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker
 import org.openeo.sar.backend.TerrainCorrectionBackend
+import org.openeo.sar.dem.{DemCatalog, DemGeometry, DemReader, ElevationModel}
 import org.openeo.sar.metadata.{Polarisation, S1AnnotationParser, S1GrdMetadata}
 import org.openeo.sar.stac.{StacAssets, StacItemLoader}
 import org.slf4j.LoggerFactory
@@ -28,9 +31,9 @@ import java.net.URI
  *  (it calls both stages). */
 final class TerrainCorrectionProcessor(
   backend: TerrainCorrectionBackend,
-  demSourceFactory: Extent => RasterSource,
-  geoidSourceFactory: Option[Extent => RasterSource] = None,
-  rasterSourceFactory: URI => RasterSource = TerrainCorrectionProcessor.defaultRasterSourceFactory
+  geoidSourceFactory: Option[Extent => RasterSource],
+  rasterSourceFactory: URI => RasterSource = TerrainCorrectionProcessor.defaultRasterSourceFactory,
+  demCatalogFactory: SarProcessingConfig => DemCatalog = TerrainCorrectionProcessor.defaultDemCatalogFactory
 ) {
 
   // -------------------------------------------------------------------------
@@ -38,12 +41,19 @@ final class TerrainCorrectionProcessor(
   // -------------------------------------------------------------------------
 
   /** Parse a STAC item and open all required RasterSources.  Expensive; call
-   *  once per scene, then reuse the returned [[SceneContext]] for all tiles. */
+   *  once per scene, then reuse the returned [[SceneContext]] for all tiles.
+   *
+   *  `demSearchExtentWgs84` is the overall area of the request (all scenes): the DEM catalog is searched
+   *  for that area once, and each scene keeps the DEM items overlapping it. */
   def openScene(stacItemUrl: URI,
                 cellSize: CellSize,
                 crs: CRS,
                 polarisations: Seq[Polarisation],
-                config: SarProcessingConfig = SarProcessingConfig.default): SceneContext = {
+                config: SarProcessingConfig = SarProcessingConfig.default,
+                demSearchExtentWgs84: Option[Extent] = None): SceneContext = {
+
+    val geoidFactory = geoidSourceFactory.getOrElse(throw new IllegalStateException(
+      "A geoid is required for terrain correction: configure a geoid undulation GeoTIFF (e.g. S1_GEOID_TIFF_URI)"))
 
     val assets: StacAssets = StacItemLoader.load(stacItemUrl)
 
@@ -59,14 +69,18 @@ final class TerrainCorrectionProcessor(
       pol -> rasterSourceFactory(assets.perPol(pol.code).measurement)
     }.toMap
 
-    // Use the scene bounding box from the STAC item to pre-open a DEM source
-    // that covers the whole scene.  Per-tile reads will window into it cheaply.
+    // The DEM catalog is searched for the whole request (once, cached); this scene keeps the items it overlaps.
+    // Per-tile reads open only the items overlapping the tile.
     val (lonMin, latMin, lonMax, latMax) = assets.bboxWgs84
-    val sceneBboxWgs84 = Extent(lonMin, latMin, lonMax, latMax).buffer(0.05)
-    val demSource   = demSourceFactory(sceneBboxWgs84)
-    val geoidSource = geoidSourceFactory.map(_(sceneBboxWgs84))
+    val sceneParts = DemGeometry.splitAtAntimeridian(lonMin, latMin, lonMax, latMax, buffer = 0.05)
+    val searchParts = demSearchExtentWgs84.map(DemGeometry.splitAtAntimeridian(_, buffer = 0.05)).getOrElse(sceneParts)
+    val demItems = demCatalogFactory(config).items(searchParts)
+      .filter(item => sceneParts.exists(_.intersects(item.bboxWgs84)))
 
-    SceneContext(meta, sarSources, demSource, geoidSource, cellSize, crs, polarisations, config)
+    // The geoid source only needs an extent: the scene's overall box (the factory may be unaware of the antimeridian).
+    val geoidSource = Some(geoidFactory(Extent(lonMin, latMin, lonMax, latMax).buffer(0.05)))
+
+    SceneContext(meta, sarSources, demItems, geoidSource, cellSize, crs, polarisations, config)
   }
 
   // -------------------------------------------------------------------------
@@ -125,34 +139,37 @@ object TerrainCorrectionProcessor {
     _ => rs
   }
 
-  def withDemAndGeoid(backend: TerrainCorrectionBackend,
-                      demFactory: Extent => RasterSource,
-                      geoidTiffUri: URI): TerrainCorrectionProcessor =
+  /** DEM per the `elevation_model` / `dem_asset` of the processing config. */
+  def defaultDemCatalogFactory: SarProcessingConfig => DemCatalog =
+    config => ElevationModel.catalog(config.elevationModel, config.demAsset)
+
+  def withGeoid(backend: TerrainCorrectionBackend,
+                geoidTiffUri: URI,
+                demCatalogFactory: SarProcessingConfig => DemCatalog = defaultDemCatalogFactory): TerrainCorrectionProcessor =
     new TerrainCorrectionProcessor(
       backend            = backend,
-      demSourceFactory   = demFactory,
-      geoidSourceFactory = Some(geoidFromTiff(geoidTiffUri))
+      geoidSourceFactory = Some(geoidFromTiff(geoidTiffUri)),
+      demCatalogFactory  = demCatalogFactory
     )
 
   /** Read the DEM window for the output tile, reprojected to the target CRS at
    *  target cell size; converted from orthometric to ellipsoidal heights via the
-   *  optional geoid undulation grid. Returns a (rows x cols) array of metres. */
+   *  geoid undulation grid. Returns a (rows x cols) array of metres.
+   *
+   *  DEM items that cannot be read give NaN heights and are counted as a soft error, unless
+   *  `config.softErrors` is false, in which case reading fails. */
   def readDemEllipsoidal(ctx: TileComputeContext): Array[Array[Double]] = {
     val req = ctx.request
     val targetRe = RasterExtent(req.extent, req.cellSize.width, req.cellSize.height, req.cols, req.rows)
-    val defaultTile = new Raster( MultibandTile(FloatConstantTile(10.0f, req.cols, req.rows)), req.extent)
-    val dem = try{
-      ctx.demSource
-        .reproject(req.crs, method = Bilinear)
-        .resampleToGrid(targetRe.toGridType[Long], Bilinear)
-        .read(req.extent).getOrElse(
-          defaultTile)
-        //throw new IllegalStateException(s"DEM read returned no raster for AOI ${ctx.demSource.name}"))
-        .tile.band(0)
+    val dem: Tile = try {
+      DemReader.read(ctx.demItems, req, targetRe)
     } catch {
+      case e: Exception if req.config.softErrors =>
+        logger.warn(s"DEM read failed for AOI ${req.extent}, using NaN heights: ${e.getMessage}", e)
+        countSoftError(req.cols.toLong * req.rows / (1024 * 1024))
+        DoubleArrayTile.fill(Double.NaN, req.cols, req.rows)
       case e: Exception =>
-        logger.warn(s"DEM read failed for AOI ${ctx.demSource.name}: ${e.getMessage}")
-        defaultTile.tile.band(0)
+        throw new IllegalStateException(s"DEM read failed for AOI ${req.extent}: ${e.getMessage}", e)
     }
 
     val geoid: Option[Tile] = ctx.geoidSource.map { gs =>
@@ -174,6 +191,13 @@ object TerrainCorrectionProcessor {
     }
     out
   }
+
+  private def countSoftError(megapixels: Long): Unit =
+    try {
+      BatchJobMetadataTracker.tracker("").add(SOFT_ERROR_MEGAPIXEL_COUNTER, math.max(1L, megapixels))
+    } catch {
+      case e: Exception => logger.warn(s"Failed to increment the soft error counter: ${e.getMessage}", e)
+    }
 
   /** Map an output (col, row) to (lon, lat) in radians. */
   def pixelToLonLatRad(col: Int, row: Int, req: TileRequest): (Double, Double) = {
