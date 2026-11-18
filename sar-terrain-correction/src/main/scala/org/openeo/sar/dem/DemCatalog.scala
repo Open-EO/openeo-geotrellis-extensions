@@ -15,18 +15,18 @@ final case class DemItem(bboxWgs84: Extent, href: String)
 
 /** Lists DEM rasters. [[items]] is meant to be called on the driver, once for the overall area of a request. */
 trait DemCatalog extends Serializable {
-  def items(searchExtentWgs84: Seq[Extent]): Seq[DemItem]
+  def items(searchExtentsWgs84: Seq[Extent]): Seq[DemItem]
 }
 
 /** No elevation model: terrain is assumed to be at 0 m. */
 object NoDemCatalog extends DemCatalog {
-  override def items(searchExtentWgs84: Seq[Extent]): Seq[DemItem] = Seq.empty
+  override def items(searchExtentsWgs84: Seq[Extent]): Seq[DemItem] = Seq.empty
 }
 
 /** A fixed list of items, regardless of the search extent. */
 final case class StaticDemCatalog(allItems: Seq[DemItem]) extends DemCatalog {
-  override def items(searchExtentWgs84: Seq[Extent]): Seq[DemItem] =
-    allItems.filter(item => searchExtentWgs84.exists(_.intersects(item.bboxWgs84)))
+  override def items(searchExtentsWgs84: Seq[Extent]): Seq[DemItem] =
+    allItems.filter(item => searchExtentsWgs84.exists(_.intersects(item.bboxWgs84)))
 }
 
 /** DEM items of a STAC API collection, found with an item search.
@@ -38,9 +38,9 @@ final case class StaticDemCatalog(allItems: Seq[DemItem]) extends DemCatalog {
 final class StacDemCatalog(endpoint: URL, collectionId: String, assetKey: String) extends DemCatalog {
   import StacDemCatalog._
 
-  /** @param searchExtentWgs84 parts of the search area; each within [-180, 180] longitude (see [[DemGeometry]]) */
-  override def items(searchExtentWgs84: Seq[Extent]): Seq[DemItem] =
-    cache.get((endpoint.toString, collectionId, assetKey, searchExtentWgs84), _ => search(searchExtentWgs84))
+  /** @param searchExtentsWgs84 parts of the search area; each within [-180, 180] longitude (see [[DemGeometry]]) */
+  override def items(searchExtentsWgs84: Seq[Extent]): Seq[DemItem] =
+    cache.get((endpoint.toString, collectionId, assetKey, searchExtentsWgs84), _ => search(searchExtentsWgs84))
 
   private def search(parts: Seq[Extent]): Seq[DemItem] = {
     logger.info(s"Searching DEM items of collection $collectionId at $endpoint for $parts")
@@ -52,6 +52,7 @@ final class StacDemCatalog(endpoint: URL, collectionId: String, assetKey: String
     }
 
     found.map { feature =>
+      // the opensearch client stores the asset key as the title of the link
       val href = feature.links.find(_.title.contains(assetKey)).map(_.href.toString).getOrElse(
         throw new IllegalStateException(
           s"DEM item ${feature.id} of collection $collectionId has no asset '$assetKey'; " +
@@ -80,9 +81,14 @@ object ElevationModel {
 
   private val CollectionUrl = """^(https?://.+?)/collections/([^/?#]+)/?$""".r
 
-  /** `None`: no DEM. A STAC collection URL or the `COPERNICUS_30` alias: that collection. Otherwise: error. */
+  /** Value that disables the DEM (terrain at 0 m). */
+  val Disabled = "null"
+
+  /** `None`: the back-end default, `COPERNICUS_30`. `"null"`: no DEM. A STAC collection URL or the `COPERNICUS_30`
+   *  alias: that collection. Otherwise: error. */
   def catalog(elevationModel: Option[String], assetKey: String): DemCatalog = elevationModel match {
-    case None => NoDemCatalog
+    case Some(model) if model.trim.equalsIgnoreCase(Disabled) => NoDemCatalog
+    case None => catalog(Some(Copernicus30Alias), assetKey)
     case Some(model) =>
       val url = if (model.trim.equalsIgnoreCase(Copernicus30Alias)) Copernicus30Url else model.trim
       url match {

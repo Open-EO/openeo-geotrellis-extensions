@@ -33,8 +33,12 @@ class DemTest {
   private val unreadable = DemItem(Extent(0, 0, 1, 1), "/does/not/exist.tif")
 
   @Test
-  def elevationModelNoneMeansNoDem(): Unit =
-    assertSame(NoDemCatalog, ElevationModel.catalog(None, "data"))
+  def elevationModelNoneMeansDefaultCopernicus30(): Unit =
+    assertEquals(ElevationModel.catalog(Some("COPERNICUS_30"), "data").toString, ElevationModel.catalog(None, "data").toString)
+
+  @Test
+  def elevationModelNullStringMeansNoDem(): Unit =
+    assertSame(NoDemCatalog, ElevationModel.catalog(Some("null"), "data"))
 
   @Test
   def elevationModelAliasAndUrlGiveStacCatalog(): Unit = {

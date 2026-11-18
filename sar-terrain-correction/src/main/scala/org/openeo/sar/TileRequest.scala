@@ -33,8 +33,9 @@ object BackscatterNormalization {
  *                                (look vs. smooth WGS84 ellipsoid normal) incidence angle in
  *                                degrees. Default false.
  *  @param elevationModel         DEM to use: a STAC collection URL (or an alias such as `COPERNICUS_30`),
- *                                see [[org.openeo.sar.dem.ElevationModel]]. `None` means no DEM:
- *                                terrain height is 0 m (orthometric), the geoid is still applied.
+ *                                see [[org.openeo.sar.dem.ElevationModel]]. `None` is the back-end
+ *                                default, `COPERNICUS_30`. The string `"null"` means no DEM: terrain height
+ *                                is 0 m (orthometric), the geoid is still applied.
  *  @param demAsset               Asset key of the DEM raster in the elevation model's STAC items.
  *  @param softErrors             When true (default), an unreadable DEM asset yields a NaN DEM and is counted
  *                                as a soft error; when false it fails the read immediately.

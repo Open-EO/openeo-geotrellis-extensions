@@ -35,7 +35,8 @@ needed; we read the measurement TIFFs and DEM COGs directly.
 The DEM is selected with `elevation_model` of `sar_backscatter`
 (`SarBackscatterParameters.elevationModel`):
 
-- absent: no DEM, terrain height is 0 m (the geoid is still applied);
+- absent (`null`): the back-end default, `COPERNICUS_30`;
+- the string `"null"`: no DEM, terrain height is 0 m (the geoid is still applied);
 - `COPERNICUS_30`, or the URL of a STAC collection
   (`https://<host>/<root>/collections/<id>`): the DEM rasters are the items of
   that collection; `options["dem_asset"]` sets the asset key (default `data`);

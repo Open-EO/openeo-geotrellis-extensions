@@ -4,6 +4,7 @@ import cats.data.NonEmptyList
 import com.github.benmanes.caffeine.cache.Caffeine
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, GridExtent, RasterSource, StringName}
+import geotrellis.vector.Extent
 import org.openeo.geotrellis.layers.provider.{RasterSourceDefinition, RasterSourceProvider}
 import org.openeo.geotrellis.layers.raster_source.IndexedRasterSource
 import org.openeo.sar._
@@ -102,7 +103,10 @@ class Sentinel1GrdRasterSourceProvider(
         .getOrElse(processingConfig)
         .copy(softErrors = definition.softErrors)
 
-    val cacheKey = SceneCacheKey(safeRoot, crs, cellSize, effectiveProcessingConfig)
+    // All scenes of a load share the target extent: one DEM catalog search serves all of them. The scene keeps
+    // the DEM items found for this extent, so the extent is part of the cache key.
+    val demSearchExtent = definition.targetExtent.reproject(LatLng)
+    val cacheKey = SceneCacheKey(safeRoot, crs, cellSize, effectiveProcessingConfig, demSearchExtent)
 
     val scene = sceneCache.get(cacheKey, (_: SceneCacheKey) => {
       val pols = derivePolarisations(definition, requestedPolarisations)
@@ -111,8 +115,6 @@ class Sentinel1GrdRasterSourceProvider(
 
       stacItemUrl match {
         case Some(url) =>
-          // All scenes of a load share the target extent: one DEM catalog search serves all of them.
-          val demSearchExtent = definition.targetExtent.reproject(LatLng)
           processor.openScene(url, cellSize, crs, pols, effectiveProcessingConfig, Some(demSearchExtent))
         case None =>
           openSceneFromSafeRoot(safeRoot, pols, cellSize, crs)
@@ -251,7 +253,7 @@ object Sentinel1GrdRasterSourceProvider {
  *  `sar_backscatter` (e.g. `COPERNICUS_30`, or a STAC collection URL), no DEM if absent.
  *
  *  Environment variable overrides:
- *    S1_GEOID_TIFF_URI      – URI of a geoid undulation GeoTIFF (optional)
+ *    S1_GEOID_TIFF_URI      – URI of a geoid undulation GeoTIFF (mandatory for terrain correction)
  *    S1_NORMALIZATION       – "sigma0" (default) or "gamma0rtc"
  *    S1_SHADOW_LAYOVER_MASK – "true" to add shadow/layover band */
 class DefaultSentinel1GrdRasterSourceProvider
@@ -269,4 +271,5 @@ class DefaultSentinel1GrdRasterSourceProvider
       SarProcessingConfig(norm, shadow)
     }
   )
-private final case class SceneCacheKey(safeRoot: URI, crs: CRS, cellSize: CellSize, config: SarProcessingConfig)
+private final case class SceneCacheKey(safeRoot: URI, crs: CRS, cellSize: CellSize, config: SarProcessingConfig,
+                                          demSearchExtent: Extent)

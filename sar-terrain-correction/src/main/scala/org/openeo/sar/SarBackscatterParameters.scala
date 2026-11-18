@@ -76,7 +76,7 @@ class SarBackscatterParameters extends ExtraProcessingParameters {
    *  - `mask` maps to `shadowLayoverMask` (the openEO spec's "data mask" for `sar_backscatter`).
    *  - `localIncidenceAngle` / `ellipsoidIncidenceAngle` map 1:1.
    *
-   *  - `elevationModel` selects the DEM: a STAC collection URL or `COPERNICUS_30`; `None` means no DEM
+   *  - `elevationModel` selects the DEM: a STAC collection URL or `COPERNICUS_30`; `None` is the default `COPERNICUS_30`, `"null"` means no DEM
    *    (see [[org.openeo.sar.dem.ElevationModel]]). The `dem_asset` entry of `options` overrides the
    *    asset key of the DEM raster (default `data`).
    *

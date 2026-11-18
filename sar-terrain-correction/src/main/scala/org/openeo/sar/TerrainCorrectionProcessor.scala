@@ -73,7 +73,10 @@ final class TerrainCorrectionProcessor(
     // Per-tile reads open only the items overlapping the tile.
     val (lonMin, latMin, lonMax, latMax) = assets.bboxWgs84
     val sceneParts = DemGeometry.splitAtAntimeridian(lonMin, latMin, lonMax, latMax, buffer = 0.05)
-    val searchParts = demSearchExtentWgs84.map(DemGeometry.splitAtAntimeridian(_, buffer = 0.05)).getOrElse(sceneParts)
+    // A projected extent crossing the antimeridian reprojects to ~-180..180: searching that would cover the whole
+    // latitude band, and the items are filtered to the scene anyway, so search the scene instead.
+    val searchParts = demSearchExtentWgs84.filter(_.width < 180.0)
+      .map(DemGeometry.splitAtAntimeridian(_, buffer = 0.05)).getOrElse(sceneParts)
     val demItems = demCatalogFactory(config).items(searchParts)
       .filter(item => sceneParts.exists(_.intersects(item.bboxWgs84)))
 

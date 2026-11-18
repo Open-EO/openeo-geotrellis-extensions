@@ -23,7 +23,7 @@ class NativeBackendTest {
       cellSize = CellSize(1.0, 1.0),
       crs = LatLng,
       polarisations = Seq(Polarisation.VV),
-      config = SarProcessingConfig(shadowLayoverMask = true)
+      config = SarProcessingConfig(shadowLayoverMask = true, softErrors = true)
     )
 
     val unreadableDem = DemItem(request.extent, "/does/not/exist/dem.tif")
@@ -56,7 +56,7 @@ class NativeBackendTest {
       cellSize = CellSize(1.0, 1.0),
       crs = LatLng,
       polarisations = Seq(Polarisation.VV),
-      config = SarProcessingConfig(shadowLayoverMask = true)
+      config = SarProcessingConfig(shadowLayoverMask = true, softErrors = true)
     )
 
     val demPath = Files.createTempFile("larger-dem-", ".tif")
