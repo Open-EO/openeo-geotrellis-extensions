@@ -25,12 +25,12 @@ object UriIO {
 
   /** Open an `InputStream` for the given URI. Caller is responsible for closing. */
   def openInputStream(uri: URI): InputStream = {
-    logger.debug(s"sar_backscatter - Opening URI $uri")
+    logger.debug(s"sar_backscatter: opening URI $uri")
     uri.getScheme match {
 
       case "s3" =>
         val in = CreoS3Utils.readFromS3(new AmazonS3URI(uri))
-        if (in == null) throw new FileNotFoundException(s"S3 object not found: $uri")
+        if (in == null) throw new FileNotFoundException(s"sar_backscatter: S3 object not found: $uri")
         new BufferedInputStream(in)
 
       case "http" | "https" =>
@@ -48,7 +48,7 @@ object UriIO {
         new BufferedInputStream(new java.io.FileInputStream(uri.getPath))
 
       case other =>
-        throw new IllegalArgumentException(s"Unsupported URI scheme: $other ($uri)")
+        throw new IllegalArgumentException(s"sar_backscatter: unsupported URI scheme: $other ($uri)")
     }
   }
 
