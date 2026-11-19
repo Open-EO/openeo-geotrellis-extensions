@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `RasterTileLoader`: no longer fails with `chunk at GridBounds(...) exceeds tile boundary` when a raster source returns the full padded window instead of a clipped raster; an inconsistent raster now fails with a descriptive error.
 - Loading metrics now consistently count fractional megapixels (1,000,000 band-pixels), with overflow-safe, thread-safe pixel counts and monotonic timing. The loading-speed gauge still reports the latest completed partition's speed per collection.
 - merge_cubes: no longer fails on tiles without bands (e.g. `EmptyMultibandTile`).
 - Support `is_valid` inside raster callbacks, including `reduce_dimension` callbacks ([#901](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/901)).

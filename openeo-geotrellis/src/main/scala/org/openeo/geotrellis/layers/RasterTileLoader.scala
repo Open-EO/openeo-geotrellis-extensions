@@ -28,6 +28,18 @@ object RasterTileLoader extends RasterTileLoader {
 
   private val metricsLogger = LoggerFactory.getLogger("org.openeo.geotrellis.layers.RasterTileLoader")
 
+  /**
+   * Offset at which a raster, read for a window that may extend beyond its source, has to be placed in that window.
+   * Normally the read raster is clipped to the source (smaller than the window), so it is offset by the amount
+   * the window sticks out. Some sources return the full window (padded) instead: then no offset is needed,
+   * and applying one would make the chunk exceed the tile boundary.
+   */
+  private[layers] def paddingOffset(windowMin: Long, intersectionMin: Long, windowSize: Long, rasterSize: Int): Int = {
+    val offset = math.abs(windowMin - intersectionMin)
+    require(offset <= Int.MaxValue, "Computed offsets are outside of RasterBounds")
+    if (rasterSize >= windowSize) 0 else offset.toInt
+  }
+
   private[layers] def recordLoadingMetrics(pixelCount: Long, durationNanos: Long, attributes: Attributes,
                                            counter: DoubleCounter, gauge: DoubleGauge): Unit = {
     val megapixels = pixelCount / 1000000.0
@@ -445,9 +457,11 @@ case class RasterTileLoader() {
         else if (raster.tile.cols == theBounds.width && raster.tile.rows == theBounds.height)
           Some((theKey, raster))
         else {
-          val colOffset = math.abs(theBounds.colMin - intersection.get.colMin)
-          val rowOffset = math.abs(theBounds.rowMin - intersection.get.rowMin)
-          require(colOffset <= Int.MaxValue && rowOffset <= Int.MaxValue, "Computed offsets are outside of RasterBounds")
+          val colOffset = RasterTileLoader.paddingOffset(theBounds.colMin, intersection.get.colMin, theBounds.width, raster.tile.cols)
+          val rowOffset = RasterTileLoader.paddingOffset(theBounds.rowMin, intersection.get.rowMin, theBounds.height, raster.tile.rows)
+          if (raster.tile.cols + colOffset > theBounds.width || raster.tile.rows + rowOffset > theBounds.height)
+            throw new IllegalStateException(s"load_collection/load_stac: raster of ${raster.tile.cols}x${raster.tile.rows} read from ${source.name.toString} " +
+              s"for window $theBounds (source dimensions ${source.dimensions}, intersection ${intersection.get}) does not fit at offset ($colOffset, $rowOffset)")
           Some((theKey, raster.mapTile {
             //GridBounds(16,0,79,58)
             //coloffset = 16 , rowOffset = 0
@@ -455,7 +469,7 @@ case class RasterTileLoader() {
             //theBounds = 64x64
             //require((chunk.cols (64) + colOffset (16)  <= cols (64)) && (chunk.rows + rowOffset <= rows),
             // chunk at GridBounds(16,0,79,58) exceeds tile boundary at (64, 64)
-            _.mapBands { (_, band) => PaddedTile(band, colOffset.toInt, rowOffset.toInt, theBounds.width.toInt, theBounds.height.toInt) }
+            _.mapBands { (_, band) => PaddedTile(band, colOffset, rowOffset, theBounds.width.toInt, theBounds.height.toInt) }
           }))
         }
       }
