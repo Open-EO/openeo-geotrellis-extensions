@@ -6,7 +6,7 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{CRSWorldExtent, FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
-import geotrellis.raster.io.geotiff.{BigTiff, GeoTiff, MultibandGeoTiff, Tiff, TiffType, Tiled}
+import geotrellis.raster.io.geotiff.{BigTiff, GeoTiff, GeoTiffMultibandTile, MultibandGeoTiff, Tiff, TiffType, Tiled}
 import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
 import geotrellis.raster.resample.Min
@@ -25,7 +25,7 @@ import org.junit.jupiter.params.provider.{Arguments, MethodSource, ValueSource}
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithLocalTestdata
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellis.stac.{Asset, Item}
-import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcesses, OutputPreprocessing, ProjectedPolygons}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.nio.file.{Files, Path, Paths}
@@ -143,6 +143,33 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     assertEquals(2*256,tiff.overviews(1).imageData.segmentLayout.totalCols)
     val output = tiff.raster.tile
     assertArrayEquals(imageTile.toArray(),output.toArray())
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = Array("deflate:float32", "deflate:int16", "zstd:float32", "zstd:int16"))
+  def testWriteRDDWithCompressionPredictor(compressionAndCellType: String, @TempDir tempDir: Path): Unit = {
+    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/837
+    val Array(compressionMethod, cellTypeName) = compressionAndCellType.split(":")
+    val layoutCols = 4
+    val layoutRows = 2
+
+    val intImage = LayerFixtures.createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = UByteArrayTile(intImage, layoutCols * 256, layoutRows * 256).convert(CellType.fromName(cellTypeName))
+
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc, MultibandTile(imageTile, imageTile), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
+    val filename = (tempDir / "out.tif").toString()
+
+    val options = new GTiffOptions()
+    options.setCompression(compressionMethod, 6, predictor = 2)
+
+    saveRDD(tileLayerRDD.withContext(_.repartition(layoutCols * layoutRows)), 2, filename, formatOptions = options)
+
+    val tiff = GeoTiff.readMultiband(filename)
+    val expectedPredictor = if (imageTile.cellType.isFloatingPoint) 3 else 2
+    assertEquals(expectedPredictor, tiff.tile.asInstanceOf[GeoTiffMultibandTile].decompressor.predictorCode)
+    assertEquals(2, tiff.tile.bandCount)
+    assertArrayEquals(imageTile.toArrayDouble(), tiff.tile.band(0).toArrayDouble())
+    assertArrayEquals(imageTile.toArrayDouble(), tiff.tile.band(1).toArrayDouble())
   }
 
   @Test
@@ -377,8 +404,8 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
     val emptyRdd: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext{_.map{case(key,tile) => (key,new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,tile.bandCount)) }}
-    val (_,_,processedRdd) = preProcess(emptyRdd, None, retainNoDataTiles = true)
-    val (_,_,processedRddFiltered) = preProcess(emptyRdd, None, retainNoDataTiles = false)
+    val (_,_,processedRdd) = OutputPreprocessing.preProcess(emptyRdd, None, retainNoDataTiles = true)
+    val (_,_,processedRddFiltered) = OutputPreprocessing.preProcess(emptyRdd, None, retainNoDataTiles = false)
     val count = processedRdd.count()
     assertEquals(layoutCols*layoutRows,count)
     assertEquals(0,processedRddFiltered.count())

@@ -1,7 +1,9 @@
 package org.openeo.geotrellis.icor;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -18,12 +20,22 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 public class TestCorrectionDescriptor {
 
 	private static Sentinel2Descriptor cd;
-	static { 
-		try {
-			cd=new Sentinel2Descriptor();
-		} catch (Exception e) {
-			e.printStackTrace();
-		} 
+
+	@BeforeAll
+	public static void createDescriptor() throws Exception {
+		cd=localSentinel2Descriptor();
+	}
+
+	public static final String LOCAL_S2_LUT=Paths.get("../testdata/org/openeo/geotrellis/icor/S2B_all.bin").toUri().toString();
+
+	// reads the LUT from the testdata submodule instead of downloading it from Artifactory
+	public static Sentinel2Descriptor localSentinel2Descriptor() throws Exception {
+		return new Sentinel2Descriptor() {
+			@Override
+			public String getLookupTableURL() {
+				return LOCAL_S2_LUT;
+			}
+		};
 	}
 
 	private static class CorrectionInput {

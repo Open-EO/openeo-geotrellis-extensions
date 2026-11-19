@@ -16,7 +16,7 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkContext, TaskContext}
 import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert, setupAssetMetadata}
 import org.openeo.geotrellis.creo.CreoS3Utils
-import org.openeo.geotrellis.geotiff.preProcess
+import org.openeo.geotrellis.OutputPreprocessing.{pixelCenterCoordinates, preProcess, safeBitCellType}
 import org.openeo.geotrellis.stac.{Asset, Item}
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons, TemporalResolution}
 import org.openeo.geotrelliscommon.ByKeyPartitioner
@@ -286,14 +286,6 @@ object NetCDFRDDWriter {
     Collections.singletonList(item)
   }
 
-  private def safeBitCellType(cellType: CellType): CellType = cellType match {
-    case BitCellType =>
-      val safeCellType = UByteUserDefinedNoDataCellType(255.toByte)
-      logger.debug(s"converting $cellType to $safeCellType")
-      safeCellType
-    case _ => cellType
-  }
-
   private def cacheAndRepartition[K](rdd: MultibandTileLayerRDD[K]) = {
     val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
     val count = cachedRDD.count()
@@ -477,7 +469,7 @@ object NetCDFRDDWriter {
   private def stitchAndCropTiles(tilesForDate: Iterable[(SpatialKey, MultibandTile)], cropExtent: ProjectedExtent, layout: LayoutDefinition) = {
     val raster: Raster[MultibandTile] = ContextSeq(tilesForDate, layout).stitch()
     val re: RasterExtent = raster.rasterExtent
-    val alignedExtent = re.createAlignedGridExtent(cropExtent.extent).extent
+    val alignedExtent = org.openeo.geotrellis.GeneralUtils.createAlignedGridExtent(re, cropExtent.extent).extent
     val sample = raster.crop(alignedExtent)
     sample
   }
@@ -704,8 +696,7 @@ object NetCDFRDDWriter {
     netcdfFile.create()
 
 
-    val xValues = for (x <- 0 until rasterExtent.cols) yield rasterExtent.extent.xmin + x * rasterExtent.cellwidth + rasterExtent.cellwidth / 2.0
-    val yValues = for (y <- 0 until rasterExtent.rows) yield rasterExtent.extent.ymax - y * rasterExtent.cellheight - rasterExtent.cellheight / 2.0
+    val (xValues, yValues) = pixelCenterCoordinates(rasterExtent.extent, rasterExtent.cellwidth, rasterExtent.cellheight, rasterExtent.cols, rasterExtent.rows)
 
     //Write values to variable
 

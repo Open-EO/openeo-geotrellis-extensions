@@ -16,5 +16,13 @@ class ProcessGraphRegressionTest {
     ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_synthetic_data_fail_once.json")
   }
 
+  /**
+   * https://github.com/Open-EO/openeo-geotrellis-extensions/issues/286
+   */
+  @Test
+  def filterLabelsAllNotDateBetween(): Unit = {
+    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/filter_labels_all_not_date_between.json")
+  }
+
 
 }

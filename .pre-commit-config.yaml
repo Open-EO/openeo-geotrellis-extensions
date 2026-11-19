@@ -10,6 +10,8 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-added-large-files
+        # Real, unmodified Sentinel-2 MTD_TL.xml fixtures exceed 500 KB; see their READMEs.
+        exclude: '^openeo-geotrellis/src/test/resources/org/openeo/geotrellis/layers/S2B_.*\.SAFE/GRANULE/.*/MTD_TL\.xml$'
       - id: check-json
       - id: check-yaml
       - id: check-toml

@@ -87,7 +87,7 @@ final class S1GrdRasterSource(
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     extent.intersection(gridExtent.extent) match {
       case None =>
-        logger.debug(s"Requested extent $extent does not intersect scene extent ${gridExtent.extent}")
+        logger.debug(s"sar_backscatter: requested extent $extent does not intersect extent ${gridExtent.extent} of item ${sceneContext.sceneId}")
         None
       case Some(clipped) =>
         readExtents(List(clipped), bands).nextOption()

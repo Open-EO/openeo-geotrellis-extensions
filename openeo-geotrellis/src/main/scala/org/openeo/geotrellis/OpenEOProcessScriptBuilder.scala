@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import ai.catboost.CatBoostModel
 import ai.catboost.spark.CatBoostClassificationModel
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
+import geotrellis.raster.{ArrayTile, BitCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.descriptive.rank.Percentile.EstimationType
@@ -40,10 +40,28 @@ object OpenEOProcessScriptBuilder{
   private val logger = LoggerFactory.getLogger(classOf[OpenEOProcessScriptBuilder])
 
   //operators that return a boolean
-  private val booleanOperators = Set("or", "and", "eq", "neq", "date_between")
+  private val booleanOperators = Set("or", "and", "xor", "eq", "neq", "date_between")
 
   type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
   type AnyProcess =  Map[String,Any] => (Any  => Any )
+
+  /**
+   * Arithmetic on BitCellType tiles wraps around (e.g. 1 + 1 = 0), so convert them to an integer type
+   * that is wide enough to hold the reduction of all tiles.
+   * Lives in the companion object so that lambdas using it don't capture the (serializable) builder instance:
+   * that creates a reference cycle which breaks Scala lambda deserialization on executors.
+   */
+  private def widenBitCells(tiles: Seq[Tile]): Seq[Tile] = {
+    if (tiles.exists(_.cellType.bits == 1)) {
+      val widenedCellType =
+        if (tiles.size < Byte.MaxValue) ByteConstantNoDataCellType
+        else if (tiles.size < Short.MaxValue) ShortConstantNoDataCellType
+        else IntConstantNoDataCellType
+      tiles.map(t => if (t.cellType.bits == 1) safeConvert(t, widenedCellType) else t)
+    } else {
+      tiles
+    }
+  }
 
   private def wrapSimpleProcess(operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
     def wrapper(context:Map[String,Any])(tiles: Seq[Tile]): Seq[Tile] = operator(tiles)
@@ -544,7 +562,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     unaryFunction(argName, (tiles: Seq[Tile]) => tiles.map(operator))
   }
 
-  private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile, dataTypeMode: Option[String]=None): OpenEOProcess = {
+  private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile, dataTypeMode: Option[String]=None, convertBitCells: Boolean = false): OpenEOProcess = {
     resultingDataType =
       if (typeStack.head.contains(argName) && dataTypeMode == PRESERVE_DATATYPE_MODE) {
         try {
@@ -555,7 +573,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       } else {
         FloatConstantNoDataCellType
       }
-    unaryFunction(argName, (tiles: Seq[Tile]) => Seq(tiles.reduce(operator)))
+    unaryFunction(argName, (tiles: Seq[Tile]) => Seq((if (convertBitCells) OpenEOProcessScriptBuilder.widenBitCells(tiles) else tiles).reduce(operator)))
   }
 
   private val PRESERVE_DATATYPE_MODE: Some[String] = Some("preserve")
@@ -859,6 +877,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           case "neq" => xEvaluated != yEvaluated
           case "or" => xEvaluated.asInstanceOf[Boolean] || yEvaluated.asInstanceOf[Boolean]
           case "and" => xEvaluated.asInstanceOf[Boolean] && yEvaluated.asInstanceOf[Boolean]
+          case "xor" => xEvaluated.asInstanceOf[Boolean] ^ yEvaluated.asInstanceOf[Boolean]
           case _ => throw new IllegalArgumentException(s"Unsupported operation: $process (arguments: ${arguments.keySet()})")
         }
       }
@@ -873,17 +892,30 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
     val xyProcess = (context: Map[String, Any]) => {
       val theFunction = (arg: Any) => {
-        val dataEvaluated = xVal(context)(null).asInstanceOf[ListBuffer[Any]].toSeq
-        if(dataEvaluated.isInstanceOf[Seq[Any]]) {
-          dataEvaluated.asInstanceOf[Seq[Boolean]].foldLeft(false)(_|| _)
-        }else{
-          throw new IllegalArgumentException(s"Any process received unexpected input: ${dataEvaluated}")
+        xVal(context)(null) match {
+          case data: Iterable[Any] =>
+            val booleans = data.toSeq.asInstanceOf[Seq[Boolean]]
+            process match {
+              case "any" => booleans.foldLeft(false)(_ || _)
+              case "all" => booleans.foldLeft(true)(_ && _)
+              case _ => throw new IllegalArgumentException(s"Unsupported operation: $process (arguments: ${arguments.keySet()})")
+            }
+          case other =>
+            throw new IllegalArgumentException(s"$process process received unexpected input: $other")
         }
       }
       theFunction
     }
     xyProcess
   }
+
+  private def notConstantFunction(arguments: java.util.Map[String, Object]): AnyProcess = {
+    val xVal: AnyProcess = getAnyProcessArg("x", arguments)
+
+    (context: Map[String, Any]) => (arg: Any) => !xVal(context)(null).asInstanceOf[Boolean]
+  }
+
+  private def isBooleanArgument(name: String): Boolean = typeStack.head.get(name).exists(_.contains("boolean"))
 
 
   private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true, forceFloat:Boolean = false): OpenEOProcess = {
@@ -1110,13 +1142,22 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
       || (arguments.asScala("y").isInstanceOf[String]  && arguments.asScala("y") != "dummy"  )
       || typeStack.head.getOrElse("y","") == "boolean")
 
+    val scalarBooleanOperation =
+      (xyConstantComparison && booleanOperators.contains(operator)) ||
+        operator == "date_between" ||
+        (Set("any", "all").contains(operator) && isBooleanArgument("data")) ||
+        (operator == "not" && hasX && isBooleanArgument("x"))
+
     val operation = {
       if(xyConstantComparison && booleanOperators.contains(operator)) {
         xyConstantFunction(operator,arguments)
       }
-      else if ("any" == operator && typeStack.head.head._2.contains("boolean")) {
+      else if (Set("any", "all").contains(operator) && isBooleanArgument("data")) {
         //the check on this situation should still be improved, we can also have booleans in the tile based case
         anyConstantFunction(operator,arguments)
+      }
+      else if (operator == "not" && hasX && isBooleanArgument("x")) {
+        notConstantFunction(arguments)
       }else{
         operator match {
           case "date_difference" => dateDifferenceProcess(arguments)
@@ -1148,8 +1189,8 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           case "xor" if hasXY => xyFunction(Xor.apply, convertBitCells = false)
           case "xor" if hasExpressions => reduceFunction("expressions", Xor.apply) // legacy 0.4 style
           // Mathematical operations
-          case "sum" if hasData && !ignoreNoData => reduceFunction("data", Add.apply)
-          case "sum" if hasData && ignoreNoData => reduceFunction("data", AddIgnoreNodata.apply)
+          case "sum" if hasData && !ignoreNoData => reduceFunction("data", Add.apply, convertBitCells = true)
+          case "sum" if hasData && ignoreNoData => reduceFunction("data", AddIgnoreNodata.apply, convertBitCells = true)
           case "add" if hasXY => xyFunction(Add.apply)
           case "subtract" if hasXY => xyFunction(Subtract.apply)
           case "subtract" if hasData => reduceFunction("data", Subtract.apply) // legacy 0.4 style
@@ -1251,7 +1292,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           argNames.head
         }
 
-      if((xyConstantComparison && booleanOperators.contains(operator)) || operator == "date_between"){
+      if(scalarBooleanOperation){
         typeStack.head(argName) = "boolean"
       }else{
         typeStack.head(argName) = resultingDataType.toString()

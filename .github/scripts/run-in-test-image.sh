@@ -18,6 +18,7 @@ docker run --rm \
   -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
   -e SENTINELHUB_CLIENT_ID -e SENTINELHUB_CLIENT_SECRET \
   -e GITHUB_ACTOR -e GITHUB_TOKEN \
+  -e PACKAGE_VERSION \
   --entrypoint "" \
   "$TEST_IMAGE" \
   bash -c 'git config --global --add safe.directory "$PWD" && exec "$@"' bash "$@" || status=$?

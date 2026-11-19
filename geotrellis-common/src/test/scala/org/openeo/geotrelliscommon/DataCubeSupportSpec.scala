@@ -140,9 +140,11 @@ class DataCubeSupportSpec {
       SpatialKey(0, 0),
       SpatialKey(403, 751)
     )
+    // fixed seed: some random key distributions yield reduction 19 with only 288 partitions
+    val random = new Random(42)
     val randomKeys: Seq[SpatialKey] = (1 to 4000).map { _ =>
-      val col = Random.nextFloat() * bounds.maxKey.col
-      val row = Random.nextFloat() * bounds.maxKey.row
+      val col = random.nextFloat() * bounds.maxKey.col
+      val row = random.nextFloat() * bounds.maxKey.row
       SpatialKey(col.toInt, row.toInt)
     }.distinct
 
@@ -170,13 +172,12 @@ class DataCubeSupportSpec {
 
   }
 
-  //avoid artifactory dependency
-  //@Test
+  @Test
   def optimizeReductionSentinel2ParcelsBelgium(): Unit = {
     val crs = CRS.fromEpsgCode(32631)
     val layout = LayoutDefinition(Extent(467580.0, 5613200.0, 699260.0, 5707920.0), TileLayout(181, 74, 128, 128))
 
-    val json = scala.io.Source.fromURL("https://artifactory.vgt.vito.be/artifactory/auxdata-public/parcels/test_10000.geojson", "UTF-8").mkString
+    val json = scala.io.Source.fromFile("../testdata/org/openeo/geotrelliscommon/DataCubeSupportSpec/test_10000.geojson", "UTF-8").mkString
     val polygons = geotrellis.vector.io.json.GeoJson.parse[geotrellis.vector.io.json.JsonFeatureCollection](json).getAllPolygons()
 
     val spatialKeys: Seq[SpatialKey] = polygons
