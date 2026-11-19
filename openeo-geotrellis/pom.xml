@@ -16,6 +16,11 @@
             <artifactId>gdal-warp-bindings</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.scalaj</groupId>
+            <artifactId>scalaj-http_${scala.binary.version}</artifactId>
+            <version>2.4.2</version>
+        </dependency>
+        <dependency>
             <groupId>org.locationtech.proj4j</groupId>
             <artifactId>proj4j</artifactId>
             <version>1.1.5</version>
@@ -228,7 +233,7 @@
         <dependency>
             <groupId>org.typelevel</groupId>
             <artifactId>spire_2.13</artifactId>
-            <version>0.17.0</version>
+            <version>0.18.0</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.typelevel</groupId>
