@@ -750,6 +750,10 @@ class OpenEOProcesses extends Serializable {
     }))
   }
 
+  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, Seq[PolygonFeature[Int]])], CRS) = {
+    vectorize(datacube, tileSizeFactor = 4, overlap = 8)
+  }
+
   /**
    * Vectorize implementation.
    * Rasters are retiled into tiles of (256 * tileSizeFactor) pixels with an overlap of `overlap` pixels on each side.
