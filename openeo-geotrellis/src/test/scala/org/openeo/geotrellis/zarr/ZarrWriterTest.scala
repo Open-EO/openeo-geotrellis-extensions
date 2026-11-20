@@ -547,6 +547,6 @@ class ZarrWriterTest {
     assertTrue(stac.containsKey("geometry"))
     assertEquals(java.util.Collections.singleton("openEO"), item.assets.keySet)
     assertEquals(filename, item.assets.values.iterator.next.href)
-    assertEquals("application/x-zarr", item.assets.values.iterator.next.mediaType)
+    assertEquals("application/vnd+zarr", item.assets.values.iterator.next.mediaType)
   }
 }

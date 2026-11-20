@@ -6,11 +6,10 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 package object stac {
-  // TODO: "cloud-optimize" is a typo, but existing consumers/tests match on it; fix together with them.
-  val GTIFF_MEDIA_TYPE = "image/tiff; application=geotiff; profile=cloud-optimize"
+  val GTIFF_MEDIA_TYPE = "image/tiff; application=geotiff; profile=cloud-optimized"
   val NETCDF_MEDIA_TYPE = "application/x-netcdf"
   val PNG_MEDIA_TYPE = "image/png"
-  val ZARR_MEDIA_TYPE = "application/x-zarr"
+  val ZARR_MEDIA_TYPE = "application/vnd+zarr"
 
 
   def formatDate(date: ZonedDateTime): String = DateTimeFormatter.ISO_INSTANT.format(date.toInstant)
