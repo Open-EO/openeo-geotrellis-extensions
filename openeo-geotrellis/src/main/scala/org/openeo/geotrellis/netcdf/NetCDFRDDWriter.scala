@@ -14,7 +14,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkContext, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert, setupAssetMetadata}
+import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.OutputPreprocessing.{pixelCenterCoordinates, preProcess, safeBitCellType}
 import org.openeo.geotrellis.stac.{Asset, Item, NETCDF_MEDIA_TYPE, formatDate}
@@ -249,8 +249,6 @@ object NetCDFRDDWriter {
       }
     }
     val bandsStatsisticsMap = bandStatistics.map { case (name, stats) => name -> convertStatsToMap(stats) }
-    val assetsMetadata = setupAssetMetadata(bandNames.asScala.toSeq, extent, rdd.metadata.crs, Array(gridBounds.height, gridBounds.width),
-      bandsStatsisticsMap, zonedDates)
 
     if(dates.nonEmpty) {
       val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
@@ -284,8 +282,10 @@ object NetCDFRDDWriter {
     val (startDatetime, endDatetime) =
       if (zonedDates != null) (formatDate(zonedDates.head), formatDate(zonedDates.last))
       else temporalExtent.getOrElse((null, null))
+    val asset = Asset(finalPath, cellType, NETCDF_MEDIA_TYPE, bandNames.asScala.toSeq, bandsStatsisticsMap, extent, rdd.metadata.crs,
+      Array(gridBounds.height, gridBounds.width))
     val item = Item(id = UUID.randomUUID().toString, bbox = croppedBbox, datetime = null,
-      assets = Collections.singletonMap("openEO", Asset(finalPath, cellType = cellType, mediaType = NETCDF_MEDIA_TYPE, metadata = assetsMetadata)),
+      assets = Collections.singletonMap("openEO", asset),
       crs = rdd.metadata.crs, startDatetime = startDatetime, endDatetime = endDatetime)
 
     Collections.singletonList(item)
@@ -390,7 +390,6 @@ object NetCDFRDDWriter {
 
         val rasters = sorted.map(_._2)
         val bandStatistics = statisticsFromRaster(rasters, bandNames, addBandsStatistics)
-        val assetsMetadata = setupAssetMetadata(bandNames.asScala.toSeq, rasters.head.extent, crs, Array(rasters.head.rows, rasters.head.cols), bandStatistics, dates.toArray)
 
         val cellType = safeBitCellType(rdd.metadata.cellType)
 
@@ -411,9 +410,11 @@ object NetCDFRDDWriter {
 
         }
 
+        val asset = Asset(assetPath, cellType, NETCDF_MEDIA_TYPE, bandNames.asScala.toSeq, bandStatistics, rasters.head.extent, crs,
+          Array(rasters.head.rows, rasters.head.cols))
         val croppedBbox = fixBboxLargerThanWorld(tiles.head._3, crs)
         Item(id = UUID.randomUUID().toString, datetime = null , bbox = croppedBbox,
-          assets = Collections.singletonMap("openEO", Asset(href = assetPath, cellType = cellType, mediaType = NETCDF_MEDIA_TYPE, metadata = assetsMetadata)),
+          assets = Collections.singletonMap("openEO", asset),
           crs = crs, startDatetime = formatDate(dates.head), endDatetime = formatDate(dates.last))
       }.collect()
       .toList.asJava
@@ -500,7 +501,6 @@ object NetCDFRDDWriter {
         val rasters = Seq(sample)
 
         val bandStatistics = statisticsFromRaster(rasters, bandNames, addBandsStatistics)
-        val assetMetadata = setupAssetMetadata(bandNames.asScala.toSeq, rasters.head.extent, crs, Array(rasters.head.rows, rasters.head.cols), bandStatistics)
         val cellType = safeBitCellType(rdd.metadata.cellType)
 
         val assetPath = try {
@@ -508,9 +508,11 @@ object NetCDFRDDWriter {
         } catch {
           case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
+        val asset = Asset(assetPath, cellType, NETCDF_MEDIA_TYPE, bandNames.asScala.toSeq, bandStatistics, rasters.head.extent, crs,
+          Array(rasters.head.rows, rasters.head.cols))
         val bbox = fixBboxLargerThanWorld(extent.extent, crs)
         Item(id = UUID.randomUUID().toString, datetime = null, bbox = bbox,
-          assets = Collections.singletonMap("openEO", Asset(assetPath, cellType = cellType, mediaType = NETCDF_MEDIA_TYPE, metadata = assetMetadata)),
+          assets = Collections.singletonMap("openEO", asset),
           crs = crs, startDatetime = temporalExtent.map(_._1).orNull, endDatetime = temporalExtent.map(_._2).orNull)
       }.collect()
       .toList.asJava
