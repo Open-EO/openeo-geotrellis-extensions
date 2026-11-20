@@ -24,17 +24,17 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.resource.ResourceProfile
 import org.apache.spark.{Partitioner, SparkContext, SparkEnv, TaskContext}
+import org.locationtech.jts.geom.TopologyException
+import org.locationtech.jts.geom.util.GeometryFixer
+import org.locationtech.jts.operation.union.UnaryUnionOp
 import org.openeo.geotrellis.GeneralUtils.{cellTypeUnionWithNoData, safeConvert}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.OpenEOProcess
 import org.openeo.geotrellis.focal.Implicits.withFocalTileRDDMethods
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, LegacySCLConvolutionFilter, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SCLMaskFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, LegacySCLConvolutionFilter, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SCLMaskFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
-import org.locationtech.jts.geom.TopologyException
-import org.locationtech.jts.geom.util.GeometryFixer
-import org.locationtech.jts.operation.union.UnaryUnionOp
 
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -1726,7 +1726,7 @@ class OpenEOProcesses extends Serializable {
             Some(SpacePartitioner[SpaceTimeKey](stBounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), index))
           case _ =>
             val spatialBounds = KeyBounds(newMinKey.asInstanceOf[SpatialKey], newMaxKey.asInstanceOf[SpatialKey])
-            val index = new ConfigurableSpatialPartitioner(indexReduction)
+            val index = new ConfigurableSpatialPartitionerReduceZ(indexReduction)
             logger.debug(f"RegridFixed: using SpatialKey partitioner with indexReduction=$indexReduction")
             Some(SpacePartitioner[SpatialKey](spatialBounds)(implicitly, implicitly, index))
         }
