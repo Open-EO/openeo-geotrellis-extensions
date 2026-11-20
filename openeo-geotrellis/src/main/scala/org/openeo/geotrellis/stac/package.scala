@@ -2,7 +2,19 @@ package org.openeo.geotrellis
 
 import geotrellis.raster._
 
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+
 package object stac {
+  // TODO: "cloud-optimize" is a typo, but existing consumers/tests match on it; fix together with them.
+  val GTIFF_MEDIA_TYPE = "image/tiff; application=geotiff; profile=cloud-optimize"
+  val NETCDF_MEDIA_TYPE = "application/x-netcdf"
+  val PNG_MEDIA_TYPE = "image/png"
+  val ZARR_MEDIA_TYPE = "application/x-zarr"
+
+
+  def formatDate(date: ZonedDateTime): String = DateTimeFormatter.ISO_INSTANT.format(date.toInstant)
+
   def dataType(cellType: CellType): String = cellType match {
     case _: BitCells | _: UByteCells => "uint8"
     case _: ByteCells => "int8"

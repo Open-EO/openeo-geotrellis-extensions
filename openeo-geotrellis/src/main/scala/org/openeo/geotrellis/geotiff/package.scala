@@ -26,7 +26,7 @@ import org.openeo.geotrellis.GeneralUtils.{Stats, combineStats, computeStatsTile
 import org.openeo.geotrellis.OutputPreprocessing.{preProcess, safeBitCellType}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
-import org.openeo.geotrellis.stac.{Asset, Item, STACItem}
+import org.openeo.geotrellis.stac.{Asset, GTIFF_MEDIA_TYPE, Item, STACItem}
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
@@ -134,7 +134,7 @@ package object geotiff {
     ret.stream()
       .flatMap { item =>
         item.assets.values().stream()
-          .map[(String, String, Extent)] { asset => (asset.path, item.datetime, item.bbox) }
+          .map[(String, String, Extent)] { asset => (asset.href, item.datetime, item.bbox) }
       }
       .collect(Collectors.toList())
   }
@@ -426,11 +426,11 @@ package object geotiff {
         val assets = geotiffs
           .map { case (path, _, _, bandIndices, assetMetadata, cellType) =>
             val assetKey = if (formatOptions.separateAssetPerBand) f"${bandLabels(bandIndices.get(0))}" else "openEO"
-            assetKey -> Asset(path, cellType, bandIndices, metadata= assetMetadata)
+            assetKey -> Asset(path, cellType, GTIFF_MEDIA_TYPE, metadata = assetMetadata)
           }
           .toMap
         val croppedBbox = fixBboxLargerThanWorld(croppedExtent, preprocessedRdd.metadata.crs)
-        Item(id = s"${UUID.randomUUID()}_$timestamp", datetime = timestamp, bbox = croppedBbox, assets.asJava)
+        Item(id = s"${UUID.randomUUID()}_$timestamp", datetime = timestamp, bbox = croppedBbox, assets.asJava, preprocessedRdd.metadata.crs)
       }
 
     cleanupTemporaryResults(geotiffResults.map(_._1), path)
@@ -485,7 +485,7 @@ package object geotiff {
     tmp.stream()
       .flatMap { item =>
         item.assets.values().stream()
-          .map[String] { asset => asset.path }
+          .map[String] { asset => asset.href }
       }
       .collect(Collectors.toList())
   }
@@ -571,16 +571,18 @@ package object geotiff {
 
       val assets = res.map { case (path, _, bandIndices, assetMetadata, cellType) =>
         val bandNames = bandIndices.asScala.map(bandLabels.apply)
-        s"${bandNames mkString "_"}" -> Asset(path, cellType, bandIndices, assetMetadata)
+        s"${bandNames mkString "_"}" -> Asset(path, cellType, GTIFF_MEDIA_TYPE, assetMetadata)
       }.toMap.asJava
       val croppedBbox = fixBboxLargerThanWorld(extent, rdd.metadata.crs)
-      Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = croppedBbox, assets))
+      Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = croppedBbox, assets, rdd.metadata.crs,
+        formatOptions.startDatetime, formatOptions.endDatetime))
       // TODO: restore asset ordering?
     } else {
       val (tiffPath, extent, assetMetadata, cellType) = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
-      val assets = Collections.singletonMap("openEO", Asset(tiffPath, cellType, (0 until bandCount).asJava, metadata = assetMetadata))
+      val assets = Collections.singletonMap("openEO", Asset(tiffPath, cellType, GTIFF_MEDIA_TYPE, metadata = assetMetadata))
       val croppedBbox = fixBboxLargerThanWorld(extent, rdd.metadata.crs)
-      Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = croppedBbox, assets))
+      Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = croppedBbox, assets, rdd.metadata.crs,
+        formatOptions.startDatetime, formatOptions.endDatetime))
     }
   }
 
@@ -957,7 +959,8 @@ package object geotiff {
     val assetMetadata = setupAssetMetadata(List(), adjusted.extent, contextRDD.metadata.crs, Array(adjusted.rows,adjusted.cols), collection.Map())
     val croppedBbox = fixBboxLargerThanWorld(adjusted.extent, contextRDD.metadata.crs)
     Item(id = UUID.randomUUID().toString, datetime = null, bbox = croppedBbox,
-      Collections.singletonMap("openEO", Asset(path, adjusted.cellType, metadata = assetMetadata)))
+      assets = Collections.singletonMap("openEO", Asset(path, adjusted.cellType, GTIFF_MEDIA_TYPE, metadata = assetMetadata)),
+      crs = contextRDD.metadata.crs, startDatetime = formatOptions.startDatetime, endDatetime = formatOptions.endDatetime)
   }
 
   private def saveStitchedTileGrid(
@@ -1010,7 +1013,8 @@ package object geotiff {
       val assetMetadata = setupAssetMetadata(formatOptions.getBandNames, extent, crs, Array(rows, cols), bandStatistics)
       val croppedBbox = fixBboxLargerThanWorld(extent, crs)
       Item(id = s"${UUID.randomUUID()}_$tileId", datetime = null, bbox = croppedBbox,
-        assets = Collections.singletonMap("openEO", Asset(path, cellType, metadata= assetMetadata)))
+        assets = Collections.singletonMap("openEO", Asset(path, cellType, GTIFF_MEDIA_TYPE, metadata = assetMetadata)),
+        crs = crs, startDatetime = formatOptions.startDatetime, endDatetime = formatOptions.endDatetime)
     }
 
     cleanupTemporaryResults(geotiffResults.map(_._1), Path.of(targetDirectory).toString)
@@ -1197,7 +1201,7 @@ package object geotiff {
     val items = for {
       (path, timestamp, extent, name, assetMetadata, cellType) <- ret
     } yield Item(id = f"${UUID.randomUUID()}_${timestamp}_$name", datetime = timestamp, bbox = extent,
-      assets = Collections.singletonMap("openEO", Asset(path, cellType, metadata = assetMetadata)))
+      assets = Collections.singletonMap("openEO", Asset(path, cellType, GTIFF_MEDIA_TYPE, metadata = assetMetadata)), crs = crs)
 
     items.toList.asJava
   }
@@ -1239,7 +1243,8 @@ package object geotiff {
     val items = for {
       (path, extent, assetMetadata, cellType) <- ret
     } yield Item(id = f"${UUID.randomUUID()}", datetime = null, bbox = extent,
-      assets = Collections.singletonMap("openEO", Asset(path, cellType, metadata= assetMetadata)))
+      assets = Collections.singletonMap("openEO", Asset(path, cellType, GTIFF_MEDIA_TYPE, metadata = assetMetadata)),
+      crs = crs, startDatetime = formatOptions.startDatetime, endDatetime = formatOptions.endDatetime)
 
     items.toList.asJava
   }

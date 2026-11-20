@@ -17,7 +17,7 @@ import org.apache.spark.{SparkContext, TaskContext}
 import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert, setupAssetMetadata}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.OutputPreprocessing.{pixelCenterCoordinates, preProcess, safeBitCellType}
-import org.openeo.geotrellis.stac.{Asset, Item}
+import org.openeo.geotrellis.stac.{Asset, Item, NETCDF_MEDIA_TYPE, formatDate}
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons, TemporalResolution}
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
@@ -87,18 +87,18 @@ object NetCDFRDDWriter {
                                path: String,
                                options:NetCDFOptions,
                              ): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
+    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles, options.temporalExtent)
   }
 
   def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                        path: String,
                        options:NetCDFOptions,
                       ): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
+    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles, options.temporalExtent)
   }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
+    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles, options.temporalExtent)
   }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K],
@@ -110,7 +110,8 @@ object NetCDFRDDWriter {
                        zLevel:Int,
                        addBandStatistics: Boolean,
                        cropBounds:Option[Extent]= None,
-                       retainNoDataTiles: Boolean = false
+                       retainNoDataTiles: Boolean = false,
+                       temporalExtent: Option[(String, String)] = None,
                       ): java.util.List[Item] = {
 
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds, retainNoDataTiles)
@@ -280,8 +281,12 @@ object NetCDFRDDWriter {
       }
 
     val croppedBbox = fixBboxLargerThanWorld(cropBounds.getOrElse(extent), rdd.metadata.crs)
+    val (startDatetime, endDatetime) =
+      if (zonedDates != null) (formatDate(zonedDates.head), formatDate(zonedDates.last))
+      else temporalExtent.getOrElse((null, null))
     val item = Item(id = UUID.randomUUID().toString, bbox = croppedBbox, datetime = null,
-      assets = Collections.singletonMap("openEO", Asset(finalPath, cellType = cellType, metadata = assetsMetadata)))
+      assets = Collections.singletonMap("openEO", Asset(finalPath, cellType = cellType, mediaType = NETCDF_MEDIA_TYPE, metadata = assetsMetadata)),
+      crs = rdd.metadata.crs, startDatetime = startDatetime, endDatetime = endDatetime)
 
     Collections.singletonList(item)
   }
@@ -357,7 +362,7 @@ object NetCDFRDDWriter {
     if (options.bandNames.isEmpty) logger.error("Couldn't find bandNames in options. It cannot be empty")
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToNetCDFSpatial(rdd, features, path, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix)
+    groupByFeatureAndWriteToNetCDFSpatial(rdd, features, path, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix, options.temporalExtent)
   }
 
   private def groupByFeatureAndWriteToNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: Seq[(String, Geometry)],
@@ -408,7 +413,8 @@ object NetCDFRDDWriter {
 
         val croppedBbox = fixBboxLargerThanWorld(tiles.head._3, crs)
         Item(id = UUID.randomUUID().toString, datetime = null , bbox = croppedBbox,
-          assets = Collections.singletonMap("openEO", Asset(path = assetPath, cellType = cellType, metadata = assetsMetadata)))
+          assets = Collections.singletonMap("openEO", Asset(href = assetPath, cellType = cellType, mediaType = NETCDF_MEDIA_TYPE, metadata = assetsMetadata)),
+          crs = crs, startDatetime = formatDate(dates.head), endDatetime = formatDate(dates.last))
       }.collect()
       .toList.asJava
   }
@@ -481,6 +487,7 @@ object NetCDFRDDWriter {
                                            bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                            addBandsStatistics: Boolean,
                                            filenamePrefix: Option[String],
+                                           temporalExtent: Option[(String, String)],
                                            ): java.util.List[Item] = {
     val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
     val layout = rdd.metadata.layout
@@ -503,7 +510,8 @@ object NetCDFRDDWriter {
         }
         val bbox = fixBboxLargerThanWorld(extent.extent, crs)
         Item(id = UUID.randomUUID().toString, datetime = null, bbox = bbox,
-          assets = Collections.singletonMap("openEO", Asset(assetPath, cellType = cellType, metadata = assetMetadata)))
+          assets = Collections.singletonMap("openEO", Asset(assetPath, cellType = cellType, mediaType = NETCDF_MEDIA_TYPE, metadata = assetMetadata)),
+          crs = crs, startDatetime = temporalExtent.map(_._1).orNull, endDatetime = temporalExtent.map(_._2).orNull)
       }.collect()
       .toList.asJava
   }

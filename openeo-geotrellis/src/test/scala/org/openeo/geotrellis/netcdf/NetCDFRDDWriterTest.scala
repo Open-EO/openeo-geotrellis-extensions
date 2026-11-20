@@ -337,7 +337,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       ).stream()
       .flatMap { item =>
         item.assets.values().stream().map[(String, Extent, String, Number)] { asset =>
-          (asset.path, item.bbox, asset.dataType, asset.nodata)
+          (asset.href, item.bbox, asset.dataType, asset.nodata)
         }
       }
       .collect(util.stream.Collectors.toSet())
@@ -457,7 +457,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
   private def assetFileNames(items: util.List[Item]): util.List[String] =
     items.stream()
       .flatMap { item =>
-        item.assets.values().stream().map[String] { asset => asset.path }
+        item.assets.values().stream().map[String] { asset => asset.href }
       }
       .collect(util.stream.Collectors.toList())
 

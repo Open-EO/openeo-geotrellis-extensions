@@ -529,4 +529,24 @@ class ZarrWriterTest {
     assertEquals(3, time.length)
     assertEquals(time.sorted.toSeq, time.toSeq)
   }
+
+  @Test
+  def testReturnsItem(@TempDir tempDir: Path): Unit = {
+    val date1 = ZonedDateTime.parse("1990-01-02T00:00:00Z")
+    val dates = List(date1, date1.plusDays(3))
+    val rdd = LayerFixtures.randomNoiseLayer(PixelType.Float, Extent(564389, 6659413, 565503, 6660301), CRS.fromName("EPSG:3857"), dates = Some(dates))
+    val filename = (tempDir / "itemOut.zarr").toString()
+    val item = zarr.ZarrWriter.saveZarr(rdd, filename, new ZarrOptions)
+
+    val stac = item.toStacMap
+    val properties = stac.get("properties").asInstanceOf[java.util.Map[String, Any]]
+    assertNull(properties.get("datetime"))
+    assertTrue(properties.get("start_datetime").toString.startsWith("1990-01-02"))
+    assertTrue(properties.get("end_datetime").toString.startsWith("1990-01-05"))
+    assertTrue(stac.containsKey("bbox"))
+    assertTrue(stac.containsKey("geometry"))
+    assertEquals(java.util.Collections.singleton("openEO"), item.assets.keySet)
+    assertEquals(filename, item.assets.values.iterator.next.href)
+    assertEquals("application/x-zarr", item.assets.values.iterator.next.mediaType)
+  }
 }

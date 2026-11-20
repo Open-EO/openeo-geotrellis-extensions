@@ -7,14 +7,17 @@ import geotrellis.raster.{MultibandTile, UByteCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.GeneralUtils.fixBboxLargerThanWorld
 import org.openeo.geotrellis.creo.CreoS3Utils.uploadToS3
 import org.openeo.geotrellis.geotiff.SRDD
+import org.openeo.geotrellis.stac.{Asset, Item, PNG_MEDIA_TYPE}
 
 import java.io.File
 import java.nio.file.{Files, Paths}
+import java.util.{Collections, UUID}
 
 package object png {
-  def saveStitched(srdd: SRDD, path: String, cropBounds: Extent, options: PngOptions): String = {
+  private[png] def saveStitchedInternal(srdd: SRDD, path: String, cropBounds: Extent, options: PngOptions): String = {
     val tilesByRow: RDD[(Int, Iterable[(SpatialKey, MultibandTile)])] = Option(cropBounds).foldLeft(srdd)(_ crop _)
         .groupBy(t=> t._1.row, srdd.partitioner.map(_.numPartitions).getOrElse(10))
 
@@ -68,9 +71,19 @@ package object png {
     } finally if (s3Path) Files.delete(localPath)
   }
 
-  def saveStitched(srdd: SRDD, path: String, options: PngOptions): Unit = saveStitched(srdd, path, cropBounds = null, options)
-  def saveStitched(srdd: SRDD, path: String, cropBounds: Extent): Unit = saveStitched(srdd, path, cropBounds, options=null)
-  def saveStitched(srdd: SRDD, path: String): Unit = saveStitched(srdd, path, cropBounds = null)
+  private[png] def saveStitchedInternal(srdd: SRDD, path: String, options: PngOptions): Unit = saveStitchedInternal(srdd, path, cropBounds = null, options)
+  private[png] def saveStitchedInternal(srdd: SRDD, path: String, cropBounds: Extent): Unit = saveStitchedInternal(srdd, path, cropBounds, options=null)
+  private[png] def saveStitchedInternal(srdd: SRDD, path: String): Unit = saveStitchedInternal(srdd, path, cropBounds = null)
+
+  /** Saves the PNG and describes the written file as a STAC item. `cropBounds` can be null. */
+  def saveStitched(srdd: SRDD, path: String, cropBounds: Extent, options: PngOptions): Item = {
+    val finalPath = saveStitchedInternal(srdd, path, cropBounds, options)
+    val extent = Option(cropBounds).flatMap(_.intersection(srdd.metadata.extent)).getOrElse(srdd.metadata.extent)
+    val asset = Asset(finalPath, UByteCellType, PNG_MEDIA_TYPE)
+    Item(id = UUID.randomUUID().toString, datetime = null, bbox = fixBboxLargerThanWorld(extent, srdd.metadata.crs),
+      assets = Collections.singletonMap("openEO", asset), crs = srdd.metadata.crs,
+      startDatetime = Option(options).map(_.startDatetime).orNull, endDatetime = Option(options).map(_.endDatetime).orNull)
+  }
 
   private def toScanLines(horizontalTiles: Iterable[(SpatialKey, MultibandTile)]): Iterable[ImageLineInt] = {
     // TODO: doesn't support missing SpatialKeys (think sparse polygons), use
@@ -110,6 +123,6 @@ package object png {
 
   implicit class MultibandTilePngOutputMethods(spatialLayer: MultibandTileLayerRDD[SpatialKey]) {
     def writePng(path: String, bbox: ProjectedExtent = null): Unit =
-      saveStitched(spatialLayer, path, if (bbox == null) null else bbox.reproject(spatialLayer.metadata.crs))
+      saveStitchedInternal(spatialLayer, path, if (bbox == null) null else bbox.reproject(spatialLayer.metadata.crs))
   }
 }

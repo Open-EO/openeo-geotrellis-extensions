@@ -56,7 +56,7 @@ class PngTest {
     }
     val opts = new PngOptions
     opts.setColorMap(new util.ArrayList(java.util.Arrays.asList(10, 20, 584854)))
-    saveStitched(singleBand, "/tmp/testSaveStitchedColormap.png", null, opts)
+    saveStitchedInternal(singleBand, "/tmp/testSaveStitchedColormap.png", null, opts)
   }
 
   @Test
@@ -72,7 +72,7 @@ class PngTest {
     val opts = new PngOptions
 
     opts.setColorMap(ColorRamps.BlueToRed.toColorMap(Range(0, 256).toArray))
-    saveStitched(singleBand, "/tmp/testSaveStitchedColormap.png", null, opts)
+    saveStitchedInternal(singleBand, "/tmp/testSaveStitchedColormap.png", null, opts)
   }
 
   @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasS3Credentials")
@@ -96,7 +96,7 @@ class PngTest {
 
       val opts = new PngOptions
       opts.setColorMap(ColorRamps.BlueToRed.toColorMap((0 to 255).toArray))
-      saveStitched(singleBand, s"s3://$bucket/$key", cropBounds = null, opts)
+      saveStitchedInternal(singleBand, s"s3://$bucket/$key", cropBounds = null, opts)
     }
 
     val s3 = S3Mock(s3Port)

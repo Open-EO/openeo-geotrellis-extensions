@@ -786,7 +786,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val assets = allAssets(tiles)
 
-    val actualPaths = assets.map(_.path).toSeq.sorted
+    val actualPaths = assets.map(_.href).toSeq.sorted
     assertEquals(expectedPaths, actualPaths)
 
     for (asset <- assets) {
@@ -837,7 +837,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val assets = allAssets(tiles)
 
-    val actualPaths = assets.map(_.path).toSeq.sorted
+    val actualPaths = assets.map(_.href).toSeq.sorted
     assertEquals(expectedPaths, actualPaths)
 
     for (asset <- assets) {
@@ -1014,7 +1014,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val assets = allAssets(items)
 
-    val actualPaths = assets.map(_.path).toSeq.sorted
+    val actualPaths = assets.map(_.href).toSeq.sorted
 
     assertEquals(expectedPaths, actualPaths)
 
@@ -1135,7 +1135,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     )
     val assets = allAssets(tiles)
 
-    val actualPaths = assets.map(_.path).toSeq.sorted
+    val actualPaths = assets.map(_.href).toSeq.sorted
     assertEquals(expectedPaths, actualPaths)
 
     for (path <- expectedPaths) {
