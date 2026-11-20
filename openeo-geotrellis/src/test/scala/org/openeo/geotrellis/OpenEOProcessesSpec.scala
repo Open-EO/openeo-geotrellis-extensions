@@ -1028,6 +1028,86 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   }
 
+  private def noDataPercentage(noDataMask: Tile): Double = {
+    var noDataCount = 0L
+    noDataMask.foreach(v => if (v == 1) noDataCount += 1)
+    100.0 * noDataCount / noDataMask.size
+  }
+
+   * Same as processgraph/mask.json (reduce_dimension over bands with gte(array_element(data, 0), 0.6), save_result GTiff),
+   * but on a small synthetic 5-band float32 raster where 10% of the pixels are nodata in all bands.
+   */
+  private def reduceBandsGteOnSyntheticData(): (Raster[MultibandTile], Array[Boolean], MultibandTileLayerRDD[SpaceTimeKey]) = {
+    implicit val sc: SparkContext = OpenEOProcessesSpec.sc
+
+    val (cols, rows, bandCount) = (100, 100, 5)
+    val random = new scala.util.Random(42)
+    val noDataPixels = random.shuffle((0 until cols * rows).toList).take(cols * rows / 10).toSet
+    val inputNoData = Array.tabulate(cols * rows)(noDataPixels.contains)
+    val bands = (0 until bandCount).map { _ =>
+      FloatArrayTile(Array.tabulate(cols * rows)(i => if (inputNoData(i)) Float.NaN else random.nextFloat()), cols, rows)
+    }
+    val raster = Raster(MultibandTile(bands), Extent(30.55, 1.07, 31.23, 1.55))
+
+    val temporalExtent = TemporalProjectedExtent(raster.extent, LatLng, ZonedDateTime.parse("2024-01-01T00:00:00Z"))
+    val rdd = sc.parallelize(Seq((temporalExtent, raster.tile)))
+    val (_, metadata) = rdd.collectMetadata[SpaceTimeKey](FloatingLayoutScheme(32))
+    val datacube = ContextRDD(rdd.tileToLayout(metadata), metadata)
+
+    val gte = new OpenEOProcessScriptBuilder()
+    gte.defaultInputDataType = FloatConstantNoDataCellType.name
+    val gteArguments = Map[String, Object]("x" -> "dummy", "y" -> Double.box(0.6)).asJava
+    val arrayElementArguments = Map[String, Object]("data" -> "dummy", "index" -> Int.box(0)).asJava
+    gte.expressionStart("gte", gteArguments)
+    gte.argumentStart("x")
+    gte.expressionStart("array_element", arrayElementArguments)
+    gte.argumentStart("data")
+    gte.fromParameter("data")
+    gte.argumentEnd()
+    gte.constantArgument("index", Int.box(0))
+    gte.expressionEnd("array_element", arrayElementArguments)
+    gte.argumentEnd()
+    gte.constantArgument("y", Double.box(0.6))
+    gte.expressionEnd("gte", gteArguments)
+
+    (raster, inputNoData, new OpenEOProcesses().mapBands(datacube, gte))
+  }
+
+  private def assertGteMask(raster: Raster[MultibandTile], inputNoData: Array[Boolean], mask: Tile): Unit = {
+    assertEquals(raster.dimensions, mask.dimensions)
+    val input = raster.tile.band(0)
+    for (row <- 0 until mask.rows; col <- 0 until mask.cols) {
+      if (inputNoData(row * mask.cols + col)) {
+        assertTrue(isNoData(mask.getDouble(col, row)), s"expected nodata at ($col, $row), got ${mask.getDouble(col, row)}")
+      } else {
+        val expected = if (input.getDouble(col, row) >= 0.6) 1 else 0
+        assertEquals(expected, mask.get(col, row), s"unexpected value at ($col, $row)")
+      }
+    }
+    assertEquals(10.0, noDataPercentage(mask.localUndefined()), 0.01)
+  }
+
+  @Test
+  def testReduceBandsGteSyntheticDataWithNoData(): Unit = {
+    val (raster, inputNoData, result) = reduceBandsGteOnSyntheticData()
+    assertEquals(1, result.first()._2.bandCount)
+
+    val mask = result.toSpatial().stitch().crop(raster.extent).tile.band(0)
+    assertGteMask(raster, inputNoData, mask)
+  }
+
+  @Test
+  def testReduceBandsGteSyntheticDataWithNoDataSaveGTiff(@TempDir tempDir: Path): Unit = {
+    val (raster, inputNoData, result) = reduceBandsGteOnSyntheticData()
+
+    val outputs = saveRDDTemporal(result, tempDir.toString, cropBounds = Some(raster.extent)).asScala
+    assertEquals(1, outputs.size)
+
+    val written = MultibandGeoTiff(outputs.head._1)
+    assertEquals(1, written.tile.bandCount)
+    assertGteMask(raster, inputNoData, written.tile.band(0))
+  }
+
   @DisplayName("Test combining all bands.")
   @Test def testMapBands(): Unit = {
     val processBuilder = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
