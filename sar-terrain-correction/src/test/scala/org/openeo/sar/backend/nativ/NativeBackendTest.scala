@@ -33,7 +33,7 @@ class NativeBackendTest {
       metadata = fakeMetadata,
       sarSources = Map.empty,
       demItems = Seq(unreadableDem),
-      geoidSource = None
+      geoidSourceFactory = None
     )
 
     val result = new NativeBackend().compute(ctx)
@@ -78,7 +78,7 @@ class NativeBackendTest {
       ),
       sarSources = Map.empty,
       demItems = Seq(DemItem(request.extent, demPath.toString)),
-      geoidSource = None
+      geoidSourceFactory = None
     )
 
     val result = new NativeBackend().compute(ctx)

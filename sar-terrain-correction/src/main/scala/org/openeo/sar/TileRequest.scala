@@ -94,12 +94,12 @@ final case class TileRequest(
  *    windowed reads on demand.
  *  - `demItems`: the DEM STAC items (extent + asset href) overlapping the scene; each tile opens
  *    and reads only the items that overlap its own AOI.
- *  - `geoidSource`: single scene-wide raster source; each tile reads only its own AOI window. */
+ *  - `geoidSourceFactory`: serializable factory (taking a WGS84 extent), invoked on the executor so the source is never shipped from the driver. */
 final case class SceneContext(
   metadata: S1GrdMetadata,
   sarSources: Map[Polarisation, RasterSource],
   demItems: Seq[DemItem],
-  geoidSource: Option[RasterSource],
+  geoidSourceFactory: Option[Extent => RasterSource],
   /** Shared CRS and cell size for all tiles produced from this scene. */
   cellSize: CellSize,
   crs: CRS,
@@ -112,7 +112,7 @@ final case class SceneContext(
   def tileContext(extent: Extent): TileComputeContext =
     TileComputeContext(
       TileRequest(extent, cellSize, crs, polarisations, config, sceneId),
-      metadata, sarSources, demItems, geoidSource
+      metadata, sarSources, demItems, geoidSourceFactory
     )
 }
 
@@ -128,5 +128,5 @@ final case class TileComputeContext(
   demItems: Seq[DemItem],
   /** Geoid undulation RasterSource (e.g. EGM2008), or None to assume DEM is
    *  already ellipsoidal heights. */
-  geoidSource: Option[RasterSource]
+  geoidSourceFactory: Option[Extent => RasterSource]
 )
