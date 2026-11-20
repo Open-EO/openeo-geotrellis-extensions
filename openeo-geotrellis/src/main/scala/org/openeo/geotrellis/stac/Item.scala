@@ -58,16 +58,28 @@ case class Item(id: String, datetime: String, bbox: Extent, assets: util.Map[Str
 
   def toStacMap: util.Map[String, Any] = {
     val b = bbox4326
+    val itemGeometry = geometry
+    val itemBbox = util.Arrays.asList(b.xmin, b.ymin, b.xmax, b.ymax)
+    val itemProperties = properties
+
     val stacAssets = new util.LinkedHashMap[String, Any]()
-    assets.forEach { (key, asset) => stacAssets.put(key, asset.toStacMap) }
+    assets.forEach { (key, asset) =>
+      val assetMap = asset.toStacMap
+      Seq("datetime", "start_datetime", "end_datetime").foreach { field =>
+        Option(itemProperties.get(field)).foreach(value => assetMap.put(field, value))
+      }
+      assetMap.put("geometry", itemGeometry)
+      assetMap.put("bbox", itemBbox)
+      stacAssets.put(key, assetMap)
+    }
 
     val result = new util.LinkedHashMap[String, Any]()
     result.put("type", "Feature")
     result.put("stac_version", "1.1.0")
     result.put("id", id)
-    result.put("geometry", geometry)
-    result.put("bbox", util.Arrays.asList(b.xmin, b.ymin, b.xmax, b.ymax))
-    result.put("properties", properties)
+    result.put("geometry", itemGeometry)
+    result.put("bbox", itemBbox)
+    result.put("properties", itemProperties)
     result.put("assets", stacAssets)
     result
   }
