@@ -2,23 +2,20 @@ package org.openeo.geotrellis.netcdf
 
 import geotrellis.raster.io.geotiff.Tags
 import geotrellis.raster.render.{ColorMap, IndexedColorMap}
-import geotrellis.vector.Extent
+import org.openeo.geotrellis.FormatOptions
 
 import java.util
 import java.util.ArrayList
 import scala.collection.JavaConverters._
 
-class NetCDFOptions extends Serializable {
+class NetCDFOptions extends FormatOptions {
 
 
   var bandNames: Option[util.ArrayList[String]] = None
   var dimensionNames: Option[java.util.Map[String,String]] = None
   var attributes: Option[java.util.Map[String,String]] = None
   var zLevel:Int = 6
-  var cropBounds:Option[Extent]=Option.empty[Extent]
   var bandsMetadata: Option[java.util.Map[String,java.util.Map[String,String]]] = None
-  var addBandStatistics: Boolean = false
-  var retainNoDataTiles: Boolean = false
 
   def setBandNames(names: util.ArrayList[String]): Unit = {
     bandNames = Option(names)
@@ -36,18 +33,9 @@ class NetCDFOptions extends Serializable {
     zLevel = level
   }
 
-  def setCropBounds(extent:Extent): Unit = {
-    cropBounds = Option(extent)
-  }
-
   def setBandsMetadata(metadata: java.util.Map[String,java.util.Map[String,String]]): Unit = {
     bandsMetadata = Option(metadata)
   }
 
-  def setAddBandStatistics(boolean: Boolean): Unit = {
-    addBandStatistics = boolean
-  }
-
-  def setRetainNoDataTiles(enabled: Boolean): Unit = retainNoDataTiles = enabled
 
 }

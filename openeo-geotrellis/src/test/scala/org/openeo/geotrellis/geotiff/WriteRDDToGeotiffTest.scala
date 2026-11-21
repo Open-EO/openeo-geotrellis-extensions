@@ -786,7 +786,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val assets = allAssets(tiles)
 
-    val actualPaths = assets.map(_.path).toSeq.sorted
+    val actualPaths = assets.map(_.href).toSeq.sorted
     assertEquals(expectedPaths, actualPaths)
 
     for (asset <- assets) {
@@ -837,7 +837,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val assets = allAssets(tiles)
 
-    val actualPaths = assets.map(_.path).toSeq.sorted
+    val actualPaths = assets.map(_.href).toSeq.sorted
     assertEquals(expectedPaths, actualPaths)
 
     for (asset <- assets) {
@@ -1014,7 +1014,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val assets = allAssets(items)
 
-    val actualPaths = assets.map(_.path).toSeq.sorted
+    val actualPaths = assets.map(_.href).toSeq.sorted
 
     assertEquals(expectedPaths, actualPaths)
 
@@ -1135,7 +1135,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     )
     val assets = allAssets(tiles)
 
-    val actualPaths = assets.map(_.path).toSeq.sorted
+    val actualPaths = assets.map(_.href).toSeq.sorted
     assertEquals(expectedPaths, actualPaths)
 
     for (path <- expectedPaths) {
@@ -1321,7 +1321,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       items.forEach(item => {
         val assets = item.assets
         assertEquals(assetCount, assets.size())
-        val metadata = assets.get(assetName).metadata
+        val metadata = assets.get(assetName).toStacMap
         assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
         assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
         val bbox = Array[Double](extent.xmin, extent.ymin, extent.xmax, extent.ymax)
@@ -1376,7 +1376,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       items.forEach(item => {
         val assets = item.assets
         assertEquals(assetCount, assets.size())
-        val metadata = assets.get(assetName).metadata
+        val metadata = assets.get(assetName).toStacMap
         assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
         assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
         val extent = cropBounds.getOrElse(layer.metadata.extent)
@@ -1469,7 +1469,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       items.forEach(item => {
         val assets = item.assets
         assertEquals(1, assets.size())
-        val metadata = assets.get("openEO").metadata
+        val metadata = assets.get("openEO").toStacMap
         assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
         assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
         val resultExtent = polygon.extent

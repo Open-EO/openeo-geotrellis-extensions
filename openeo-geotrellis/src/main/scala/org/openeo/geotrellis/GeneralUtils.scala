@@ -601,26 +601,4 @@ object GeneralUtils {
     }
   }
 
-  def setupAssetMetadata(bandNames: Seq[String], bbox: Extent, crs: CRS, shape: Array[Int],
-                         bandStatistics: collection.Map[String, util.HashMap[String, Any]],
-                         dates: Array[ZonedDateTime] = null): util.Map[String, Any] = {
-    val assetMetadata = new util.HashMap[String, Any]()
-    val bands = new util.ArrayList[util.HashMap[String, Any]]()
-    bandNames.foreach(name => {
-      val rasterBand = new util.HashMap[String, Any]()
-      rasterBand.put("name", name)
-      bandStatistics.get(name).foreach(stats => rasterBand.put("statistics", stats))
-      bands.add(rasterBand)
-    })
-    if (!bands.isEmpty) assetMetadata.put("bands", bands)
-
-    val croppedBbox = fixBboxLargerThanWorld(bbox, crs)
-    assetMetadata.put("proj:bbox", Array(croppedBbox.xmin, croppedBbox.ymin, croppedBbox.xmax, croppedBbox.ymax))
-    crs.epsgCode.foreach(epsg => assetMetadata.put("proj:epsg", epsg))
-    assetMetadata.put("proj:shape", shape)
-    if (dates != null) {
-      assetMetadata.put("time", new util.HashMap[String, Any](util.Map.of("type", "temporal", "extent", Array(dates.head, dates.last), "values", dates)))
-    }
-    assetMetadata
-  }
 }

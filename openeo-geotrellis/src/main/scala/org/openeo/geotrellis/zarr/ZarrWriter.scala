@@ -8,36 +8,45 @@ import geotrellis.layer.{Boundable, SpaceTimeKey, SpatialComponent, SpatialKey}
 import geotrellis.raster.{DoubleArrayTile, FloatArrayTile}
 import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, ShortCellType, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
+import geotrellis.vector.Extent
 import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.OutputPreprocessing
 import org.slf4j.LoggerFactory
 import ucar.ma2.Array.factory
 
+import org.openeo.geotrellis.GeneralUtils.fixBboxLargerThanWorld
+import org.openeo.geotrellis.stac.{Asset, Item, ZARR_MEDIA_TYPE, formatDate}
+
 import java.io.OutputStreamWriter
 import java.nio.ByteOrder
 import java.nio.file.Paths
+import java.time.{Instant, ZoneOffset, ZonedDateTime}
+import java.util.{Collections, UUID}
 import scala.reflect.ClassTag
 
 object ZarrWriter {
 
   val logger = LoggerFactory.getLogger(ZarrWriter.getClass)
 
-  def saveZarr(rdd:MultibandTileLayerRDD[SpaceTimeKey],path:String, zarrOptions: ZarrOptions):Unit = {
+  def saveZarr(rdd:MultibandTileLayerRDD[SpaceTimeKey],path:String, zarrOptions: ZarrOptions): Item = {
     saveZarrGeneric(rdd,path,zarrOptions)
   }
 
-  def saveZarrSpatial(rdd:MultibandTileLayerRDD[SpatialKey],path:String, zarrOptions: ZarrOptions):Unit = {
+  def saveZarrSpatial(rdd:MultibandTileLayerRDD[SpatialKey],path:String, zarrOptions: ZarrOptions): Item = {
     saveZarrGeneric(rdd,path,zarrOptions)
   }
 
-  def saveZarrGeneric[K: SpatialComponent: Boundable : ClassTag](inputRdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions):Unit= {
+  def saveZarrGeneric[K: SpatialComponent: Boundable : ClassTag](inputRdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions): Item = {
     // Tiles are written by key index, so the layout must start at the (cropped) extent used for the coordinates.
     val (gridBounds, croppedExtent, preprocessed) = OutputPreprocessing.preProcess(inputRdd, zarrOptions.cropBounds, retainNoDataTiles = true, alignLayoutToCrop = true)
     val rdd: MultibandTileLayerRDD[K] = ContextRDD(preprocessed, preprocessed.metadata)
     rdd.persist(StorageLevel.MEMORY_AND_DISK)
-    val rows = gridBounds.height
-    val cols = gridBounds.width
+    try writeZarr(rdd, gridBounds.height, gridBounds.width, croppedExtent, path, zarrOptions)
+    finally rdd.unpersist()
+  }
 
+  private def writeZarr[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], rows: Int, cols: Int,
+                                                                   croppedExtent: Extent, path: String, zarrOptions: ZarrOptions): Item = {
     val metadataContent = new java.util.HashMap[String,Object]()
     if (zarrOptions.numberBands > 1) {
       checkBandNames(zarrOptions.bandNames)
@@ -108,6 +117,18 @@ object ZarrWriter {
         logger.error(s"save_result zarr: Failed to write to .zmetadata : ${t.getMessage}", t)
         throw t
     }
+
+    val (startDatetime, endDatetime) =
+      if (hasTemp) {
+        val instants = timeValues.keys.toSeq.sorted
+        (formatDate(ZonedDateTime.ofInstant(Instant.ofEpochMilli(instants.head), ZoneOffset.UTC)),
+          formatDate(ZonedDateTime.ofInstant(Instant.ofEpochMilli(instants.last), ZoneOffset.UTC)))
+      } else (zarrOptions.startDatetime, zarrOptions.endDatetime)
+    Item(id = UUID.randomUUID().toString, datetime = null,
+      bbox = fixBboxLargerThanWorld(croppedExtent, metadata.crs),
+      // TODO: zipping (if requested) is done by the caller, which then has to update this asset's href and type.
+      assets = Collections.singletonMap("openEO", Asset(path, cellType, ZARR_MEDIA_TYPE)),
+      crs = metadata.crs, startDatetime = startDatetime, endDatetime = endDatetime)
   }
 
   private def toZarrType(cellType: CellType): (DataType, Option[Number])= {
