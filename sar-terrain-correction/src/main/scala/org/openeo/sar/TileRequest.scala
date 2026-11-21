@@ -6,6 +6,8 @@ import geotrellis.vector.Extent
 import org.openeo.sar.dem.DemItem
 import org.openeo.sar.metadata.{Polarisation, S1GrdMetadata}
 
+import java.net.URI
+
 /** Selects the backscatter normalization convention for output sigma/gamma bands. */
 sealed trait BackscatterNormalization
 object BackscatterNormalization {
@@ -82,6 +84,18 @@ final case class TileRequest(
   val cols: Int = math.round(extent.width  / cellSize.width ).toInt
   val rows: Int = math.round(extent.height / cellSize.height).toInt
 }
+
+/** Lightweight, serializable description of a scene: everything needed to build a [[SceneContext]] via
+ *  [[TerrainCorrectionProcessor.openScene]], without doing any I/O. Shipped to executors instead of the
+ *  context itself, which is opened lazily where the data is read. */
+final case class SceneSpec(
+  stacItemUrl: URI,
+  polarisations: Seq[Polarisation],
+  config: SarProcessingConfig,
+  demSearchExtentWgs84: Option[Extent],
+  cellSize: CellSize,
+  crs: CRS
+)
 
 /** Scene-level state that is expensive to build and shared across all tiles
  *  produced from the same SAR scene.  Constructed once by

@@ -38,6 +38,9 @@ final class TerrainCorrectionProcessor(
   demCatalogFactory: SarProcessingConfig => DemCatalog = TerrainCorrectionProcessor.defaultDemCatalogFactory
 ) {
 
+  /** Stable across serialization, so copies of this processor on an executor share scene cache entries. */
+  private[sar] val instanceId: String = java.util.UUID.randomUUID().toString
+
   // -------------------------------------------------------------------------
   // Stage 1: scene-level initialisation
   // -------------------------------------------------------------------------
