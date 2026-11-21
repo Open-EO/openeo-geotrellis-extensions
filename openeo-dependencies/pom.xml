@@ -17,13 +17,6 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
-    <repositories>
-        <repository>
-            <id>geotrellis-snapshots</id>
-            <url>https://repo.locationtech.org/content/groups/snapshots</url>
-        </repository>
-    </repositories>
-
     <dependencies>
          <dependency>
             <groupId>javax.media.jai</groupId>
@@ -38,7 +31,7 @@
         <dependency>
             <groupId>org.typelevel</groupId>
             <artifactId>spire_2.13</artifactId>
-            <version>0.17.0</version>
+            <version>0.18.0</version>
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
