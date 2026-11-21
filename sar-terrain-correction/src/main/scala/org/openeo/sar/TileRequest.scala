@@ -12,7 +12,7 @@ object BackscatterNormalization {
   /** Normalized to the reference flat-earth ground area (standard S1 calibration output). */
   case object Sigma0 extends BackscatterNormalization
   /** Normalized to the area perpendicular to the look direction, with terrain flattening
-   *  applied via the cheap angle-ratio method: sigma0 × sin(θ_el) / sin(θ_local). */
+   *  applied via the local-angle approximation: sigma0 × tan(θ_local) / sin(θ_el). */
   case object Gamma0RTC extends BackscatterNormalization
 }
 

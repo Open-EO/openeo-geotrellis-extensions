@@ -217,12 +217,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
                 else 0.0f)
             }
 
-            if (doGamma0) {
-              val sinLocal = math.sin(thetaLoc)
-              rtcFactor =
-                if (sinLocal > 0.01) math.sin(thetaEl) / sinLocal
-                else Double.NaN
-            }
+            if (doGamma0) rtcFactor = TerrainCorrectionBackend.gamma0RtcFactor(thetaEl, thetaLoc)
           } else if (config.ellipsoidIncidenceAngle) {
             val pGnd = Vec3(pGndX(i), pGndY(i), pGndZ(i))
             val pSat = Vec3(pSatX(i), pSatY(i), pSatZ(i))
