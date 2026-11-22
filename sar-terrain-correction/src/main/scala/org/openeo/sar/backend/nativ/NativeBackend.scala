@@ -13,20 +13,166 @@ import scala.collection.parallel.CollectionConverters._
 
 object NativeBackend {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[NativeBackend])
+
+  /** Default Java heap budget for the working memory of one tile computation. Executors have about 1 GB of heap
+   *  for working memory, which is also shared with the output tiles and the other tasks of the executor. */
+  val DefaultMaxWorkingMemoryBytes: Long = 512L * 1024 * 1024
+
+  /** Maximum number of partial ANF grids that are accumulated in parallel. */
+  private val MaxAnfParallelism = 8
+
+  /** Blocks are split on the memory estimate until they are at most this many pixels per side. */
+  private val MinBlockSide = 128
+
+  /** The radar grid of the area-based RTC of a tile exceeds the memory budget: the tile has to be split. */
+  private final class RadarGridTooLargeException(message: String) extends IllegalStateException(message)
+
+  /** A block of output pixels of a tile: offset and size. */
+  private[nativ] final case class Block(col0: Int, row0: Int, cols: Int, rows: Int)
+
+  /** Splits a tile of `cols` x `rows` pixels into a regular grid of near-equal blocks, as few as possible so that
+   *  each block `fits`; blocks are split along their longest side first, until they are at most `minSide` pixels per
+   *  side (so that the overhead per block, e.g. the DEM margins, stays limited). A single block if the tile fits. */
+  private[nativ] def blocks(cols: Int, rows: Int, fits: (Int, Int) => Boolean, minSide: Int = 1): Seq[Block] = {
+    var nx = 1; var ny = 1
+    def blockCols = (cols + nx - 1) / nx
+    def blockRows = (rows + ny - 1) / ny
+    while (!fits(blockCols, blockRows) && (blockCols > minSide || blockRows > minSide)) {
+      if (blockCols > minSide && (blockCols >= blockRows || blockRows <= minSide)) nx += 1 else ny += 1
+    }
+    val colBounds = (0 to nx).map(k => (k.toLong * cols / nx).toInt)
+    val rowBounds = (0 to ny).map(k => (k.toLong * rows / ny).toInt)
+    for {
+      j <- 0 until ny; i <- 0 until nx
+      if colBounds(i + 1) > colBounds(i) && rowBounds(j + 1) > rowBounds(j)
+    } yield Block(colBounds(i), rowBounds(j), colBounds(i + 1) - colBounds(i), rowBounds(j + 1) - rowBounds(j))
+  }
 }
 /** Pure-Scala terrain correction backend.
  *
  *  Computes sigma0 or gamma0_RTC backscatter with range-Doppler orthorectification.
  *  Output band layout is determined by [[org.openeo.sar.SarProcessingConfig]] carried
  *  on the [[TileComputeContext]]; see [[TerrainCorrectionBackend]] for the full
- *  band index documentation. */
-final class NativeBackend extends TerrainCorrectionBackend {
+ *  band index documentation.
+ *
+ *  @param maxWorkingMemoryBytes Java heap budget for the working memory of one computation. Larger tiles are
+ *                               computed in blocks (one after the other) that each stay within it, and assembled
+ *                               into the requested tile. Nothing is cached between blocks or tiles. */
+final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrectionBackend {
 
   import NativeBackend._
+
+  def this() = this(NativeBackend.DefaultMaxWorkingMemoryBytes)
+
+  require(maxWorkingMemoryBytes > 0, "sar_backscatter: the working memory budget must be positive")
 
   override val name = "native"
 
   override def compute(ctx: TileComputeContext): MultibandTile = {
+    val req = ctx.request
+    val estimate = estimatedWorkingMemory(ctx) _
+    val tileBlocks = blocks(req.cols, req.rows, (cols, rows) => estimate(cols, rows) <= maxWorkingMemoryBytes, MinBlockSide)
+    if (tileBlocks.size == 1) computeOrSplit(ctx)
+    else {
+      logger.info(s"sar_backscatter: item ${req.sceneId}, ${req.extent}: computing the ${req.cols} x ${req.rows} tile " +
+        s"in ${tileBlocks.size} blocks of at most ${tileBlocks.map(_.cols).max} x ${tileBlocks.map(_.rows).max} pixels, " +
+        s"to stay within ${maxWorkingMemoryBytes / (1024 * 1024)} MB of working memory")
+      computeInBlocks(ctx, tileBlocks)
+    }
+  }
+
+  private def computeOrSplit(ctx: TileComputeContext): MultibandTile = {
+    val req = ctx.request
+    try computeTile(ctx)
+    catch {
+      case e: RadarGridTooLargeException if req.cols > 1 || req.rows > 1 =>
+        // The memory estimate was too optimistic for this tile.
+        logger.info(s"sar_backscatter: item ${req.sceneId}, ${req.extent}: ${e.getMessage}, splitting the ${req.cols} x ${req.rows} tile")
+        computeInBlocks(ctx, blocks(req.cols, req.rows, (cols, rows) => cols <= (req.cols + 1) / 2 && rows <= (req.rows + 1) / 2))
+    }
+  }
+
+  /** Computes the blocks one after the other (each block is computed in parallel itself) and copies them into
+   *  the output tile, so that only the working memory of one block is held at a time. */
+  private def computeInBlocks(ctx: TileComputeContext, tileBlocks: Seq[Block]): MultibandTile = {
+    val req = ctx.request
+    val nBands = req.config.bandCount(req.polarisations.size)
+    val out = Array.fill(nBands)(FloatArrayTile.empty(req.cols, req.rows))
+    val cw = req.cellSize.width; val ch = req.cellSize.height
+    for (block <- tileBlocks) {
+      val blockExtent = Extent(
+        req.extent.xmin + block.col0 * cw, req.extent.ymax - (block.row0 + block.rows) * ch,
+        req.extent.xmin + (block.col0 + block.cols) * cw, req.extent.ymax - block.row0 * ch)
+      val result = computeOrSplit(ctx.copy(request = req.copy(extent = blockExtent)))
+      var b = 0
+      while (b < nBands) { out(b).update(block.col0, block.row0, result.band(b)); b += 1 }
+    }
+    MultibandTile(out.toSeq)
+  }
+
+  /** Conservative estimate of the Java heap needed to compute a block of `cols` x `rows` pixels of the tile of
+   *  `ctx`, including the output bands. */
+  private def estimatedWorkingMemory(ctx: TileComputeContext)(cols: Int, rows: Int): Double = {
+    val req = ctx.request
+    val config = req.config
+    val nPols = req.polarisations.size
+    val doGamma0 = config.normalization == BackscatterNormalization.Gamma0RTC
+    val needTerrainCheck = doGamma0 || config.shadowLayoverMask || config.localIncidenceAngle
+    val needGeometry = needTerrainCheck || config.ellipsoidIncidenceAngle
+    val algorithm = if (doGamma0) config.rtcAlgorithm else RtcAlgorithm.Angle
+    val pixels = cols.toDouble * rows
+
+    val perPixel: Double =
+      4.0 * config.bandCount(nPols) + // output bands
+        24 +                          // DEM: buffered and unbuffered copies, plus the DEM and geoid tiles while reading
+        16 +                          // SAR line / ground range per pixel
+        (if (needTerrainCheck) 16 else 0) + // lon/lat
+        (if (needGeometry) 48 else 0) +     // ground and satellite positions
+        (if (algorithm == RtcAlgorithm.Auto) 16 else 0) + // local incidence angles and the masks that select pixels
+        (if (algorithm != RtcAlgorithm.Angle) 1 else 0)
+
+    // Radar pixels per output pixel, with a margin for the rotation of the footprint w.r.t. the radar grid and for
+    // terrain. Bounded by the scene for the SAR window reads.
+    val radarPerPixel = 2.0 * radarPixelsPerOutputPixel(ctx)
+    val sceneRadarPixels = ctx.metadata.timing.numberOfLines.toDouble * ctx.metadata.timing.numberOfPixels
+    val sarWindow = 4.0 * nPols * math.min(sceneRadarPixels, radarPerPixel * pixels)
+
+    val areaRtc: Double =
+      if (algorithm == RtcAlgorithm.Angle) 0.0
+      else {
+        val u = config.rtcDemUpsampling.toDouble
+        val m = 2.0 * config.rtcDemMarginPixels
+        val fineDem = 24.0 * (cols + m) * u * (rows + m) * u
+        val anfCells = radarPerPixel * (cols + 8.0) * (rows + 8.0)
+        fineDem + 8.0 * anfCells * anfParallelism
+      }
+
+    perPixel * pixels + sarWindow + areaRtc
+  }
+
+  private def anfParallelism: Int = math.max(1, math.min(Runtime.getRuntime.availableProcessors(), MaxAnfParallelism))
+
+  /** Ratio of the ground area of an output pixel to that of a radar pixel (ground range x azimuth), at the centre
+   *  of the tile; 1 if the geometry is degenerate (the radar grid size is checked exactly later on). */
+  private def radarPixelsPerOutputPixel(ctx: TileComputeContext): Double = {
+    val req = ctx.request
+    val timing = ctx.metadata.timing
+    def ground(c: Int, r: Int): Vec3 = {
+      val (lon, lat) = TerrainCorrectionProcessor.pixelToLonLatRad(c, r, req)
+      Ecef.fromGeodetic(lon, lat, 0.0)
+    }
+    val c = req.cols / 2; val r = req.rows / 2
+    val p = ground(c, r)
+    val outputArea = (ground(c + 1, r) - p).cross(ground(c, r + 1) - p).norm
+
+    val tMid = 0.5 * timing.numberOfLines * timing.lineTimeInterval
+    val (pSat, vel) = ctx.metadata.orbit.stateAt(tMid)
+    val azimuthSpacing = vel.norm * p.norm / pSat.norm * timing.lineTimeInterval
+    val ratio = outputArea / (timing.rangePixelSpacing * azimuthSpacing)
+    if (ratio > 0 && !ratio.isInfinite) ratio else 1.0
+  }
+
+  private def computeTile(ctx: TileComputeContext): MultibandTile = {
     logger.debug(s"sar_backscatter: item ${ctx.request.sceneId}, ${ctx.request.extent} ${ctx.request.cellSize}")
     val req    = ctx.request
     val meta   = ctx.metadata
@@ -243,7 +389,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
     val anf: Option[AreaRtc.Anf] =
       if (useArea != null && useArea.exists(identity)) {
         val tStart = System.nanoTime()
-        val result = computeAnf(ctx, sarLine, sarGr, pGndX, pGndY, pGndZ, pSatX, pSatY, pSatZ, isInScene, tSeed)
+        val result = computeAnf(ctx, sarLine, pGndX, pGndY, pGndZ, pSatX, pSatY, pSatZ, isInScene, tSeed)
         logger.debug(s"sar_backscatter: item ${req.sceneId}, ${config.rtcAlgorithm.name} RTC took ${(System.nanoTime() - tStart) / 1000000} ms")
         Some(result)
       } else None
@@ -362,7 +508,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
   /** Area normalisation factor of the tile in a virtual radar grid (azimuth line x slant range) that covers the
    *  tile's output pixels, from a DEM that is upsampled and buffered by the margins of the RTC config. */
   private def computeAnf(ctx: TileComputeContext,
-                         sarLine: Array[Double], sarGr: Array[Double],
+                         sarLine: Array[Double],
                          pGndX: Array[Double], pGndY: Array[Double], pGndZ: Array[Double],
                          pSatX: Array[Double], pSatY: Array[Double], pSatZ: Array[Double],
                          isInScene: Int => Boolean, tSeed: Double): AreaRtc.Anf = {
@@ -372,32 +518,35 @@ final class NativeBackend extends TerrainCorrectionBackend {
 
     var minAz = Double.MaxValue; var maxAz = Double.MinValue
     var minR = Double.MaxValue; var maxR = Double.MinValue
-    var iRef = -1
     var i = 0
     while (i < sarLine.length) {
       if (isInScene(i)) {
         val rSlant = (Vec3(pSatX(i), pSatY(i), pSatZ(i)) - Vec3(pGndX(i), pGndY(i), pGndZ(i))).norm
         minAz = math.min(minAz, sarLine(i)); maxAz = math.max(maxAz, sarLine(i))
         minR = math.min(minR, rSlant); maxR = math.max(maxR, rSlant)
-        iRef = i
       }
       i += 1
     }
 
-    // Slant range spacing from the ground range spacing, at a reference pixel.
-    val srgr = meta.polarisations(req.polarisations.head).srgr.at(sarLine(iRef) * meta.timing.lineTimeInterval)
-    val grMetres = sarGr(iRef) * meta.timing.rangePixelSpacing
-    val dr = meta.timing.rangePixelSpacing * srgr.dSlantRange_dGround(grMetres)
+    // The radar grid is a window of one lattice for the whole scene (whole azimuth lines; slant range spacing from
+    // the ground range spacing at the scene centre, multiples of it), so that the ANF of adjacent tiles, and of
+    // the blocks of a tile, is computed on the same radar pixels: no seams between them.
+    val timing = meta.timing
+    val srgr = meta.polarisations(req.polarisations.head).srgr.at(0.5 * timing.numberOfLines * timing.lineTimeInterval)
+    val dr = timing.rangePixelSpacing * srgr.dSlantRange_dGround(0.5 * timing.numberOfPixels * timing.rangePixelSpacing)
 
     val pad = 3
     val azLine0 = math.floor(minAz) - pad
     val nAz = (math.ceil(maxAz) + pad - azLine0).toInt + 1
-    val rMin = minR - pad * dr
-    val nRg = ((maxR - rMin) / dr).toInt + pad + 1
-    val grid = AreaRtc.RadarGrid(azLine0, nAz, rMin, dr, nRg, meta.timing.lineTimeInterval)
-    val MaxGridCells = 16L * 1024 * 1024
-    if (grid.size > MaxGridCells)
-      throw new IllegalStateException(s"sar_backscatter: area-based RTC for item ${req.sceneId}, ${req.extent}: radar grid of $nAz x $nRg is too large, use smaller tiles")
+    val rg0 = math.floor(minR / dr) - pad
+    val rMin = rg0 * dr
+    val nRg = (math.ceil(maxR / dr) + pad - rg0).toInt + 1
+    val grid = AreaRtc.RadarGrid(azLine0, nAz, rMin, dr, nRg, timing.lineTimeInterval)
+    // Each parallel chunk accumulates in its own copy of the grid: use as many as fit in half of the budget.
+    val gridBytes = 8.0 * grid.size
+    val nChunks = math.min(anfParallelism.toDouble, math.floor(maxWorkingMemoryBytes / 2.0 / gridBytes)).toInt
+    if (nChunks < 1 || grid.size > Int.MaxValue)
+      throw new RadarGridTooLargeException(s"radar grid of $nAz x $nRg for area-based RTC is too large")
 
     val u = config.rtcDemUpsampling
     val mx = config.rtcDemMarginPixels * req.cellSize.width
@@ -416,7 +565,7 @@ final class NativeBackend extends TerrainCorrectionBackend {
       (math.toRadians(lon), math.toRadians(lat))
     }
 
-    AreaRtc.computeRtcBilinearDistribution(fineDem, lonLatRad, grid, meta.orbit, tSeed)
+    AreaRtc.computeRtcBilinearDistribution(fineDem, lonLatRad, grid, meta.orbit, tSeed, nChunks)
   }
 
   /** Outward terrain surface normal at grid position (col, row) in ECEF,

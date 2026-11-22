@@ -16,9 +16,9 @@ class RtcAlgorithmOptionsTest {
   }
 
   @Test
-  def defaultsToAngle(): Unit = {
+  def defaultsToAuto(): Unit = {
     val config = configFor()
-    assertEquals(RtcAlgorithm.Angle, config.rtcAlgorithm)
+    assertEquals(RtcAlgorithm.Auto, config.rtcAlgorithm)
     assertEquals(config.bandCount(1), SarProcessingConfig().bandCount(1))
   }
 

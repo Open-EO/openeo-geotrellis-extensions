@@ -81,7 +81,7 @@ class SarBackscatterParameters extends ExtraProcessingParameters {
    *    asset key of the DEM raster (default `data`).
    *
    *  - for `gamma0-terrain`, the RTC algorithm can be chosen with these `options` (see [[RtcAlgorithm]]):
-   *    `rtc_algorithm` (`angle` default, `bilinear_distribution`, `auto`), `rtc_dem_upsampling`, `rtc_dem_margin_pixels`,
+   *    `rtc_algorithm` (`auto` default, `angle`, `bilinear_distribution`), `rtc_dem_upsampling`, `rtc_dem_margin_pixels`,
    *    `rtc_min_value_db`, `rtc_auto_min_local_incidence`, `rtc_auto_max_local_incidence`, `rtc_auto_dilation_pixels`
    *    and `rtc_method_band` (adds a band with the algorithm used per pixel: 0 = angle, 1 = area-based).
    *    Unset entries keep the value of `base`.

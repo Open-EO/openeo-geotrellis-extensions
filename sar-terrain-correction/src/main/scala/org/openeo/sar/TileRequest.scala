@@ -66,7 +66,7 @@ object RtcAlgorithm {
  *  @param ellipsoidIncidenceAngle When true, adds an output band with the ellipsoidal
  *                                (look vs. smooth WGS84 ellipsoid normal) incidence angle in
  *                                degrees. Default false.
- *  @param rtcAlgorithm           Terrain flattening algorithm for gamma0_RTC, see [[RtcAlgorithm]]. Default angle-based.
+ *  @param rtcAlgorithm           Terrain flattening algorithm for gamma0_RTC, see [[RtcAlgorithm]]. Default [[RtcAlgorithm.Auto]].
  *  @param rtcDemUpsampling       Area-based RTC only: integer factor by which the DEM is upsampled relative to the output
  *                                grid to form facets (ISCE3 default 2).
  *  @param rtcDemMarginPixels     Area-based RTC only: DEM margin around the tile, in output pixels, so that terrain
@@ -98,7 +98,7 @@ final case class SarProcessingConfig(
   elevationModel: Option[String]           = None,
   demAsset: String                         = "data",
   softErrors: Boolean                      = true,
-  rtcAlgorithm: RtcAlgorithm               = RtcAlgorithm.Angle,
+  rtcAlgorithm: RtcAlgorithm               = RtcAlgorithm.Auto,
   rtcDemUpsampling: Int                    = 2,
   rtcDemMarginPixels: Int                  = 20,
   rtcMinValueDb: Option[Double]            = None,

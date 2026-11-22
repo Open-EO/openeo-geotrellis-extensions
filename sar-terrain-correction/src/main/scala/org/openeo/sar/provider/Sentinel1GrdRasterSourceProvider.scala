@@ -220,18 +220,22 @@ object Sentinel1GrdRasterSourceProvider {
  *  Environment variable overrides:
  *    S1_NORMALIZATION       – "sigma0" (default) or "gamma0rtc"
  *    S1_SHADOW_LAYOVER_MASK – "true" to add shadow/layover band
- *    S1_RTC_ALGORITHM       – default RTC algorithm for gamma0rtc: "angle" (default), "bilinear_distribution" or "auto";
- *                             overridden by the `rtc_algorithm` option of `sar_backscatter` */
+ *    S1_RTC_ALGORITHM       – default RTC algorithm for gamma0rtc: "auto" (default), "angle" or "bilinear_distribution";
+ *                             overridden by the `rtc_algorithm` option of `sar_backscatter`
+ *    S1_MAX_TILE_MEMORY_MB  – Java heap budget (MB) for the working memory of one tile computation (default 512):
+ *                             larger tiles are computed in blocks that stay within it */
 class DefaultSentinel1GrdRasterSourceProvider
   extends Sentinel1GrdRasterSourceProvider(
-    processor = new TerrainCorrectionProcessor(new NativeBackend),
+    processor = new TerrainCorrectionProcessor(new NativeBackend(
+      Option(System.getenv("S1_MAX_TILE_MEMORY_MB")).map(_.trim.toLong * 1024 * 1024)
+        .getOrElse(NativeBackend.DefaultMaxWorkingMemoryBytes))),
     processingConfig = {
       val norm = Option(System.getenv("S1_NORMALIZATION")).map(_.toLowerCase) match {
         case Some("gamma0rtc") => BackscatterNormalization.Gamma0RTC
         case _                 => BackscatterNormalization.Sigma0
       }
       val shadow = Option(System.getenv("S1_SHADOW_LAYOVER_MASK")).exists(_.equalsIgnoreCase("true"))
-      val rtcAlgorithm = Option(System.getenv("S1_RTC_ALGORITHM")).map(RtcAlgorithm.parse).getOrElse(RtcAlgorithm.Angle)
+      val rtcAlgorithm = Option(System.getenv("S1_RTC_ALGORITHM")).map(RtcAlgorithm.parse).getOrElse(RtcAlgorithm.Auto)
       SarProcessingConfig(norm, shadow, rtcAlgorithm = rtcAlgorithm)
     }
   )
