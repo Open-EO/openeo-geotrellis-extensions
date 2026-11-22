@@ -36,6 +36,12 @@ object TerrainCorrectionBackend {
    *    β0 = σ0_ell / sin θ_el
    *    γ0 = β0 · A_β / A_γ ≈ β0 · tan θ_loc   (A_γ = facet area projected ⊥ look direction)
    *  so γ0 = σ0_ell · tan θ_loc / sin θ_el. Over flat terrain this reduces to σ0 / cos θ.
+   *
+   *  The angle-based method of: A. Vollrath, A. Mullissa, J. Reiche, "Angular-Based Radiometric Slope Correction for
+   *  Sentinel-1 on Google Earth Engine", Remote Sensing 12(11):1867, 2020, doi:10.3390/rs12111867; after
+   *  L.M.H. Ulander, IEEE TGRS 34(5):1115-1122, 1996, doi:10.1109/36.536527 and
+   *  D.H. Hoekman, J. Reiche, RSE 156:1-10, 2015, doi:10.1016/j.rse.2014.08.037.
+   *  For steep terrain see [[org.openeo.sar.RtcAlgorithm.BilinearDistribution]].
    *  Angles in radians; returns NaN for degenerate geometry. */
   def gamma0RtcFactor(thetaEl: Double, thetaLoc: Double): Double = {
     val sinEl = math.sin(thetaEl)
@@ -62,9 +68,10 @@ object TerrainCorrectionBackend {
                ellipsInc: Option[FloatArrayTile],
                localInc: Option[FloatArrayTile],
                mask: FloatArrayTile,
-               shadowLayover: Option[FloatArrayTile]): MultibandTile = {
+               shadowLayover: Option[FloatArrayTile],
+               rtcMethod: Option[FloatArrayTile] = None): MultibandTile = {
     val bands: Seq[Tile] =
-      backscatter.toSeq ++ ellipsInc.toSeq ++ localInc.toSeq ++ Seq(mask) ++ shadowLayover.toSeq
+      backscatter.toSeq ++ ellipsInc.toSeq ++ localInc.toSeq ++ Seq(mask) ++ shadowLayover.toSeq ++ rtcMethod.toSeq
     MultibandTile(bands)
   }
 }

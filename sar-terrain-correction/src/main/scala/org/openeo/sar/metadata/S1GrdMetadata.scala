@@ -21,7 +21,8 @@ final case class PolarisationMetadata(
   measurementUri: String,        // URI of measurement/*.tiff (for GeoTrellis RasterSource)
   sigmaLut: Lut2D,               // sigmaNought calibration LUT
   noiseLut: Lut2D,               // thermal noise LUT (same coord system)
-  srgr: SrgrPolyList             // slant/ground range polynomials
+  srgr: SrgrPolyList,            // slant/ground range polynomials
+  betaLut: Option[Lut2D] = None  // betaNought calibration LUT, input of the area-based RTC algorithms
 )
 
 /** Image timing & sampling parameters shared by all polarisations of one scene. */

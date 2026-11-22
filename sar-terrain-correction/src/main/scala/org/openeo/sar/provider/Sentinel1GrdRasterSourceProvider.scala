@@ -219,7 +219,9 @@ object Sentinel1GrdRasterSourceProvider {
  *
  *  Environment variable overrides:
  *    S1_NORMALIZATION       – "sigma0" (default) or "gamma0rtc"
- *    S1_SHADOW_LAYOVER_MASK – "true" to add shadow/layover band */
+ *    S1_SHADOW_LAYOVER_MASK – "true" to add shadow/layover band
+ *    S1_RTC_ALGORITHM       – default RTC algorithm for gamma0rtc: "angle" (default), "bilinear_distribution" or "auto";
+ *                             overridden by the `rtc_algorithm` option of `sar_backscatter` */
 class DefaultSentinel1GrdRasterSourceProvider
   extends Sentinel1GrdRasterSourceProvider(
     processor = new TerrainCorrectionProcessor(new NativeBackend),
@@ -229,6 +231,7 @@ class DefaultSentinel1GrdRasterSourceProvider
         case _                 => BackscatterNormalization.Sigma0
       }
       val shadow = Option(System.getenv("S1_SHADOW_LAYOVER_MASK")).exists(_.equalsIgnoreCase("true"))
-      SarProcessingConfig(norm, shadow)
+      val rtcAlgorithm = Option(System.getenv("S1_RTC_ALGORITHM")).map(RtcAlgorithm.parse).getOrElse(RtcAlgorithm.Angle)
+      SarProcessingConfig(norm, shadow, rtcAlgorithm = rtcAlgorithm)
     }
   )

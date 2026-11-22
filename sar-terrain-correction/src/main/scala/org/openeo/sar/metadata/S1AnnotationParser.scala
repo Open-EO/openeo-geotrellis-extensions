@@ -49,10 +49,12 @@ object S1AnnotationParser {
     }.toIndexedSeq
 
     val srgr = parseSrgr(root, firstLineUtc)
-    val sigmaLut = parseCalibrationLut(calibrationUri, "sigmaNought")
+    val calibration = UriIO.loadXml(calibrationUri)
+    val sigmaLut = parseCalibrationLut(calibration, "sigmaNought")
+    val betaLut = parseCalibrationLut(calibration, "betaNought")
     val noiseLut = parseNoiseLut(noiseUri)
 
-    val polMeta = PolarisationMetadata(pol, measurementUri.toString, sigmaLut, noiseLut, srgr)
+    val polMeta = PolarisationMetadata(pol, measurementUri.toString, sigmaLut, noiseLut, srgr, Some(betaLut))
     (polMeta, timing, svs, firstLineUtc)
   }
 
@@ -69,8 +71,7 @@ object S1AnnotationParser {
     new SrgrPolyList(recs)
   }
 
-  private def parseCalibrationLut(uri: URI, field: String): Lut2D = {
-    val root = UriIO.loadXml(uri)
+  private def parseCalibrationLut(root: Elem, field: String): Lut2D = {
     val vectors = root \ "calibrationVectorList" \ "calibrationVector"
     val lines = vectors.map(v => (v \ "line").text.toInt).toArray
     val pixels = vectors.head \ "pixel" match {

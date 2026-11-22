@@ -18,6 +18,38 @@ object BackscatterNormalization {
   case object Gamma0RTC extends BackscatterNormalization
 }
 
+/** Algorithm used for terrain flattening when [[BackscatterNormalization.Gamma0RTC]] is selected.
+ *
+ *  - [[RtcAlgorithm.Angle]]: per-pixel, angle-based correction `sigma0 × tan(θ_local) / sin(θ_el)`. Cheap and
+ *    accurate on gentle slopes. Based on the projection-angle / local-incidence-angle approach of
+ *    Ulander (1996) and Hoekman & Reiche (2015), as used by Vollrath, Mullissa & Reiche (2020)
+ *    ("Angular-based radiometric slope correction for Sentinel-1 on Google Earth Engine",
+ *    Remote Sensing 12(11):1867, doi:10.3390/rs12111867).
+ *  - [[RtcAlgorithm.BilinearDistribution]]: area-based, facet-wise projection of the DEM into radar geometry,
+ *    after Small (2011) ("Flattening Gamma: Radiometric Terrain Correction for SAR Imagery", IEEE TGRS
+ *    49(8):3081-3093, doi:10.1109/TGRS.2011.2120616). Port of ISCE3 `computeRtcBilinearDistribution`
+ *    (`cxx/isce3/geometry/RTC.cpp`, Apache-2.0, Caltech/JPL). Sums the contributions of all terrain facets that
+ *    fall in one radar pixel, so remains valid on steep slopes and in layover. More expensive.
+ *  - [[RtcAlgorithm.Auto]]: angle-based, except in the neighbourhood of pixels whose local incidence angle
+ *    is outside [`rtcAutoMinLocalIncidenceDeg`, `rtcAutoMaxLocalIncidenceDeg`], where the area-based
+ *    algorithm is used (currently [[RtcAlgorithm.BilinearDistribution]]). The area-based computation only runs
+ *    for tiles that contain such pixels.
+ */
+sealed trait RtcAlgorithm { def name: String }
+object RtcAlgorithm {
+  case object Angle extends RtcAlgorithm { val name = "angle" }
+  case object BilinearDistribution extends RtcAlgorithm { val name = "bilinear_distribution" }
+  case object Auto extends RtcAlgorithm { val name = "auto" }
+
+  val all: Seq[RtcAlgorithm] = Seq(Angle, BilinearDistribution, Auto)
+
+  def parse(s: String): RtcAlgorithm = {
+    val normalized = s.trim.toLowerCase.replace('-', '_')
+    all.find(_.name == normalized).getOrElse(throw new IllegalArgumentException(
+      s"sar_backscatter: unsupported rtc_algorithm '$s': expected one of ${all.map(_.name).mkString(", ")}"))
+  }
+}
+
 /** Processing configuration shared by all tiles in a scene.
  *
  *  @param normalization          Whether to output sigma0 or gamma0_RTC (terrain-flattened).
@@ -34,6 +66,22 @@ object BackscatterNormalization {
  *  @param ellipsoidIncidenceAngle When true, adds an output band with the ellipsoidal
  *                                (look vs. smooth WGS84 ellipsoid normal) incidence angle in
  *                                degrees. Default false.
+ *  @param rtcAlgorithm           Terrain flattening algorithm for gamma0_RTC, see [[RtcAlgorithm]]. Default angle-based.
+ *  @param rtcDemUpsampling       Area-based RTC only: integer factor by which the DEM is upsampled relative to the output
+ *                                grid to form facets (ISCE3 default 2).
+ *  @param rtcDemMarginPixels     Area-based RTC only: DEM margin around the tile, in output pixels, so that terrain
+ *                                outside the tile that projects into the tile's radar pixels is accounted for
+ *                                (ISCE3 uses 20 pixels).
+ *  @param rtcMinValueDb          Area-based RTC only: radar pixels whose area normalisation factor is below this value
+ *                                (dB) become NaN (ISCE3 `rtc_min_value_db`). Unset: only factors <= 0 (shadow) are NaN.
+ *  @param rtcAutoMinLocalIncidenceDeg / rtcAutoMaxLocalIncidenceDeg
+ *                                Auto only: local incidence angles (degrees) outside this range are "steep".
+ *  @param rtcAutoDilationPixels  Auto only: steep pixels are dilated by this many output pixels before choosing the
+ *                                algorithm, since area-based results depend on neighbouring facets.
+ *  @param rtcAutoTileFraction  Auto only: if at least this fraction of the pixels of a tile is steep, the whole tile uses the
+ *                                area-based algorithm. Below it, only steep pixels and their neighbourhood do.
+ *  @param rtcMethodBand          When true, adds an output band with the algorithm used per pixel
+ *                                (0 = angle-based, 1 = area-based), for validation. Default false.
  *  @param elevationModel         DEM to use: a STAC collection URL (or an alias such as `COPERNICUS_30`),
  *                                see [[org.openeo.sar.dem.ElevationModel]]. `None` is the back-end
  *                                default, `COPERNICUS_30`. The string `"null"` means no DEM: terrain height
@@ -49,8 +97,26 @@ final case class SarProcessingConfig(
   ellipsoidIncidenceAngle: Boolean         = false,
   elevationModel: Option[String]           = None,
   demAsset: String                         = "data",
-  softErrors: Boolean                      = true
+  softErrors: Boolean                      = true,
+  rtcAlgorithm: RtcAlgorithm               = RtcAlgorithm.Angle,
+  rtcDemUpsampling: Int                    = 2,
+  rtcDemMarginPixels: Int                  = 20,
+  rtcMinValueDb: Option[Double]            = None,
+  rtcAutoMinLocalIncidenceDeg: Double      = 20.0,
+  rtcAutoMaxLocalIncidenceDeg: Double      = 70.0,
+  rtcAutoDilationPixels: Int               = 2,
+  rtcAutoTileFraction: Double              = 0.02,
+  rtcMethodBand: Boolean                   = false
 ) {
+  require(rtcDemUpsampling >= 1, "sar_backscatter: rtc_dem_upsampling must be >= 1")
+  require(rtcDemMarginPixels >= 0, "sar_backscatter: rtc_dem_margin_pixels must be >= 0")
+  require(rtcAutoTileFraction >= 0.0 && rtcAutoTileFraction <= 1.0, "sar_backscatter: rtc_auto_tile_fraction must be in [0, 1]")
+  require(rtcAutoDilationPixels >= 0, "sar_backscatter: rtc_auto_dilation_pixels must be >= 0")
+
+  /** Whether area-based RTC output can be requested at all. */
+  def usesAreaRtc: Boolean =
+    normalization == BackscatterNormalization.Gamma0RTC && rtcAlgorithm != RtcAlgorithm.Angle
+
   /** Total number of output bands for `nPols` polarisations.
    *
    *  Layout:
@@ -59,12 +125,14 @@ final case class SarProcessingConfig(
    *    nPols+[0|1]          (optional)   local (terrain-relative) incidence angle (degrees)
    *    nPols+[0..2]                      validity mask (1=valid, 0=outside swath)
    *    nPols+[1..3]         (optional)   shadow/layover mask (0=valid, 1=layover, 2=shadow)
+   *    last                 (optional)   RTC method used (0=angle, 1=area-based), config.rtcMethodBand
    */
   def bandCount(nPols: Int): Int =
     nPols + 1 +
       (if (ellipsoidIncidenceAngle) 1 else 0) +
       (if (localIncidenceAngle) 1 else 0) +
-      (if (shadowLayoverMask) 1 else 0)
+      (if (shadowLayoverMask) 1 else 0) +
+      (if (rtcMethodBand) 1 else 0)
 }
 
 object SarProcessingConfig {

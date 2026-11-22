@@ -80,6 +80,12 @@ class SarBackscatterParameters extends ExtraProcessingParameters {
    *    (see [[org.openeo.sar.dem.ElevationModel]]). The `dem_asset` entry of `options` overrides the
    *    asset key of the DEM raster (default `data`).
    *
+   *  - for `gamma0-terrain`, the RTC algorithm can be chosen with these `options` (see [[RtcAlgorithm]]):
+   *    `rtc_algorithm` (`angle` default, `bilinear_distribution`, `auto`), `rtc_dem_upsampling`, `rtc_dem_margin_pixels`,
+   *    `rtc_min_value_db`, `rtc_auto_min_local_incidence`, `rtc_auto_max_local_incidence`, `rtc_auto_dilation_pixels`
+   *    and `rtc_method_band` (adds a band with the algorithm used per pixel: 0 = angle, 1 = area-based).
+   *    Unset entries keep the value of `base`.
+   *
    * `contributingArea`, `noiseRemoval` and the other `options` are not yet wired into
    * the terrain-correction backend and are currently ignored by this conversion; they remain
    * available on this class for callers/backends that do support them.
@@ -95,8 +101,20 @@ class SarBackscatterParameters extends ExtraProcessingParameters {
       elevationModel = elevationModel,
       demAsset = Option(options.get("dem_asset")).map(_.toString).getOrElse(base.demAsset),
       localIncidenceAngle = localIncidenceAngle,
-      ellipsoidIncidenceAngle = ellipsoidIncidenceAngle
+      ellipsoidIncidenceAngle = ellipsoidIncidenceAngle,
+      rtcAlgorithm = option("rtc_algorithm").map(RtcAlgorithm.parse).getOrElse(base.rtcAlgorithm),
+      rtcDemUpsampling = option("rtc_dem_upsampling").map(_.toDouble.toInt).getOrElse(base.rtcDemUpsampling),
+      rtcDemMarginPixels = option("rtc_dem_margin_pixels").map(_.toDouble.toInt).getOrElse(base.rtcDemMarginPixels),
+      rtcMinValueDb = option("rtc_min_value_db").map(_.toDouble).orElse(base.rtcMinValueDb),
+      rtcAutoMinLocalIncidenceDeg = option("rtc_auto_min_local_incidence").map(_.toDouble).getOrElse(base.rtcAutoMinLocalIncidenceDeg),
+      rtcAutoMaxLocalIncidenceDeg = option("rtc_auto_max_local_incidence").map(_.toDouble).getOrElse(base.rtcAutoMaxLocalIncidenceDeg),
+      rtcAutoTileFraction = option("rtc_auto_tile_fraction").map(_.toDouble).getOrElse(base.rtcAutoTileFraction),
+      rtcAutoDilationPixels = option("rtc_auto_dilation_pixels").map(_.toDouble.toInt).getOrElse(base.rtcAutoDilationPixels),
+      rtcMethodBand = option("rtc_method_band").map(_.toBoolean).getOrElse(base.rtcMethodBand)
     )
+
+  private def option(key: String): Option[String] =
+    Option(options).flatMap(o => Option(o.get(key))).map(_.toString.trim).filter(_.nonEmpty)
 }
 
 object SarBackscatterParameters {
