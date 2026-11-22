@@ -74,13 +74,11 @@ object S1AnnotationParser {
   private def parseCalibrationLut(root: Elem, field: String): Lut2D = {
     val vectors = root \ "calibrationVectorList" \ "calibrationVector"
     val lines = vectors.map(v => (v \ "line").text.toInt).toArray
-    val pixels = vectors.head \ "pixel" match {
-      case n => n.text.trim.split("\\s+").map(_.toInt)
-    }
-    val values: Array[Array[Float]] = vectors.map { v =>
+    val pixels = vectors.map(v => (v \ "pixel").text.trim.split("\\s+").map(_.toInt))
+    val values: Seq[Array[Float]] = vectors.map { v =>
       (v \ field).text.trim.split("\\s+").map(_.toFloat)
-    }.toArray
-    new Lut2D(lines, pixels, values)
+    }
+    Lut2D.fromVectors(lines, pixels, values)
   }
 
   private def parseNoiseLut(uri: URI): Lut2D = {
@@ -91,14 +89,12 @@ object S1AnnotationParser {
       case _               => root \ "noiseVectorList" \ "noiseVector"
     }
     val lines = vectors.map(v => (v \ "line").text.toInt).toArray
-    val pixels = vectors.head \ "pixel" match {
-      case n => n.text.trim.split("\\s+").map(_.toInt)
-    }
-    val values: Array[Array[Float]] = vectors.map { v =>
+    val pixels = vectors.map(v => (v \ "pixel").text.trim.split("\\s+").map(_.toInt))
+    val values: Seq[Array[Float]] = vectors.map { v =>
       val tag = if ((v \ "noiseRangeLut").nonEmpty) "noiseRangeLut" else "noiseLut"
       (v \ tag).text.trim.split("\\s+").map(_.toFloat)
-    }.toArray
-    new Lut2D(lines, pixels, values)
+    }
+    Lut2D.fromVectors(lines, pixels, values)
   }
 
   /** Merge per-polarisation parses into the unified scene metadata. */
