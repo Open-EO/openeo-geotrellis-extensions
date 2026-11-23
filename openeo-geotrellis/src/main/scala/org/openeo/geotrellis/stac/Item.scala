@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.stac
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.{CRS, LatLng, Transform}
 import geotrellis.vector.Extent
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -47,10 +47,13 @@ case class Item(id: String, datetime: String, bbox: Extent, assets: util.Map[Str
   }
 
   def geometry: util.Map[String, Any] = {
-    val b = bbox4326
+    // Reproject the corners rather than taking the envelope: in EPSG:4326 the rectangle is a slightly rotated quadrilateral.
+    val toLatLng = Transform(crs, LatLng)
     // counter-clockwise exterior ring, as RFC 7946 (GeoJSON) recommends
-    val ring = Seq((b.xmin, b.ymin), (b.xmax, b.ymin), (b.xmax, b.ymax), (b.xmin, b.ymax), (b.xmin, b.ymin))
-    val coordinates = ring.map { case (x, y) => util.Arrays.asList(x, y) }.asJava
+    val corners = Seq((bbox.xmin, bbox.ymin), (bbox.xmax, bbox.ymin), (bbox.xmax, bbox.ymax), (bbox.xmin, bbox.ymax))
+      .map { case (x, y) => toLatLng(x, y) }
+    val ring = corners :+ corners.head
+    val coordinates = ring.map { case (lon, lat) => util.Arrays.asList(lon, lat) }.asJava
 
     val geometry = new util.LinkedHashMap[String, Any]()
     geometry.put("type", "Polygon")
