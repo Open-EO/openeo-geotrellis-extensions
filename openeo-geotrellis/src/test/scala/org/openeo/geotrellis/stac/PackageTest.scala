@@ -82,8 +82,7 @@ class PackageTest {
   @Test
   def itemWithoutDatesHasNullDatetime(): Unit = {
     val props = itemProperties(null, null)
-    assertTrue(props.containsKey("datetime"))
-    assertNull(props.get("datetime"))
+    assertFalse(props.containsKey("datetime"))
     assertFalse(props.containsKey("start_datetime"))
     assertFalse(props.containsKey("end_datetime"))
   }
