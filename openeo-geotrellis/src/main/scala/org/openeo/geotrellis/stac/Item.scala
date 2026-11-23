@@ -36,10 +36,12 @@ case class Item(id: String, datetime: String, bbox: Extent, assets: util.Map[Str
 
   def properties: util.Map[String, Any] = {
     val result = new util.LinkedHashMap[String, Any]()
-    Option(effectiveDatetime).foreach(result.put("datetime", _))
     if (hasTemporalRange) {
+      result.put("datetime", effectiveDatetime)
       result.put("start_datetime", startDatetime)
       result.put("end_datetime", endDatetime)
+    } else {
+      Option(effectiveDatetime).foreach(result.put("datetime", _))
     }
     result
   }
