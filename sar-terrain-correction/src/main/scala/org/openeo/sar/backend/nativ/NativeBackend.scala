@@ -178,6 +178,7 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
     val meta   = ctx.metadata
     val config = req.config
     val pols   = req.polarisations.toArray
+    val srgrList = meta.polarisations(pols(0)).srgr
 
     val (backscatter, ellipsInc, localInc, mask, shadowLayover) =
       TerrainCorrectionBackend.allocate(req.cols, req.rows, pols.length, config)
@@ -272,8 +273,7 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
           val pSat = meta.orbit.positionAt(tAz)
           val rSlant = (pSat - pGnd).norm
           val azLine = tAz / meta.timing.lineTimeInterval
-          val srgr   = meta.polarisations(pols(0)).srgr.at(tAz)
-          val grMetres = srgr.groundRangeFromSlant(rSlant, gSeed = math.max(0.0, rSlant - srgr.sr0))
+          val grMetres = srgrList.groundRangeFromSlant(tAz, rSlant)
           val grPx     = grMetres / meta.timing.rangePixelSpacing
 
           val i = idx(r, c)
@@ -532,8 +532,9 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
     // the ground range spacing at the scene centre, multiples of it), so that the ANF of adjacent tiles, and of
     // the blocks of a tile, is computed on the same radar pixels: no seams between them.
     val timing = meta.timing
-    val srgr = meta.polarisations(req.polarisations.head).srgr.at(0.5 * timing.numberOfLines * timing.lineTimeInterval)
-    val dr = timing.rangePixelSpacing * srgr.dSlantRange_dGround(0.5 * timing.numberOfPixels * timing.rangePixelSpacing)
+    val srgr = meta.polarisations(req.polarisations.head).srgr
+    val dr = timing.rangePixelSpacing * srgr.dSlantRange_dGround(
+      0.5 * timing.numberOfLines * timing.lineTimeInterval, 0.5 * timing.numberOfPixels * timing.rangePixelSpacing)
 
     val pad = 3
     val azLine0 = math.floor(minAz) - pad

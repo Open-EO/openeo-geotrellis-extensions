@@ -44,18 +44,54 @@ final case class SrgrPoly(azimuthTime: Double, sr0: Double, gr0: Double, coeffs:
   }
 }
 
-/** A time-ordered set of SRGR polynomials. Pick the one nearest the queried
- *  azimuth time (S1TBX does the same; the polynomials are spaced ~1 s and
- *  the change between adjacent records is small). */
+/** A time-ordered set of SRGR polynomials, linearly interpolated in azimuth time between the two
+ *  bracketing records (clamped to the first/last record outside the covered interval), as SNAP does.
+ *  Records are ~1 s apart and, over steep terrain, differ enough that picking one per interval
+ *  produces a range sawtooth of several pixels. */
 final class SrgrPolyList(val records: IndexedSeq[SrgrPoly]) {
-  def at(tAz: Double): SrgrPoly = {
-    var best = records.head; var bestDt = math.abs(best.azimuthTime - tAz)
-    var i = 1
-    while (i < records.length) {
-      val d = math.abs(records(i).azimuthTime - tAz)
-      if (d < bestDt) { best = records(i); bestDt = d }
-      i += 1
+
+  /** Index of the last record with azimuthTime <= tAz, clamped to [0, n-2]. */
+  private def lowerIndex(tAz: Double): Int = {
+    var lo = 0; var hi = records.length - 1
+    while (hi - lo > 1) {
+      val mid = (lo + hi) >>> 1
+      if (records(mid).azimuthTime <= tAz) lo = mid else hi = mid
     }
-    best
+    lo
+  }
+
+  private def weight(p0: SrgrPoly, p1: SrgrPoly, tAz: Double): Double = {
+    val dt = p1.azimuthTime - p0.azimuthTime
+    if (dt <= 0.0) 0.0 else math.min(1.0, math.max(0.0, (tAz - p0.azimuthTime) / dt))
+  }
+
+  /** Slant range -> ground-range distance (m) using the polynomial interpolated at `tAz`.
+   *  Allocation-free: this is called once per output pixel. */
+  def groundRangeFromSlant(tAz: Double, rSlant: Double, maxIter: Int = 8, tol: Double = 1e-3): Double = {
+    val p0 = records.head
+    if (records.length == 1) return p0.groundRangeFromSlant(rSlant, math.max(0.0, rSlant - p0.sr0), maxIter, tol)
+    val i = lowerIndex(tAz)
+    val a = records(i); val b = records(i + 1)
+    val w = weight(a, b, tAz)
+    val sr0 = (1.0 - w) * a.sr0 + w * b.sr0
+    var g = math.max(0.0, rSlant - sr0); var it = 0
+    while (it < maxIter) {
+      val f  = (1.0 - w) * a.slantRangeFromGround(g) + w * b.slantRangeFromGround(g) - rSlant
+      val fp = (1.0 - w) * a.dSlantRange_dGround(g) + w * b.dSlantRange_dGround(g)
+      val dg = f / fp
+      g -= dg
+      if (math.abs(dg) < tol) return g
+      it += 1
+    }
+    g
+  }
+
+  /** Derivative d(slantRange)/d(gr) of the polynomial interpolated at `tAz`. */
+  def dSlantRange_dGround(tAz: Double, grMetres: Double): Double = {
+    if (records.length == 1) return records.head.dSlantRange_dGround(grMetres)
+    val a = records(lowerIndex(tAz)); val b = records(lowerIndex(tAz) + 1)
+    val w = weight(a, b, tAz)
+    (1.0 - w) * a.dSlantRange_dGround(grMetres) + w * b.dSlantRange_dGround(grMetres)
   }
 }
+
