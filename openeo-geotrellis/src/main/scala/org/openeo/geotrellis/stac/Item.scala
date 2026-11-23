@@ -81,7 +81,7 @@ case class Item(id: String, datetime: String, bbox: Extent, assets: util.Map[Str
     result.put("id", id)
     result.put("geometry", itemGeometry)
     result.put("bbox", itemBbox)
-    result.put("properties", itemProperties)
+    if (!itemProperties.isEmpty) result.put("properties", itemProperties)
     result.put("assets", stacAssets)
     result
   }
