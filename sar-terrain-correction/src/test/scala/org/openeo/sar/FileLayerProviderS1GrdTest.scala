@@ -112,6 +112,7 @@ class FileLayerProviderS1GrdTest {
 
   // ---- Test -----------------------------------------------------------------
 
+  @Disabled("Requires CDSE S3 credentials")
   @ParameterizedTest(name = "{0}")
   @MethodSource(Array("scenes"))
   def fileLayerProviderReturnsS1GrdTileLayer(scene: S1GrdScene): Unit = {
