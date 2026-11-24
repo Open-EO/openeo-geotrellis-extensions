@@ -57,7 +57,7 @@ object RtcAlgorithm {
  *  @param shadowLayoverMask      When true, adds an extra output band with per-pixel
  *                                shadow/layover classification:
  *                                  0 = valid, 1 = layover (θ_local < 0), 2 = shadow (terrain
- *                                facing away from radar). Also enables masking of backscatter
+ *                                facing away from radar, or cast shadow, see `castShadow`). Also enables masking of backscatter
  *                                on shadow/layover pixels. Default false.
  *  @param localIncidenceAngle    When true, adds an output band with the local
  *                                (terrain-relative) incidence angle in degrees. Enabling this
@@ -82,6 +82,11 @@ object RtcAlgorithm {
  *                                area-based algorithm. Below it, only steep pixels and their neighbourhood do.
  *  @param rtcMethodBand          When true, adds an output band with the algorithm used per pixel
  *                                (0 = angle-based, 1 = area-based), for validation. Default false.
+ *  @param castShadow             When shadow/layover masking applies (gamma0_RTC or `shadowLayoverMask`), also mask
+ *                                pixels in cast (passive) shadow: hidden from the sensor by terrain closer to it, even
+ *                                if their own slope faces the sensor. Found by casting the line of sight towards the
+ *                                sensor over the DEM (like the ISCE3 `Topo` layover/shadow mask). Only computed for
+ *                                tiles with steep pixels (the criteria of [[RtcAlgorithm.Auto]]). Default true.
  *  @param elevationModel         DEM to use: a STAC collection URL (or an alias such as `COPERNICUS_30`),
  *                                see [[org.openeo.sar.dem.ElevationModel]]. `None` is the back-end
  *                                default, `COPERNICUS_30`. The string `"null"` means no DEM: terrain height
@@ -106,7 +111,8 @@ final case class SarProcessingConfig(
   rtcAutoMaxLocalIncidenceDeg: Double      = 70.0,
   rtcAutoDilationPixels: Int               = 2,
   rtcAutoTileFraction: Double              = 0.02,
-  rtcMethodBand: Boolean                   = false
+  rtcMethodBand: Boolean                   = false,
+  castShadow: Boolean                      = true
 ) {
   require(rtcDemUpsampling >= 1, "sar_backscatter: rtc_dem_upsampling must be >= 1")
   require(rtcDemMarginPixels >= 0, "sar_backscatter: rtc_dem_margin_pixels must be >= 0")

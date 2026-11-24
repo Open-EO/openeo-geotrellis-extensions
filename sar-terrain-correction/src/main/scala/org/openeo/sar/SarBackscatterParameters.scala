@@ -85,6 +85,7 @@ class SarBackscatterParameters extends ExtraProcessingParameters {
    *    `rtc_min_value_db`, `rtc_auto_min_local_incidence`, `rtc_auto_max_local_incidence`, `rtc_auto_dilation_pixels`
    *    and `rtc_method_band` (adds a band with the algorithm used per pixel: 0 = angle, 1 = area-based).
    *    Unset entries keep the value of `base`.
+   *  - `cast_shadow` (default true): also mask pixels in cast shadow (see [[SarProcessingConfig.castShadow]]).
    *
    * `contributingArea`, `noiseRemoval` and the other `options` are not yet wired into
    * the terrain-correction backend and are currently ignored by this conversion; they remain
@@ -110,7 +111,8 @@ class SarBackscatterParameters extends ExtraProcessingParameters {
       rtcAutoMaxLocalIncidenceDeg = option("rtc_auto_max_local_incidence").map(_.toDouble).getOrElse(base.rtcAutoMaxLocalIncidenceDeg),
       rtcAutoTileFraction = option("rtc_auto_tile_fraction").map(_.toDouble).getOrElse(base.rtcAutoTileFraction),
       rtcAutoDilationPixels = option("rtc_auto_dilation_pixels").map(_.toDouble.toInt).getOrElse(base.rtcAutoDilationPixels),
-      rtcMethodBand = option("rtc_method_band").map(_.toBoolean).getOrElse(base.rtcMethodBand)
+      rtcMethodBand = option("rtc_method_band").map(_.toBoolean).getOrElse(base.rtcMethodBand),
+      castShadow = option("cast_shadow").map(_.toBoolean).getOrElse(base.castShadow)
     )
 
   private def option(key: String): Option[String] =

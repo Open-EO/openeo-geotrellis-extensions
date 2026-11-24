@@ -24,6 +24,11 @@ object NativeBackend {
   /** Blocks are split on the memory estimate until they are at most this many pixels per side. */
   private val MinBlockSide = 128
 
+  /** Cast shadow: maximum DEM margin towards the sensor, and the height by which terrain must rise above a line of
+   *  sight to block it (avoids pixels shadowing themselves on slopes at grazing incidence). */
+  private val MaxCastShadowMarginMetres = 10000.0
+  private val CastShadowToleranceMetres = 0.01
+
   /** The radar grid of the area-based RTC of a tile exceeds the memory budget: the tile has to be split. */
   private final class RadarGridTooLargeException(message: String) extends IllegalStateException(message)
 
@@ -120,6 +125,7 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
     val needTerrainCheck = doGamma0 || config.shadowLayoverMask || config.localIncidenceAngle
     val needGeometry = needTerrainCheck || config.ellipsoidIncidenceAngle
     val algorithm = if (doGamma0) config.rtcAlgorithm else RtcAlgorithm.Angle
+    val castShadow = config.castShadow && (doGamma0 || config.shadowLayoverMask)
     val pixels = cols.toDouble * rows
 
     val perPixel: Double =
@@ -128,8 +134,9 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
         16 +                          // SAR line / ground range per pixel
         (if (needTerrainCheck) 16 else 0) + // lon/lat
         (if (needGeometry) 48 else 0) +     // ground and satellite positions
-        (if (algorithm == RtcAlgorithm.Auto) 16 else 0) + // local incidence angles and the masks that select pixels
-        (if (algorithm != RtcAlgorithm.Angle) 1 else 0)
+        (if (algorithm == RtcAlgorithm.Auto || castShadow) 16 else 0) + // local incidence angles and the steep masks
+        (if (algorithm != RtcAlgorithm.Angle) 1 else 0) +
+        (if (castShadow) 1 + 24 else 0) // cast shadow mask, DEM with a margin towards the sensor (~3x the block)
 
     // Radar pixels per output pixel, with a margin for the rotation of the footprint w.r.t. the radar grid and for
     // terrain. Bounded by the scene for the SAR window reads.
@@ -338,15 +345,18 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
 
     // 6b. Choose the RTC algorithm per pixel. Angle-based unless area-based RTC is requested; for Auto, area-based
     //     only near pixels with a steep local incidence angle, and only computed at all for tiles that have some.
+    //     The same steep criteria decide whether a tile can contain cast shadow at all.
     val algorithm = if (doGamma0) config.rtcAlgorithm else RtcAlgorithm.Angle
+    val castShadowCheck = config.castShadow && (doGamma0 || doShadow)
+    val needSteep = algorithm == RtcAlgorithm.Auto || castShadowCheck
     val isInScene: Int => Boolean = i => {
       val line = sarLine(i); val gr = sarGr(i)
       !java.lang.Double.isNaN(line) && line >= 0 && line < numberOfLines && gr >= 0 && gr < numberOfPixels
     }
 
-    val layoverPre = new Array[Boolean](if (algorithm == RtcAlgorithm.Auto) rows * cols else 0)
+    val layoverPre = new Array[Boolean](if (needSteep) rows * cols else 0)
     val thetaLocPre: Array[Double] =
-      if (algorithm == RtcAlgorithm.Auto) {
+      if (needSteep) {
         val t = new Array[Double](rows * cols)
         java.util.Arrays.fill(t, Double.NaN)
         Array.range(0, rows).par.foreach { r =>
@@ -368,14 +378,18 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
         t
       } else null
 
+    val steep: Array[Boolean] =
+      if (needSteep) {
+        val minRad = math.toRadians(config.rtcAutoMinLocalIncidenceDeg)
+        val maxRad = math.toRadians(config.rtcAutoMaxLocalIncidenceDeg)
+        Array.tabulate(rows * cols)(i => !java.lang.Double.isNaN(thetaLocPre(i)) &&
+          (thetaLocPre(i) < minRad || thetaLocPre(i) > maxRad || layoverPre(i)))
+      } else null
+
     val useArea: Array[Boolean] = algorithm match {
       case RtcAlgorithm.BilinearDistribution =>
         Array.tabulate(rows * cols)(isInScene)
       case RtcAlgorithm.Auto =>
-        val minRad = math.toRadians(config.rtcAutoMinLocalIncidenceDeg)
-        val maxRad = math.toRadians(config.rtcAutoMaxLocalIncidenceDeg)
-        val steep = Array.tabulate(rows * cols)(i => !java.lang.Double.isNaN(thetaLocPre(i)) &&
-          (thetaLocPre(i) < minRad || thetaLocPre(i) > maxRad || layoverPre(i)))
         val inScene = Array.tabulate(rows * cols)(isInScene)
         val nScene = inScene.count(identity)
         val nSteep = steep.count(identity)
@@ -395,6 +409,15 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
       } else None
     val rtcMinValue = config.rtcMinValueDb.map(db => math.pow(10.0, db / 10.0)).getOrElse(0.0)
 
+    // 6c. Cast shadow: only for tiles with steep terrain.
+    val castShadowed: Array[Boolean] =
+      if (castShadowCheck && steep.exists(identity)) {
+        val tStart = System.nanoTime()
+        val result = computeCastShadow(ctx, dem, lonRadGrid, latRadGrid, pGndX, pGndY, pGndZ, pSatX, pSatY, pSatZ, isInScene)
+        logger.debug(s"sar_backscatter: item ${req.sceneId}, cast shadow took ${(System.nanoTime() - tStart) / 1000000} ms")
+        result
+      } else null
+
     // 7. Second pass: sample, calibrate, fill angles + mask bands.
     Array.range(0, rows).par.foreach { r =>
       var c = 0
@@ -411,6 +434,7 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
 
           var isLayover = false
           var isShadow  = false
+          val isCastShadow = castShadowed != null && castShadowed(i)
           var rtcFactor = 1.0
           var areaFactor = Double.NaN
           val areaPx = anf.isDefined && useArea(i)
@@ -421,18 +445,23 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
             val pSat = Vec3(pSatX(i), pSatY(i), pSatZ(i))
             val ellipsoidNorm = Ecef.ellipsoidalNormal(pGnd)
             val thetaEl = RangeDoppler.localIncidence(pGnd, pSat, ellipsoidNorm)
-            val terrainNorm = terrainSurfaceNormal(demB, lonRadGrid, latRadGrid, r, c, req)
-            val thetaLoc = if (thetaLocPre != null) thetaLocPre(i) else RangeDoppler.localIncidence(pGnd, pSat, terrainNorm)
+            // The steep pre-pass already has the local incidence angles and the layover test: reuse them.
+            val (thetaLoc, rangeLayover) =
+              if (thetaLocPre != null) (thetaLocPre(i), layoverPre(i))
+              else {
+                val terrainNorm = terrainSurfaceNormal(demB, lonRadGrid, latRadGrid, r, c, req)
+                (RangeDoppler.localIncidence(pGnd, pSat, terrainNorm),
+                  RangeDoppler.localIncidenceInRangePlane(pGnd, pSat, terrainNorm, ellipsoidNorm) < 0.0)
+              }
             sinEl = math.sin(thetaEl)
 
             if (config.localIncidenceAngle) localInc.get.setDouble(c, r, math.toDegrees(thetaLoc))
             if (config.ellipsoidIncidenceAngle) ellipsInc.get.setDouble(c, r, math.toDegrees(thetaEl))
 
             // Layover: the terrain faces the sensor more steeply than the look direction (range plane).
-            // Shadow: the terrain faces away from the sensor.
-            val thetaLocRange = RangeDoppler.localIncidenceInRangePlane(pGnd, pSat, terrainNorm, ellipsoidNorm)
-            isLayover = thetaLocRange < 0.0 || thetaEl > math.Pi / 2.0
-            isShadow = !isLayover && thetaLoc >= math.Pi / 2.0
+            // Shadow: the terrain faces away from the sensor, or is hidden from it by terrain closer to it.
+            isLayover = rangeLayover || thetaEl > math.Pi / 2.0
+            isShadow = !isLayover && (thetaLoc >= math.Pi / 2.0 || isCastShadow)
 
             if (doShadow) {
               shadowLayover.get.setDouble(c, r,
@@ -456,8 +485,9 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
 
           // The area-based algorithms handle layover and shadow themselves (ANF sums the facets; NaN in shadow).
           // Backscatter is only masked when the terrain classification was asked for, or for the angle-based gamma0.
+          // Cast shadow is not seen by the area-based algorithms: always masked.
           val maskInvalid = (doGamma0 || doShadow) && !areaPx
-          if (!(maskInvalid && (isLayover || isShadow))) {
+          if (!(maskInvalid && (isLayover || isShadow)) && !isCastShadow) {
             var p = 0
             while (p < pols.length) {
               val polMeta = polMetas(p)
@@ -567,6 +597,153 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
     }
 
     AreaRtc.computeRtcBilinearDistribution(fineDem, lonLatRad, grid, meta.orbit, tSeed, nChunks)
+  }
+
+  /** Pixels of the tile in cast shadow: hidden from the sensor by terrain between them and the sensor. The line of
+   *  sight of each pixel is followed towards the sensor (in its zero-Doppler plane) over a DEM with a margin on the
+   *  sensor side of the tile, until it is above the highest terrain; the pixel is shadowed if the terrain rises above
+   *  it. Equivalent to the elevation angle test of ISCE3 `Topo::setLayoverShadow` along a range line. The margin is
+   *  grown until it holds all terrain that is high enough to shadow the tile, up to [[MaxCastShadowMarginMetres]]. */
+  private def computeCastShadow(ctx: TileComputeContext, tileDem: Array[Array[Float]],
+                                lonRadGrid: Array[Double], latRadGrid: Array[Double],
+                                pGndX: Array[Double], pGndY: Array[Double], pGndZ: Array[Double],
+                                pSatX: Array[Double], pSatY: Array[Double], pSatZ: Array[Double],
+                                isInScene: Int => Boolean): Array[Boolean] = {
+    val req = ctx.request
+    val rows = req.rows; val cols = req.cols
+    val cw = req.cellSize.width; val ch = req.cellSize.height
+    val n = rows * cols
+    val out = new Array[Boolean](n)
+
+    // Map coordinates per metre east and north, at the tile centre (varies negligibly over the length of a shadow).
+    val (xPerE, xPerN, yPerE, yPerN) = {
+      val toLonLat = geotrellis.proj4.Transform(req.crs, LatLng)
+      val cx = 0.5 * (req.extent.xmin + req.extent.xmax); val cy = 0.5 * (req.extent.ymin + req.extent.ymax)
+      val (lon0, lat0) = toLonLat(cx, cy)
+      val (lonX, latX) = toLonLat(cx + 1.0, cy)
+      val (lonY, latY) = toLonLat(cx, cy + 1.0)
+      val sinLat = math.sin(math.toRadians(lat0))
+      val w = 1.0 - Ecef.e2 * sinLat * sinLat
+      val primeVertical = Ecef.a / math.sqrt(w)
+      val meridional = Ecef.a * (1.0 - Ecef.e2) / (w * math.sqrt(w))
+      def en(lon: Double, lat: Double) =
+        (math.toRadians(lon - lon0) * primeVertical * math.cos(math.toRadians(lat0)), math.toRadians(lat - lat0) * meridional)
+      val (eX, nX) = en(lonX, latX); val (eY, nY) = en(lonY, latY)
+      val det = eX * nY - eY * nX
+      (nY / det, -eY / det, -nX / det, eX / det)
+    }
+
+    // Horizontal direction of the line of sight towards the sensor, in DEM grid cells (columns, rows) per metre, and
+    // the rise of the line of sight per horizontal metre. Null where the sensor is below the horizon.
+    def look(i: Int): Array[Double] = {
+      val lon = lonRadGrid(i); val lat = latRadGrid(i)
+      val sLon = math.sin(lon); val cLon = math.cos(lon); val sLat = math.sin(lat); val cLat = math.cos(lat)
+      val lx = pSatX(i) - pGndX(i); val ly = pSatY(i) - pGndY(i); val lz = pSatZ(i) - pGndZ(i)
+      val le = -sLon * lx + cLon * ly
+      val ln = -sLat * cLon * lx - sLat * sLon * ly + cLat * lz
+      val lu = cLat * cLon * lx + cLat * sLon * ly + sLat * lz
+      val hz = math.hypot(le, ln)
+      if (hz <= 0.0 || lu <= 0.0) return null
+      val de = le / hz; val dn = ln / hz
+      Array((xPerE * de + xPerN * dn) / cw, -(yPerE * de + yPerN * dn) / ch, lu / hz)
+    }
+
+    var minTanE = Double.MaxValue
+    var sumGc = 0.0; var sumGr = 0.0
+    var i = 0
+    while (i < n) {
+      if (isInScene(i)) {
+        val l = look(i)
+        if (l != null) { sumGc += l(0); sumGr += l(1); minTanE = math.min(minTanE, l(2)) }
+      }
+      i += 1
+    }
+    if (minTanE == Double.MaxValue) return out
+    val dirNorm = math.hypot(sumGc, sumGr)
+    if (dirNorm == 0.0) return out
+    val dirC = sumGc / dirNorm; val dirR = sumGr / dirNorm // unit direction towards the sensor, in grid cells
+
+    def minMax(dem: Array[Array[Float]]): (Double, Double) = {
+      var lo = Double.MaxValue; var hi = -Double.MaxValue
+      for (row <- dem; h <- row if !java.lang.Float.isNaN(h)) { lo = math.min(lo, h); hi = math.max(hi, h) }
+      (lo, hi)
+    }
+
+    // DEM extended with `margin` metres towards the sensor (2 cells on the other sides), aligned with the tile grid.
+    def readWithMargin(margin: Double): (Array[Array[Float]], Int, Int) = {
+      val cellMetres = math.min(cw, ch)
+      val extraC = math.ceil(margin / cellMetres * math.abs(dirC)).toInt + 2
+      val extraR = math.ceil(margin / cellMetres * math.abs(dirR)).toInt + 2
+      val left = if (dirC < 0) extraC else 2; val right = if (dirC > 0) extraC else 2
+      val top = if (dirR < 0) extraR else 2; val bottom = if (dirR > 0) extraR else 2
+      val e = req.extent
+      val extent = Extent(e.xmin - left * cw, e.ymin - bottom * ch, e.xmax + right * cw, e.ymax + top * ch)
+      (TerrainCorrectionProcessor.readDemEllipsoidal(ctx.copy(request = req.copy(extent = extent))), left, top)
+    }
+
+    val (hMinTile, hMaxTile) = minMax(tileDem)
+    if (hMinTile == Double.MaxValue) return out
+    // Start from the relief of the tile itself, grow the margin while higher terrain is found in it.
+    var margin = math.min(MaxCastShadowMarginMetres, (hMaxTile - hMinTile) / minTanE * 1.2 + 4 * math.max(cw, ch))
+    var (dem, offC, offR) = readWithMargin(margin)
+    var hMax = minMax(dem)._2
+    var done = false
+    while (!done) {
+      val needed = (hMax - hMinTile) / minTanE
+      if (needed <= margin || margin >= MaxCastShadowMarginMetres) done = true
+      else {
+        margin = math.min(MaxCastShadowMarginMetres, needed * 1.2 + 4 * math.max(cw, ch))
+        val (d, c0, r0) = readWithMargin(margin)
+        dem = d; offC = c0; offR = r0
+        hMax = minMax(dem)._2
+      }
+    }
+
+    val demRows = dem.length; val demCols = dem(0).length
+    def sample(col: Double, row: Double): Double = {
+      val c0 = math.floor(col).toInt; val r0 = math.floor(row).toInt
+      if (c0 < 0 || r0 < 0 || c0 + 1 >= demCols || r0 + 1 >= demRows) return Double.NaN
+      val tx = col - c0; val ty = row - r0
+      val a = dem(r0)(c0) + (dem(r0)(c0 + 1) - dem(r0)(c0)) * tx
+      val b = dem(r0 + 1)(c0) + (dem(r0 + 1)(c0 + 1) - dem(r0 + 1)(c0)) * tx
+      a + (b - a) * ty
+    }
+
+    val twoR = 2.0 * Ecef.a
+    Array.range(0, rows).par.foreach { r =>
+      var c = 0
+      while (c < cols) {
+        val i = r * cols + c
+        val hP = dem(r + offR)(c + offC).toDouble
+        if (isInScene(i) && !java.lang.Double.isNaN(hP) && hP < hMax) {
+          val l = look(i)
+          if (l != null) {
+            val gc = l(0); val gr = l(1); val tanE = l(2)
+            val step = 1.0 / math.max(math.abs(gc), math.abs(gr)) // metres per cell along the dominant axis
+            val c0 = c + offC; val r0 = r + offR
+            var k = 1
+            var marching = true
+            while (marching) {
+              val d = k * step
+              // straight line of sight above the curved Earth
+              val rayH = hP + d * tanE + d * d / twoR
+              if (rayH >= hMax) marching = false
+              else {
+                val col = c0 + d * gc; val row = r0 + d * gr
+                if (col < 0 || row < 0 || col >= demCols - 1 || row >= demRows - 1) marching = false
+                else {
+                  val z = sample(col, row)
+                  if (z > rayH + CastShadowToleranceMetres) { out(i) = true; marching = false }
+                }
+              }
+              k += 1
+            }
+          }
+        }
+        c += 1
+      }
+    }
+    out
   }
 
   /** Outward terrain surface normal at grid position (col, row) in ECEF,
