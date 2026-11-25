@@ -36,3 +36,26 @@ final class Lut2D(val lines: Array[Int], val pixels: Array[Int],
     (lo, hi, t)
   }
 }
+
+object Lut2D {
+  /** Builds a LUT from per-line vectors whose pixel sample positions may differ from line to line
+   *  (as in newer thermal-noise annotations). Rows are resampled linearly onto the union of all
+   *  pixel positions, clamping outside a row's own range. */
+  def fromVectors(lines: Array[Int], pixelsPerLine: Seq[Array[Int]], valuesPerLine: Seq[Array[Float]]): Lut2D = {
+    require(lines.length == pixelsPerLine.length && lines.length == valuesPerLine.length,
+      "sar_backscatter: LUT row count mismatch")
+    pixelsPerLine.zip(valuesPerLine).foreach { case (p, v) =>
+      require(p.length == v.length, "sar_backscatter: LUT column count mismatch")
+    }
+    if (pixelsPerLine.forall(p => java.util.Arrays.equals(p, pixelsPerLine.head)))
+      new Lut2D(lines, pixelsPerLine.head, valuesPerLine.toArray)
+    else {
+      val union = pixelsPerLine.flatten.distinct.sorted.toArray
+      val values = pixelsPerLine.zip(valuesPerLine).map { case (p, v) =>
+        val row = new Lut2D(Array(0), p, Array(v))
+        union.map(x => row(0.0, x.toDouble).toFloat)
+      }.toArray
+      new Lut2D(lines, union, values)
+    }
+  }
+}

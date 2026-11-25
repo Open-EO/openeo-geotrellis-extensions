@@ -1,10 +1,8 @@
 package org.openeo.sar.provider
 
 import cats.data.NonEmptyList
-import com.github.benmanes.caffeine.cache.Caffeine
-import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{CellSize, GridExtent, RasterSource, StringName}
-import geotrellis.vector.Extent
+import geotrellis.proj4.LatLng
+import geotrellis.raster.{GridExtent, RasterSource, StringName}
 import org.openeo.geotrellis.layers.provider.{RasterSourceDefinition, RasterSourceProvider}
 import org.openeo.geotrellis.layers.raster_source.IndexedRasterSource
 import org.openeo.sar._
@@ -15,35 +13,26 @@ import org.openeo.sar.raster.S1GrdRasterSource
 import org.slf4j.LoggerFactory
 
 import java.net.URI
-import java.util.concurrent.TimeUnit
 
 /** Recognises Sentinel-1 GRD measurement TIFF or SAFE paths and returns an
  *  [[S1GrdRasterSource]] that performs sigma0 calibration and terrain
  *  correction on-the-fly.
  *
- *  Scene-level state ([[SceneContext]]) is expensive (XML parsing, RasterSource
- *  construction).  We cache it in a Caffeine cache keyed by the SAFE root URI
- *  so that different calls for the same scene / different polarisations share
- *  the same context without redundant I/O.
+ *  Opening a scene (STAC item, annotation XML parsing, DEM search, RasterSource
+ *  construction) is deferred until the returned source is first read, so that it
+ *  happens once per scene on the executor (data is grouped by product) rather than
+ *  on the driver, and is not serialized into shuffles.  Only a light [[SceneSpec]]
+ *  is carried by the source.
  *
  *  @param processor              pre-configured [[TerrainCorrectionProcessor]].
  *                                Callers can inject any backend, DEM and geoid.
- *  @param sceneContextCacheSize  max number of scenes to keep in the cache.
  * */
 class Sentinel1GrdRasterSourceProvider(
   val processor: TerrainCorrectionProcessor,
-  val processingConfig: SarProcessingConfig = SarProcessingConfig.default,
-  val sceneContextCacheSize: Int = 16
+  val processingConfig: SarProcessingConfig = SarProcessingConfig.default
 ) extends RasterSourceProvider {
 
   private val logger = LoggerFactory.getLogger(getClass)
-
-  // Cache SceneContext keyed by SAFE-root URI + CRS + CellSize to avoid
-  // re-parsing annotation XML / re-opening RasterSources for every band.
-  private val sceneCache = Caffeine.newBuilder()
-    .maximumSize(sceneContextCacheSize)
-    .expireAfterAccess(30, TimeUnit.MINUTES)
-    .build[SceneCacheKey, SceneContext]()
 
   // ---- RasterSourceProvider contract ----------------------------------------
 
@@ -54,15 +43,13 @@ class Sentinel1GrdRasterSourceProvider(
   }
 
   override def rasterSource(definition: RasterSourceDefinition): RasterSource = {
-    val (scene, safeRoot, crs, cellSize) = openScene(definition, requestedPolarisation(definition).toSeq)
-    val ge = GridExtent[Long](definition.targetExtent.extent, cellSize)
+    val (spec, safeRoot) = sceneSpec(definition, requestedPolarisation(definition).toSeq)
+    val ge = GridExtent[Long](definition.targetExtent.extent, spec.cellSize)
     // The scene source carries all polarisations: select the one this definition refers to.
-    val bandIndex = polarisationBandIndex(definition, scene.polarisations, safeRoot)
+    val bandIndex = polarisationBandIndex(definition, spec.polarisations, safeRoot)
 
-    IndexedRasterSource(new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString)), bandIndex)
+    IndexedRasterSource(new S1GrdRasterSource(spec, processor, ge, spec.crs, StringName(safeRoot.toString)), bandIndex)
   }
-
-
 
   /** Serves all requested polarisation bands of one feature from a single [[S1GrdRasterSource]]: the
    *  scene (orbit/LUTs/RasterSources) is opened once and shared, and terrain correction for all
@@ -70,28 +57,24 @@ class Sentinel1GrdRasterSourceProvider(
   override def multibandRasterSource(definitions: NonEmptyList[RasterSourceDefinition]): Option[(RasterSource, Seq[Int])] = {
     // All definitions belong to the same feature/target extent (see FileLayerProvider), so scene state
     // (and hence the polarisation ordering used to open it) can be derived from any single one of them.
-    val (scene, safeRoot, crs, cellSize) = openScene(definitions.head, definitions.toList.flatMap(requestedPolarisation))
-    val ge = GridExtent[Long](definitions.head.targetExtent.extent, cellSize)
-    val source: RasterSource = new S1GrdRasterSource(scene, processor, ge, crs, StringName(safeRoot.toString))
+    val (spec, safeRoot) = sceneSpec(definitions.head, definitions.toList.flatMap(requestedPolarisation))
+    val ge = GridExtent[Long](definitions.head.targetExtent.extent, spec.cellSize)
+    val source: RasterSource = new S1GrdRasterSource(spec, processor, ge, spec.crs, StringName(safeRoot.toString))
 
     val bandIndices = definitions.toList.map { definition =>
-      polarisationBandIndex(definition, scene.polarisations, safeRoot)
+      polarisationBandIndex(definition, spec.polarisations, safeRoot)
     }
 
     Some((source, bandIndices))
   }
 
-  /** Opens (or retrieves from cache) the [[SceneContext]] backing `definition`, alongside the SAFE
-   *  root/CRS/cellSize used to key it. Shared by `rasterSource` and `multibandRasterSource` so that a
-   *  scene opened for one band is reused for the others (both via the cache, and, in the latter case,
-   *  by construction - one open serves every requested polarisation). */
-  private def openScene(definition: RasterSourceDefinition,
-                        requestedPolarisations: Seq[Polarisation]): (SceneContext, URI, CRS, CellSize) = {
-    val crs      = definition.targetExtent.crs
-    val cellSize = definition.theResolution
-
+  /** Describes the scene backing `definition`, plus its SAFE root, without any I/O: the scene itself
+   *  (annotation XML, DEM search, RasterSources) is only opened when the source is first read, on the
+   *  executor, so that none of it is built on the driver or serialized into shuffles. */
+  private def sceneSpec(definition: RasterSourceDefinition,
+                        requestedPolarisations: Seq[Polarisation]): (SceneSpec, URI) = {
     val safeRoot: URI = deriveSafeRoot(definition)
-    val stacItemUrl: Option[URI] = definition.feature.selfUrl
+    val stacItemUrl: URI = definition.feature.selfUrl.getOrElse(unsupportedWithoutStacItem(safeRoot))
 
     // Per-request `sar_backscatter` arguments (openEO process graph), if any, override the
     // provider-level default processing config.
@@ -103,25 +86,12 @@ class Sentinel1GrdRasterSourceProvider(
         .getOrElse(processingConfig)
         .copy(softErrors = definition.softErrors)
 
-    // All scenes of a load share the target extent: one DEM catalog search serves all of them. The scene keeps
-    // the DEM items found for this extent, so the extent is part of the cache key.
+    // All scenes of a load share the target extent: one DEM catalog search serves all of them.
     val demSearchExtent = definition.targetExtent.reproject(LatLng)
-    val cacheKey = SceneCacheKey(safeRoot, crs, cellSize, effectiveProcessingConfig, demSearchExtent)
+    val pols = derivePolarisations(definition, requestedPolarisations)
 
-    val scene = sceneCache.get(cacheKey, (_: SceneCacheKey) => {
-      val pols = derivePolarisations(definition, requestedPolarisations)
-      logger.info(s"sar_backscatter: Opening $safeRoot, pols=${pols.map(_.code).mkString(",")}, crs=$crs, cellSize=$cellSize, " +
-        s"coefficient=${effectiveProcessingConfig.normalization}")
-
-      stacItemUrl match {
-        case Some(url) =>
-          processor.openScene(url, cellSize, crs, pols, effectiveProcessingConfig, Some(demSearchExtent))
-        case None =>
-          openSceneFromSafeRoot(safeRoot, pols, cellSize, crs)
-      }
-    })
-
-    (scene, safeRoot, crs, cellSize)
+    (SceneSpec(stacItemUrl, pols, effectiveProcessingConfig, Some(demSearchExtent),
+      definition.theResolution, definition.targetExtent.crs), safeRoot)
   }
 
   // ---- helpers ---------------------------------------------------------------
@@ -177,23 +147,17 @@ class Sentinel1GrdRasterSourceProvider(
       .flatMap(polarisationOfBandName)
       .distinct
 
-    if (fromHrefs.nonEmpty) fromHrefs.sorted.map(Polarisation.parse)
+    if (fromHrefs.nonEmpty) fromHrefs.sorted.map(Polarisation.parse).toSeq
     else if (fromBandNames.nonEmpty) fromBandNames.sortBy(_.code)
     else if (requestedPolarisations.nonEmpty) requestedPolarisations.distinct.sortBy(_.code)
     else Seq(Polarisation.VV)
   }
 
-  /** Open a scene when no STAC item URL is available.
-   *  Currently requires a STAC item URL — throws otherwise. */
-  private def openSceneFromSafeRoot(safeRoot: URI,
-                                    pols: Seq[Polarisation],
-                                    cellSize: CellSize,
-                                    crs: CRS): SceneContext = {
+  private def unsupportedWithoutStacItem(safeRoot: URI): Nothing =
     throw new UnsupportedOperationException(
       s"sar_backscatter: cannot open SAR scene from SAFE root without a STAC item URL. " +
       s"Ensure the OpenSearch feature has a selfUrl pointing to the STAC item. " +
       s"SAFE root: $safeRoot")
-  }
 }
 
 object Sentinel1GrdRasterSourceProvider {
@@ -255,18 +219,23 @@ object Sentinel1GrdRasterSourceProvider {
  *
  *  Environment variable overrides:
  *    S1_NORMALIZATION       – "sigma0" (default) or "gamma0rtc"
- *    S1_SHADOW_LAYOVER_MASK – "true" to add shadow/layover band */
+ *    S1_SHADOW_LAYOVER_MASK – "true" to add shadow/layover band
+ *    S1_RTC_ALGORITHM       – default RTC algorithm for gamma0rtc: "auto" (default), "angle" or "bilinear_distribution";
+ *                             overridden by the `rtc_algorithm` option of `sar_backscatter`
+ *    S1_MAX_TILE_MEMORY_MB  – Java heap budget (MB) for the working memory of one tile computation (default 512):
+ *                             larger tiles are computed in blocks that stay within it */
 class DefaultSentinel1GrdRasterSourceProvider
   extends Sentinel1GrdRasterSourceProvider(
-    processor = new TerrainCorrectionProcessor(new NativeBackend),
+    processor = new TerrainCorrectionProcessor(new NativeBackend(
+      Option(System.getenv("S1_MAX_TILE_MEMORY_MB")).map(_.trim.toLong * 1024 * 1024)
+        .getOrElse(NativeBackend.DefaultMaxWorkingMemoryBytes))),
     processingConfig = {
       val norm = Option(System.getenv("S1_NORMALIZATION")).map(_.toLowerCase) match {
         case Some("gamma0rtc") => BackscatterNormalization.Gamma0RTC
         case _                 => BackscatterNormalization.Sigma0
       }
       val shadow = Option(System.getenv("S1_SHADOW_LAYOVER_MASK")).exists(_.equalsIgnoreCase("true"))
-      SarProcessingConfig(norm, shadow)
+      val rtcAlgorithm = Option(System.getenv("S1_RTC_ALGORITHM")).map(RtcAlgorithm.parse).getOrElse(RtcAlgorithm.Auto)
+      SarProcessingConfig(norm, shadow, rtcAlgorithm = rtcAlgorithm)
     }
   )
-private final case class SceneCacheKey(safeRoot: URI, crs: CRS, cellSize: CellSize, config: SarProcessingConfig,
-                                          demSearchExtent: Extent)
