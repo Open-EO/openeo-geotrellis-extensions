@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `sar_backscatter`: `coefficient="gamma0-terrain"` (radiometric terrain correction) is now available for Sentinel-1 GRD. By default the algorithm is `auto` (`options={"rtc_algorithm": "auto"}`): it uses the fast angle-based correction on flat terrain and switches to the more accurate area-based correction (`bilinear_distribution`) only for tiles or neighbourhoods with steep slopes. Use `rtc_algorithm="angle"` or `"bilinear_distribution"` to force one method. See [sar-terrain-correction/README.md](sar-terrain-correction/README.md) ([#869](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/869)).
+
+
+
+## Before 2026-11-23
+
+### Added
+
 - aggregate_spatial: `AggregateOutputOptions` (output path, `csv`/`parquet` format, `file`/`distributed` filesystem) and matching `ComputeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube` overloads. Existing signatures are unchanged and keep writing CSV to a local path ([#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671)).
 - aggregate_spatial: `ComputeStatsGeotrellisAdapter.compute_generic_timeseries_dataframe_from_datacube` returns the aggregated result as a local DataFrame (no output files) for small timeseries ([#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671)).
 - Sentinel-2 tile metadata (`MTD_TL.xml`): per-pixel angle bands `granule_metadata##4` to `##7`, for sun azimuth and zenith and for the B05 viewing azimuth and zenith. Viewing angles come from the grid of the detector that observed each pixel, found with the B05 detector mask. Values are calculated at each output pixel centre. The tile-mean bands `##0` to `##3` are unchanged. Products with GML detector masks (before processing baseline 04.00) get NoData viewing bands. See [docs/sentinel2-angle-bands.md](docs/sentinel2-angle-bands.md) ([#916](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/916)).
