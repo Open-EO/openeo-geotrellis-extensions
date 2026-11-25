@@ -1,7 +1,6 @@
 package org.openeo.geotrellis
 
-import _root_.io.circe.DecodingFailure
-import _root_.io.circe.HCursor
+import _root_.io.circe.{DecodingFailure, HCursor}
 import geotrellis.proj4.{CRS, LatLng, Transform}
 import geotrellis.vector._
 import geotrellis.vector.io.json.{JsonCRS, JsonFeatureCollection, NamedCRS}
@@ -264,14 +263,16 @@ object ProjectedPolygons {
   }
 
   def splitGeometry(inputPolygon: Polygon, intersector: Polygon): MultiPolygon = {
-    val intersect = inputPolygon.intersection(intersector) match {
+    // Touching geometries can yield degenerate results (points, lines); only keep the polygonal parts.
+    def polygonsOf(geometry: Geometry): Array[Polygon] = geometry match {
       case multiPolygon: MultiPolygon => multiPolygon.polygons.filter(!_.isEmpty)
       case polygon: Polygon => Array(polygon).filter(!_.isEmpty)
+      case collection: GeometryCollection =>
+        (0 until collection.getNumGeometries).flatMap(i => polygonsOf(collection.getGeometryN(i))).toArray
+      case _ => Array.empty[Polygon]
     }
-    val difference = inputPolygon.difference(intersector) match {
-      case multiPolygon: MultiPolygon => multiPolygon.polygons.filter(!_.isEmpty)
-      case polygon: Polygon => Array(polygon).filter(!_.isEmpty)
-    }
+    val intersect = polygonsOf(inputPolygon.intersection(intersector))
+    val difference = polygonsOf(inputPolygon.difference(intersector))
     MultiPolygon(intersect ++ difference)
   }
 
