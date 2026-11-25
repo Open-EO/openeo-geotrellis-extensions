@@ -86,7 +86,7 @@ final class S1GrdRasterSource(
 
   /** Efficient multi-extent read: shares per-pixel geometry work via the
    *  shared [[SceneContext]] (no repeated XML parsing or RasterSource opens). */
-  override def readExtents(extents: Traversable[Extent],
+  override def readExtents(extents: Iterable[Extent],
                            bands: Seq[Int]): Iterator[Raster[MultibandTile]] =
     processor.readExtents(sceneContext, extents, bands)
 

@@ -649,12 +649,12 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
     }
 
     var minTanE = Double.MaxValue
-    var sumGc = 0.0; var sumGr = 0.0
+    var sumGc = 0.0; var sumGr = 0.0; var sumCells = 0.0; var nLooks = 0
     var i = 0
     while (i < n) {
       if (isInScene(i)) {
         val l = look(i)
-        if (l != null) { sumGc += l(0); sumGr += l(1); minTanE = math.min(minTanE, l(2)) }
+        if (l != null) { sumGc += l(0); sumGr += l(1); sumCells += math.hypot(l(0), l(1)); nLooks += 1; minTanE = math.min(minTanE, l(2)) }
       }
       i += 1
     }
@@ -670,10 +670,11 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
     }
 
     // DEM extended with `margin` metres towards the sensor (2 cells on the other sides), aligned with the tile grid.
+    // The look vectors are in grid cells per metre, so the margin (in metres) is converted with their mean length.
+    val cellsPerMetre = sumCells / nLooks
     def readWithMargin(margin: Double): (Array[Array[Float]], Int, Int) = {
-      val cellMetres = math.min(cw, ch)
-      val extraC = math.ceil(margin / cellMetres * math.abs(dirC)).toInt + 2
-      val extraR = math.ceil(margin / cellMetres * math.abs(dirR)).toInt + 2
+      val extraC = math.ceil(margin * cellsPerMetre * math.abs(dirC)).toInt + 2
+      val extraR = math.ceil(margin * cellsPerMetre * math.abs(dirR)).toInt + 2
       val left = if (dirC < 0) extraC else 2; val right = if (dirC > 0) extraC else 2
       val top = if (dirR < 0) extraR else 2; val bottom = if (dirR > 0) extraR else 2
       val e = req.extent
@@ -684,7 +685,7 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
     val (hMinTile, hMaxTile) = minMax(tileDem)
     if (hMinTile == Double.MaxValue) return out
     // Start from the relief of the tile itself, grow the margin while higher terrain is found in it.
-    var margin = math.min(MaxCastShadowMarginMetres, (hMaxTile - hMinTile) / minTanE * 1.2 + 4 * math.max(cw, ch))
+    var margin = math.min(MaxCastShadowMarginMetres, (hMaxTile - hMinTile) / minTanE * 1.2 + 4 / cellsPerMetre)
     var (dem, offC, offR) = readWithMargin(margin)
     var hMax = minMax(dem)._2
     var done = false
@@ -692,7 +693,7 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
       val needed = (hMax - hMinTile) / minTanE
       if (needed <= margin || margin >= MaxCastShadowMarginMetres) done = true
       else {
-        margin = math.min(MaxCastShadowMarginMetres, needed * 1.2 + 4 * math.max(cw, ch))
+        margin = math.min(MaxCastShadowMarginMetres, needed * 1.2 + 4 / cellsPerMetre)
         val (d, c0, r0) = readWithMargin(margin)
         dem = d; offC = c0; offR = r0
         hMax = minMax(dem)._2

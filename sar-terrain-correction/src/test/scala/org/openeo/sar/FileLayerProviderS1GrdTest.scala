@@ -153,7 +153,7 @@ class FileLayerProviderS1GrdTest {
       datacubeParams = Some(datacubeParams)
     )
 
-    assertFalse(cube.isEmpty, "Result RDD must not be empty")
+    assertFalse(cube.isEmpty(), "Result RDD must not be empty")
 
     // Default config: nPols+1 bands = VV, VH, validity (angle bands and shadow/layover
     // mask are opt-in and off by default).

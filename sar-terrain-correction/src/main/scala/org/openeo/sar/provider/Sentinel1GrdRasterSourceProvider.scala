@@ -147,7 +147,7 @@ class Sentinel1GrdRasterSourceProvider(
       .flatMap(polarisationOfBandName)
       .distinct
 
-    if (fromHrefs.nonEmpty) fromHrefs.sorted.map(Polarisation.parse)
+    if (fromHrefs.nonEmpty) fromHrefs.sorted.map(Polarisation.parse).toSeq
     else if (fromBandNames.nonEmpty) fromBandNames.sortBy(_.code)
     else if (requestedPolarisations.nonEmpty) requestedPolarisations.distinct.sortBy(_.code)
     else Seq(Polarisation.VV)

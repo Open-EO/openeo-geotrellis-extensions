@@ -112,11 +112,11 @@ final class TerrainCorrectionProcessor(
    *  Only per-tile windowed I/O and geometry happen inside this iterator;
    *  the scene-level [[SceneContext]] is closed over by reference. */
   def readExtents(scene: SceneContext,
-                  extents: Traversable[Extent],
+                  extents: Iterable[Extent],
                   bands: Seq[Int]): Iterator[Raster[MultibandTile]] = {
     val totalBands = scene.config.bandCount(scene.polarisations.size)
     val effectiveBands = if (bands.isEmpty) (0 until totalBands) else bands
-    extents.toIterator.map { extent =>
+    extents.iterator.map { extent =>
       val ctx  = scene.tileContext(extent)
       val full = backend.compute(ctx)           // always compute all bands; band selection is cheap???
       val selected = MultibandTile(effectiveBands.map(full.band))
@@ -126,7 +126,7 @@ final class TerrainCorrectionProcessor(
 
   /** All bands, convenience overload. */
   def readExtents(scene: SceneContext,
-                  extents: Traversable[Extent]): Iterator[Raster[MultibandTile]] =
+                  extents: Iterable[Extent]): Iterator[Raster[MultibandTile]] =
     readExtents(scene, extents, Seq.empty)
 
   // -------------------------------------------------------------------------
