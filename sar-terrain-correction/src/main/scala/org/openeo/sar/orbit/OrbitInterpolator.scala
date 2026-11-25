@@ -15,7 +15,7 @@ final case class StateVector(t: Double, pos: Vec3, vel: Vec3)
  *  numerically well-behaved over ~minute-scale scenes. */
 final class OrbitInterpolator(private val svs: IndexedSeq[StateVector]) {
 
-  require(svs.length >= 8, s"need at least 8 state vectors, got ${svs.length}")
+  require(svs.length >= 8, s"sar_backscatter: need at least 8 state vectors, got ${svs.length}")
 
   private val WindowSize = 8
 

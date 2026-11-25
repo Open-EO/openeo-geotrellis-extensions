@@ -8,9 +8,12 @@ import org.locationtech.sfcurve.IndexRange
 import org.locationtech.sfcurve.zorder.{Z2, ZRange}
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
+import java.net.URI
+import java.nio.file.{Files, StandardCopyOption}
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.time.{Duration, Instant, LocalTime, OffsetTime, ZonedDateTime}
+import java.time.{Instant, LocalTime, OffsetTime, ZonedDateTime}
+import java.util.concurrent.ConcurrentHashMap
 
 package object geotrelliscommon {
 
@@ -334,6 +337,31 @@ package object geotrelliscommon {
     val end = Instant.now()
 
     (result, Duration.between(start, end))
+  }
+
+  private val extractedResources = new ConcurrentHashMap[URI, URI]()
+
+  /** Resolve a classpath resource to a file URI for readers requiring random access.
+   *  JAR resources are extracted once and retained until JVM exit. */
+  def resolveClasspathResource(resourcePath: String,
+                               classLoader: ClassLoader = Thread.currentThread().getContextClassLoader): URI = {
+    val url = Option(classLoader.getResource(resourcePath))
+      .getOrElse(throw new IllegalArgumentException(s"classpath resource not found: $resourcePath"))
+    if (url.getProtocol == "file") url.toURI
+    else extractedResources.computeIfAbsent(url.toURI, _ => {
+      val fileName = resourcePath.substring(resourcePath.lastIndexOf('/') + 1)
+      val dotIndex = fileName.lastIndexOf('.')
+      val (stem, suffix) =
+        if (dotIndex > 0) (fileName.substring(0, dotIndex), fileName.substring(dotIndex))
+        else (fileName, "")
+      val in = url.openStream()
+      try {
+        val tmp = Files.createTempFile(stem + "-", suffix)
+        tmp.toFile.deleteOnExit()
+        Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING)
+        tmp.toUri
+      } finally in.close()
+    })
   }
 
   object UdfLanguage extends Enumeration {

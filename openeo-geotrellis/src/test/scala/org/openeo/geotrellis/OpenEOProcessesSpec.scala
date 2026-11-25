@@ -37,7 +37,7 @@ import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTemporal}
 import org.openeo.geotrellis.layers.FileLayerProviderTest
 import org.openeo.geotrellis.testutil.stac._
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitioner, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.io.File
@@ -1621,8 +1621,8 @@ class OpenEOProcessesSpec extends RasterMatchers {
     assertTrue(retiled.partitioner.get.isInstanceOf[SpacePartitioner[SpatialKey]],
       s"Expected SpacePartitioner[SpatialKey], got ${retiled.partitioner.get.getClass.getSimpleName}")
     val idx = retiled.partitioner.get.asInstanceOf[SpacePartitioner[SpatialKey]].index
-    assertTrue(idx.isInstanceOf[ConfigurableSpatialPartitioner],
-      s"Expected ConfigurableSpatialPartitioner, got ${idx.getClass.getSimpleName}")
+    assertTrue(idx.isInstanceOf[ConfigurableSpatialPartitionerReduceZ],
+      s"Expected ConfigurableSpatialPartitionerReduceZ, got ${idx.getClass.getSimpleName}")
   }
 
   @Test

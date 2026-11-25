@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `sar_backscatter`: `coefficient="gamma0-terrain"` (radiometric terrain correction) is now available for Sentinel-1 GRD. By default the algorithm is `auto` (`options={"rtc_algorithm": "auto"}`): it uses the fast angle-based correction on flat terrain and switches to the more accurate area-based correction (`bilinear_distribution`) only for tiles or neighbourhoods with steep slopes. Use `rtc_algorithm="angle"` or `"bilinear_distribution"` to force one method. See [sar-terrain-correction/README.md](sar-terrain-correction/README.md) ([#869](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/869)).
+
+
+
+## Before 2026-11-23
+
+### Added
+
+- aggregate_spatial: `AggregateOutputOptions` (output path, `csv`/`parquet` format, `file`/`distributed` filesystem) and matching `ComputeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube` overloads. Existing signatures are unchanged and keep writing CSV to a local path ([#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671)).
+- aggregate_spatial: `ComputeStatsGeotrellisAdapter.compute_generic_timeseries_dataframe_from_datacube` returns the aggregated result as a local DataFrame (no output files) for small timeseries ([#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671)).
 - Sentinel-2 tile metadata (`MTD_TL.xml`): per-pixel angle bands `granule_metadata##4` to `##7`, for sun azimuth and zenith and for the B05 viewing azimuth and zenith. Viewing angles come from the grid of the detector that observed each pixel, found with the B05 detector mask. Values are calculated at each output pixel centre. The tile-mean bands `##0` to `##3` are unchanged. Products with GML detector masks (before processing baseline 04.00) get NoData viewing bands. See [docs/sentinel2-angle-bands.md](docs/sentinel2-angle-bands.md) ([#916](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/916)).
 
 ### Changed
@@ -21,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - merge_cubes: the `overlap_resolver` is now evaluated with `OpenEOProcessScriptBuilder` instead of a separate operator mapping, so it behaves exactly like the same process in other callbacks (nodata handling, data types). Notable behaviour changes:
   - `sum` now ignores nodata (default `ignore_nodata=true`): if only one cube has a value, that value is returned instead of nodata. `add` still returns nodata if either input is nodata.
   - `divide` and `mean` now always result in floats (`float32`), also for integer inputs.
+
+### Fixed
+
+- Zarr output: the `x`/`y` coordinates, `proj:bbox`, `proj:shape` and array shape now describe the written data, instead of the requested bbox. Coordinates are stored as float64 and the `time` axis is sorted ([#938](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/938)).
+- `sum` of boolean values (e.g. as reducer of `aggregate_temporal_period` on `cube > threshold`) now returns the count of `true` values, instead of the xor ([Open-EO/openeo-geopyspark-driver#1923](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1923)).
+- JEP UDFs: memory is limited to `spark.executor.pyspark.memory` again, with a soft limit instead of `RLIMIT_AS`, which limited the whole executor JVM. Python and numpy allocations are tracked with `tracemalloc`. When their total exceeds the limit, the running UDFs fail with `UdfMemoryLimitExceeded` (a `MemoryError`) ([#389](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/389)).
 
 ### Removed
 
@@ -46,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `load_collection` for sparse spatial filters: the computed index reduction no longer counts the number of temporal steps twice,
   which resulted in far too small partitions for sparse cubes with many dates. ([#924](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/924))
 - Fix `tile_grid` option for GeoTIFF output of spatial data cube ([Open-EO/openeo-geopyspark-driver#1765](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1765))
+- Fix job failure upon handling soft error: `java.lang.IllegalArgumentException: Counter SoftErrorMegaPixels is not registered.` ([#946](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/946))
 
 - Sentinel-2 angle bands: missing, malformed or unreadable `MTD_TL.xml` metadata and detector masks now follow the soft-error policy for both tile-mean and per-pixel bands, preserving healthy selected assets and using float32/NaN NoData. Strict reads still fail, cancellation still propagates, and extent-based composite reads preserve healthy bands ([#916](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/916)).
 
