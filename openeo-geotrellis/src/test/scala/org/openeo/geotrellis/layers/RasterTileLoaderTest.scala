@@ -65,6 +65,22 @@ object RasterTileLoaderTest {
 
 class RasterTileLoaderTest extends RasterMatchers {
 
+  @Test
+  def paddingOffset_clippedRaster(): Unit = {
+    // window starts 16 pixels before the source: the clipped raster (48 wide) is placed at offset 16
+    assertEquals(16, RasterTileLoader.paddingOffset(-16, 0, 64, 48))
+    // window fully inside the source
+    assertEquals(0, RasterTileLoader.paddingOffset(0, 0, 64, 64))
+  }
+
+  @Test
+  def paddingOffset_sourceReturnsFullWindow(): Unit = {
+    // production failure: "chunk at GridBounds(40,0,103,55) exceeds tile boundary at (64, 64)":
+    // the source returned the full 64 pixel wide window although the window starts before the source
+    assertEquals(0, RasterTileLoader.paddingOffset(-40, 0, 64, 64))
+  }
+
+
   import RasterTileLoaderTest._
 
   private def sentinel5PMaxSpatialResolution = CellSize(0.05, 0.05)
