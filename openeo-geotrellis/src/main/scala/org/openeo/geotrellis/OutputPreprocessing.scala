@@ -3,12 +3,12 @@ package org.openeo.geotrellis
 import geotrellis.layer._
 import geotrellis.raster
 import geotrellis.raster.crop.Crop.Options
-import geotrellis.raster.crop._
 import geotrellis.raster.{BitCellType, CellType, GridBounds, MultibandTile, RasterExtent, Tile, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.GeneralUtils.gridBoundsFor
+import org.openeo.geotrelliscommon.DatacubeSupport
 import org.slf4j.LoggerFactory
 
 import scala.reflect.ClassTag
@@ -61,10 +61,16 @@ object OutputPreprocessing {
     }
     val preprocessedRdd = {
       if (gridBounds.colMin != 0 || gridBounds.rowMin != 0 || layoutMisaligned) {
-        logger.info(s"Gridbounds requires reprojection: ${gridBounds}")
+        logger.info(s"save_result: unaligned grid bounds requires realignment: ${gridBounds} set strict_cropping format option to 'false' to avoid this.")
         val geotiffLayout: LayoutDefinition = LayoutDefinition(RasterExtent(croppedExtent, re.cellSize), rdd.metadata.tileCols, rdd.metadata.tileRows)
         val targetBounds = rdd.metadata.bounds.setSpatialBounds(KeyBounds(geotiffLayout.mapTransform.extentToBounds(croppedExtent)))
-        val partitioner = processes.computePartitionerForBounds(rdd, targetBounds, rdd.metadata.tileCols, rdd.metadata.tileRows)
+        // The partitioner's index reduction relies on a correct band count, which comes from the band labels.
+        val partitioner = if (DatacubeSupport.maybeBandLabels(rdd).isDefined)
+          processes.computePartitionerForBounds(rdd, targetBounds, rdd.metadata.tileCols, rdd.metadata.tileRows)
+        else {
+          logger.warn("save_result: band labels are unknown, not setting a partitioner")
+          None
+        }
         // Same CRS, so no buffering is needed: bufferSize = 0 matches the default reproject behaviour.
         val retiledRDD = filtered.reproject(rdd.metadata.crs, geotiffLayout, 0, partitioner)._2.crop(croppedExtent, Options(force = false))
 

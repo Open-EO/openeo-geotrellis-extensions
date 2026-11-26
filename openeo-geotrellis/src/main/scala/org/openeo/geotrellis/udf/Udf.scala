@@ -5,7 +5,7 @@ import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, Multiban
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import jep.{DirectNDArray, NDArray, SharedInterpreter}
-import org.apache.spark.{Partitioner, SparkContext}
+import org.apache.spark.{Partitioner, SparkConf, SparkContext, SparkEnv}
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.logger
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
@@ -195,7 +195,7 @@ object Udf {
 
           val interp = SharedInterpreterFactory.create()
           try {
-            interp.exec(defaultCodeBlock())
+            initInterpreter(interp)
             setContextInPython(interp, context)
             interp.exec(code)
             interp.exec(cubeMetadata)
@@ -206,7 +206,7 @@ object Udf {
             val targetResolutionX:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"x\"][0].step").asInstanceOf[Double]
             val targetResolutionY:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"y\"][0].step").asInstanceOf[Double]
             (CellSize(targetResolutionX,targetResolutionY), newBandNames)
-          } finally if (interp != null) interp.close()
+          } finally if (interp != null) closeInterpreter(interp)
         }).collect().apply(0)
         val ratioX = layer.metadata.layout.cellSize.width / newCellSize.width
         val ratioY = layer.metadata.layout.cellSize.height / newCellSize.height
@@ -220,29 +220,74 @@ object Udf {
       }
   }
 
-  private def defaultCodeBlock() = {
-    val memoryLimitBytes = -1
-//      try {
-//        SparkContext.getOrCreate().getConf.getSizeAsBytes("spark.executor.pyspark.memory", -1)
-//      } catch {
-//        case t: Throwable => {
-//          logger.error(f"Failed to get spark context (${t.getMessage}) to determine spark.executor.pyspark.memory")
-//          -1
-//        }
-//        case e: Error => {
-//          logger.error(s"Failed to get spark context (${e.getMessage}) to determine spark.executor.pyspark.memory")
-//          -1
-//        }
-//      }
+  private val MEMORY_GUARD_MODULE = "_openeo_jep_memory_guard"
+
+  private lazy val memoryGuardSource: String = {
+    val source = scala.io.Source.fromURL(getClass.getResource("/org/openeo/geotrellis/udf/jep_memory_guard.py"))
+    try source.mkString finally source.close()
+  }
+
+  /**
+   * Soft limit on the memory used by UDFs in the JEP interpreter, see jep_memory_guard.py.
+   * Like for regular PySpark workers, the limit is spark.executor.pyspark.memory (MiB if no unit is given).
+   */
+  private[udf] def udfMemoryLimitBytes(conf: Option[SparkConf] = Option(SparkEnv.get).map(_.conf)): Long = {
+    val key = "spark.executor.pyspark.memory"
+    try {
+      conf.filter(_.contains(key)).map(_.getSizeAsMb(key) * 1024L * 1024L).getOrElse(-1L)
+    } catch {
+      case e: Exception =>
+        logger.warn(s"Failed to determine $key, not limiting UDF memory: ${e.getMessage}")
+        -1L
+    }
+  }
+
+  private def initInterpreter(interp: SharedInterpreter): Unit = {
+    interp.exec(DEFAULT_IMPORTS)
+    val memoryLimitBytes = udfMemoryLimitBytes()
     if (memoryLimitBytes > 0) {
       logger.debug(s"Limiting JEP UDF memory to $memoryLimitBytes bytes.")
-      val memoryLimitingCode = f"""
-                               |import resource
-                               |resource.setrlimit(resource.RLIMIT_AS, ($memoryLimitBytes, $memoryLimitBytes))
-                               |""".stripMargin
-      DEFAULT_IMPORTS + memoryLimitingCode
-    } else {
-      DEFAULT_IMPORTS
+      enterMemoryGuard(interp, memoryLimitBytes)
+    }
+  }
+
+  private def closeInterpreter(interp: SharedInterpreter): Unit = {
+    try {
+      if (udfMemoryLimitBytes() > 0) leaveMemoryGuard(interp)
+    } catch {
+      case e: Exception => logger.warn(s"Failed to leave the UDF memory guard: ${e.getMessage}")
+    } finally {
+      interp.close()
+    }
+  }
+
+  private[udf] def enterMemoryGuard(interp: SharedInterpreter, memoryLimitBytes: Long): Unit = {
+    interp.set("_memory_guard_source", memoryGuardSource)
+    interp.exec(
+      s"""import sys
+         |if "$MEMORY_GUARD_MODULE" not in sys.modules:
+         |    import types
+         |    _memory_guard = types.ModuleType("$MEMORY_GUARD_MODULE")
+         |    exec(_memory_guard_source, _memory_guard.__dict__)
+         |    sys.modules.setdefault("$MEMORY_GUARD_MODULE", _memory_guard)
+         |del _memory_guard_source
+         |sys.modules["$MEMORY_GUARD_MODULE"].enter($memoryLimitBytes)
+         |""".stripMargin)
+  }
+
+  private[udf] def leaveMemoryGuard(interp: SharedInterpreter): Unit = {
+    // A pending UdfMemoryLimitExceeded can still be raised while leaving, so retry.
+    var attempts = 0
+    var done = false
+    while (!done) {
+      attempts += 1
+      try {
+        interp.exec(s"""import sys; sys.modules["$MEMORY_GUARD_MODULE"].leave()""")
+        done = true
+      } catch {
+        case e: jep.JepException if attempts < 3 =>
+          logger.debug(s"Retrying to leave the UDF memory guard: ${e.getMessage}")
+      }
     }
   }
 
@@ -313,7 +358,7 @@ object Udf {
         val resultTiles = ListBuffer[(TemporalProjectedExtent, MultibandTile)]()
         val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
-          interp.exec(defaultCodeBlock())
+          initInterpreter(interp)
 
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -370,7 +415,7 @@ object Udf {
             val projectedExtent: ProjectedExtent = ProjectedExtent(polygonExtent, layer.metadata.crs)
             resultTiles += ((TemporalProjectedExtent(projectedExtent, resultDate), multibandTile))
           }
-        } finally { if (interp != null) interp.close() }
+        } finally { if (interp != null) closeInterpreter(interp) }
         resultTiles
       })
     }, preservesPartitioning = true)
@@ -429,7 +474,7 @@ object Udf {
         var newTileCols: Int = tileCols
         val interp = SharedInterpreterFactory.create()
         try {
-          interp.exec(defaultCodeBlock())
+          initInterpreter(interp)
 
           // Convert multiBandTile to DirectNDArray
           // Allocating a direct buffer is expensive.
@@ -487,7 +532,7 @@ object Udf {
           }
           resultBuffer.rewind()
           resultMultiBandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, newTileRows, newTileCols)
-        } finally if (interp != null) interp.close()
+        } finally if (interp != null) closeInterpreter(interp)
         Some((key_and_tile._1, resultMultiBandTile))
       })
     }, preservesPartitioning = newLayout.isEmpty)
@@ -558,7 +603,7 @@ object Udf {
         val resultTiles = ListBuffer[(SpaceTimeKey, MultibandTile)]()
         val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
-          interp.exec(defaultCodeBlock())
+          initInterpreter(interp)
 
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -618,7 +663,7 @@ object Udf {
             val spaceTimeKey: SpaceTimeKey = SpaceTimeKey(spatialKey.col, spatialKey.row, resultDate)
             resultTiles += ((spaceTimeKey, multibandTile))
           }
-        } finally { if (interp != null) interp.close() }
+        } finally { if (interp != null) closeInterpreter(interp) }
         resultTiles
       })
     }, preservesPartitioning = newLayout.isEmpty)

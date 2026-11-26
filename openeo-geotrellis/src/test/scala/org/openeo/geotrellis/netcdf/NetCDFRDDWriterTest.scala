@@ -5,9 +5,8 @@ import com.azavea.gdal.GDALWarp
 import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALRasterSource
-import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayTile, ByteCellType, CellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, IntArrayTile, IntCellType, IntUserDefinedNoDataCellType, MultibandTile, Raster, RasterExtent, ShortCellType, Tile, TileLayout, UByteCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortUserDefinedNoDataCellType, isData}
+import geotrellis.raster.{ArrayTile, ByteCellType, CellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, IntArrayTile, IntCellType, MultibandTile, Raster, RasterExtent, ShortCellType, Tile, TileLayout, UByteCellType, UShortCellType, UShortUserDefinedNoDataCellType, isData}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
@@ -739,29 +738,6 @@ class NetCDFRDDWriterTest extends RasterMatchers {
         assertEquals(-1, asset.nodata.byteValue())
       }
     }
-  }
-
-  @EnabledIf("org.openeo.geotrelliscommon.TestConditions#hasMTDAData")
-  @Test
-  def testWriteCGLS(): Unit = {
-
-    val boundingBox = ProjectedExtent(Extent(38.6, 5.7, 41.0, 9.15), LatLng)
-
-    val parameters = new DataCubeParameters()
-    parameters.layoutScheme = "FloatingLayoutScheme"
-
-    val layerProvider = LayerFixtures.cglsNDVI300
-    val polygons = ProjectedPolygons.fromExtent(boundingBox.extent, "EPSG:4326")
-    val layer = layerProvider.datacube(polygons.polygons, polygons.crs, "2019-06-01T10:08:02Z", "2019-06-01T10:08:02Z", util.Collections.emptyMap(), "", parameters).cache()
-
-    val options = new NetCDFOptions
-    options.setBandNames(new util.ArrayList(util.Arrays.asList("NDVI")))
-    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.writeRasters(layer, "/tmp/cgls_ndvi300.nc", options))
-
-    val referenceTile = GeoTiffRasterSource("../testdata/org/openeo/geotrellis/netcdf/NetCDFRDDWriterTest/cgls_ndvi300.tiff").read().get
-    val actualTile = GDALRasterSource("/tmp/cgls_ndvi300.nc").read().get
-    //assertRastersEqual(referenceTile,actualTile,1.0)
-
   }
 
   @Test

@@ -38,6 +38,9 @@ final class TerrainCorrectionProcessor(
   demCatalogFactory: SarProcessingConfig => DemCatalog = TerrainCorrectionProcessor.defaultDemCatalogFactory
 ) {
 
+  /** Stable across serialization, so copies of this processor on an executor share scene cache entries. */
+  private[sar] val instanceId: String = java.util.UUID.randomUUID().toString
+
   // -------------------------------------------------------------------------
   // Stage 1: scene-level initialisation
   // -------------------------------------------------------------------------
@@ -92,10 +95,8 @@ final class TerrainCorrectionProcessor(
     val demItems = demCatalogFactory(config).items(searchParts)
       .filter(item => sceneParts.exists(_.intersects(item.bboxWgs84)))
 
-    // The geoid source only needs an extent: the scene's overall box (the factory may be unaware of the antimeridian).
-    val geoidSource = Some(geoidFactory(Extent(lonMin, latMin, lonMax, latMax).buffer(0.05)))
-
-    SceneContext(meta, sarSources, demItems, geoidSource, cellSize, crs, polarisations, config, stacItemUrl.toString)
+    // The factory is only invoked on the executor, when a tile is computed.
+    SceneContext(meta, sarSources, demItems, Some(geoidFactory), cellSize, crs, polarisations, config, stacItemUrl.toString)
   }
 
   // -------------------------------------------------------------------------
@@ -111,11 +112,11 @@ final class TerrainCorrectionProcessor(
    *  Only per-tile windowed I/O and geometry happen inside this iterator;
    *  the scene-level [[SceneContext]] is closed over by reference. */
   def readExtents(scene: SceneContext,
-                  extents: Traversable[Extent],
+                  extents: Iterable[Extent],
                   bands: Seq[Int]): Iterator[Raster[MultibandTile]] = {
     val totalBands = scene.config.bandCount(scene.polarisations.size)
     val effectiveBands = if (bands.isEmpty) (0 until totalBands) else bands
-    extents.toIterator.map { extent =>
+    extents.iterator.map { extent =>
       val ctx  = scene.tileContext(extent)
       val full = backend.compute(ctx)           // always compute all bands; band selection is cheap???
       val selected = MultibandTile(effectiveBands.map(full.band))
@@ -125,7 +126,7 @@ final class TerrainCorrectionProcessor(
 
   /** All bands, convenience overload. */
   def readExtents(scene: SceneContext,
-                  extents: Traversable[Extent]): Iterator[Raster[MultibandTile]] =
+                  extents: Iterable[Extent]): Iterator[Raster[MultibandTile]] =
     readExtents(scene, extents, Seq.empty)
 
   // -------------------------------------------------------------------------
@@ -149,14 +150,17 @@ object TerrainCorrectionProcessor {
 
   /** Factory wrapping a single GeoTIFF (typically the EGM2008 / EGM96
    *  undulation grid in EPSG:4326) as the geoid source. */
-  def geoidFromTiff(uri: URI): Extent => RasterSource = {
-    val rs = defaultRasterSourceFactory(uri)
-    _ => rs
-  }
+  def geoidFromTiff(uri: URI): Extent => RasterSource =
+    _ => geoidSources.computeIfAbsent(uri, defaultRasterSourceFactory(_))
 
-  /** Bundled EGM96 undulation grid, resolved lazily from the classpath (including JARs). */
-  lazy val defaultGeoidSourceFactory: Extent => RasterSource =
-    geoidFromTiff(resolveClasspathResource("org/openeo/egm96.tif", getClass.getClassLoader))
+  // Per JVM: the factories are serialized to executors, the sources they create are not.
+  private val geoidSources = new java.util.concurrent.ConcurrentHashMap[URI, RasterSource]()
+
+  /** Bundled EGM96 undulation grid, resolved from the classpath (including JARs) in the JVM that reads it. */
+  def defaultGeoidSourceFactory: Extent => RasterSource =
+    _ => geoidSources.computeIfAbsent(
+      resolveClasspathResource("org/openeo/egm96.tif", classOf[TerrainCorrectionProcessor].getClassLoader),
+      defaultRasterSourceFactory(_))
 
   /** DEM per the `elevation_model` / `dem_asset` of the processing config. */
   def defaultDemCatalogFactory: SarProcessingConfig => DemCatalog =
@@ -191,8 +195,9 @@ object TerrainCorrectionProcessor {
         throw new IllegalStateException(s"sar_backscatter: DEM read failed for item ${req.sceneId}, AOI ${req.extent}: ${e.getMessage}", e)
     }
 
-    val geoid: Option[Tile] = ctx.geoidSource.map { gs =>
-      gs.reproject(req.crs, TargetRegion(targetRe.toGridType[Long]), method = Bilinear)
+    val geoid: Option[Tile] = ctx.geoidSourceFactory.map { factory =>
+      // the factory may be unaware of the antimeridian; the default ignores the extent
+      factory(req.extent.reproject(req.crs, LatLng).buffer(0.05)).reproject(req.crs, TargetRegion(targetRe.toGridType[Long]), method = Bilinear)
         .read().get.tile.band(0)
     }
 

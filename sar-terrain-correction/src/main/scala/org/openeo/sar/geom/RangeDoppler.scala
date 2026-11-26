@@ -32,10 +32,31 @@ object RangeDoppler {
 
   def slantRange(pGround: Vec3, pSat: Vec3): Double = (pSat - pGround).norm
 
-  /** Local incidence angle (radians) between the look direction (sat -> ground)
-   *  and a given surface normal at the ground point. */
+  /** Local incidence angle (radians, 0 to pi) between the reversed look direction (ground -> sat) and a given
+   *  outward surface normal at the ground point. Values above pi/2 mean the surface faces away from the sensor
+   *  (radar shadow). */
   def localIncidence(pGround: Vec3, pSat: Vec3, normal: Vec3): Double = {
     val look = (pGround - pSat).normalize
-    math.acos(math.min(1.0, math.max(-1.0, math.abs(look.dot(normal)))))
+    math.acos(math.min(1.0, math.max(-1.0, -look.dot(normal))))
+  }
+
+  /** Signed local incidence angle (radians) in the range plane (the plane spanned by the look direction and the
+   *  ellipsoid normal, i.e. perpendicular to the azimuth direction at zero Doppler): the ellipsoid incidence angle
+   *  minus the slope of the terrain towards the sensor, in that plane.
+   *
+   *  Negative: the slope faces the sensor more steeply than the look direction (layover).
+   *  Above pi/2: the slope faces away from the sensor (shadow). */
+  def localIncidenceInRangePlane(pGround: Vec3, pSat: Vec3, normal: Vec3, ellipsoidNormal: Vec3): Double = {
+    val toSensor = (pSat - pGround).normalize
+    val m = toSensor.cross(ellipsoidNormal)
+    val mNorm = m.norm
+    if (mNorm < 1e-9) return 0.0
+    val mHat = m * (1.0 / mNorm)
+    val nProj = (normal - mHat * normal.dot(mHat)).normalize
+    // horizontal unit vector in the range plane, pointing towards the sensor
+    val eH = (toSensor - ellipsoidNormal * toSensor.dot(ellipsoidNormal)).normalize
+    val thetaEl = math.acos(math.min(1.0, math.max(-1.0, toSensor.dot(ellipsoidNormal))))
+    val tilt = math.atan2(nProj.dot(eH), nProj.dot(ellipsoidNormal))
+    thetaEl - tilt
   }
 }

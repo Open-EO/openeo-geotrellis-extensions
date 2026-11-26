@@ -53,3 +53,43 @@ The bundled EGM96 geoid is used by default, including when packaged in a JAR.
 Supply a custom `geoidSourceFactory` to `TerrainCorrectionProcessor` to override it.
 Explicitly passing `None`
 still causes `openScene` to fail: terrain correction requires a geoid.
+
+## Terrain flattening (gamma0) algorithms
+
+For `coefficient = "gamma0-terrain"` the algorithm is selected with the `options` of `sar_backscatter`
+(or, as a default, the environment variable `S1_RTC_ALGORITHM`). Sigma0 is unaffected.
+
+| `rtc_algorithm`         | Method | Cost |
+|-------------------------|--------|------|
+| `angle`                 | Per pixel `σ0 · tan θ_loc / sin θ_el`, from the DEM-derived local incidence angle. Vollrath et al. (2020), after Ulander (1996) and Hoekman & Reiche (2015). Unchanged. | low |
+| `bilinear_distribution` | Area-based: DEM facets are projected into radar geometry and their gamma area is summed per radar pixel; `γ0 = β0 / ANF` (β0 from the `betaNought` calibration LUT). Port of ISCE3 `computeRtcBilinearDistribution`; the method of Small (2011) as used by OPERA RTC-S1 / NISAR. Accurate on steep slopes and in layover. | high (about 10-20x the geometry work of `angle`) |
+| `auto` (default)        | Per tile: if no pixel has a local incidence angle outside `[rtc_auto_min_local_incidence, rtc_auto_max_local_incidence]` the tile is computed with `angle` only. If at least `rtc_auto_tile_fraction` of the pixels are steep, the whole tile uses `bilinear_distribution`. Otherwise it is used only for steep pixels and their neighbourhood (`rtc_auto_dilation_pixels`), `angle` elsewhere. | in between |
+
+More options (only for the area-based algorithms unless noted):
+
+| option                         | default | |
+|--------------------------------|---------|-|
+| `rtc_dem_upsampling`           | 2       | DEM facets per output pixel, per axis (ISCE3 `dem_upsampling`) |
+| `rtc_dem_margin_pixels`        | 20      | DEM margin around the tile, in output pixels |
+| `rtc_min_value_db`             | none    | pixels with a normalisation factor below this become NaN (ISCE3 `rtc_min_value_db`) |
+| `rtc_auto_min_local_incidence` | 20      | degrees, `auto` only |
+| `rtc_auto_max_local_incidence` | 70      | degrees, `auto` only |
+| `rtc_auto_dilation_pixels`     | 2       | `auto` only |
+| `rtc_auto_tile_fraction`       | 0.02    | `auto` only, fraction of steep pixels above which the whole tile is area-based |
+| `rtc_method_band`              | false   | appends a band with the method used per pixel: 0 = angle, 1 = area-based. Useful to assess `auto` |
+
+Memory: a tile computation is limited to about 512 MB of Java heap working memory (environment variable
+`S1_MAX_TILE_MEMORY_MB`). Larger tiles are computed in blocks, one after the other, that each stay within it, and
+assembled into the requested tile; nothing is cached between blocks or tiles. With `auto`, the per-tile choice of
+the algorithm is made per block.
+
+Not ported yet: ISCE3's area projection (`computeRtcAreaProj`, Shiroma et al. 2022).
+
+### References
+
+- Vollrath, A., Mullissa, A., Reiche, J. (2020). Angular-Based Radiometric Slope Correction for Sentinel-1 on Google Earth Engine. *Remote Sensing* 12(11), 1867. doi:10.3390/rs12111867
+- Hoekman, D.H., Reiche, J. (2015). Multi-model radiometric slope correction of SAR images of complex terrain using a two-stage semi-empirical approach. *Remote Sensing of Environment* 156, 1-10. doi:10.1016/j.rse.2014.08.037
+- Ulander, L.M.H. (1996). Radiometric slope correction of synthetic-aperture radar images. *IEEE TGRS* 34(5), 1115-1122. doi:10.1109/36.536527
+- Small, D. (2011). Flattening Gamma: Radiometric Terrain Correction for SAR Imagery. *IEEE TGRS* 49(8), 3081-3093. doi:10.1109/TGRS.2011.2120616
+- Shiroma, G.H.X., Lavalle, M., Buckley, S.M. (2022). An Area-Based Projection Algorithm for SAR Radiometric Terrain Correction and Geocoding. *IEEE TGRS* 60, 5222723. doi:10.1109/TGRS.2022.3147472
+- ISCE3, `cxx/isce3/geometry/RTC.cpp`, Caltech/JPL, Apache-2.0: https://github.com/isce-framework/isce3

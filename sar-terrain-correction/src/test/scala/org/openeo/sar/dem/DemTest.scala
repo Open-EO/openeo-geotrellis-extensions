@@ -106,7 +106,7 @@ class DemTest {
     assertThrows(classOf[Exception], () => heights(Seq(unreadable), request(Extent(0.1, 0.1, 0.2, 0.2))))
 
   private def context(req: TileRequest, items: Seq[DemItem]) =
-    TileComputeContext(req, null, Map.empty, items, geoidSource = None)
+    TileComputeContext(req, null, Map.empty, items, geoidSourceFactory = None)
 
   @Test
   def unreadableItemIsASoftErrorGivingNaN(): Unit = {
