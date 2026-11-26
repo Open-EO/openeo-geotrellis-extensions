@@ -124,6 +124,13 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
   /**
+   * Variant for a reducer defined as process graph (as built by the Python driver's aggregate_spatial).
+   */
+  def compute_generic_timeseries_from_datacube(scriptBuilder: SparkAggregateScriptBuilder, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
+                                               output_path: String, output_format: String, output_filesystem: String): Unit =
+    compute_generic_timeseries_from_datacube(scriptBuilder, datacube, polygons, AggregateOutputOptions(output_path, output_format, output_filesystem))
+
+  /**
    * In-memory variant for small results: returns a local DataFrame (date, feature_index, band columns),
    * to be converted on the Python side (toPandas), without writing any output files.
    */
@@ -193,6 +200,16 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     compute_generic_timeseries_from_spatial_datacube(builder, datacube, geometry_wkts, geometries_srs,
       AggregateOutputOptions(output_path, output_format, output_filesystem))
   }
+
+  /**
+   * Variant for a reducer defined as process graph (as built by the Python driver's aggregate_spatial).
+   */
+  def compute_generic_timeseries_from_spatial_datacube(scriptBuilder: SparkAggregateScriptBuilder,
+                                                       datacube: MultibandTileLayerRDD[SpatialKey],
+                                                       geometry_wkts: JList[String], geometries_srs: String,
+                                                       output_path: String, output_format: String, output_filesystem: String): Unit =
+    compute_generic_timeseries_from_spatial_datacube(scriptBuilder, datacube, geometry_wkts, geometries_srs,
+      AggregateOutputOptions(output_path, output_format, output_filesystem))
 
   def compute_generic_timeseries_from_spatial_datacube(scriptBuilder: SparkAggregateScriptBuilder,
                                                        datacube: MultibandTileLayerRDD[SpatialKey],

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- `ComputeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube` and `compute_generic_timeseries_from_spatial_datacube`: added overloads taking a `SparkAggregateScriptBuilder` together with `output_path`, `output_format` and `output_filesystem`. The Python driver's `aggregate_spatial` always passes a process-graph builder, so the parquet/distributed options were unreachable without them ([#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671)).
+
 ### Added
 
 - `ComputeStatsGeotrellisAdapter.compute_generic_timeseries_from_spatial_datacube` (time-less `aggregate_spatial`) now also accepts `AggregateOutputOptions` (csv/parquet, file/distributed), and there is an in-memory `compute_generic_timeseries_dataframe_from_spatial_datacube` variant returning a DataFrame. Existing signatures are unchanged ([#969](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/969), part of [#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671)).

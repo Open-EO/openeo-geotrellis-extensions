@@ -10,7 +10,7 @@ import geotrellis.vector.{Polygon, _}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
-import org.openeo.geotrellis.aggregate_polygon.AggregateOutputOptions
+import org.openeo.geotrellis.aggregate_polygon.{AggregateOutputOptions, SparkAggregateScriptBuilder}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertFalse, assertThrows, assertTrue}
 import org.junit.jupiter.api.Assumptions.assumeTrue
@@ -215,6 +215,21 @@ class ComputeStatsGeotrellisAdapterTest() {
 
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
       "mean", datacube, ProjectedPolygons(Seq(polygon1, polygon2), "EPSG:4326"), outDir, "parquet", "file")
+
+    val rows = SparkSession.builder().getOrCreate().read.parquet("file://" + outDir).collect()
+    assertFalse(rows.isEmpty)
+    assertEquals(Set(0, 1), rows.map(_.getAs[Int]("feature_index")).toSet)
+  }
+
+  @Test
+  def compute_average_timeseries_on_datacube_with_process_graph_builder_to_parquet(): Unit = {
+    val datacube = buildCubeRdd(ZonedDateTime.parse("2017-01-01T00:00:00Z"), ZonedDateTime.parse("2017-03-10T00:00:00Z"))
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd("mean", new java.util.HashMap[String, Object]())
+    val outDir = Files.createTempDirectory("parquetoutput_builder").resolve("result").toString
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
+      builder, datacube, ProjectedPolygons(Seq(polygon1, polygon2), "EPSG:4326"), outDir, "parquet", "file")
 
     val rows = SparkSession.builder().getOrCreate().read.parquet("file://" + outDir).collect()
     assertFalse(rows.isEmpty)

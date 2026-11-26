@@ -447,6 +447,21 @@ class AggregateSpatialTest {
   }
 
   @Test
+  def compute_generic_timeseries_from_spatial_datacube_with_process_graph_builder_to_parquet(): Unit = {
+    val (spatialCube, wkts) = spatialCubeAndWkts()
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd("mean", new util.HashMap[String, Object]())
+    val outDir = Files.createTempDirectory("spatial_parquet_builder").resolve("result").toString
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_spatial_datacube(
+      builder, spatialCube, wkts, s"EPSG:${LatLng.epsgCode.get}", outDir, "parquet", "file")
+
+    val rows = SparkSession.builder().getOrCreate().read.parquet("file://" + outDir).collect()
+    assertEquals(Set(0, 1), rows.map(_.getAs[Int]("feature_index")).toSet)
+    assertEquals(Set(10.0), rows.map(_.get(1).asInstanceOf[Double]).toSet)
+  }
+
+  @Test
   def compute_generic_timeseries_from_spatial_datacube_in_memory(): Unit = {
     val (spatialCube, wkts) = spatialCubeAndWkts()
 
