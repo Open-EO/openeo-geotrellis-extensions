@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ComputeStatsGeotrellisAdapter.compute_generic_timeseries_from_spatial_datacube` (time-less `aggregate_spatial`) now also accepts `AggregateOutputOptions` (csv/parquet, file/distributed), and there is an in-memory `compute_generic_timeseries_dataframe_from_spatial_datacube` variant returning a DataFrame. Existing signatures are unchanged ([#969](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/969), part of [#671](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/671)).
 - `sar_backscatter`: `coefficient="gamma0-terrain"` (radiometric terrain correction) is now available for Sentinel-1 GRD. By default the algorithm is `auto` (`options={"rtc_algorithm": "auto"}`): it uses the fast angle-based correction on flat terrain and switches to the more accurate area-based correction (`bilinear_distribution`) only for tiles or neighbourhoods with steep slopes. Use `rtc_algorithm="angle"` or `"bilinear_distribution"` to force one method. See [sar-terrain-correction/README.md](sar-terrain-correction/README.md) ([#869](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/869)).
 
 

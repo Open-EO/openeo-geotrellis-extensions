@@ -19,6 +19,7 @@ import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygo
 import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
 import org.openeo.geotrelliscommon.{SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
 
+import org.apache.spark.sql.SparkSession
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.util
@@ -423,6 +424,39 @@ class AggregateSpatialTest {
       Seq(10, 10.0, Double.NaN, Double.NaN), // geometry1
       Seq(10, 10.0, Double.NaN, Double.NaN)), // geometry2
       stats)
+  }
+
+  private def spatialCubeAndWkts() = {
+    val from = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val spatialCube = buildCubeRdd(from, to = ZonedDateTime.now()).toSpatial(from)
+    val wkts = Seq(polygon1, polygon2.getCentroid).map(_.toWKT()).asJava
+    (spatialCube, wkts)
+  }
+
+  @Test
+  def compute_generic_timeseries_from_spatial_datacube_to_parquet(): Unit = {
+    val (spatialCube, wkts) = spatialCubeAndWkts()
+    val outDir = Files.createTempDirectory("spatial_parquet").resolve("result").toString
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_spatial_datacube(
+      "mean", spatialCube, wkts, s"EPSG:${LatLng.epsgCode.get}", outDir, "parquet", "file")
+
+    val rows = SparkSession.builder().getOrCreate().read.parquet("file://" + outDir).collect()
+    assertEquals(Set(0, 1), rows.map(_.getAs[Int]("feature_index")).toSet)
+    assertEquals(Set(10.0), rows.map(_.get(1).asInstanceOf[Double]).toSet)
+  }
+
+  @Test
+  def compute_generic_timeseries_from_spatial_datacube_in_memory(): Unit = {
+    val (spatialCube, wkts) = spatialCubeAndWkts()
+
+    val df = computeStatsGeotrellisAdapter.compute_generic_timeseries_dataframe_from_spatial_datacube(
+      "mean", spatialCube, wkts, s"EPSG:${LatLng.epsgCode.get}")
+
+    assertEquals("feature_index", df.columns.head)
+    val rows = df.collect()
+    assertEquals(Set(0, 1), rows.map(_.getAs[Int]("feature_index")).toSet)
+    assertEquals(Set(10.0), rows.map(_.get(1).asInstanceOf[Double]).toSet)
   }
 
   private[geotrellis] def createQuantiles( qValue: Int) = {
