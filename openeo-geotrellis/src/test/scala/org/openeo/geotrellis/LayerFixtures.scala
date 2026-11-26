@@ -15,9 +15,9 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.layers.{FileLayerProvider, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
-import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
-import org.openeo.opensearch.backends.STACClient
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
+import org.openeo.opensearch.backends.STACClient
+import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import spire.math.UShort
 
 import java.awt.image.DataBufferByte
@@ -1851,40 +1851,6 @@ object LayerFixtures {
     img.getData().getDataBuffer().asInstanceOf[DataBufferByte].getData()
 
 
-  }
-
-  val CGLS1KMResolution = CellSize(0.008928571428584, 0.008928571428584)
-  val cglsFAPARPath = {
-    val uri = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/cgls_fapar_2009/c_gls_FAPAR_200907100000_GLOBE_VGT_V2.0.1.nc").toURI
-    uri
-  }
-
-  def cglsFAPAR1km = {
-    val dataGlob = Paths.get(cglsFAPARPath).getParent.resolve( "*.nc" ).toString
-    val netcdfVariables = java.util.Arrays.asList("FAPAR")
-    val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
-    val openSearchClient = OpenSearchClient(dataGlob, isUTM = false, dateRegex, netcdfVariables, "cgls")
-
-    new org.openeo.geotrellis.file.PyramidFactory(
-      openSearchClient,
-      openSearchCollectionId = "", openSearchLinkTitles = netcdfVariables, "",
-      maxSpatialResolution = CGLS1KMResolution,
-      experimental = false
-    )
-  }
-
-
-  lazy val cglsNDVI300 = {
-    val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2019/201906*/*/*.nc"
-    val netcdfVariables = java.util.Arrays.asList("NDVI")
-    val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
-    val openSearchClient = OpenSearchClient(dataGlob, isUTM = false, dateRegex, netcdfVariables, "cgls")
-    new org.openeo.geotrellis.file.PyramidFactory(
-      openSearchClient,
-      openSearchCollectionId = "", openSearchLinkTitles = netcdfVariables, "",
-      maxSpatialResolution = CellSize(0.002976190476204, 0.002976190476190),
-      experimental = false
-    )
   }
 
   def STACCOGCollection(resolution:CellSize = CellSize(0.1, 0.1) ,bands: util.List[String] = util.Arrays.asList("temperature-mean","precipitation-flux") )= {

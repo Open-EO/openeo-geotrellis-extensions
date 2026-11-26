@@ -4,7 +4,7 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.{GDALIOException, GDALRasterSource}
-import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
+import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.resample.{Bilinear, CubicConvolution, ResampleMethod}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
@@ -17,8 +17,8 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.{HashPartitioner, SparkConf, SparkContext, SparkTestHelper}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertNotSame, assertSame, assertTrue}
+import org.apache.spark.{SparkConf, SparkContext, SparkTestHelper}
+import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api._
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.api.io.TempDir
@@ -30,7 +30,6 @@ import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.geotiff._
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
-import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link, STACFeatureCollection}
 import org.openeo.opensearch.backends.CreodiasClient
@@ -892,7 +891,7 @@ class FileLayerProviderTest extends RasterMatchers {
     assertEquals(0, minKey.col)
     assertEquals(0, minKey.row)
     assertEquals(LatLng, result._2.crs)
-    assertEquals(8, all.length)
+    assertEquals(12, all.length)
   }
 
   @Test
@@ -1640,8 +1639,8 @@ class FileLayerProviderTest extends RasterMatchers {
 
     assertEquals(1, listener.getJobsCompleted)
     assertEquals(3, listener.getStagesCompleted)
-    assertEquals(21, listener.getTasksCompleted)
-    assertEquals(77316, allTiles.size)
+    assertEquals(81, listener.getTasksCompleted)
+    assertEquals(77309, allTiles.size)
     println(listener.getPeakMemoryMB)
 
     val partitioner = DatacubeSupport.createPartitioner(Some(datacubeParams), result._1.keys, result._2)
