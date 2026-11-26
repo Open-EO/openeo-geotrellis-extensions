@@ -184,12 +184,6 @@
             <artifactId>junit-jupiter-params</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.codehaus.jackson</groupId>
-            <artifactId>jackson-mapper-asl</artifactId>
-            <version>1.9.13</version>
-            <scope>runtime</scope>
-        </dependency>
     </dependencies>
     <dependencyManagement>
         <dependencies>

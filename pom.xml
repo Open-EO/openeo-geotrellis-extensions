@@ -13,7 +13,7 @@
         <spark.version>4.0.1</spark.version>
         <scala.binary.version>2.13</scala.binary.version>
         <scala.version>2.13.18</scala.version>
-        <geotrellis.version>3.8.1+26-d994e356-SNAPSHOT</geotrellis.version>
+        <geotrellis.version>3.8.1+47-304ec619-SNAPSHOT</geotrellis.version>
         <gdal-bindings.version>3.12.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
         <openeo-opensearch-client.version>2.1.1-SNAPSHOT</openeo-opensearch-client.version>
@@ -38,7 +38,7 @@
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-core</artifactId>
-                <version>2.18.2</version>
+                <version>2.18.11</version>
             </dependency>
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
@@ -282,6 +282,16 @@
         <repository>
             <id>artifactory-snapshot</id>
             <url>https://repo.vito.be/artifactory/libs-snapshot-public</url>
+        </repository>
+        <repository>
+            <id>geotrellis-snapshots</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
         </repository>
         <repository>
             <snapshots>
