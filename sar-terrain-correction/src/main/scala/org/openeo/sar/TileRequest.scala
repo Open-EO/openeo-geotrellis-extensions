@@ -87,6 +87,10 @@ object RtcAlgorithm {
  *                                if their own slope faces the sensor. Found by casting the line of sight towards the
  *                                sensor over the DEM (like the ISCE3 `Topo` layover/shadow mask). Only computed for
  *                                tiles with steep pixels (the criteria of [[RtcAlgorithm.Auto]]). Default true.
+ *  @param noiseRemoval           Subtract the thermal noise LUT from |DN|². Default true.
+ *  @param noiseClip              With noise removal, replace negative calibrated values (sigma0/beta0, before
+ *                                terrain flattening) by `noiseFloor`, as OTB/orfeo (0) and SNAP (1e-5) do. Default true.
+ *  @param noiseFloor             Value for clipped pixels, in linear units. Default 0 (OTB).
  *  @param elevationModel         DEM to use: a STAC collection URL (or an alias such as `COPERNICUS_30`),
  *                                see [[org.openeo.sar.dem.ElevationModel]]. `None` is the back-end
  *                                default, `COPERNICUS_30`. The string `"null"` means no DEM: terrain height
@@ -112,7 +116,10 @@ final case class SarProcessingConfig(
   rtcAutoDilationPixels: Int               = 2,
   rtcAutoTileFraction: Double              = 0.02,
   rtcMethodBand: Boolean                   = false,
-  castShadow: Boolean                      = true
+  castShadow: Boolean                      = true,
+  noiseRemoval: Boolean                    = true,
+  noiseClip: Boolean                       = true,
+  noiseFloor: Double                       = 0.0
 ) {
   require(rtcDemUpsampling >= 1, "sar_backscatter: rtc_dem_upsampling must be >= 1")
   require(rtcDemMarginPixels >= 0, "sar_backscatter: rtc_dem_margin_pixels must be >= 0")

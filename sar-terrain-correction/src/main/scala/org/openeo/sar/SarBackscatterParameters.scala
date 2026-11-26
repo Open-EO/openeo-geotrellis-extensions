@@ -86,8 +86,10 @@ class SarBackscatterParameters extends ExtraProcessingParameters {
    *    and `rtc_method_band` (adds a band with the algorithm used per pixel: 0 = angle, 1 = area-based).
    *    Unset entries keep the value of `base`.
    *  - `cast_shadow` (default true): also mask pixels in cast shadow (see [[SarProcessingConfig.castShadow]]).
+   *  - `noiseRemoval` maps 1:1. With noise removal, negative values are replaced by `noise_floor` (option, default 0,
+   *    linear units) unless the `noise_clip` option is false (see [[SarProcessingConfig.noiseClip]]).
    *
-   * `contributingArea`, `noiseRemoval` and the other `options` are not yet wired into
+   * `contributingArea` and the other `options` are not yet wired into
    * the terrain-correction backend and are currently ignored by this conversion; they remain
    * available on this class for callers/backends that do support them.
    */
@@ -112,7 +114,10 @@ class SarBackscatterParameters extends ExtraProcessingParameters {
       rtcAutoTileFraction = option("rtc_auto_tile_fraction").map(_.toDouble).getOrElse(base.rtcAutoTileFraction),
       rtcAutoDilationPixels = option("rtc_auto_dilation_pixels").map(_.toDouble.toInt).getOrElse(base.rtcAutoDilationPixels),
       rtcMethodBand = option("rtc_method_band").map(_.toBoolean).getOrElse(base.rtcMethodBand),
-      castShadow = option("cast_shadow").map(_.toBoolean).getOrElse(base.castShadow)
+      castShadow = option("cast_shadow").map(_.toBoolean).getOrElse(base.castShadow),
+      noiseRemoval = noiseRemoval,
+      noiseClip = option("noise_clip").map(_.toBoolean).getOrElse(base.noiseClip),
+      noiseFloor = option("noise_floor").map(_.toDouble).getOrElse(base.noiseFloor)
     )
 
   private def option(key: String): Option[String] =

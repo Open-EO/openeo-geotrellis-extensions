@@ -343,6 +343,12 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
     val numberOfLines  = meta.timing.numberOfLines
     val numberOfPixels = meta.timing.numberOfPixels
 
+    // Noise subtraction makes low-backscatter pixels (e.g. VH over water) negative; clip them like OTB/SNAP.
+    val noiseRemoval = config.noiseRemoval
+    val noiseClip = noiseRemoval && config.noiseClip
+    val noiseFloor = config.noiseFloor
+    @inline def clipNoise(v: Double): Double = if (noiseClip && v < 0.0) noiseFloor else v
+
     // 6b. Choose the RTC algorithm per pixel. Angle-based unless area-based RTC is requested; for Auto, area-based
     //     only near pixels with a steep local incidence angle, and only computed at all for tiles that have some.
     //     The same steep criteria decide whether a tile can contain cast shadow at all.
@@ -494,13 +500,14 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
               val dn = bilinear(sarWindows(p), winPx, winLine)
               if (!java.lang.Double.isNaN(dn)) {
                 val sigmaLut = polMeta.sigmaLut(line, gr)
-                val noiseLut = polMeta.noiseLut(line, gr)
-                val num = Math.fma(dn, dn, -noiseLut)
-                val sigma0 = if (sigmaLut > 0) num / (sigmaLut * sigmaLut) else Float.NaN
+                val num =
+                  if (noiseRemoval) Math.fma(dn, dn, -polMeta.noiseLut(line, gr))
+                  else dn * dn
+                val sigma0 = clipNoise(if (sigmaLut > 0) num / (sigmaLut * sigmaLut) else Float.NaN)
                 if (areaPx) {
                   // gamma0 = beta0 / ANF; without a beta0 LUT, beta0 = sigma0_ellipsoid / sin(theta_el)
                   val beta0 = polMeta.betaLut match {
-                    case Some(lut) => val b = lut(line, gr); if (b > 0) num / (b * b) else Float.NaN
+                    case Some(lut) => val b = lut(line, gr); clipNoise(if (b > 0) num / (b * b) else Float.NaN)
                     case None      => sigma0 / sinEl
                   }
                   backscatter(p).setDouble(c, r, beta0 * areaFactor)
