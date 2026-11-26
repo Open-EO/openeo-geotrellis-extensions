@@ -1,21 +1,26 @@
 package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
-import geotrellis.proj4.{LatLng, WebMercator}
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, GridBounds, MultibandTile, Raster, TargetCellSize, UByteCellType}
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MultibandTile, Raster, RasterSource, ResampleMethod, ResampleTarget, TargetCellSize, UByteCellType}
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertSame, assertThrows => assertThrowsJunit, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertSame, assertTrue, assertThrows => assertThrowsJunit}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIf
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.layers.raster_source.{BandSelectionRasterSource, IndexedRasterSource, NoDataRasterSource, OpenEoSourcePath, SentinelXMLMetadataRasterSource, ValueOffsetRasterSource}
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker
 import software.amazon.awssdk.core.exception.AbortedException
 
 import java.io.IOException
+import java.nio.file.Path
+import java.util
+import scala.collection.mutable
 
 class BandCompositeRasterSourceTest extends RasterMatchers {
 
@@ -337,5 +342,39 @@ class BandCompositeRasterSourceTest extends RasterMatchers {
 
     val groups = composite.groupedBySource.map { case (name, outputBands, groupSources) => (name, outputBands, groupSources.size) }
     assertEquals(Seq((physical.name, Seq(0, 1), 1), (placeholder.name, Seq(2), 1)), groups)
+  }
+
+  @Test
+  def softErrorsAreCountedWithInjectedTracker(): Unit = {
+    val failing: RasterSource = new NoDataRasterSource(UByteCellType, GridExtent(Extent(0, 0, 10, 10), 10, 10), LatLng) {
+      override protected def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = this
+      override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = throw new IOException("read failed")
+    }
+
+    val counters = mutable.Map[String, Long]()
+    val tracker = new BatchJobMetadataTracker {
+      override def registerCounter(name: String): Unit = ()
+      override def registerDoubleCounter(name: String): Unit = ()
+      override def add(name: String, value: Long): Unit = counters(name) = counters.getOrElse(name, 0L) + value
+      override def add(name: String, value: Double): Unit = ()
+      override def addInputProductsWithUrls(collection: String, productIdAndUrls: util.List[BatchJobMetadataTracker.ProductIdAndUrl]): Unit = ()
+      override def addAuxiliaryFile(writer: () => Path, mediaType: String): Unit = ()
+      override def asDict(): util.Map[String, Object] = util.Collections.emptyMap()
+    }
+
+    val composite = new BandCompositeRasterSource(NonEmptyList.of(failing), crs = LatLng, parallelRead = false, softErrors = true, metadataTracker = Some(tracker))
+
+    val bounds = GridBounds(0L, 0L, 2047L, 1023L) // 2 MP
+    assertTrue(composite.read(bounds, Seq(0)).isEmpty)
+    assertEquals(2, counters(RasterTileLoader.SOFT_ERROR_MEGAPIXEL_COUNTER))
+
+    // without an injected tracker, an unregistered counter (as on an executor) must not fail the read
+    BatchJobMetadataTracker.setGlobalTracking(true)
+    BatchJobMetadataTracker.clearGlobalTracker()
+    try assertTrue(composite.read(bounds, Seq(0)).isEmpty)
+    finally {
+      BatchJobMetadataTracker.clearGlobalTracker()
+      BatchJobMetadataTracker.setGlobalTracking(false)
+    }
   }
 }

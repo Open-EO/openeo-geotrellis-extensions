@@ -39,6 +39,7 @@ import java.util.concurrent.TimeUnit
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
+import scala.util.Try
 import scala.util.matching.Regex
 
 /**
@@ -291,7 +292,7 @@ object FileLayerProvider {
 
     val inputNumberOfPartitions = if(maybeKeys.isDefined) {
       //spatial keys are already known and will determine partitioning?
-      10
+      10//Quickwin: better heuristic to reduce task count in typical spark job??
     }else{
       //cliptogrid generates a lot of keys, so requires more memory
       math.max(1, geometricFeatures.size)
@@ -1151,10 +1152,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
+      val tracker = BatchJobMetadataTracker.tracker("")
 
       def composite(sources: NonEmptyList[RasterSource], readFullTile: Boolean): RasterSource =
         new BandCompositeRasterSource(sources, targetExtent.crs, attributes, readFullTile = readFullTile,
-          predefinedExtent = predefinedExtent, softErrors = softErrors)
+          predefinedExtent = predefinedExtent, softErrors = softErrors, metadataTracker = Some(tracker))
 
       if (byLinkTitle && bandIndices.isEmpty) {
         val actualNumberOfBands = bandContexts.size
@@ -1284,25 +1286,31 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           case Some(geom) =>
             var pp = ProjectedPolygons(geom, LatLng)
             val fileIdPattern: Regex = "^.*_(\\d\\d)[^\\d]+_[^_]+_[^_]+$".r
-            f.id match {
-              case fileIdPattern(zone) => {
-                val crs = CRS.fromName("EPSG:326" + zone)
+            val utmEpsgZone = (code: Int) => if ((code >= 32601 && code <= 32660) || (code >= 32701 && code <= 32760)) Some(f"${code % 100}%02d") else None
+            // Prefer the CRS provided by the feature, fall back to guessing the UTM zone from the id.
+            val crsAndZone: Option[(CRS, Option[String])] = f.crs.map(c => (c, c.epsgCode.flatMap(utmEpsgZone)))
+              .orElse(f.id match {
+                case fileIdPattern(zone) =>
+                  Try(CRS.fromName("EPSG:326" + zone)).toOption.map(c => (c, Some(zone)))
+                case _ =>
+                  logger.debug(s"${f.id} has no CRS and does not match UTM zone regex")
+                  None
+              })
+            crsAndZone.foreach { case (crs, zone) =>
+              // The geom in the catalog does not take into account curvature.
+              // Doing a basic projection and a refined projection back fixes this.
+              pp = pp
+                .safeReproject(crs, refine = false)
+                .safeReproject(LatLng, refine = true)
+                .splitPolygonsOnWrapPoint()
 
-                // The geom in the catalog does not take into account curvature.
-                // Doing a basic projection and a refined projection back fixes this.
-                pp = pp
-                  .safeReproject(crs, refine = false)
-                  .safeReproject(LatLng, refine = true)
-                  .splitPolygonsOnWrapPoint()
-
-                var ps = pp.getFlatMultiPolygon.polygons
-                // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
-                // Remove the polygons that cross the line to mitigate this
-                if (zone == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
-                if (zone == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
-                pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
-              }
-              case _ => logger.debug(s"${f.id} does not match UTM zone regex")
+              var ps = pp.getFlatMultiPolygon.polygons
+              // TODO: the antimeridian workaround below is UTM specific; find a more future proof way that also works for other CRSs
+              // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
+              // Remove the polygons that cross the line to mitigate this
+              if (zone.contains("60")) ps = ps.filter(p => p.getCoordinate.x > 0)
+              if (zone.contains("01")) ps = ps.filter(p => p.getCoordinate.x < 0)
+              pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
             }
             f.copy(geometry = Some(pp.getFlatMultiPolygon))
         }

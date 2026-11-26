@@ -84,9 +84,6 @@ jobs:
           echo "PACKAGE_VERSION=${package_version}" >> "$GITHUB_ENV"
 
           opts=""
-          # GitHub Packages can't serve Maven versions containing '+', so the copies there use '-' instead.
-          geotrellis_version=$(sed -n 's:.*<geotrellis.version>\(.*\)</geotrellis.version>.*:\1:p' pom.xml | head -n1)
-          opts+=" -Dgeotrellis.version=${geotrellis_version//+/-}"
           if [[ "${{ inputs.skip_tests }}" == "true" ]]; then
             echo "Maven will skip all tests"
             opts+=" -DskipTests=true -DskipSentinelHubTests=true"
@@ -211,7 +208,7 @@ jobs:
           echo "RELEASE_VERSION=${release_version}" >> "$GITHUB_ENV"
           echo "PACKAGE_VERSION=${{ needs.build.outputs.package_version }}" >> "$GITHUB_ENV"
           geotrellis_version=$(sed -n 's:.*<geotrellis.version>\(.*\)</geotrellis.version>.*:\1:p' pom.xml | head -n1)
-          echo "GEOTRELLIS_VERSION=${geotrellis_version//+/-}" >> "$GITHUB_ENV"
+          echo "GEOTRELLIS_VERSION=${geotrellis_version}" >> "$GITHUB_ENV"
           echo "Releasing version ${release_version}"
 
       - name: Log in to GitHub Container Registry

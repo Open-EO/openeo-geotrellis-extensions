@@ -11,7 +11,7 @@ object Polarisation {
   case object HV extends Polarisation { val code = "hv" }
   def parse(s: String): Polarisation = s.toLowerCase match {
     case "vv" => VV case "vh" => VH case "hh" => HH case "hv" => HV
-    case other => throw new IllegalArgumentException(s"unknown polarisation $other")
+    case other => throw new IllegalArgumentException(s"sar_backscatter: unknown polarisation $other")
   }
 }
 
@@ -21,7 +21,8 @@ final case class PolarisationMetadata(
   measurementUri: String,        // URI of measurement/*.tiff (for GeoTrellis RasterSource)
   sigmaLut: Lut2D,               // sigmaNought calibration LUT
   noiseLut: Lut2D,               // thermal noise LUT (same coord system)
-  srgr: SrgrPolyList             // slant/ground range polynomials
+  srgr: SrgrPolyList,            // slant/ground range polynomials
+  betaLut: Option[Lut2D] = None  // betaNought calibration LUT, input of the area-based RTC algorithms
 )
 
 /** Image timing & sampling parameters shared by all polarisations of one scene. */

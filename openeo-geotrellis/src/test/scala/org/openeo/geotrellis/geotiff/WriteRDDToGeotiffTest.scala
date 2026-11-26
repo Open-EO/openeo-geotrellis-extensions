@@ -25,7 +25,7 @@ import org.junit.jupiter.params.provider.{Arguments, MethodSource, ValueSource}
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithLocalTestdata
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellis.stac.{Asset, Item}
-import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcesses, OutputPreprocessing, ProjectedPolygons}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.nio.file.{Files, Path, Paths}
@@ -404,8 +404,8 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
     val emptyRdd: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext{_.map{case(key,tile) => (key,new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,tile.bandCount)) }}
-    val (_,_,processedRdd) = preProcess(emptyRdd, None, retainNoDataTiles = true)
-    val (_,_,processedRddFiltered) = preProcess(emptyRdd, None, retainNoDataTiles = false)
+    val (_,_,processedRdd) = OutputPreprocessing.preProcess(emptyRdd, None, retainNoDataTiles = true)
+    val (_,_,processedRddFiltered) = OutputPreprocessing.preProcess(emptyRdd, None, retainNoDataTiles = false)
     val count = processedRdd.count()
     assertEquals(layoutCols*layoutRows,count)
     assertEquals(0,processedRddFiltered.count())

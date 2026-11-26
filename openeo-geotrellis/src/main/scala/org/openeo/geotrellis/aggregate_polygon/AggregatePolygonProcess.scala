@@ -10,7 +10,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd._
 import org.apache.spark.sql.types.{DoubleType, IntegerType, StructField, StructType, TimestampType}
-import org.apache.spark.sql.{Column, Row, SaveMode, SparkSession}
+import org.apache.spark.sql.{Column, DataFrame, Row, SaveMode, SparkSession}
 import org.openeo.geotrellis.OpenEOProcesses
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern._
@@ -162,12 +162,39 @@ class AggregatePolygonProcess {
     }
     val cellType = datacube.metadata.cellType
     val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
-    aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath,maybeLabels)
+    aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, AggregateOutputOptions(outputPath), maybeLabels)
   }
 
   def aggregateSpatialForGeometryWithSpatialCube(scriptBuilder: SparkAggregateScriptBuilder,
                                                  datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
-                                                 crs: CRS, bandCount: Int, outputPath: String): Unit = {
+                                                 crs: CRS, bandCount: Int, outputPath: String): Unit =
+    aggregateSpatialForGeometryWithSpatialCube(scriptBuilder, datacube, geometries, crs, bandCount, AggregateOutputOptions(outputPath))
+
+  def aggregateSpatialForGeometryWithSpatialCube(scriptBuilder: SparkAggregateScriptBuilder,
+                                                 datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
+                                                 crs: CRS, bandCount: Int, outputOptions: AggregateOutputOptions): Unit = {
+    val dataframe = aggregateSpatialForGeometryWithSpatialCubeDataFrame(scriptBuilder, datacube, geometries, crs, bandCount)
+    outputOptions.write(dataframe)
+
+    if (outputOptions.filesystem == AggregateOutputOptions.FILE) {
+      CreoS3Utils.waitTillPathAvailable(Paths.get(outputOptions.path).resolve("_SUCCESS").toString)
+    }
+  }
+
+  /**
+   * In-memory variant: the (small) result is collected on the driver and returned as a local DataFrame
+   * (columns: feature_index, one column per band/statistic), so no output files are needed.
+   */
+  def aggregateSpatialForGeometryWithSpatialCubeInMemory(scriptBuilder: SparkAggregateScriptBuilder,
+                                                         datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
+                                                         crs: CRS, bandCount: Int): DataFrame = {
+    val aggregated = aggregateSpatialForGeometryWithSpatialCubeDataFrame(scriptBuilder, datacube, geometries, crs, bandCount)
+    aggregated.sparkSession.createDataFrame(aggregated.collectAsList(), aggregated.schema)
+  }
+
+  private def aggregateSpatialForGeometryWithSpatialCubeDataFrame(scriptBuilder: SparkAggregateScriptBuilder,
+                                                                  datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
+                                                                  crs: CRS, bandCount: Int): DataFrame = {
     val sc = datacube.sparkContext
 
     // each polygon becomes a feature with a value that's equal to its position in the array
@@ -219,10 +246,10 @@ class AggregatePolygonProcess {
     }
     val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
     val cellType = datacube.metadata.cellType
-    aggregateByPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath, maybeLabels)
+    aggregateByPolygonDataFrame(pixelRDD, scriptBuilder, bandCount, cellType, maybeLabels)
   }
 
-  private def aggregateByPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String, maybeBandLabels: Option[Seq[String]] = Option.empty[Seq[String]]): Unit = {
+  private def aggregateByPolygonDataFrame(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, maybeBandLabels: Option[Seq[String]] = Option.empty[Seq[String]]): DataFrame = {
     val session = SparkSession.builder().config(pixelRDD.sparkContext.getConf).getOrCreate()
     val dataType = if (cellType.isFloatingPoint) DoubleType else IntegerType
 
@@ -240,10 +267,30 @@ class AggregatePolygonProcess {
       }else{
         expressionCols
       }
-    dataframe.groupBy("feature_index").agg(renamedCols.head, renamedCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    dataframe.groupBy("feature_index").agg(renamedCols.head, renamedCols.tail: _*)
   }
 
-  def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
+  def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit =
+    aggregateSpatialGeneric(scriptBuilder, datacube, polygonsWithIndexMapping, crs, bandCount, AggregateOutputOptions(outputPath))
+
+  def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputOptions: AggregateOutputOptions): Unit =
+    aggregateSpatialGenericWith(scriptBuilder, datacube, polygonsWithIndexMapping, crs, bandCount) { (pixelRDD, cellType, maybeLabels) =>
+      aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputOptions, maybeLabels)
+    }
+
+  /**
+   * Aggregates in memory: the (small) result is collected on the driver and returned as a local DataFrame
+   * (columns: date, feature_index, one column per band/statistic), so no output files are needed.
+   */
+  def aggregateSpatialGenericInMemory(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int): DataFrame =
+    aggregateSpatialGenericWith(scriptBuilder, datacube, polygonsWithIndexMapping, crs, bandCount) { (pixelRDD, cellType, maybeLabels) =>
+      val aggregated = aggregateByDateAndPolygonDataFrame(pixelRDD, scriptBuilder, bandCount, cellType, maybeLabels)
+      val session = aggregated.sparkSession
+      session.createDataFrame(aggregated.collectAsList(), aggregated.schema)
+    }
+
+  private def aggregateSpatialGenericWith[R](scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int)
+                                         (finish: (RDD[Row], CellType, Option[Seq[String]]) => R): R = {
     import org.apache.spark.storage.StorageLevel._
 
     val (polygons, indexMapping) = polygonsWithIndexMapping
@@ -325,14 +372,14 @@ class AggregatePolygonProcess {
       val cellType = datacube.metadata.cellType
       val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
       pixelRDD.name = s"aggregate_spatial: all pixels by zone ${maybeLabels.map(_.mkString(",")).getOrElse("band labels unknown")} ${cellType.name}"
-      aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath,maybeLabels)
+      finish(pixelRDD, cellType, maybeLabels)
 
     }finally{
       byIndexMask.unpersist()
     }
   }
 
-  private def aggregateByDateAndPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String, maybeBandLabels: Option[Seq[String]] = Option.empty[Seq[String]]) = {
+  private def aggregateByDateAndPolygonDataFrame(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, maybeBandLabels: Option[Seq[String]]): DataFrame = {
     val session = SparkSession.builder().config(pixelRDD.sparkContext.getConf).getOrCreate()
     val dataType =
       if (cellType.isFloatingPoint) {
@@ -375,13 +422,18 @@ class AggregatePolygonProcess {
       // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
       // this approach filters out nodata for the computation, but restores it in the output.
       val requiredRows = dataframe.select("date", "feature_index").distinct()
-      val joined = requiredRows.join(aggregated, Seq("date", "feature_index"), "left")
-      joined.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+      requiredRows.join(aggregated, Seq("date", "feature_index"), "left")
     } else {
-      aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+      aggregated
     }
+  }
 
-    CreoS3Utils.waitTillPathAvailable(Paths.get(outputPath).resolve("_SUCCESS").toString)
+  private def aggregateByDateAndPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputOptions: AggregateOutputOptions, maybeBandLabels: Option[Seq[String]] = Option.empty[Seq[String]]) = {
+    outputOptions.write(aggregateByDateAndPolygonDataFrame(pixelRDD, scriptBuilder, bandCount, cellType, maybeBandLabels))
+
+    if (outputOptions.filesystem == AggregateOutputOptions.FILE) {
+      CreoS3Utils.waitTillPathAvailable(Paths.get(outputOptions.path).resolve("_SUCCESS").toString)
+    }
   }
 
   /*
