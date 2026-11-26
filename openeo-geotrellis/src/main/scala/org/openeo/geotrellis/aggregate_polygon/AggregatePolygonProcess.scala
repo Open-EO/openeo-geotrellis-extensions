@@ -167,7 +167,34 @@ class AggregatePolygonProcess {
 
   def aggregateSpatialForGeometryWithSpatialCube(scriptBuilder: SparkAggregateScriptBuilder,
                                                  datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
-                                                 crs: CRS, bandCount: Int, outputPath: String): Unit = {
+                                                 crs: CRS, bandCount: Int, outputPath: String): Unit =
+    aggregateSpatialForGeometryWithSpatialCube(scriptBuilder, datacube, geometries, crs, bandCount, AggregateOutputOptions(outputPath))
+
+  def aggregateSpatialForGeometryWithSpatialCube(scriptBuilder: SparkAggregateScriptBuilder,
+                                                 datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
+                                                 crs: CRS, bandCount: Int, outputOptions: AggregateOutputOptions): Unit = {
+    val dataframe = aggregateSpatialForGeometryWithSpatialCubeDataFrame(scriptBuilder, datacube, geometries, crs, bandCount)
+    outputOptions.write(dataframe)
+
+    if (outputOptions.filesystem == AggregateOutputOptions.FILE) {
+      CreoS3Utils.waitTillPathAvailable(Paths.get(outputOptions.path).resolve("_SUCCESS").toString)
+    }
+  }
+
+  /**
+   * In-memory variant: the (small) result is collected on the driver and returned as a local DataFrame
+   * (columns: feature_index, one column per band/statistic), so no output files are needed.
+   */
+  def aggregateSpatialForGeometryWithSpatialCubeInMemory(scriptBuilder: SparkAggregateScriptBuilder,
+                                                         datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
+                                                         crs: CRS, bandCount: Int): DataFrame = {
+    val aggregated = aggregateSpatialForGeometryWithSpatialCubeDataFrame(scriptBuilder, datacube, geometries, crs, bandCount)
+    aggregated.sparkSession.createDataFrame(aggregated.collectAsList(), aggregated.schema)
+  }
+
+  private def aggregateSpatialForGeometryWithSpatialCubeDataFrame(scriptBuilder: SparkAggregateScriptBuilder,
+                                                                  datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
+                                                                  crs: CRS, bandCount: Int): DataFrame = {
     val sc = datacube.sparkContext
 
     // each polygon becomes a feature with a value that's equal to its position in the array
@@ -219,10 +246,10 @@ class AggregatePolygonProcess {
     }
     val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
     val cellType = datacube.metadata.cellType
-    aggregateByPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath, maybeLabels)
+    aggregateByPolygonDataFrame(pixelRDD, scriptBuilder, bandCount, cellType, maybeLabels)
   }
 
-  private def aggregateByPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String, maybeBandLabels: Option[Seq[String]] = Option.empty[Seq[String]]): Unit = {
+  private def aggregateByPolygonDataFrame(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, maybeBandLabels: Option[Seq[String]] = Option.empty[Seq[String]]): DataFrame = {
     val session = SparkSession.builder().config(pixelRDD.sparkContext.getConf).getOrCreate()
     val dataType = if (cellType.isFloatingPoint) DoubleType else IntegerType
 
@@ -240,7 +267,7 @@ class AggregatePolygonProcess {
       }else{
         expressionCols
       }
-    dataframe.groupBy("feature_index").agg(renamedCols.head, renamedCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    dataframe.groupBy("feature_index").agg(renamedCols.head, renamedCols.tail: _*)
   }
 
   def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit =
