@@ -224,7 +224,7 @@ void buildIt(skipTests = false, skipSentinelHubTests = false){
                 ]) {
                     rtMaven.run pom: 'pom.xml', goals: '-P default,wmts -U clean install' + rtMaven.opts
 
-                    buildInfoSAS = rtMavenSAS.run pom: 'pom.xml', goals: '-P default,wmts -U deploy' + rtMavenSAS.opts
+                    buildInfoSAS = rtMavenSAS.run pom: 'pom.xml', goals: '-P default,wmts -U -pl :openeo-geotrellis-extensions,:geotrellis-extensions,:geotrellis-dependencies,:openeo-logging deploy -Dmaven.source.skip=true' + rtMavenSAS.opts
                     try {
                         if (rtMavenSAS.deployer.deployArtifacts)
                             serverSAS.publishBuildInfo buildInfoSAS
