@@ -474,6 +474,54 @@ class AggregateSpatialTest {
     assertEquals(Set(10.0), rows.map(_.get(1).asInstanceOf[Double]).toSet)
   }
 
+  private def spaceTimeCubeAndPointWkts() = {
+    val cube = buildCubeRdd(ZonedDateTime.parse("2017-01-01T00:00:00Z"), to = ZonedDateTime.now())
+    val wkts = Seq(polygon1, polygon2).map(_.getCentroid.toWKT()).asJava
+    (cube, wkts)
+  }
+
+  @Test
+  def compute_generic_timeseries_from_datacube_wkt_to_parquet(): Unit = {
+    val (cube, wkts) = spaceTimeCubeAndPointWkts()
+    val outDir = Files.createTempDirectory("wkt_parquet").resolve("result").toString
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
+      "mean", cube, wkts, s"EPSG:${LatLng.epsgCode.get}", outDir, "parquet", "file")
+
+    val rows = SparkSession.builder().getOrCreate().read.parquet("file://" + outDir).collect()
+    assertEquals(Set(0, 1), rows.map(_.getAs[Int]("feature_index")).toSet)
+    assertTrue(rows.map(_.getAs[java.sql.Timestamp]("date")).toSet.size > 1)
+    assertEquals(Set(10.0), rows.map(_.get(2).asInstanceOf[Double]).toSet)
+  }
+
+  @Test
+  def compute_generic_timeseries_from_datacube_wkt_with_process_graph_builder_to_parquet(): Unit = {
+    val (cube, wkts) = spaceTimeCubeAndPointWkts()
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd("mean", new util.HashMap[String, Object]())
+    val outDir = Files.createTempDirectory("wkt_parquet_builder").resolve("result").toString
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
+      builder, cube, wkts, s"EPSG:${LatLng.epsgCode.get}", outDir, "parquet", "file")
+
+    val rows = SparkSession.builder().getOrCreate().read.parquet("file://" + outDir).collect()
+    assertEquals(Set(0, 1), rows.map(_.getAs[Int]("feature_index")).toSet)
+    assertEquals(Set(10.0), rows.map(_.get(2).asInstanceOf[Double]).toSet)
+  }
+
+  @Test
+  def compute_generic_timeseries_from_datacube_wkt_in_memory(): Unit = {
+    val (cube, wkts) = spaceTimeCubeAndPointWkts()
+
+    val df = computeStatsGeotrellisAdapter.compute_generic_timeseries_dataframe_from_datacube(
+      "mean", cube, wkts, s"EPSG:${LatLng.epsgCode.get}")
+
+    assertEquals(Seq("date", "feature_index"), df.columns.take(2).toSeq)
+    val rows = df.collect()
+    assertEquals(Set(0, 1), rows.map(_.getAs[Int]("feature_index")).toSet)
+    assertEquals(Set(10.0), rows.map(_.get(2).asInstanceOf[Double]).toSet)
+  }
+
   private[geotrellis] def createQuantiles( qValue: Int) = {
     val builder = new SparkAggregateScriptBuilder
     val arguments = new util.HashMap[String, Object]()

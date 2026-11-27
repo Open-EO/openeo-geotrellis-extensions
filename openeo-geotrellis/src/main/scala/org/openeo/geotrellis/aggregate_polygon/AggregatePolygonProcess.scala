@@ -102,7 +102,26 @@ class AggregatePolygonProcess {
     }
   }
 
-  def aggregateSpatialForGeometry(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[Geometry], crs: CRS, bandCount:Int, outputPath:String): Unit = {
+  def aggregateSpatialForGeometry(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[Geometry], crs: CRS, bandCount:Int, outputPath:String): Unit =
+    aggregateSpatialForGeometry(scriptBuilder, datacube, geometries, crs, bandCount, AggregateOutputOptions(outputPath))
+
+  def aggregateSpatialForGeometry(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[Geometry], crs: CRS, bandCount:Int, outputOptions: AggregateOutputOptions): Unit =
+    aggregateSpatialForGeometryWith(datacube, geometries, crs, bandCount) { (pixelRDD, cellType, maybeLabels) =>
+      aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputOptions, maybeLabels)
+    }
+
+  /**
+   * In-memory variant: the (small) result is collected on the driver and returned as a local DataFrame
+   * (columns: date, feature_index, one column per band/statistic), so no output files are needed.
+   */
+  def aggregateSpatialForGeometryInMemory(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[Geometry], crs: CRS, bandCount:Int): DataFrame =
+    aggregateSpatialForGeometryWith(datacube, geometries, crs, bandCount) { (pixelRDD, cellType, maybeLabels) =>
+      val aggregated = aggregateByDateAndPolygonDataFrame(pixelRDD, scriptBuilder, bandCount, cellType, maybeLabels)
+      aggregated.sparkSession.createDataFrame(aggregated.collectAsList(), aggregated.schema)
+    }
+
+  private def aggregateSpatialForGeometryWith[R](datacube : MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[Geometry], crs: CRS, bandCount:Int)
+                                              (finish: (RDD[Row], CellType, Option[Seq[String]]) => R): R = {
     val sc = datacube.sparkContext
 
     // each polygon becomes a feature with a value that's equal to its position in the array
@@ -162,7 +181,7 @@ class AggregatePolygonProcess {
     }
     val cellType = datacube.metadata.cellType
     val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
-    aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, AggregateOutputOptions(outputPath), maybeLabels)
+    finish(pixelRDD, cellType, maybeLabels)
   }
 
   def aggregateSpatialForGeometryWithSpatialCube(scriptBuilder: SparkAggregateScriptBuilder,
