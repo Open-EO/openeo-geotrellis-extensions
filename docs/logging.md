@@ -17,6 +17,9 @@ See [#872](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/872).
 
 Records without an `audience` field (e.g. logs written before this feature) stay visible to users.
 
+Note the difference in defaults: in Python every level is `user` unless marked otherwise,
+in Scala `debug`/`trace` are `developer` by default.
+
 ## Python (openeo-geopyspark-driver / openeo-python-driver)
 
 ### Default behavior
