@@ -32,7 +32,7 @@ class AtmosphericCorrection extends Serializable {
     // no more changes in sensordescriptor beyond broadcast, because it won't be synched to the workers
     val sensorDescriptorBC=sc.broadcast(
       if(method.toUpperCase().equals("SMAC")){
-        logger.debug("Using SMAC")
+        logger.info("Using SMAC")
         new SMACCorrection()
       }else{
         logger.debug("Using ICOR")

@@ -176,7 +176,7 @@ package object geotrellis {
         } else if (attempt.getLastResult != null) {
           "result code: " + attempt.getLastResult.code
         } else ""
-        logger.debug(s"Attempt ${attempt.getAttemptCount} failed in context: '$context' " + msg)
+        logger.warn(s"Attempt ${attempt.getAttemptCount} failed in context: '$context' " + msg)
       })
       .onFailure((execution: ExecutionCompletedEvent[HttpResponse[R]]) => {
         val e = execution.getFailure
@@ -197,7 +197,7 @@ package object geotrellis {
           .getOrElse(retryAfterSecondsCalculated)
 
         val duration = Duration.ofSeconds(retryAfterSeconds)
-        logger.debug(s"Attempt ${executionContext.getAttemptCount} failed in context: '$context' Scheduled retry in $duration")
+        logger.warn(s"Attempt ${executionContext.getAttemptCount} failed in context: '$context' Scheduled retry in $duration")
         duration
       })
 

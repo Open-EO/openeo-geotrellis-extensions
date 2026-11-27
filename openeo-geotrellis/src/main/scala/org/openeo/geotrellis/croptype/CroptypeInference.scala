@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.croptype
 
 import ai.onnxruntime._
+import org.openeo.logging.JsonLayout
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, Transform}
 import geotrellis.raster._
@@ -457,12 +458,12 @@ object CroptypeInference {
           if (detectedLcClasses < 0) {
             val lcShape = result.get(2).getInfo.asInstanceOf[TensorInfo].getShape
             detectedLcClasses = lcShape.last.toInt
-            logger.debug(s"CroptypeInference: detected $detectedLcClasses landcover classes from output shape ${lcShape.mkString("[", ",", "]")}")
+            logger.debug(JsonLayout.USER, s"CroptypeInference: detected $detectedLcClasses landcover classes from output shape ${lcShape.mkString("[", ",", "]")}")
           }
           if (detectedCtClasses < 0) {
             val ctShape = result.get(3).getInfo.asInstanceOf[TensorInfo].getShape
             detectedCtClasses = ctShape.last.toInt
-            logger.debug(s"CroptypeInference: detected $detectedCtClasses croptype classes from output shape ${ctShape.mkString("[", ",", "]")}")
+            logger.debug(JsonLayout.USER, s"CroptypeInference: detected $detectedCtClasses croptype classes from output shape ${ctShape.mkString("[", ",", "]")}")
           }
           val batchLandcover = flatten2d(result.get(2).getValue)
           val batchCroptype  = flattenCroptype(result.get(3).getValue, batchB, numSeasons, detectedCtClasses)
@@ -535,14 +536,14 @@ object CroptypeInference {
     if (outputProbabilities) {
       outputTiles ++= buildProbabilityTile(landcoverFull, croptypeFull, cols, rows,
         detectedLcClasses, detectedCtClasses, numSeasons, targetDatatype, validPixel).bands
-      logger.debug(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
+      logger.debug(JsonLayout.USER, s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
     }
     if (outputNdvi) {
       outputTiles ++= buildNdviTiles(ndviAccum, cols, rows, T).map {
         case t if targetDatatype.isFloat => t.convert(targetDatatype.cellType)
         case t => t
       }
-      logger.debug(s"CroptypeInference: added ndvi ${T} monthly bands.")
+      logger.debug(JsonLayout.USER, s"CroptypeInference: added ndvi ${T} monthly bands.")
     }
     logger.debug(s"CroptypeInference: Finished for tile at extent $tileExtent, output bands: ${outputTiles.length} outputEmbeddings=$outputEmbeddings, outputProbabilities=$outputProbabilities, outputClassification=$outputClassification")
     Some(MultibandTile(outputTiles.toSeq))

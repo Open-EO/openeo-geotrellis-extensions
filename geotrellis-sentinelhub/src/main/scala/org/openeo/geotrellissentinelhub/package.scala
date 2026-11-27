@@ -1,6 +1,7 @@
 package org.openeo
 
 import _root_.io.circe.{Decoder, Encoder, HCursor, Json}
+import org.openeo.logging.JsonLayout
 import _root_.io.circe.Decoder.Result
 import geotrellis.vector._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
@@ -45,7 +46,7 @@ package object geotrellissentinelhub {
         .withMaxAttempts(5)
         .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) => {
           val e = attempt.getLastFailure
-          logger.debug(s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
+          logger.warn(JsonLayout.DEVELOPER, s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
         })
         .onFailure((execution: ExecutionCompletedEvent[R]) => {
           val e = execution.getFailure

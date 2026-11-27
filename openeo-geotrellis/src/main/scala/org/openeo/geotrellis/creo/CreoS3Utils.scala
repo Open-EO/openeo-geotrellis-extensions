@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.creo
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.openeo.logging.JsonLayout
 import geotrellis.store.s3.AmazonS3URI
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
@@ -111,7 +112,7 @@ object CreoS3Utils {
         .build()
     } catch {
       case e: Exception =>
-        logger.debug(s"Cannot build proxy S3 client for bucket $bucketName: ${e.getMessage}", e)
+        logger.warn(JsonLayout.DEVELOPER, s"Cannot build proxy S3 client for bucket $bucketName: ${e.getMessage}", e)
         null
     }
   }
@@ -124,7 +125,7 @@ object CreoS3Utils {
         value.toIntOption match {
           case Some(i) if i >= min => i
           case _ =>
-            logger.debug(s"Ignoring invalid value '$value' for $name (expected integer >= $min), using $default")
+            logger.warn(s"Ignoring invalid value '$value' for $name (expected integer >= $min), using $default")
             default
         }
     }
@@ -156,7 +157,7 @@ object CreoS3Utils {
         .build()
     } catch {
       case e: Exception =>
-        logger.debug(s"Cannot build proxy S3 async client for bucket $bucketName: ${e.getMessage}", e)
+        logger.warn(JsonLayout.DEVELOPER, s"Cannot build proxy S3 async client for bucket $bucketName: ${e.getMessage}", e)
         null
     }
   }
@@ -171,13 +172,13 @@ object CreoS3Utils {
   private def resolveProxySettings(bucketName: String): ProxySettings = {
     val tokenFile = Path.of(sys.env.getOrElse("OPENEO_WEB_IDENTITY_TOKEN_FILE", "/opt/job_config/token"))
     if (!Files.isRegularFile(tokenFile) || !Files.isReadable(tokenFile)) {
-      logger.debug(s"Skip proxy S3 client for bucket $bucketName: web identity token file is not readable: $tokenFile")
+      logger.warn(s"Skip proxy S3 client for bucket $bucketName: web identity token file is not readable: $tokenFile")
       return null
     }
 
     val bucketConfigFile = Path.of(sys.env.getOrElse("OPENEO_BUCKET_CONFIG_FILE", "/opt/job_config/bucket_config.json"))
     if (!Files.isRegularFile(bucketConfigFile) || !Files.isReadable(bucketConfigFile)) {
-      logger.debug(s"Skip proxy S3 client for bucket $bucketName: bucket config file is not readable: $bucketConfigFile")
+      logger.warn(s"Skip proxy S3 client for bucket $bucketName: bucket config file is not readable: $bucketConfigFile")
       return null
     }
 
@@ -215,7 +216,7 @@ object CreoS3Utils {
       ProxySettings(region, s3Endpoint, credentialsProvider)
     } catch {
       case e: Exception =>
-        logger.debug(s"Cannot build proxy S3 client for bucket $bucketName: ${e.getMessage}", e)
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: ${e.getMessage}", e)
         null
     }
   }
@@ -323,34 +324,34 @@ object CreoS3Utils {
     try {
       val bucketConfigRoot = objectMapper.readTree(bucketConfigFile.toFile)
       if (bucketConfigRoot == null || !bucketConfigRoot.isObject) {
-        logger.debug(s"Skip proxy S3 client for bucket $bucketName: bucket config file does not contain a JSON object: $bucketConfigFile")
+        logger.warn(s"Skip proxy S3 client for bucket $bucketName: bucket config file does not contain a JSON object: $bucketConfigFile")
         return null
       }
 
       val bucketNode = bucketConfigRoot.path(bucketName)
       if (bucketNode.isMissingNode || !bucketNode.isObject) {
-        logger.debug(s"Skip proxy S3 client for bucket $bucketName: bucket config file has no object entry for this bucket: $bucketConfigFile")
+        logger.warn(s"Skip proxy S3 client for bucket $bucketName: bucket config file has no object entry for this bucket: $bucketConfigFile")
         return null
       }
 
       val region = Option(bucketNode.path("region").asText(null)).map(_.trim).filter(_.nonEmpty).orNull
       if (region == null) {
         //Warn because this should not happen
-        logger.debug(s"Cannot build proxy S3 client for bucket $bucketName: bucket config entry has no region: $bucketConfigFile")
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config entry has no region: $bucketConfigFile")
         return null
       }
 
       val roleArn = Option(bucketNode.path("role_arn").asText(null)).map(_.trim).filter(_.nonEmpty).orNull
       if (roleArn == null) {
         //Warn because this should not happen
-        logger.debug(s"Cannot build proxy S3 client for bucket $bucketName: bucket config entry has no role_arn: $bucketConfigFile")
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: bucket config entry has no role_arn: $bucketConfigFile")
         return null
       }
 
       ProxyBucketConfig(region, roleArn)
     } catch {
       case e: Exception =>
-        logger.debug(s"Cannot build proxy S3 client for bucket $bucketName: failed to read bucket config file $bucketConfigFile: ${e.getMessage}", e)
+        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: failed to read bucket config file $bucketConfigFile: ${e.getMessage}", e)
         null
     }
   }
@@ -358,7 +359,7 @@ object CreoS3Utils {
   private def getRequiredUri(envName: String): URI = {
     val endpointValue = sys.env.get(envName).map(_.trim).filter(_.nonEmpty).orNull
     if (endpointValue == null) {
-      logger.debug(s"Cannot build proxy S3 client: environment variable $envName is not set.")
+      logger.warn(s"Cannot build proxy S3 client: environment variable $envName is not set.")
       return null
     }
 
@@ -366,7 +367,7 @@ object CreoS3Utils {
       URI.create(endpointValue)
     } catch {
       case e: IllegalArgumentException =>
-        logger.debug(s"Cannot build proxy S3 client: environment variable $envName does not contain a valid URI: $endpointValue", e)
+        logger.warn(s"Cannot build proxy S3 client: environment variable $envName does not contain a valid URI: $endpointValue", e)
         null
     }
   }
@@ -413,7 +414,7 @@ object CreoS3Utils {
               .asScala
               .filter(_.isFile)
             // Ideally, the directory should be empty.
-            if (files_in_directory.nonEmpty) logger.debug(f"Deleting files_in_directory: $files_in_directory")
+            if (files_in_directory.nonEmpty) logger.warn(f"Deleting files_in_directory: $files_in_directory")
             FileUtils.deleteDirectory(p.toFile)
           } else {
             throw new IllegalArgumentException(f"Can only delete directory here: $path")
@@ -533,7 +534,7 @@ object CreoS3Utils {
         try {
           if (assetExists(newPath)) {
             // It might be a partial result of a previous failing task.
-            logger.debug(f"Will replace $newPath. (try $try_count)")
+            logger.warn(f"Will replace $newPath. (try $try_count)")
             assetDelete(newPath)
           }
           moveAsset(oldPath, newPath)
@@ -541,7 +542,7 @@ object CreoS3Utils {
         } catch {
           case e: Exception =>
             // Here if another executor wrote the file between the delete and the move statement.
-            logger.debug("moveOverwriteWithRetries exception: " + e + f" (try $try_count)")
+            logger.warn("moveOverwriteWithRetries exception: " + e + f" (try $try_count)")
             try_count += 1
             if (try_count > 5) {
               throw e

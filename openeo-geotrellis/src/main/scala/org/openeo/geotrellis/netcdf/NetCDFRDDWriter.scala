@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.netcdf
 
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
+import org.openeo.logging.JsonLayout
 import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster
@@ -290,7 +291,7 @@ object NetCDFRDDWriter {
     val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
     val count = cachedRDD.count()
     cachedRDD.name = s"netCDF RDD ${count} elements"
-    logger.debug(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
+    logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
 
     val elementsPartitionRatio =
       if(rdd.getNumPartitions == 0) {
@@ -381,7 +382,7 @@ object NetCDFRDDWriter {
         // Sort by date before writing.
         val sorted = tiles.toSeq.sortBy { case (instant, _, _) => instant }
         val dates = sorted.map { case (instant, _, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
-        logger.debug(s"Writing $name with dates $dates.")
+        logger.info(s"Writing $name with dates $dates.")
 
         val rasters = sorted.map(_._2)
         val bandStatistics = statisticsFromRaster(rasters, bandNames, addBandsStatistics)
@@ -417,7 +418,7 @@ object NetCDFRDDWriter {
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
     val sampleNames = featuresBC.value.map { case (sampleName, _) => sampleName }
-    logger.debug(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
+    logger.debug(JsonLayout.USER, s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
     val filtered =
       if (retainNoDataTiles) rdd
       else new OpenEOProcesses().filterEmptyTile(rdd)
@@ -449,7 +450,7 @@ object NetCDFRDDWriter {
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
     val keys = featuresBC.value.map(_._1)
-    logger.debug(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
+    logger.debug(JsonLayout.USER, s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
     rdd.flatMap {
       case (key, tile) => featuresBC.value.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
@@ -533,9 +534,9 @@ object NetCDFRDDWriter {
                   bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                   cellType: CellType): String = {
     val areas = rasters.map(raster => raster.extent.area)
-    logger.debug(s"Writing ${rasters.size} rasters to disk. Areas: ${areas.mkString(",")}")
+    logger.debug(JsonLayout.USER, s"Writing ${rasters.size} rasters to disk. Areas: ${areas.mkString(",")}")
     val maxExtent:Extent = rasters.map(_._2).reduce((a, b) => a.union(b).extent)
-    logger.debug(s"Cropping rasters to max extent: $maxExtent")
+    logger.debug(JsonLayout.USER, s"Cropping rasters to max extent: $maxExtent")
     val equalRasters = rasters.map(raster =>
       if (raster.extent != maxExtent) raster.crop(maxExtent, CropOptions(clamp = false, force = true)) else raster
     )
@@ -605,7 +606,7 @@ object NetCDFRDDWriter {
                                   bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                   zLevel: Int = 6, writeTimeDimension: Boolean = true) = {
 
-    logger.debug(s"Writing netCDF to $path with bands $bandNames, $netcdfType, $nodata, $crs, $rasterExtent, $dimensionNames, attributes $attributes, bands metadata $bandsMetadata, zLevel $zLevel")
+    logger.debug(JsonLayout.USER, s"Writing netCDF to $path with bands $bandNames, $netcdfType, $nodata, $crs, $rasterExtent, $dimensionNames, attributes $attributes, bands metadata $bandsMetadata, zLevel $zLevel")
     val theChunking = new OpenEOChunking(zLevel)
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, theChunking)
 

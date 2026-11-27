@@ -48,7 +48,7 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
     SyntheticDataRasterSource(itemId, cellTypeName, resampleTarget(gridExtent), crs, udf)
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    logger.debug(s"Loading synthetic data for ${itemId}")
+    logger.info(s"Loading synthetic data for ${itemId}")
 
     extent.intersection(gridExtent.extent)
       .map { intersection =>
@@ -59,7 +59,7 @@ case class SyntheticDataRasterSource(itemId:String, cellTypeName: String, gridEx
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    logger.debug(s"Loading synthetic data for ${itemId}")
+    logger.info(s"Loading synthetic data for ${itemId}")
 
     bounds.intersection(gridExtent.dimensions)
       .map { intersection =>

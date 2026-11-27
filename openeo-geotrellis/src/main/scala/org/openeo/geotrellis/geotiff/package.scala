@@ -130,7 +130,7 @@ package object geotiff {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
     formatOptions.assertNoConflicts()
     val ret = saveRDDTemporalAllowAssetPerBandInternal(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction = overviewReductions)
-    logger.debug("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
+    logger.warn("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
     ret.stream()
       .flatMap { item =>
         item.assets.values().stream()
@@ -291,7 +291,7 @@ package object geotiff {
     val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
     val totalRows = math.ceil(gridBounds.height.toDouble / tileLayout.tileRows).toInt
 
-    logger.debug(s"Write Geotiff per date ${croppedExtent}, ${gridBounds}, ${tileLayout}")
+    logger.info(s"Write Geotiff per date ${croppedExtent}, ${gridBounds}, ${tileLayout}")
 
     val compression = determineCompression(formatOptions)
     val bandSegmentCount = totalCols * totalRows
@@ -478,7 +478,7 @@ package object geotiff {
              ): JList[String] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, spatial, $bandCount)")
     val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
-    logger.debug("Calling backwards compatibility version for saveRDDAllowAssetPerBand")
+    logger.warn("Calling backwards compatibility version for saveRDDAllowAssetPerBand")
     //    if (tmp.size() > 1) {
     //      throw new Exception("Multiple returned files, probably meant to call saveRDDAllowAssetPerBand")
     //    }
@@ -854,7 +854,7 @@ package object geotiff {
                        ):GeoTiffResultObject = {
     val tiffType = if (formatOptions.isBigTiff) BigTiff else Tiff
 
-    logger.debug(s"Writing $tiffType geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
+    logger.info(s"Writing $tiffType geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
     val tiffTile: GeoTiffMultibandTile = toTiff(tiffs, gridBounds, tileLayout, compression, cellType, detectedBandCount, segmentCount)
     val options = formatOptions.colorMap match {
       case Some(colorMap) =>
