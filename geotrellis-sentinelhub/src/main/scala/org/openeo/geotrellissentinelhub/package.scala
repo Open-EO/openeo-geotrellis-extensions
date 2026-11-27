@@ -45,7 +45,7 @@ package object geotrellissentinelhub {
         .withMaxAttempts(5)
         .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) => {
           val e = attempt.getLastFailure
-          logger.warn(s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
+          logger.debug(s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
         })
         .onFailure((execution: ExecutionCompletedEvent[R]) => {
           val e = execution.getFailure

@@ -130,7 +130,7 @@ package object geotiff {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
     formatOptions.assertNoConflicts()
     val ret = saveRDDTemporalAllowAssetPerBandInternal(rdd, path, zLevel, cropBounds, formatOptions, overviewReductionsFunction = overviewReductions)
-    logger.warn("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
+    logger.debug("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
     ret.stream()
       .flatMap { item =>
         item.assets.values().stream()
@@ -291,7 +291,7 @@ package object geotiff {
     val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
     val totalRows = math.ceil(gridBounds.height.toDouble / tileLayout.tileRows).toInt
 
-    logger.info(s"Write Geotiff per date ${croppedExtent}, ${gridBounds}, ${tileLayout}")
+    logger.debug(s"Write Geotiff per date ${croppedExtent}, ${gridBounds}, ${tileLayout}")
 
     val compression = determineCompression(formatOptions)
     val bandSegmentCount = totalCols * totalRows
@@ -359,7 +359,7 @@ package object geotiff {
       val segmentCount = bandSegmentCount * tiffBands
 
       val overviewTiles = if (formatOptions.overviews.toUpperCase == "ALL" || formatOptions.overviews.toUpperCase == "AUTO") {
-        logger.info(s"Add overviews for ${filename}, with resample method ${getOverviewResampleMethod(formatOptions)}")
+        logger.debug(s"Add overviews for ${filename}, with resample method ${getOverviewResampleMethod(formatOptions)}")
         val decimationFactors = overviewReductionsFunction(formatOptions, gridBounds.width, gridBounds.height, tileLayout.tileRows, tileLayout.tileCols)
 
         decimationFactors.indices.toList
@@ -478,7 +478,7 @@ package object geotiff {
              ): JList[String] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, spatial, $bandCount)")
     val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
-    logger.warn("Calling backwards compatibility version for saveRDDAllowAssetPerBand")
+    logger.debug("Calling backwards compatibility version for saveRDDAllowAssetPerBand")
     //    if (tmp.size() > 1) {
     //      throw new Exception("Multiple returned files, probably meant to call saveRDDAllowAssetPerBand")
     //    }
@@ -499,7 +499,7 @@ package object geotiff {
                                formatOptions: GTiffOptions = new GTiffOptions
                               ): JList[Item] = {
     formatOptions.assertNoConflicts()
-    logger.info(s"save_result:saveRDDAllowAssetPerBand with bandcount=$bandCount cropBounds=$cropBounds, separateAssetPerBand=${formatOptions.separateAssetPerBand}")
+    logger.debug(s"save_result:saveRDDAllowAssetPerBand with bandcount=$bandCount cropBounds=$cropBounds, separateAssetPerBand=${formatOptions.separateAssetPerBand}")
     if (formatOptions.separateAssetPerBand) {
       val bandLabels = formatOptions.getBandNames
       val layout = rdd.metadata.layout
@@ -618,7 +618,7 @@ package object geotiff {
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3.persist(StorageLevel.MEMORY_AND_DISK)
-    logger.info(f"saveRDDGeneric with cropBounds:$cropBounds, layout: ${preprocessedRdd.metadata.tileLayout}, filenamePrefix: ${formatOptions.filenamePrefix} ")
+    logger.debug(f"saveRDDGeneric with cropBounds:$cropBounds, layout: ${preprocessedRdd.metadata.tileLayout}, filenamePrefix: ${formatOptions.filenamePrefix} ")
     val bandLabels = formatOptions.getBandNames
     try {
       val compression = determineCompression(formatOptions)
@@ -854,7 +854,7 @@ package object geotiff {
                        ):GeoTiffResultObject = {
     val tiffType = if (formatOptions.isBigTiff) BigTiff else Tiff
 
-    logger.info(s"Writing $tiffType geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
+    logger.debug(s"Writing $tiffType geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
     val tiffTile: GeoTiffMultibandTile = toTiff(tiffs, gridBounds, tileLayout, compression, cellType, detectedBandCount, segmentCount)
     val options = formatOptions.colorMap match {
       case Some(colorMap) =>
@@ -975,7 +975,7 @@ package object geotiff {
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
-    logger.info(s"save_result: saveStitchedTileGrid with layout=$layout, crs=$crs, croppedExtent=$croppedExtent, tile grid=$tileGrid")
+    logger.debug(s"save_result: saveStitchedTileGrid with layout=$layout, crs=$crs, croppedExtent=$croppedExtent, tile grid=$tileGrid")
     val groupedRDD = rdd.flatMap {
       case (key, tile) => features.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
@@ -1061,7 +1061,7 @@ package object geotiff {
       resampled
     }
 
-    logger.info(f"stitchAndWriteToTiff with layout: $layout, croppedExtent: $croppedExtent, geometry: $geometry, cols & rows: ${adjusted.cols} & ${adjusted.rows} ")
+    logger.debug(f"stitchAndWriteToTiff with layout: $layout, croppedExtent: $croppedExtent, geometry: $geometry, cols & rows: ${adjusted.cols} & ${adjusted.rows} ")
     val fo = formatOptions
     fo.assertNoConflicts()
 
@@ -1173,7 +1173,7 @@ package object geotiff {
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
 
-    logger.info(f"save_result: groupByFeatureAndWriteToTiff with layout=$layout, crs=$crs croppedExtent= $croppedExtent, features=${featuresBC.value.map(_._1).mkString(",")}")
+    logger.debug(f"save_result: groupByFeatureAndWriteToTiff with layout=$layout, crs=$crs croppedExtent= $croppedExtent, features=${featuresBC.value.map(_._1).mkString(",")}")
 
     val filenamePrefix = formatOptions.filenamePrefix
     val ret = rdd
@@ -1216,7 +1216,7 @@ package object geotiff {
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
-    logger.info(s"save_result: groupByFeatureAndWriteToTiffSpatial with layout= $layout, crs=$crs, cropped extent=$croppedExtent" )
+    logger.debug(s"save_result: groupByFeatureAndWriteToTiffSpatial with layout= $layout, crs=$crs, cropped extent=$croppedExtent" )
 
     val filenamePrefix = formatOptions.filenamePrefix
     val bandTags = formatOptions.getBandNames

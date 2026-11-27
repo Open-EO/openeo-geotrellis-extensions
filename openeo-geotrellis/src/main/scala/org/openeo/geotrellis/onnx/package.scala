@@ -381,7 +381,7 @@ package object onnx {
     val tileCols = datacube.metadata.tileLayout.tileCols
     val tileRows = datacube.metadata.tileLayout.tileRows
     val retiled = if (tileCols != inputShape(inputShape.length-1) || tileRows != inputShape(inputShape.length-2)) {
-      logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(inputShape.length-1)},${inputShape(inputShape.length-2)})")
+      logger.debug(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputShape(inputShape.length-1)},${inputShape(inputShape.length-2)})")
       val processes = new OpenEOProcesses()
       processes.retileGeneric(datacube,inputShape(inputShape.length-2).toInt,inputShape(inputShape.length-1).toInt,0,0)
     } else datacube
@@ -427,7 +427,7 @@ package object onnx {
     val tileCols = tileLayout.tileCols
     val tileRows = tileLayout.tileRows
     val retiled = if (tileCols != inputCols || tileRows != inputRows) {
-      logger.info(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputCols},${inputRows})")
+      logger.debug(f"ONNX: retile datacube for ($tileCols,$tileRows) to (${inputCols},${inputRows})")
       val processes = new OpenEOProcesses()
       processes.retileGeneric(datacube, inputRows.toInt, inputCols.toInt, 0, 0)
     } else datacube

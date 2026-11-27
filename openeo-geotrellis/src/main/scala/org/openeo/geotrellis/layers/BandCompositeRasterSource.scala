@@ -130,7 +130,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   /** Reprojects `rs` to this composite's CRS, retrying and honouring `softErrors` (`None` if it failed softly). */
   private def reprojectedSource(rs: RasterSource, bandCount: Int): Option[RasterSource] = {
-    try Some(retryWithBackoff(maxRetries, (e: Exception) => logger.warn(s"attempt to reproject ${rs.name} to $crs failed", e)) {
+    try Some(retryWithBackoff(maxRetries, (e: Exception) => logger.debug(s"attempt to reproject ${rs.name} to $crs failed", e)) {
       rs.reproject(crs)
     })
     catch {
@@ -255,7 +255,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
    */
   private def readBoundsFrom(source: RasterSource, bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] =
     requestContext.apply {
-      retryWithBackoff(maxRetries, (e: Exception) => logger.warn(s"attempt to read $bounds from ${source.name} failed", e)) {
+      retryWithBackoff(maxRetries, (e: Exception) => logger.debug(s"attempt to read $bounds from ${source.name} failed", e)) {
         readBounds(source, bounds, bands)
       }
     }.orElse(softErrorFallback(source, bands.size)(_.read(bounds, Seq(0)))).map { raster =>

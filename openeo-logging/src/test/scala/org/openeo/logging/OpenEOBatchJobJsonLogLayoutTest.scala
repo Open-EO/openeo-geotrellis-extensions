@@ -48,7 +48,7 @@ class OpenEOBatchJobJsonLogLayoutTest {
 
     assertTrue(logEntries.exists { logEntry => logEntry("message").asString.contains("some batch job log") })
     assertTrue(logEntries.filter { logEntry => logEntry("message").asString.contains("some batch job log") }
-      .forall(logEntry => logEntry("audience").asString.contains("developer")))
+      .forall(logEntry => logEntry("audience").asString.contains("user")))
     assertTrue(logEntries.forall { logEntry =>
       logEntry("user_id").asString.contains("vdboschj") && logEntry("job_id").asString.contains("j-abc123")
     })

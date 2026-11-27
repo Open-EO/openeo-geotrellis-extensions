@@ -34,7 +34,7 @@ object PixelRateValidator {
       throw new IllegalArgumentException(s"Total of pixels needed for calculations is too large $pixels > ${maxPixels()}. Try to query a smaller area or to use a lower zoom level")
     }
 
-    logger.info(s"${pixels.toDouble} pixels needed for this request")
+    logger.debug(s"${pixels.toDouble} pixels needed for this request")
     
     pixels
   }

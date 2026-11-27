@@ -90,7 +90,7 @@ object HealpixZarrWriter {
     val rows: Array[Row] = scalarDf.collect()
     val nCells = rows.length
 
-    logger.info(s"HealpixZarrWriter: writing $nCells cells, nside=$nside, " +
+    logger.debug(s"HealpixZarrWriter: writing $nCells cells, nside=$nside, " +
       s"nside_parent=$nsideParent, parentLevels=$effectiveParentLevels to $location")
 
     // --- 2. Write root zarr.json ---------------------------------------------
@@ -140,7 +140,7 @@ object HealpixZarrWriter {
       writeFloatArray(bandsDir.resolve(name), bandData(bi), nCells)
     }
 
-    logger.info(s"HealpixZarrWriter: done writing to $location")
+    logger.debug(s"HealpixZarrWriter: done writing to $location")
   }
 
   // --------------------------------------------------------------------------

@@ -17,7 +17,7 @@ object S3Utils {
     val listObjectsResponse = client.listObjects(listObjectsRequest)
     val keys = listObjectsResponse.contents.asScala.map(_.key)
     if (keys.isEmpty) {
-      logger.info(s"No objects to delete in $bucketName/$subfolder")
+      logger.debug(s"No objects to delete in $bucketName/$subfolder")
       // Avoid S3Exception: The XML you provided was not well-formed or did not validate against our published schema
       return
     }
@@ -25,7 +25,7 @@ object S3Utils {
       .bucket(bucketName)
       .delete(Delete.builder.objects(keys.map(key => ObjectIdentifier.builder.key(key).build).asJavaCollection).build)
       .build
-    logger.info(s"Deleting objects from $bucketName/$subfolder: ${keys.mkString(", ")}")
+    logger.debug(s"Deleting objects from $bucketName/$subfolder: ${keys.mkString(", ")}")
     client.deleteObjects(deleteObjectsRequest)
   }
 

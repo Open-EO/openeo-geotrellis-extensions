@@ -92,12 +92,12 @@ object CroptypeInference {
   ): MultibandTileLayerRDD[SpaceTimeKey] = {
 
     val scalaContext = args.getOrDefault("context", Collections.emptyMap()).asInstanceOf[java.util.Map[String,Any]].asScala
-    logger.info(s"CroptypeInference: Starting WorldCereal ONNX inference over datacube with ${scalaContext.mkString(",")}" )
+    logger.debug(s"CroptypeInference: Starting WorldCereal ONNX inference over datacube with ${scalaContext.mkString(",")}" )
     val onnxModelPath = scalaContext
       .getOrElse("onnx_model_path", "org/openeo/geotrellis/worldcereal/worldcereal_seasonal_eu_bup.onnx")
       .asInstanceOf[String]
     val outputEmbeddingsEnabled = scalaContext.getOrElse("output_embeddings", true)
-    logger.info(s"CroptypeINference: output_embeddings = $outputEmbeddingsEnabled - ${outputEmbeddingsEnabled.asInstanceOf[Boolean]}")
+    logger.debug(s"CroptypeINference: output_embeddings = $outputEmbeddingsEnabled - ${outputEmbeddingsEnabled.asInstanceOf[Boolean]}")
     val outputEmbeddings = outputEmbeddingsEnabled.asInstanceOf[Boolean]
     val outputProbabilities = true//scalaContext.getOrElse("output_probabilities", true).asInstanceOf[Boolean]
     val outputClassification = scalaContext.getOrElse("output_classification", true).asInstanceOf[Boolean]
@@ -182,7 +182,7 @@ object CroptypeInference {
     val input =
       if (scalaContext.contains("tile_size")) {
         val size = scalaContext("tile_size").asInstanceOf[Int]
-        logger.info("CroptypeInference: Retiling datacube to tile_size = " + size)
+        logger.debug("CroptypeInference: Retiling datacube to tile_size = " + size)
         processes.retileGeneric(datacube, size, size, 0, 0)
       } else {
         datacube
@@ -457,12 +457,12 @@ object CroptypeInference {
           if (detectedLcClasses < 0) {
             val lcShape = result.get(2).getInfo.asInstanceOf[TensorInfo].getShape
             detectedLcClasses = lcShape.last.toInt
-            logger.info(s"CroptypeInference: detected $detectedLcClasses landcover classes from output shape ${lcShape.mkString("[", ",", "]")}")
+            logger.debug(s"CroptypeInference: detected $detectedLcClasses landcover classes from output shape ${lcShape.mkString("[", ",", "]")}")
           }
           if (detectedCtClasses < 0) {
             val ctShape = result.get(3).getInfo.asInstanceOf[TensorInfo].getShape
             detectedCtClasses = ctShape.last.toInt
-            logger.info(s"CroptypeInference: detected $detectedCtClasses croptype classes from output shape ${ctShape.mkString("[", ",", "]")}")
+            logger.debug(s"CroptypeInference: detected $detectedCtClasses croptype classes from output shape ${ctShape.mkString("[", ",", "]")}")
           }
           val batchLandcover = flatten2d(result.get(2).getValue)
           val batchCroptype  = flattenCroptype(result.get(3).getValue, batchB, numSeasons, detectedCtClasses)
@@ -510,7 +510,7 @@ object CroptypeInference {
     if (outputEmbeddings) {
       val bands = OnnxInferenceUtils.buildQuantizedEmbeddingTile(embeddingsFull, B, cols, rows, targetDatatype).bands
       outputTiles ++= (if (targetDatatype.isFloat) bands.map(_.convert(targetDatatype.cellType)) else bands)
-      logger.info(s"CroptypeInference: added embeddings ${outputTiles.length} ")
+      logger.debug(s"CroptypeInference: added embeddings ${outputTiles.length} ")
     }
 
     if (outputClassification) {
@@ -535,16 +535,16 @@ object CroptypeInference {
     if (outputProbabilities) {
       outputTiles ++= buildProbabilityTile(landcoverFull, croptypeFull, cols, rows,
         detectedLcClasses, detectedCtClasses, numSeasons, targetDatatype, validPixel).bands
-      logger.info(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
+      logger.debug(s"CroptypeInference: added probabilities ${outputTiles.length} for ${numSeasons} seasons.")
     }
     if (outputNdvi) {
       outputTiles ++= buildNdviTiles(ndviAccum, cols, rows, T).map {
         case t if targetDatatype.isFloat => t.convert(targetDatatype.cellType)
         case t => t
       }
-      logger.info(s"CroptypeInference: added ndvi ${T} monthly bands.")
+      logger.debug(s"CroptypeInference: added ndvi ${T} monthly bands.")
     }
-    logger.info(s"CroptypeInference: Finished for tile at extent $tileExtent, output bands: ${outputTiles.length} outputEmbeddings=$outputEmbeddings, outputProbabilities=$outputProbabilities, outputClassification=$outputClassification")
+    logger.debug(s"CroptypeInference: Finished for tile at extent $tileExtent, output bands: ${outputTiles.length} outputEmbeddings=$outputEmbeddings, outputProbabilities=$outputProbabilities, outputClassification=$outputClassification")
     Some(MultibandTile(outputTiles.toSeq))
   }
 

@@ -10,7 +10,7 @@
   },
   "audience": {
     "$resolver": "pattern",
-    "pattern": "%replace{%equals{%marker}{USER_FACING}{user}}{^(?!user$).*$}{developer}",
+    "pattern": "%replace{%replace{%replace{%marker|%level}{^(?!USER_FACING\\|).*\\|(DEBUG|TRACE)$}{developer}}{^DEVELOPER\\|.*$}{developer}}{^(?!developer$).*$}{user}",
     "stackTraceEnabled": false
   },
   "message": {

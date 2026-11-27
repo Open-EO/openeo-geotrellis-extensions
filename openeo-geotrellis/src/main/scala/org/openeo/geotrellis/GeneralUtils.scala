@@ -293,7 +293,7 @@ object GeneralUtils {
     else {
       val reprojectedExtentRight = layoutRight.extent.reproject(crsRight, crsLeft)
       val result = layoutDefinitionMergeWithEqualCellSize(layoutLeft, reprojectedExtentRight)
-      logger.info(s"layoutMerged: layoutLeft=$layoutLeft, layoutRight=$layoutRight, crsLeft=$crsLeft, crsRight=$crsRight, result layout =$result")
+      logger.debug(s"layoutMerged: layoutLeft=$layoutLeft, layoutRight=$layoutRight, crsLeft=$crsLeft, crsRight=$crsRight, result layout =$result")
       result
     }
   }

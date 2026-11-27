@@ -52,7 +52,7 @@ object DefaultProcessApi {
       .withMaxAttempts(5)
       .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) => {
         val e = attempt.getLastFailure
-        logger.warn(s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
+        logger.debug(s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
       })
       .onFailure((execution: ExecutionCompletedEvent[R]) => {
         val e = execution.getFailure
@@ -81,7 +81,7 @@ object DefaultProcessApi {
         Duration.ofSeconds(retryAfterSeconds)
       })
       .onRetryScheduled((retry: ExecutionScheduledEvent[HttpResponse[MultibandGeoTiff]]) => {
-        logger.warn(s"Scheduled retry within ${retry.getDelay} because of 429 response in context: $context")
+        logger.debug(s"Scheduled retry within ${retry.getDelay} because of 429 response in context: $context")
       })
 
     Failsafe

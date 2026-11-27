@@ -170,7 +170,7 @@ case class RasterTileLoader() {
                                    collectionRef: Option[String] = None,
                                   ) = {
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
-    logger.info(s"Cube partitioner index: ${partitioner.index}")
+    logger.debug(s"Cube partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val tracker = BatchJobMetadataTracker.tracker("")
     // also reached via readMultibandTileLayer, which bypasses loadRasterRegionsToTiles
@@ -240,7 +240,7 @@ case class RasterTileLoader() {
 
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
 
-    logger.info(s"Cube $collectionRef partitioner index: ${partitioner.index}")
+    logger.debug(s"Cube $collectionRef partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val tracker = BatchJobMetadataTracker.tracker("")
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
