@@ -34,6 +34,17 @@ class RtcAlgorithmOptionsTest {
   }
 
   @Test
+  def parsesNoiseOptions(): Unit = {
+    val defaults = configFor()
+    assertEquals(true, defaults.noiseRemoval)
+    assertEquals(true, defaults.noiseClip)
+    assertEquals(0.0, defaults.noiseFloor)
+    val config = configFor("noise_clip" -> "false", "noise_floor" -> java.lang.Double.valueOf(1e-5))
+    assertEquals(false, config.noiseClip)
+    assertEquals(1e-5, config.noiseFloor)
+  }
+
+  @Test
   def rejectsUnknownAlgorithm(): Unit =
     assertThrows(classOf[IllegalArgumentException], () => configFor("rtc_algorithm" -> "foo"))
 }
