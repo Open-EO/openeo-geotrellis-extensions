@@ -167,6 +167,61 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       bandCount = new OpenEOProcesses().RDDBandCount(datacube), output_dir)
   }
 
+  /**
+   * @param output_format     "csv" or "parquet"
+   * @param output_filesystem "file" (local path) or "distributed" (path/URI on the Spark filesystem, e.g. s3a://...)
+   */
+  def compute_generic_timeseries_from_datacube(reducer: String, datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                                               geometry_wkts: JList[String], geometries_srs: String,
+                                               output_path: String, output_format: String, output_filesystem: String): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd(reducer, new util.HashMap[String, Object])
+    compute_generic_timeseries_from_datacube(builder, datacube, geometry_wkts, geometries_srs,
+      AggregateOutputOptions(output_path, output_format, output_filesystem))
+  }
+
+  /**
+   * Variant for a reducer defined as process graph (as built by the Python driver's aggregate_spatial).
+   */
+  def compute_generic_timeseries_from_datacube(scriptBuilder: SparkAggregateScriptBuilder,
+                                               datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                                               geometry_wkts: JList[String], geometries_srs: String,
+                                               output_path: String, output_format: String, output_filesystem: String): Unit =
+    compute_generic_timeseries_from_datacube(scriptBuilder, datacube, geometry_wkts, geometries_srs,
+      AggregateOutputOptions(output_path, output_format, output_filesystem))
+
+  def compute_generic_timeseries_from_datacube(scriptBuilder: SparkAggregateScriptBuilder,
+                                               datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                                               geometry_wkts: JList[String], geometries_srs: String,
+                                               outputOptions: AggregateOutputOptions): Unit = {
+    val geometries = geometry_wkts.asScala.map(_.parseWKT()).toSeq
+    val geometriesCrs = CRS.fromName(geometries_srs)
+
+    new AggregatePolygonProcess().aggregateSpatialForGeometry(scriptBuilder, datacube, geometries, geometriesCrs,
+      bandCount = new OpenEOProcesses().RDDBandCount(datacube), outputOptions)
+  }
+
+  /**
+   * In-memory variant for small results: returns a local DataFrame (date, feature_index, band columns),
+   * to be converted on the Python side (toPandas), without writing any output files.
+   */
+  def compute_generic_timeseries_dataframe_from_datacube(reducer: String, datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                                                         geometry_wkts: JList[String], geometries_srs: String): DataFrame = {
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd(reducer, new util.HashMap[String, Object])
+    compute_generic_timeseries_dataframe_from_datacube(builder, datacube, geometry_wkts, geometries_srs)
+  }
+
+  def compute_generic_timeseries_dataframe_from_datacube(scriptBuilder: SparkAggregateScriptBuilder,
+                                                         datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                                                         geometry_wkts: JList[String], geometries_srs: String): DataFrame = {
+    val geometries = geometry_wkts.asScala.map(_.parseWKT()).toSeq
+    val geometriesCrs = CRS.fromName(geometries_srs)
+
+    new AggregatePolygonProcess().aggregateSpatialForGeometryInMemory(scriptBuilder, datacube, geometries, geometriesCrs,
+      bandCount = new OpenEOProcesses().RDDBandCount(datacube))
+  }
+
   def compute_generic_timeseries_from_spatial_datacube(reducer: String,
                                                        datacube: MultibandTileLayerRDD[SpatialKey],
                                                        geometry_wkts: JList[String], geometries_srs: String,
