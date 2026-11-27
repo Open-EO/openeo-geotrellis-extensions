@@ -22,7 +22,7 @@
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-all</artifactId>
-      <version>4.1.118.Final</version>
+      <version>${netty.version}</version>
       <scope>provided</scope>
     </dependency>
     <!--https://issues.apache.org/jira/browse/SPARK-22128-->

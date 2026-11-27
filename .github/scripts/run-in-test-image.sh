@@ -14,7 +14,7 @@ docker run --rm \
   -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" \
   -w "$GITHUB_WORKSPACE" \
   -e SPARK_LOCAL_IP=127.0.0.1 \
-  -e JAVA_HOME=/usr/lib/jvm/java-21-openjdk \
+  -e JAVA_HOME=/usr/lib/jvm/java-25-openjdk \
   -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
   -e SENTINELHUB_CLIENT_ID -e SENTINELHUB_CLIENT_SECRET \
   -e GITHUB_ACTOR -e GITHUB_TOKEN \
