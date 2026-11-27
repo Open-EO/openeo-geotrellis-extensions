@@ -185,7 +185,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       val sample = samples.get(0)
       val assets = sample.assets
       assertEquals(1, assets.size())
-      val metadata = assets.get("openEO").metadata
+      val metadata = assets.get("openEO").toStacMap
       assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
       assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
       val bbox = polygon.extent match {
@@ -336,7 +336,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       ).stream()
       .flatMap { item =>
         item.assets.values().stream().map[(String, Extent, String, Number)] { asset =>
-          (asset.path, item.bbox, asset.dataType, asset.nodata)
+          (asset.href, item.bbox, asset.dataType, asset.nodata)
         }
       }
       .collect(util.stream.Collectors.toSet())
@@ -383,7 +383,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       val sample = samples.get(0)
       val assets = sample.assets
       assertEquals(1, assets.size())
-      val metadata = assets.get("openEO").metadata
+      val metadata = assets.get("openEO").toStacMap
       assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
       assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
       val bbox = polygon.extent match {
@@ -456,7 +456,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
   private def assetFileNames(items: util.List[Item]): util.List[String] =
     items.stream()
       .flatMap { item =>
-        item.assets.values().stream().map[String] { asset => asset.path }
+        item.assets.values().stream().map[String] { asset => asset.href }
       }
       .collect(util.stream.Collectors.toList())
 
@@ -636,7 +636,7 @@ class NetCDFRDDWriterTest extends RasterMatchers {
       val item = items.get(0)
       assertEquals(1, item.assets.size())
       val asset = item.assets.get("openEO")
-      val metadata = asset.metadata
+      val metadata = asset.toStacMap
       assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
       assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
       val bbox = cropBounds match {

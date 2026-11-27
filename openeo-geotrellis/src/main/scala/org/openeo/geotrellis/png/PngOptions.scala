@@ -1,11 +1,12 @@
 package org.openeo.geotrellis.png
 
 import geotrellis.raster.render.{ColorMap, IndexedColorMap}
+import org.openeo.geotrellis.FormatOptions
 
 import java.util
 import scala.jdk.CollectionConverters._
 
-class PngOptions extends Serializable {
+class PngOptions extends FormatOptions {
 
   var colorMap: Option[ColorMap] = Option.empty
 

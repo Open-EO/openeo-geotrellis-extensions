@@ -14,10 +14,10 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkContext, TaskContext}
-import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert, setupAssetMetadata}
+import org.openeo.geotrellis.GeneralUtils.{Stats, cellTypeUnion, combineStats, computeStatsTile, convertStatsToMap, fixBboxLargerThanWorld, safeConvert}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.OutputPreprocessing.{pixelCenterCoordinates, preProcess, safeBitCellType}
-import org.openeo.geotrellis.stac.{Asset, Item}
+import org.openeo.geotrellis.stac.{Asset, Item, NETCDF_MEDIA_TYPE, formatDate}
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons, TemporalResolution}
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
@@ -87,18 +87,18 @@ object NetCDFRDDWriter {
                                path: String,
                                options:NetCDFOptions,
                              ): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
+    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles, options.temporalExtent)
   }
 
   def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                        path: String,
                        options:NetCDFOptions,
                       ): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
+    saveSingleNetCDFGeneric(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles, options.temporalExtent)
   }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles)
+    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.addBandStatistics, options.cropBounds, options.retainNoDataTiles, options.temporalExtent)
   }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K],
@@ -110,7 +110,8 @@ object NetCDFRDDWriter {
                        zLevel:Int,
                        addBandStatistics: Boolean,
                        cropBounds:Option[Extent]= None,
-                       retainNoDataTiles: Boolean = false
+                       retainNoDataTiles: Boolean = false,
+                       temporalExtent: Option[(String, String)] = None,
                       ): java.util.List[Item] = {
 
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds, retainNoDataTiles)
@@ -248,8 +249,6 @@ object NetCDFRDDWriter {
       }
     }
     val bandsStatsisticsMap = bandStatistics.map { case (name, stats) => name -> convertStatsToMap(stats) }
-    val assetsMetadata = setupAssetMetadata(bandNames.asScala.toSeq, extent, rdd.metadata.crs, Array(gridBounds.height, gridBounds.width),
-      bandsStatsisticsMap, zonedDates)
 
     if(dates.nonEmpty) {
       val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
@@ -280,8 +279,14 @@ object NetCDFRDDWriter {
       }
 
     val croppedBbox = fixBboxLargerThanWorld(cropBounds.getOrElse(extent), rdd.metadata.crs)
+    val (startDatetime, endDatetime) =
+      if (zonedDates != null) (formatDate(zonedDates.head), formatDate(zonedDates.last))
+      else temporalExtent.getOrElse((null, null))
+    val asset = Asset(finalPath, cellType, NETCDF_MEDIA_TYPE, bandNames.asScala.toSeq, bandsStatsisticsMap, extent, rdd.metadata.crs,
+      Array(gridBounds.height, gridBounds.width))
     val item = Item(id = UUID.randomUUID().toString, bbox = croppedBbox, datetime = null,
-      assets = Collections.singletonMap("openEO", Asset(finalPath, cellType = cellType, metadata = assetsMetadata)))
+      assets = Collections.singletonMap("openEO", asset),
+      crs = rdd.metadata.crs, startDatetime = startDatetime, endDatetime = endDatetime)
 
     Collections.singletonList(item)
   }
@@ -357,7 +362,7 @@ object NetCDFRDDWriter {
     if (options.bandNames.isEmpty) logger.error("Couldn't find bandNames in options. It cannot be empty")
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToNetCDFSpatial(rdd, features, path, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix)
+    groupByFeatureAndWriteToNetCDFSpatial(rdd, features, path, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull, options.addBandStatistics, filenamePrefix, options.temporalExtent)
   }
 
   private def groupByFeatureAndWriteToNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: Seq[(String, Geometry)],
@@ -385,7 +390,6 @@ object NetCDFRDDWriter {
 
         val rasters = sorted.map(_._2)
         val bandStatistics = statisticsFromRaster(rasters, bandNames, addBandsStatistics)
-        val assetsMetadata = setupAssetMetadata(bandNames.asScala.toSeq, rasters.head.extent, crs, Array(rasters.head.rows, rasters.head.cols), bandStatistics, dates.toArray)
 
         val cellType = safeBitCellType(rdd.metadata.cellType)
 
@@ -406,9 +410,12 @@ object NetCDFRDDWriter {
 
         }
 
+        val asset = Asset(assetPath, cellType, NETCDF_MEDIA_TYPE, bandNames.asScala.toSeq, bandStatistics, rasters.head.extent, crs,
+          Array(rasters.head.rows, rasters.head.cols))
         val croppedBbox = fixBboxLargerThanWorld(tiles.head._3, crs)
         Item(id = UUID.randomUUID().toString, datetime = null , bbox = croppedBbox,
-          assets = Collections.singletonMap("openEO", Asset(path = assetPath, cellType = cellType, metadata = assetsMetadata)))
+          assets = Collections.singletonMap("openEO", asset),
+          crs = crs, startDatetime = formatDate(dates.head), endDatetime = formatDate(dates.last))
       }.collect()
       .toList.asJava
   }
@@ -481,6 +488,7 @@ object NetCDFRDDWriter {
                                            bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                            addBandsStatistics: Boolean,
                                            filenamePrefix: Option[String],
+                                           temporalExtent: Option[(String, String)],
                                            ): java.util.List[Item] = {
     val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
     val layout = rdd.metadata.layout
@@ -493,7 +501,6 @@ object NetCDFRDDWriter {
         val rasters = Seq(sample)
 
         val bandStatistics = statisticsFromRaster(rasters, bandNames, addBandsStatistics)
-        val assetMetadata = setupAssetMetadata(bandNames.asScala.toSeq, rasters.head.extent, crs, Array(rasters.head.rows, rasters.head.cols), bandStatistics)
         val cellType = safeBitCellType(rdd.metadata.cellType)
 
         val assetPath = try {
@@ -501,9 +508,12 @@ object NetCDFRDDWriter {
         } catch {
           case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
+        val asset = Asset(assetPath, cellType, NETCDF_MEDIA_TYPE, bandNames.asScala.toSeq, bandStatistics, rasters.head.extent, crs,
+          Array(rasters.head.rows, rasters.head.cols))
         val bbox = fixBboxLargerThanWorld(extent.extent, crs)
         Item(id = UUID.randomUUID().toString, datetime = null, bbox = bbox,
-          assets = Collections.singletonMap("openEO", Asset(assetPath, cellType = cellType, metadata = assetMetadata)))
+          assets = Collections.singletonMap("openEO", asset),
+          crs = crs, startDatetime = temporalExtent.map(_._1).orNull, endDatetime = temporalExtent.map(_._2).orNull)
       }.collect()
       .toList.asJava
   }

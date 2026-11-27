@@ -3,12 +3,13 @@ package org.openeo.geotrellis.geotiff
 import java.util
 import geotrellis.raster.io.geotiff.Tags
 import geotrellis.raster.render.{ColorMap, DoubleColorMap, IndexedColorMap}
+import org.openeo.geotrellis.FormatOptions
 
 import scala.jdk.CollectionConverters._
 import scala.collection.immutable.SortedMap
 
 //noinspection ScalaUnusedSymbol
-class GTiffOptions extends Serializable {
+class GTiffOptions extends FormatOptions {
 
   var filenamePrefix = "openEO" // Example using default prefix: "openEO_2017-01-02Z.tif"
   var colorMap: Option[ColorMap] = Option.empty
@@ -22,8 +23,6 @@ class GTiffOptions extends Serializable {
   var compressionLevel = 6
   var compressionPredictor = 1
   var isBigTiff = false
-  var addBandStatistics: Boolean = false
-  var retainNoDataTiles = false
 
   def setFilenamePrefix(name: String): Unit = {
     assertSafeToUseInFilePath(name)
@@ -123,9 +122,6 @@ class GTiffOptions extends Serializable {
 
   def setBigTiff(enabled: Boolean): Unit = isBigTiff = enabled
 
-  def setAddBandStatistics(boolean: Boolean): Unit = addBandStatistics = boolean
-  
-  def setRetainNoDataTiles(enabled: Boolean): Unit = retainNoDataTiles = enabled
 
   def addHeadTag(tagName: String, value: String): Unit = {
     tags = tags.copy(headTags = tags.headTags + (tagName -> value))
