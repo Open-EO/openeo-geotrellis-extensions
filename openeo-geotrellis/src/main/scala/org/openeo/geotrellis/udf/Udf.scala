@@ -10,6 +10,7 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.logger
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.slf4j.LoggerFactory
+import org.openeo.logging.JsonLayout
 
 import java.nio.{ByteBuffer, ByteOrder, FloatBuffer}
 import java.util
@@ -213,7 +214,7 @@ object Udf {
         val newTileRows = (layer.metadata.layout.tileRows * ratioY).toInt
         val newTileCols = (layer.metadata.layout.tileCols * ratioX).toInt
         val newLayout = LayoutDefinition(RasterExtent(layer.metadata.layout.extent, newCellSize), newTileCols, newTileRows)
-        logger.info(s"UDF applyMetadata returned this new layout: $newLayout")
+        logger.debug(JsonLayout.USER, s"UDF applyMetadata returned this new layout: $newLayout")
         Some((newLayout, newBandNames))
       } else {
         None

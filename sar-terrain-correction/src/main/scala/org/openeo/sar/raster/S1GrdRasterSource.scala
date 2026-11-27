@@ -124,7 +124,7 @@ object S1GrdRasterSource {
     val key = Key(processor.instanceId, spec.stacItemUrl.toString, spec.polarisations.map(_.code),
       spec.config.toString, spec.demSearchExtentWgs84)
     val opened = scenes.get(key, (_: Key) => {
-      logger.info(s"sar_backscatter: Opening ${spec.stacItemUrl}, pols=${spec.polarisations.map(_.code).mkString(",")}, " +
+      logger.debug(s"sar_backscatter: Opening ${spec.stacItemUrl}, pols=${spec.polarisations.map(_.code).mkString(",")}, " +
         s"crs=${spec.crs}, cellSize=${spec.cellSize}, coefficient=${spec.config.normalization}")
       processor.openScene(spec.stacItemUrl, spec.cellSize, spec.crs, spec.polarisations, spec.config, spec.demSearchExtentWgs84)
     })

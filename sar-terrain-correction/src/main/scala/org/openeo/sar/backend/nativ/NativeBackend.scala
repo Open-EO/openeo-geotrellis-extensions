@@ -79,7 +79,7 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
     val tileBlocks = blocks(req.cols, req.rows, (cols, rows) => estimate(cols, rows) <= maxWorkingMemoryBytes, MinBlockSide)
     if (tileBlocks.size == 1) computeOrSplit(ctx)
     else {
-      logger.info(s"sar_backscatter: item ${req.sceneId}, ${req.extent}: computing the ${req.cols} x ${req.rows} tile " +
+      logger.debug(s"sar_backscatter: item ${req.sceneId}, ${req.extent}: computing the ${req.cols} x ${req.rows} tile " +
         s"in ${tileBlocks.size} blocks of at most ${tileBlocks.map(_.cols).max} x ${tileBlocks.map(_.rows).max} pixels, " +
         s"to stay within ${maxWorkingMemoryBytes / (1024 * 1024)} MB of working memory")
       computeInBlocks(ctx, tileBlocks)
@@ -92,7 +92,7 @@ final class NativeBackend(maxWorkingMemoryBytes: Long) extends TerrainCorrection
     catch {
       case e: RadarGridTooLargeException if req.cols > 1 || req.rows > 1 =>
         // The memory estimate was too optimistic for this tile.
-        logger.info(s"sar_backscatter: item ${req.sceneId}, ${req.extent}: ${e.getMessage}, splitting the ${req.cols} x ${req.rows} tile")
+        logger.debug(s"sar_backscatter: item ${req.sceneId}, ${req.extent}: ${e.getMessage}, splitting the ${req.cols} x ${req.rows} tile")
         computeInBlocks(ctx, blocks(req.cols, req.rows, (cols, rows) => cols <= (req.cols + 1) / 2 && rows <= (req.rows + 1) / 2))
     }
   }

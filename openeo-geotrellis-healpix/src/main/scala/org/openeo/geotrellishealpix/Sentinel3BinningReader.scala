@@ -140,7 +140,7 @@ object Sentinel3BinningReader {
       polygons, from_date, to_date,
       metadata_properties, correlationId, config)
 
-    logger.info(s"Sentinel3BinningReader.datacube_seq: discovered ${products.size} products " +
+    logger.debug(s"Sentinel3BinningReader.datacube_seq: discovered ${products.size} products " +
       s"for collection=$openSearchCollectionId, date range [$from_date, $to_date]")
 
     if (products.isEmpty) {
@@ -253,7 +253,7 @@ object Sentinel3BinningReader {
 
     val df = spark.createDataFrame(rowsRdd, schema)
 
-    logger.info(s"Sentinel3BinningReader: distributed read of ${products.size} " +
+    logger.debug(s"Sentinel3BinningReader: distributed read of ${products.size} " +
       s"products into NSIDE=$nside grid.")
 
     ScalarHealpixDatacube(nside, bandDefs, df)

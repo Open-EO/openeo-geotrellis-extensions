@@ -43,7 +43,7 @@ final class StacDemCatalog(endpoint: URL, collectionId: String, assetKey: String
     cache.get((endpoint.toString, collectionId, assetKey, searchExtentsWgs84), _ => search(searchExtentsWgs84))
 
   private def search(parts: Seq[Extent]): Seq[DemItem] = {
-    logger.info(s"sar_backscatter: searching DEM items of collection $collectionId at $endpoint for $parts")
+    logger.debug(s"sar_backscatter: searching DEM items of collection $collectionId at $endpoint for $parts")
     val client = new STACClient(endpoint, s3URLS = true)
 
     val found = parts.flatMap { part =>

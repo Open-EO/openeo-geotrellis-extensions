@@ -170,7 +170,7 @@ object NetCDFCollection {
 
     val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, snappedExtent, crs(0), temporalBounds)
     val retiled: RDD[(SpaceTimeKey, MultibandTile)] = features.tileToLayout(metadata, Tiler.Options(partitioner = partitioner))
-    logger.info(s"Created cube for netCDF samples with metadata ${metadata} and partitioner ${partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
+    logger.debug(s"Created cube for netCDF samples with metadata ${metadata} and partitioner ${partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
     val cRDD = ContextRDD(retiled, metadata)
     cRDD.name = s"load_stac netCDFCollection ${items.first().id} "
     cRDD

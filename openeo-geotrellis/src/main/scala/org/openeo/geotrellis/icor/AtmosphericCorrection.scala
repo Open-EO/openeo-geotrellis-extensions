@@ -35,7 +35,7 @@ class AtmosphericCorrection extends Serializable {
         logger.info("Using SMAC")
         new SMACCorrection()
       }else{
-        logger.info("Using ICOR")
+        logger.debug("Using ICOR")
         sensorId.toUpperCase() match {
           case "SENTINEL2"  => new Sentinel2Descriptor()
           case "LANDSAT8"   => new Landsat8Descriptor()

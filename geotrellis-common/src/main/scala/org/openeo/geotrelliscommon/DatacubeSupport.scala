@@ -143,7 +143,7 @@ object DatacubeSupport {
     // smaller tiles change which pixels outside the requested geometry and which fully masked dates end up in the result
     if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && criterium && newTileSize >= DatacubeSupport.MIN_OPTIMIZED_TILE_SIZE && newTileSize >= pixelBuffer) {
       //it seems that polygons fit entirely within chunks, so chunks are too large
-      logger.info(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to $newTileSize.")
+      logger.debug(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to $newTileSize.")
       val newLayout = LayoutDefinition(metadata, newTileSize)
 
       //spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
@@ -189,7 +189,7 @@ object DatacubeSupport {
         } else {
           val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
           val isSparse: Boolean = spatialCount < 0.5 * maxKeys
-          logger.info(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
+          logger.debug(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
           if (isSparse) {
             val keys = cached.distinct().collect()
 

@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.creo
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.openeo.logging.JsonLayout
 import geotrellis.store.s3.AmazonS3URI
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
@@ -111,7 +112,7 @@ object CreoS3Utils {
         .build()
     } catch {
       case e: Exception =>
-        logger.warn(s"Cannot build proxy S3 client for bucket $bucketName: ${e.getMessage}", e)
+        logger.warn(JsonLayout.DEVELOPER, s"Cannot build proxy S3 client for bucket $bucketName: ${e.getMessage}", e)
         null
     }
   }
@@ -156,7 +157,7 @@ object CreoS3Utils {
         .build()
     } catch {
       case e: Exception =>
-        logger.warn(s"Cannot build proxy S3 async client for bucket $bucketName: ${e.getMessage}", e)
+        logger.warn(JsonLayout.DEVELOPER, s"Cannot build proxy S3 async client for bucket $bucketName: ${e.getMessage}", e)
         null
     }
   }
@@ -171,13 +172,13 @@ object CreoS3Utils {
   private def resolveProxySettings(bucketName: String): ProxySettings = {
     val tokenFile = Path.of(sys.env.getOrElse("OPENEO_WEB_IDENTITY_TOKEN_FILE", "/opt/job_config/token"))
     if (!Files.isRegularFile(tokenFile) || !Files.isReadable(tokenFile)) {
-      logger.info(s"Skip proxy S3 client for bucket $bucketName: web identity token file is not readable: $tokenFile")
+      logger.warn(s"Skip proxy S3 client for bucket $bucketName: web identity token file is not readable: $tokenFile")
       return null
     }
 
     val bucketConfigFile = Path.of(sys.env.getOrElse("OPENEO_BUCKET_CONFIG_FILE", "/opt/job_config/bucket_config.json"))
     if (!Files.isRegularFile(bucketConfigFile) || !Files.isReadable(bucketConfigFile)) {
-      logger.info(s"Skip proxy S3 client for bucket $bucketName: bucket config file is not readable: $bucketConfigFile")
+      logger.warn(s"Skip proxy S3 client for bucket $bucketName: bucket config file is not readable: $bucketConfigFile")
       return null
     }
 
@@ -323,13 +324,13 @@ object CreoS3Utils {
     try {
       val bucketConfigRoot = objectMapper.readTree(bucketConfigFile.toFile)
       if (bucketConfigRoot == null || !bucketConfigRoot.isObject) {
-        logger.info(s"Skip proxy S3 client for bucket $bucketName: bucket config file does not contain a JSON object: $bucketConfigFile")
+        logger.warn(s"Skip proxy S3 client for bucket $bucketName: bucket config file does not contain a JSON object: $bucketConfigFile")
         return null
       }
 
       val bucketNode = bucketConfigRoot.path(bucketName)
       if (bucketNode.isMissingNode || !bucketNode.isObject) {
-        logger.info(s"Skip proxy S3 client for bucket $bucketName: bucket config file has no object entry for this bucket: $bucketConfigFile")
+        logger.warn(s"Skip proxy S3 client for bucket $bucketName: bucket config file has no object entry for this bucket: $bucketConfigFile")
         return null
       }
 
@@ -516,7 +517,7 @@ object CreoS3Utils {
       if (retry < maxTries) {
         retry += 1
         val seconds = 5
-        logger.info(f"Waiting for path to be available. Try $retry/$maxTries (sleep:$seconds seconds): $path")
+        logger.debug(f"Waiting for path to be available. Try $retry/$maxTries (sleep:$seconds seconds): $path")
         Thread.sleep(seconds * 1000)
       } else {
         logger.warn(f"Path is not available after $maxTries tries: $path")
@@ -533,7 +534,7 @@ object CreoS3Utils {
         try {
           if (assetExists(newPath)) {
             // It might be a partial result of a previous failing task.
-            logger.info(f"Will replace $newPath. (try $try_count)")
+            logger.warn(f"Will replace $newPath. (try $try_count)")
             assetDelete(newPath)
           }
           moveAsset(oldPath, newPath)
@@ -541,7 +542,7 @@ object CreoS3Utils {
         } catch {
           case e: Exception =>
             // Here if another executor wrote the file between the delete and the move statement.
-            logger.info("moveOverwriteWithRetries exception: " + e + f" (try $try_count)")
+            logger.warn("moveOverwriteWithRetries exception: " + e + f" (try $try_count)")
             try_count += 1
             if (try_count > 5) {
               throw e
@@ -597,7 +598,7 @@ object CreoS3Utils {
       // py4j.protocol.Py4JJavaError: An error occurred while calling z:org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters.
       //: java.util.concurrent.CompletionException: software.amazon.awssdk.services.s3.model.S3Exception: null (Service: S3, Status Code: 400, Request ID: tx0000000000000613fcf8d-00655f6998-84eddc61-default)
       try {
-        logger.info(f"uploadToS3TryFirstWithStreaming: Try to upload with streaming")
+        logger.debug(f"uploadToS3TryFirstWithStreaming: Try to upload with streaming")
         uploadToS3LargeFile(localPath, s3Path)
       } catch {
         case e: Throwable =>

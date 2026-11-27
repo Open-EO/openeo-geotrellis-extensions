@@ -563,7 +563,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           } else {
             clipped.map(_._1).countApproxDistinct()
           }
-        logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
+        logger.debug(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
         var retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = Some(metadata)
         var currentSpatialKeyCount = spatialKeyCount
